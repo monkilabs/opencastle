@@ -1,4 +1,4 @@
-import { mkdir, appendFile, stat } from 'node:fs/promises'
+import { mkdir, appendFile, readFile, stat } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import type { CliContext } from './types.js'
 
@@ -69,7 +69,17 @@ export async function appendEvent(
   const eventsFile = join(resolvedDir, 'events.ndjson')
   await mkdir(resolvedDir, { recursive: true })
   const line = JSON.stringify(record)
-  await appendFile(eventsFile, line + '\n', 'utf8')
+  // Ensure file ends with a newline before appending to prevent record concatenation
+  let prefix = ''
+  try {
+    const existing = await readFile(eventsFile, 'utf8')
+    if (existing.length > 0 && !existing.endsWith('\n')) {
+      prefix = '\n'
+    }
+  } catch {
+    // File doesn't exist yet — no prefix needed
+  }
+  await appendFile(eventsFile, prefix + line + '\n', 'utf8')
 }
 
 export default async function log({ args }: CliContext): Promise<void> {
