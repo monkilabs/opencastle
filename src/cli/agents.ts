@@ -17,6 +17,7 @@ const HELP = `
   Options:
     --older-than <days>      Days threshold for compact subcommand
     --yes, -y                Skip confirmation prompt
+    --dry-run                Preview what would be deleted without deleting
     --help, -h               Show this help
 `
 
@@ -25,6 +26,7 @@ interface AgentsOptions {
   agentName: string | null
   olderThan: number | null
   yes: boolean
+  dryRun: boolean
   help: boolean
 }
 
@@ -34,6 +36,7 @@ function parseAgentsArgs(args: string[]): AgentsOptions {
     agentName: null,
     olderThan: null,
     yes: false,
+    dryRun: false,
     help: false,
   }
 
@@ -55,6 +58,10 @@ function parseAgentsArgs(args: string[]): AgentsOptions {
       case '--yes':
       case '-y':
         opts.yes = true
+        break
+      case '--dry-run':
+      case '--dryRun':
+        opts.dryRun = true
         break
       default:
         if (arg.startsWith('--')) {
@@ -141,12 +148,16 @@ export default async function agents({ args }: CliContext): Promise<void> {
           console.error('  \u2717 purge requires an agent name: opencastle agents purge <agent>')
           process.exit(1)
         }
+        const existing = store.getAgentIdentities(opts.agentName, 1000)
+        if (existing.length === 0) {
+          console.log(`  No identities found for agent "${opts.agentName}".`)
+          return
+        }
+        if (opts.dryRun) {
+          console.log(`  [dry-run] Would purge ${existing.length} identities for agent "${opts.agentName}"`)          
+          return
+        }
         if (!opts.yes) {
-          const existing = store.getAgentIdentities(opts.agentName, 1000)
-          if (existing.length === 0) {
-            console.log(`  No identities found for agent "${opts.agentName}".`)
-            return
-          }
           console.log(`\n  This will delete ${existing.length} identities for agent "${opts.agentName}".`)
           console.log(`  Use --yes or -y to confirm.`)
           return
@@ -160,6 +171,10 @@ export default async function agents({ args }: CliContext): Promise<void> {
         if (!opts.olderThan) {
           console.error('  \u2717 compact requires --older-than <days>')
           process.exit(1)
+        }
+        if (opts.dryRun) {
+          console.log(`  [dry-run] Would delete identities older than ${opts.olderThan} days`)
+          return
         }
         const deleted = store.deleteAgentIdentitiesOlderThan(opts.olderThan)
         console.log(`  \u2713 Deleted ${deleted} identities older than ${opts.olderThan} days.`)

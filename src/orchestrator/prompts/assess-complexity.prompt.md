@@ -43,6 +43,14 @@ Analyze the PRD below and produce a complexity assessment as a **single JSON obj
       "phases": [<phase numbers>],
       "depends_on": ["<group name>", ...]
     }
+  ],
+  "task_complexity": [
+    {
+      "workstream": "<workstream title from PRD Task Breakdown>",
+      "phase": <phase number>,
+      "complexity": 1 | 2 | 3 | 5 | 8 | 13,
+      "rationale": "<brief reason>"
+    }
   ]
 }
 ```
@@ -65,3 +73,8 @@ Analyze the PRD below and produce a complexity assessment as a **single JSON obj
   - **Minimum 3 tasks per group.** Never create a group that would produce a convoy with only 1–2 tasks — merge small groups with adjacent ones. A convoy with a single task is pointless overhead.
   - **Do NOT map phases 1:1 to groups.** Groups should bundle multiple related phases when tasks are tightly coupled (e.g., config + data in one group, components + pages in another). Only split at genuine domain boundaries where failure isolation matters.
   - Maximum 3 groups for projects with ≤ 15 tasks. Maximum 4 groups for 16+ tasks.
+- `task_complexity`: Array of per-workstream complexity assessments using Fibonacci scale.
+  - `workstream`: Exact workstream title from the PRD's Task Breakdown section.
+  - `phase`: Phase number the workstream belongs to.
+  - `complexity`: Fibonacci score: `1` (trivial — single file edit), `2` (simple — small fix, one test), `3` (moderate — new component/endpoint), `5` (significant — multi-file feature), `8` (complex — cross-cutting), `13` (epic — architecture-level).
+  - `rationale`: One sentence explaining the score.

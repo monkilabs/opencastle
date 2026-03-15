@@ -2125,7 +2125,8 @@ describe('review pipeline', () => {
     })
     const result = await engine.run()
     expect(result.status).toBe('done')
-    expect(mockReviewRunner).toHaveBeenCalledOnce()
+    // Two-stage review: stage 1 (spec compliance) + stage 2 (code quality) = 2 calls
+    expect(mockReviewRunner).toHaveBeenCalledTimes(2)
     expect(mockReviewRunner).toHaveBeenCalledWith(expect.objectContaining({ agent: 'developer' }), 'fast', 'default')
   })
 
@@ -2136,8 +2137,9 @@ describe('review pipeline', () => {
       return Promise.resolve({ success: true, output: 'ok', exitCode: 0 })
     })
     const mockReviewRunner = vi.fn()
-      .mockResolvedValueOnce({ verdict: 'block', feedback: 'Missing tests', tokens: 50, model: 'reviewer' })
-      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })
+      .mockResolvedValueOnce({ verdict: 'block', feedback: 'Missing tests', tokens: 50, model: 'reviewer' }) // round 1 stage 1 → block (short-circuits)
+      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })               // round 2 stage 1 → pass
+      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })               // round 2 stage 2 → pass
 
     const engine = makeEngine({
       spec: makeSpec({ defaults: { review: 'fast' } }, [{ max_retries: 1 }]),
@@ -2151,7 +2153,8 @@ describe('review pipeline', () => {
     const result = await engine.run()
     expect(result.status).toBe('done')
     expect(adapter.execute).toHaveBeenCalledTimes(2)
-    expect(mockReviewRunner).toHaveBeenCalledTimes(2)
+    // Round 1: stage 1 blocks (1 call). Round 2: stage 1 pass + stage 2 pass (2 calls). Total: 3
+    expect(mockReviewRunner).toHaveBeenCalledTimes(3)
     // Prompt on second attempt should contain feedback
     const secondPrompt = (adapter.execute.mock.calls[1] as [Task])[0].prompt
     expect(secondPrompt).toContain('Missing tests')
@@ -2183,10 +2186,10 @@ describe('review pipeline', () => {
     let callCount = 0
     const mockReviewRunner = vi.fn().mockImplementation(() => {
       callCount++
-      // 2 pass, 1 block
-      return Promise.resolve(callCount <= 2
-        ? { verdict: 'pass', feedback: '', tokens: 30, model: 'reviewer' }
-        : { verdict: 'block', feedback: 'Minor issue', tokens: 30, model: 'reviewer' })
+      // Reviewer C blocks at stage 1 (call 3); reviewers A and B pass both stages (calls 1,2,4,5)
+      return Promise.resolve(callCount === 3
+        ? { verdict: 'block', feedback: 'Minor issue', tokens: 30, model: 'reviewer' }
+        : { verdict: 'pass', feedback: '', tokens: 30, model: 'reviewer' })
     })
 
     const engine = makeEngine({
@@ -2200,7 +2203,8 @@ describe('review pipeline', () => {
     })
     const result = await engine.run()
     expect(result.status).toBe('done')
-    expect(mockReviewRunner).toHaveBeenCalledTimes(3)
+    // Two-stage panel: 2 pass reviewers × 2 stages + 1 block reviewer × 1 stage = 5 calls
+    expect(mockReviewRunner).toHaveBeenCalledTimes(5)
   })
 
   it('panel review 2/3 BLOCK — task retried with MUST-FIX', async () => {
@@ -2254,9 +2258,9 @@ describe('review pipeline', () => {
     })
     const result = await engine.run()
     expect(result.status).toBe('done')
-    // first task: budget not exceeded (0 < 100), review runs
-    // second task: budget exceeded (200 >= 100), review skipped
-    expect(mockReviewRunner).toHaveBeenCalledTimes(1)
+    // first task: budget not exceeded (0 < 100), two-stage review runs (2 calls, total 400 tokens)
+    // second task: budget exceeded (400 >= 100), review skipped
+    expect(mockReviewRunner).toHaveBeenCalledTimes(2)
   })
 
   it('auto route: developer agent with empty diff → auto-pass (no reviewer call)', async () => {
@@ -2291,7 +2295,7 @@ describe('review pipeline', () => {
     const store = createConvoyStore(dbPath)
     const tasks = store.getTasksByConvoy(result.convoyId)
     store.close()
-    expect(tasks[0].review_tokens).toBe(77)
+    expect(tasks[0].review_tokens).toBe(154) // two-stage: 77 (stage 1) + 77 (stage 2)
     expect(tasks[0].review_level).toBe('fast')
     expect(tasks[0].review_verdict).toBe('pass')
   })
@@ -2339,8 +2343,9 @@ describe('review pipeline', () => {
 
   it('full fast-review flow: BLOCK on first attempt → retry → PASS → done with complete events', async () => {
     const mockReviewRunner = vi.fn()
-      .mockResolvedValueOnce({ verdict: 'block', feedback: 'Add more tests', tokens: 40, model: 'reviewer' })
-      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 35, model: 'reviewer' })
+      .mockResolvedValueOnce({ verdict: 'block', feedback: 'Add more tests', tokens: 40, model: 'reviewer' }) // round 1 stage 1 → block
+      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 35, model: 'reviewer' })               // round 2 stage 1 → pass
+      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 35, model: 'reviewer' })               // round 2 stage 2 → pass
 
     const engine = makeEngine({
       spec: makeSpec({ defaults: { review: 'fast' } }, [{ id: 'task-1', max_retries: 1 }]),
@@ -2355,7 +2360,8 @@ describe('review pipeline', () => {
 
     expect(result.status).toBe('done')
     expect(adapter.execute).toHaveBeenCalledTimes(2)
-    expect(mockReviewRunner).toHaveBeenCalledTimes(2)
+    // Round 1: 1 call (block short-circuits). Round 2: 2 calls (stage 1 + stage 2). Total: 3
+    expect(mockReviewRunner).toHaveBeenCalledTimes(3)
 
     const store = createConvoyStore(dbPath)
     const tasks = store.getTasksByConvoy(result.convoyId)
@@ -2405,7 +2411,9 @@ describe('review pipeline', () => {
 
     expect(result.status).toBe('done')
     expect(adapter.execute).toHaveBeenCalledTimes(2)
-    expect(mockReviewRunner).toHaveBeenCalledTimes(6)
+    // Two-stage panel round 1: 2 blocks ×1 call + 1 pass ×2 calls = 4 calls
+    // Two-stage panel round 2: 3 pass ×2 calls = 6 calls. Total: 10
+    expect(mockReviewRunner).toHaveBeenCalledTimes(10)
 
     const store = createConvoyStore(dbPath)
     const tasks = store.getTasksByConvoy(result.convoyId)
@@ -2520,10 +2528,16 @@ describe('drift detection', () => {
 
   it('detect_drift=true triggers drift check and retries on low confidence', async () => {
     // Call sequence: main task → drift check (low score) → main task retry
+    const driftRetryOutput = [
+      'done retry',
+      '<!-- OUTPUT_CONTRACT',
+      '{ "files_changed": ["src/foo.ts"], "tests_added": ["src/foo.test.ts"], "summary": "done" }',
+      '-->',
+    ].join('\n')
     adapter.execute
       .mockResolvedValueOnce({ success: true, output: 'done', exitCode: 0 })
       .mockResolvedValueOnce({ success: true, output: '{"score": 0.3, "explanation": "uncertain"}', exitCode: 0 })
-      .mockResolvedValueOnce({ success: true, output: 'done retry', exitCode: 0 })
+      .mockResolvedValueOnce({ success: true, output: driftRetryOutput, exitCode: 0 })
 
     const engine = makeEngine({
       spec: makeSpec({ defaults: { detect_drift: true } }, [{ id: 'task-1', max_retries: 1 }]),
@@ -3755,5 +3769,147 @@ describe('createEventEmitter callsite safety', () => {
     expect(typeof emitter.close).toBe('function')
     emitter.close()
     testStore.close()
+  })
+})
+
+// ── Contract retry ────────────────────────────────────────────────────────────
+
+describe('contract retry', () => {
+  it('retries when output is missing OUTPUT_CONTRACT and retries remain', async () => {
+    const validContractOutput = [
+      'Work done.',
+      '<!-- OUTPUT_CONTRACT',
+      '{ "files_changed": ["src/foo.ts"], "tests_added": ["src/foo.test.ts"], "summary": "implemented" }',
+      '-->',
+    ].join('\n')
+
+    const adapter = makeAdapter()
+    adapter.execute
+      .mockResolvedValueOnce({ success: true, output: 'no contract here', exitCode: 0 })
+      .mockResolvedValueOnce({ success: true, output: validContractOutput, exitCode: 0 })
+
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ agent: 'developer', max_retries: 1 }]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+    expect(result.status).toBe('done')
+    expect(adapter.execute).toHaveBeenCalledTimes(2)
+
+    // Second prompt should contain the contract retry message
+    const secondPrompt = (adapter.execute.mock.calls[1] as [Task])[0].prompt
+    expect(secondPrompt).toContain('OUTPUT_CONTRACT')
+    expect(secondPrompt).toContain('Missing fields')
+
+    const store = createConvoyStore(dbPath)
+    const tasks = store.getTasksByConvoy(result.convoyId)
+    store.close()
+    expect(tasks[0].status).toBe('done')
+  })
+
+  it('emits contract_violation and marks done when retries exhausted', async () => {
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: true, output: 'no contract here', exitCode: 0 })
+
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ agent: 'developer', max_retries: 0 }]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+    expect(result.status).toBe('done')
+    expect(adapter.execute).toHaveBeenCalledTimes(1)
+
+    const store = createConvoyStore(dbPath)
+    const events = store.getEvents(result.convoyId)
+    const tasks = store.getTasksByConvoy(result.convoyId)
+    store.close()
+
+    const violationEvent = events.find(e => e.type === 'contract_violation')
+    expect(violationEvent).toBeDefined()
+    expect(tasks[0].status).toBe('done')
+  })
+})
+
+// ── Compaction continuation ───────────────────────────────────────────────────
+
+describe('compaction continuation', () => {
+  it('re-enqueues without incrementing retries when threshold exceeded', async () => {
+    const adapter = makeAdapter()
+    adapter.execute
+      .mockResolvedValueOnce({ success: true, output: 'phase 1 done', exitCode: 0, usage: { total_tokens: 170_000 } })
+      .mockResolvedValueOnce({ success: true, output: 'all done', exitCode: 0, usage: { total_tokens: 1_000 } })
+
+    const engine = makeEngine({
+      spec: makeSpec(
+        { defaults: { compaction: { enabled: true, token_threshold_pct: 80, summary_max_tokens: 2000 } } },
+        [{ model: 'claude-sonnet-4-6', max_retries: 0 }],
+      ),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+    expect(result.status).toBe('done')
+    expect(adapter.execute).toHaveBeenCalledTimes(2)
+
+    const store = createConvoyStore(dbPath)
+    const events = store.getEvents(result.convoyId)
+    const tasks = store.getTasksByConvoy(result.convoyId)
+    store.close()
+
+    // Compaction event emitted
+    const compactedEvent = events.find(e => e.type === 'context_compacted')
+    expect(compactedEvent).toBeDefined()
+
+    // Task completed successfully and retries were NOT incremented by compaction
+    expect(tasks[0].status).toBe('done')
+    expect(tasks[0].retries).toBe(0)
+  })
+
+  it('fails with context_exhausted when max compactions reached', async () => {
+    const adapter = makeAdapter()
+    // All calls return high token count — will exhaust compaction budget after 3+1 calls
+    adapter.execute.mockResolvedValue({
+      success: true,
+      output: 'partial work',
+      exitCode: 0,
+      usage: { total_tokens: 170_000 },
+    })
+
+    const engine = makeEngine({
+      spec: makeSpec(
+        { defaults: { compaction: { enabled: true, token_threshold_pct: 80, summary_max_tokens: 2000 } } },
+        [{ model: 'claude-sonnet-4-6', max_retries: 0 }],
+      ),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+    expect(result.status).toBe('failed')
+
+    const store = createConvoyStore(dbPath)
+    const events = store.getEvents(result.convoyId)
+    const tasks = store.getTasksByConvoy(result.convoyId)
+    store.close()
+
+    const exhaustedEvent = events.find(e => {
+      if (e.type !== 'task_failed') return false
+      try { return (JSON.parse(e.data as string) as { reason: string }).reason === 'context_exhausted' } catch { return false }
+    })
+    expect(exhaustedEvent).toBeDefined()
+    expect(tasks[0].status).toBe('failed')
   })
 })

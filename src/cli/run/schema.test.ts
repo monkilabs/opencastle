@@ -1830,6 +1830,64 @@ describe('validateSpec — built_in_gates config', () => {
     expect(result.valid).toBe(false)
     expect(result.errors).toContainEqual(expect.stringContaining('gate_timeout'))
   })
+
+  it('accepts tdd_check as boolean', () => {
+    const result = validateSpec({
+      ...validSpec,
+      defaults: { built_in_gates: { tdd_check: true } },
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it('accepts tdd_check as object', () => {
+    const result = validateSpec({
+      ...validSpec,
+      defaults: { built_in_gates: { tdd_check: { enabled: true, mode: 'block' } } },
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it('rejects tdd_check with invalid value', () => {
+    const result = validateSpec({
+      ...validSpec,
+      defaults: { built_in_gates: { tdd_check: 'yes' } },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors).toContainEqual(expect.stringContaining('tdd_check'))
+  })
+})
+
+describe('validateSpec — review_stages', () => {
+  const validSpec = {
+    name: 'test-run',
+    version: 1,
+    tasks: [{ id: 'task-1', prompt: 'Do something' }],
+  }
+
+  it('accepts review_stages as true', () => {
+    const result = validateSpec({
+      ...validSpec,
+      defaults: { review_stages: true },
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it('accepts review_stages as false', () => {
+    const result = validateSpec({
+      ...validSpec,
+      defaults: { review_stages: false },
+    })
+    expect(result.valid).toBe(true)
+  })
+
+  it('rejects review_stages with non-boolean value', () => {
+    const result = validateSpec({
+      ...validSpec,
+      defaults: { review_stages: 'yes' },
+    })
+    expect(result.valid).toBe(false)
+    expect(result.errors).toContainEqual(expect.stringContaining('review_stages'))
+  })
 })
 
 describe('validateSpec — browser_test config', () => {

@@ -38,6 +38,7 @@ const HELP = `
     --correct <text>         The correct approach that works
     --why <text>             Root cause explanation
     --customizations-dir <p> Override the customizations directory path
+    --dry-run                Preview what would be appended without writing
     --help, -h               Show this help
 
   Examples:
@@ -230,6 +231,7 @@ export default async function lesson({ args }: CliContext): Promise<void> {
     return
   }
 
+  const dryRun = args.includes('--dry-run') || args.includes('--dryRun')
   let title: string | null = null
   let category: string | null = null
   let severity: string | null = null
@@ -297,6 +299,12 @@ export default async function lesson({ args }: CliContext): Promise<void> {
   if (!isSeverity(severity!)) {
     console.error(`  \u2717 Invalid --severity "${severity}". Must be one of: ${SEVERITIES.join(', ')}`)
     process.exit(1)
+  }
+
+  if (dryRun) {
+    console.log(`  [dry-run] Would append lesson to LESSONS-LEARNED.md:`)
+    console.log(`  Title: ${title}`)
+    return
   }
 
   try {

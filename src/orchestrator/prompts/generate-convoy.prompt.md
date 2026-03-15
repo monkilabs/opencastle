@@ -52,6 +52,13 @@ You are the Team Lead. The user wants to run `opencastle run` to execute a batch
 | `max_retries` | integer | no | Override retry count for this task |
 | `review` | `fast` \| `panel` \| `none` \| `auto` | no | Review level |
 | `gates` | list of strings | no | Per-task gate commands |
+| `complexity` | `1` \| `2` \| `3` \| `5` \| `8` \| `13` | no | Fibonacci complexity score. Auto-populates timeout/retries/review from effort table. |
+
+### Complexity Scores
+
+If a **Pre-Computed Task Complexity** table is present in the context, use those scores directly — do not re-derive them. Map each convoy task to the closest workstream; for combined workstreams use the highest score.
+
+If no pre-computed data is available, assess complexity yourself: `1` (trivial), `2` (simple), `3` (moderate), `5` (significant), `8` (complex), `13` (epic).
 
 ### Agent Roster
 
@@ -225,4 +232,16 @@ When chain mode is detected:
   "gate_retries": 1
 }
 ````
+
+## Historical Performance Context
+
+When historical execution data is available (via `opencastle insights --json`), the Team Lead should include a compact summary in the context. Example:
+
+### Historical Performance (auto-generated)
+Based on {N} past convoys:
+- Tasks on `src/cli/` succeed 92% with Developer (avg 8min)
+- Recommended concurrency for {task_count} tasks: {recommended}
+- Agents to watch: {high_retry_agents}
+
+Use this data to make evidence-based decisions about agent assignment, concurrency, and timeout settings.
 

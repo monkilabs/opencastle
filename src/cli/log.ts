@@ -11,6 +11,7 @@ const HELP = `
     --type <type>          Event type (required): session|delegation|review|panel|dispute
     --<field> <value>      Any field from the event schema (see documentation)
     --logs-dir <path>      Override the logs directory path
+    --dry-run              Preview what would be logged without writing
     --help, -h             Show this help
 
   Array fields (comma-separated): file_partition, lessons_added, discoveries, reviewing_agents
@@ -77,6 +78,7 @@ export default async function log({ args }: CliContext): Promise<void> {
     return
   }
 
+  const dryRun = args.includes('--dry-run') || args.includes('--dryRun')
   let type: string | null = null
   let logsDir: string | null = null
   const fields: Record<string, unknown> = {}
@@ -121,6 +123,12 @@ export default async function log({ args }: CliContext): Promise<void> {
   const timestamp = (fields['timestamp'] as string | undefined) ?? new Date().toISOString()
   delete fields['timestamp']
   const record = { type, timestamp, ...fields }
+
+  if (dryRun) {
+    console.log(`  [dry-run] Would append to events.ndjson:`)
+    console.log(JSON.stringify(record))
+    return
+  }
 
   try {
     await appendEvent(record, logsDir)

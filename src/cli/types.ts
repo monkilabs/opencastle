@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import type { BuiltInGatesConfig, BrowserTestConfig, GuardConfig, CircuitBreakerConfig, TaskStep, Hook, TaskOutput, TaskInput, WatchConfig, MCPServerConfig } from './convoy/types.js';
+import type { BuiltInGatesConfig, BrowserTestConfig, GuardConfig, CircuitBreakerConfig, CompactionConfig, TaskStep, Hook, TaskOutput, TaskInput, WatchConfig, MCPServerConfig } from './convoy/types.js';
 
 // ── Stack selection types ──────────────────────────────────────
 
@@ -165,6 +165,7 @@ export interface TaskDefaults {
   escalate_to?: string;
   circuit_breaker?: CircuitBreakerConfig;
   review?: 'auto' | 'fast' | 'panel' | 'none';
+  review_stages?: boolean;
   reviewer_model?: string;
   review_budget?: number;
   on_review_budget_exceeded?: 'skip' | 'downgrade' | 'stop';
@@ -188,6 +189,8 @@ export interface TaskDefaults {
   mcp_server_approval_timeout?: number;
   /** Browser test gate configuration for default built-in gates. */
   browser_test?: BrowserTestConfig;
+  /** Auto-context compaction configuration (Phase 44). */
+  compaction?: CompactionConfig;
 }
 
 /** Validated task spec from YAML. */

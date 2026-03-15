@@ -99,11 +99,11 @@ describe('DB creation', () => {
     expect(row.journal_mode).toBe('wal')
   })
 
-  it('sets schema version to 10', () => {
+  it('sets schema version to 11', () => {
     const db = new DatabaseSync(dbPath)
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number }
     db.close()
-    expect(row.user_version).toBe(10)
+    expect(row.user_version).toBe(11)
   })
 
   it('creates all required tables', () => {
@@ -131,7 +131,7 @@ describe('DB creation', () => {
     store2.close()
     // Reassign so afterEach does not double-close
     store = createConvoyStore(dbPath)
-    expect(row.user_version).toBe(10)
+    expect(row.user_version).toBe(11)
   })
 })
 
@@ -208,8 +208,8 @@ describe('schema migration', () => {
     verifyDb.close()
 
     expect(cols.map(c => c.name)).toContain('adapter')
-    // v1 chains through v2→v3→v4→...→v7→v8→v9→v10 in one init, so final version is 10
-    expect(version.user_version).toBe(10)
+    // v1 chains through v2→v3→v4→...→v7→v8→v9→v10→v11 in one init, so final version is 11
+    expect(version.user_version).toBe(11)
   })
 
   it('schema migration v2 to v3 adds cost columns', () => {
@@ -295,7 +295,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(10)
+    expect(version.user_version).toBe(11)
   })
 
   it('schema migration v1 to v3 chains correctly in a single init', () => {
@@ -381,7 +381,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(10)
+    expect(version.user_version).toBe(11)
   })
 
   it('schema migration v3 to v4 creates pipeline table and adds pipeline_id to convoy', () => {
@@ -464,7 +464,7 @@ describe('schema migration', () => {
 
     expect(convoyCols.map(c => c.name)).toContain('pipeline_id')
     expect(tables.map(t => t.name)).toContain('pipeline')
-    expect(version.user_version).toBe(10)
+    expect(version.user_version).toBe(11)
   })
 })
 
@@ -1444,7 +1444,7 @@ describe('schema migration v5 → v6', () => {
     v5Verify.close()
     migratedStore.close()
 
-    expect(row.user_version).toBe(10)
+    expect(row.user_version).toBe(11)
     expect(taskStepTable?.name).toBe('task_step')
     expect(convoy?.id).toBe('convoy-auto')
     expect(task?.id).toBe('task-auto')
@@ -1614,7 +1614,7 @@ describe('schema migration v6→v7 (drift detection columns)', () => {
 
     expect(cols.map(c => c.name)).toContain('drift_score')
     expect(cols.map(c => c.name)).toContain('drift_retried')
-    expect(version.user_version).toBe(10)
+    expect(version.user_version).toBe(11)
   })
 
   it('new databases include drift_score and drift_retried in CREATE TABLE', () => {
@@ -1847,9 +1847,9 @@ describe('migration full chain v4→v10', () => {
 
     const verifyDb = new DatabaseSync(chainDbPath)
 
-    // Verify user_version = 10
+    // Verify user_version = 11
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(10)
+    expect(version).toBe(11)
 
     // Verify all new tables exist
     const tables = (verifyDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name)
@@ -1863,7 +1863,7 @@ describe('migration full chain v4→v10', () => {
       'gates', 'on_exhausted', 'injected', 'provenance', 'idempotency_key',
       'current_step', 'total_steps', 'review_level', 'review_verdict', 'review_tokens',
       'review_model', 'panel_attempts', 'dispute_id', 'drift_score', 'drift_retried',
-      'outputs', 'inputs', 'discovered_issues',
+      'outputs', 'inputs', 'discovered_issues', 'compaction_count',
     ]) {
       expect(taskCols).toContain(col)
     }
@@ -2525,10 +2525,10 @@ describe('v9→v10 migration', () => {
 
     migratedStore.close()
 
-    // Verify version = 10
+    // Verify version = 11
     const verifyDb = new DatabaseSync(migDb)
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(10)
+    expect(version).toBe(11)
 
     // Verify new REAL columns exist
     const convoyCols = (verifyDb.prepare('PRAGMA table_info(convoy)').all() as Array<{ name: string }>).map(c => c.name)
