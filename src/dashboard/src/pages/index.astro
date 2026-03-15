@@ -361,11 +361,21 @@ try {
       const res = await fetch(path);
       if (!res.ok) return [];
       const text = await res.text();
-      return text
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .map((line) => JSON.parse(line));
+      var results = [];
+      var lines = text.trim().split('\n').filter(Boolean);
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        try {
+          results.push(JSON.parse(line));
+        } catch {
+          // Attempt to recover concatenated records (e.g. "}{" without newline)
+          var parts = line.split(/(?<=\})(?=\{)/);
+          for (var j = 0; j < parts.length; j++) {
+            try { results.push(JSON.parse(parts[j])); } catch { /* skip */ }
+          }
+        }
+      }
+      return results;
     } catch {
       return [];
     }
