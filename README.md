@@ -82,6 +82,10 @@ MCP servers are auto-configured for your stack in each IDE's native format.
 | `opencastle baselines` | Manage visual regression baselines |
 | `opencastle log` | Append a structured event to the observability log |
 | `opencastle lesson` | Append a structured lesson to LESSONS-LEARNED.md |
+| `opencastle artifacts` | Manage filesystem artifact storage (prune old convoy artifacts) |
+| `opencastle insights` | Analyze convoy execution history and generate recommendations |
+| `opencastle skills` | Skill refinement and failure tracking |
+| `opencastle package` | Package orchestrator as a plugin for IDE marketplaces |
 
 Add `--dry-run` to any command to preview what it would change without writing files.
 

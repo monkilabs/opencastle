@@ -16,6 +16,7 @@ const HELP = `
     --slug <name>    Baseline name (used as filename)
     --from <file>    Source PNG file path
     --dir <path>     Baselines directory (default: .opencastle/baselines)
+    --dry-run        Preview what would be updated without writing
     --help, -h       Show this help
 `
 
@@ -24,6 +25,7 @@ interface BaselinesOptions {
   slug: string | null
   from: string | null
   dir: string
+  dryRun: boolean
   help: boolean
 }
 
@@ -33,6 +35,7 @@ function parseBaselinesArgs(args: string[]): BaselinesOptions {
     slug: null,
     from: null,
     dir: '.opencastle/baselines',
+    dryRun: false,
     help: false,
   }
   for (let i = 0; i < args.length; i++) {
@@ -62,6 +65,10 @@ function parseBaselinesArgs(args: string[]): BaselinesOptions {
           process.exit(1)
         }
         opts.dir = args[++i]
+        break
+      case '--dry-run':
+      case '--dryRun':
+        opts.dryRun = true
         break
       default:
         if (arg.startsWith('--')) {
@@ -108,6 +115,11 @@ export default async function baselines({ args }: CliContext): Promise<void> {
       if (!scan.clean) {
         console.error('  \u2717 Source file contains potential secrets \u2014 baseline not updated')
         process.exit(1)
+      }
+      if (opts.dryRun) {
+        const dest = join(opts.dir, `${opts.slug}.png`)
+        console.log(`  [dry-run] Would update baseline: ${dest}`)
+        break
       }
       mkdirSync(opts.dir, { recursive: true })
       const dest = join(opts.dir, `${opts.slug}.png`)

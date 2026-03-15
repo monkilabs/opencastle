@@ -39,6 +39,8 @@ const HELP = `
     baselines   Manage visual regression baselines
     log         Append a structured event to the observability log
     lesson      Append a structured lesson to LESSONS-LEARNED.md
+    artifacts   Manage filesystem artifact storage (prune old convoy artifacts)
+    insights    Analyze convoy execution history and generate recommendations
 
   Options:
     --dry-run        Preview what a command would change without writing files
@@ -52,6 +54,15 @@ if (!command || command === '--help' || command === '-h') {
 }
 
 if (command === '--version' || command === '-v') {
+  const pkg = JSON.parse(
+    await readFile(resolve(pkgRoot, 'package.json'), 'utf8')
+  )
+  console.log(pkg.version)
+  process.exit(0)
+}
+
+// Handle --version anywhere in args (e.g., "opencastle init --version")
+if (args.includes('--version') || args.includes('-v')) {
   const pkg = JSON.parse(
     await readFile(resolve(pkgRoot, 'package.json'), 'utf8')
   )
@@ -75,6 +86,10 @@ const commands = {
   dispute: () => import('../dist/cli/dispute.js'),
   baselines: () => import('../dist/cli/baselines.js'),
   validate: () => import('../dist/cli/validate.js'),
+  artifacts: () => import('../dist/cli/artifacts-cli.js'),
+  insights: () => import('../dist/cli/insights.js'),
+  skills: () => import('../dist/cli/skills.js'),
+  package: () => import('../dist/cli/package.js'),
 }
 
 if (!commands[command]) {

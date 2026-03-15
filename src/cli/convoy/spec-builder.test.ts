@@ -228,6 +228,67 @@ describe('buildConvoyYaml', () => {
     expect(result.valid).toBe(true)
     expect(result.errors).toEqual([])
   })
+
+  // ── complexity effort-scaling integration ────────────────────────────────────
+
+  it('auto-populates timeout, max_retries, review from effort table when complexity is set', () => {
+    const plan: TaskPlan = {
+      name: 'Effort Test',
+      tasks: [{ id: 'task-1', complexity: 3, prompt: 'Do something' }],
+    }
+    const parsed = yamlParse(buildConvoyYaml(plan))
+    const task = parsed.tasks[0]
+    expect(task.timeout).toBe('15m')
+    expect(task.max_retries).toBe(2)
+    expect(task.review).toBe('fast')
+  })
+
+  it('does not override explicitly set timeout when complexity is also set', () => {
+    const plan: TaskPlan = {
+      name: 'Effort Override Test',
+      tasks: [{ id: 'task-1', complexity: 3, timeout: '1h', prompt: 'Do something' }],
+    }
+    const parsed = yamlParse(buildConvoyYaml(plan))
+    expect(parsed.tasks[0].timeout).toBe('1h')
+  })
+
+  it('does not override explicitly set max_retries when complexity is also set', () => {
+    const plan: TaskPlan = {
+      name: 'Effort Override Test',
+      tasks: [{ id: 'task-1', complexity: 5, max_retries: 5, prompt: 'Do something' }],
+    }
+    const parsed = yamlParse(buildConvoyYaml(plan))
+    expect(parsed.tasks[0].max_retries).toBe(5)
+  })
+
+  it('does not override explicitly set review when complexity is also set', () => {
+    const plan: TaskPlan = {
+      name: 'Effort Override Test',
+      tasks: [{ id: 'task-1', complexity: 8, review: 'panel', prompt: 'Do something' }],
+    }
+    const parsed = yamlParse(buildConvoyYaml(plan))
+    expect(parsed.tasks[0].review).toBe('panel')
+  })
+
+  it('works unchanged (backward compatible) when complexity is not set', () => {
+    const parsed = yamlParse(buildConvoyYaml(minimalPlan()))
+    const task = parsed.tasks[0]
+    expect(task.timeout).toBeUndefined()
+    expect(task.max_retries).toBeUndefined()
+    expect(task.review).toBeUndefined()
+  })
+
+  it('uses complexity-13 profile for epic tasks', () => {
+    const plan: TaskPlan = {
+      name: 'Epic Test',
+      tasks: [{ id: 'task-1', complexity: 13, prompt: 'Epic task' }],
+    }
+    const parsed = yamlParse(buildConvoyYaml(plan))
+    const task = parsed.tasks[0]
+    expect(task.timeout).toBe('45m')
+    expect(task.max_retries).toBe(3)
+    expect(task.review).toBe('panel')
+  })
 })
 
 // ── applyPatches ──────────────────────────────────────────────────────────────

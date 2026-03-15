@@ -75,9 +75,11 @@ export interface TaskRecord {
   dispute_id: string | null
   drift_score: number | null
   drift_retried: number
+  compaction_count: number
   outputs?: string | null          // JSON array of TaskOutput
   inputs?: string | null           // JSON array of TaskInput
   discovered_issues?: string | null // JSON array
+  contract_result?: string | null  // JSON ContractResult
 }
 
 export interface WorkerRecord {
@@ -117,6 +119,15 @@ export interface PipelineRecord {
   total_cost_usd: number | null
 }
 
+export interface TDDGateConfig {
+  enabled: boolean
+  source_patterns: string[]
+  test_patterns: string[]
+  exclude_patterns: string[]
+  mode: 'warn' | 'block'
+  exempt_agents: string[]
+}
+
 export interface BuiltInGatesConfig {
   secret_scan?: boolean
   blast_radius?: boolean
@@ -124,6 +135,7 @@ export interface BuiltInGatesConfig {
   regression_test?: 'auto' | boolean
   browser_test?: 'auto' | boolean
   gate_timeout?: number
+  tdd_check?: boolean | TDDGateConfig
 }
 
 
@@ -161,6 +173,12 @@ export interface CircuitBreakerConfig {
   threshold?: number      // failures before Open (default: 3)
   cooldown_ms?: number    // ms in Open before Half-Open (default: 300000 = 5min)
   fallback_agent?: string // reassign pending tasks when circuit opens
+}
+
+export interface CompactionConfig {
+  enabled: boolean
+  token_threshold_pct: number  // e.g., 70 = compact at 70% of model context window
+  summary_max_tokens: number   // max tokens for the compaction summary
 }
 
 export interface TaskOutput {
@@ -260,6 +278,23 @@ export interface MCPServerConfig {
   config?: Record<string, unknown>
 }
 
+// ── Two-stage review ─────────────────────────────────────────────────────────
+
+export type ReviewStage = 'spec-compliance' | 'code-quality'
+
+export interface StageVerdict {
+  stage: ReviewStage
+  verdict: 'pass' | 'block'
+  issues: string[]
+  tokens_used: number
+}
+
+export interface TwoStageReviewResult {
+  stages: StageVerdict[]
+  overall_verdict: 'pass' | 'block'
+  total_tokens: number
+}
+
 // ---------------------------------------------------------------------------
 // Discriminated union covering every canonical convoy event type.
 // Each variant constrains the `data` shape that callers may pass to emit().
@@ -321,6 +356,14 @@ export type ConvoyEventType =
   | { type: 'watch_stopped'; data?: { reason?: string } }
   | { type: 'worker_killed'; data?: { reason?: string; worker_id?: string; task_id?: string } }
   | { type: 'discovered_issue'; data?: { task_id?: string; title?: string; file?: string; description?: string; severity?: string } }
+  | { type: 'contract_violation'; data?: { task_id?: string; agent?: string; missing?: string[]; warnings?: string[] } }
+  | { type: 'review_stage_completed'; data?: { stage: string; verdict: string; tokens: number; task_id?: string; model?: string } }
+  | { type: 'partition_violation'; data?: { task_id?: string; allowed?: string[]; actual?: string[]; violations?: string[] } }
+  | { type: 'context_compacted'; data?: { task_id?: string; compaction_count?: number; summary_path?: string; model?: string; tokens_used?: number } }
+  | { type: 'skill_refinement_proposed'; data?: { skill_name?: string; proposal_path?: string; failure_count?: number; confidence?: string } }
+  | { type: 'tdd_check_passed'; data?: { task_id?: string; new_source_files?: number; existing_test_files?: number } }
+  | { type: 'tdd_check_failed'; data?: { task_id?: string; missing_test_files?: string[]; new_source_files?: number } }
+  | { type: 'tdd_check_skipped'; data?: { task_id?: string; reason?: string; agent?: string } }
 
 /** All canonical convoy event type strings. Used for runtime validation. */
 export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
@@ -363,4 +406,12 @@ export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
   'watch_stopped',
   'worker_killed',
   'discovered_issue',
+  'contract_violation',
+  'review_stage_completed',
+  'partition_violation',
+  'context_compacted',
+  'skill_refinement_proposed',
+  'tdd_check_passed',
+  'tdd_check_failed',
+  'tdd_check_skipped',
 ])

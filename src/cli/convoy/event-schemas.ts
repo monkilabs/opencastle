@@ -178,6 +178,61 @@ export const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
     description: v.optional(v.string()),
     severity: v.optional(v.string()),
   }),
+  contract_violation: v.looseObject({
+    task_id: v.optional(v.string()),
+    agent: v.optional(v.string()),
+    missing: v.optional(v.array(v.string())),
+    warnings: v.optional(v.array(v.string())),
+  }),
+  partition_violation: v.looseObject({
+    task_id: v.optional(v.string()),
+    allowed: v.optional(v.array(v.string())),
+    actual: v.optional(v.array(v.string())),
+    violations: v.optional(v.array(v.string())),
+  }),
+  context_compacted: v.looseObject({
+    task_id: v.optional(v.string()),
+    compaction_count: v.optional(v.number()),
+    summary_path: v.optional(v.string()),
+    model: v.optional(v.string()),
+    tokens_used: v.optional(v.number()),
+  }),
+  skill_refinement_proposed: v.looseObject({
+    skill_name: v.optional(v.string()),
+    proposal_path: v.optional(v.string()),
+    failure_count: v.optional(v.number()),
+    confidence: v.optional(v.string()),
+  }),
+  tdd_check_passed: v.looseObject({
+    task_id: v.optional(v.string()),
+    new_source_files: v.optional(v.number()),
+    existing_test_files: v.optional(v.number()),
+  }),
+  tdd_check_failed: v.looseObject({
+    task_id: v.optional(v.string()),
+    missing_test_files: v.optional(v.array(v.string())),
+    new_source_files: v.optional(v.number()),
+  }),
+  tdd_check_skipped: v.looseObject({
+    task_id: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    agent: v.optional(v.string()),
+  }),
+  review_stage_completed: v.looseObject({
+    stage: v.string(),
+    verdict: v.string(),
+    tokens: v.number(),
+    task_id: v.optional(v.string()),
+    model: v.optional(v.string()),
+  }),
+  artifacts_extracted: v.looseObject({
+    task_id: v.optional(v.string()),
+    count: v.optional(v.number()),
+    artifacts: v.optional(v.array(v.looseObject({
+      filename: v.string(),
+      summary: v.optional(v.string()),
+    }))),
+  }),
 }
 export function validateEventData(
   type: string,

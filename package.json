@@ -46,6 +46,7 @@
     "website:dev": "astro dev --root website",
     "website:build": "astro build --root website",
     "website:preview": "astro preview --root website",
+    "build:plugins": "tsx scripts/build-plugins.ts",
     "prepublishOnly": "npm run build"
   },
   "engines": {

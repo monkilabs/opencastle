@@ -22,7 +22,7 @@ import { createEventEmitter, ndjsonPathForConvoy, recoverNdjson, type ConvoyEven
 import { createWorktreeManager, type WorktreeManager } from './worktree.js'
 import { createMergeQueue, MergeConflictError, type MergeQueue } from './merge.js'
 import { createHealthMonitor, detectDrift } from './health.js'
-import type { TaskRecord, ConvoyStatus, ConvoyTaskStatus, GuardConfig, CircuitBreakerConfig, TaskStep, Hook, TaskOutput, TaskInput } from './types.js'
+import type { TaskRecord, ConvoyStatus, ConvoyTaskStatus, GuardConfig, CircuitBreakerConfig, TaskStep, Hook, TaskOutput, TaskInput, TDDGateConfig } from './types.js'
 import { buildPhases, formatDuration } from '../run/executor.js'
 import { parseTimeout, parseYaml } from '../run/schema.js'
 import { getAdapter, detectAdapter } from '../run/adapters/index.js'
@@ -33,6 +33,13 @@ import { readLessons, captureLessons, consolidateLessons } from './lessons.js'
 import { updateExpertise, feedCircuitBreaker } from './expertise.js'
 import { buildKnowledgeGraph } from './knowledge.js'
 import { injectDiscoveredIssuesInstruction, checkDiscoveredIssues, consolidateIssues } from './issues.js'
+import { validateOutput, buildContractInstruction, buildContractRetryPrompt } from './contracts.js'
+import { runTwoStageReview } from './review-stages.js'
+import { buildIsolationPreamble, resolveDependencyResults, detectPartitionViolations } from './isolation.js'
+import { checkTDD, formatTDDFailure, DEFAULT_TDD_CONFIG } from './tdd-gate.js'
+import { runSkillRefinementCheck } from './skill-refinement.js'
+import { getArtifactDir, extractArtifactRefs } from './artifacts.js'
+import { shouldCompact, parseCompactionSummary, saveCompaction, canCompact, getMaxCompactions, generateCompactionPrompt, buildContinuationPrompt } from './compaction.js'
 
 const execFile = promisify(execFileCb)
 
@@ -823,6 +830,7 @@ function pollInjectFile(
       dispute_id: null,
       drift_score: null,
       drift_retried: 0,
+      compaction_count: 0,
       outputs: null,
       inputs: null,
       discovered_issues: null,
@@ -1260,6 +1268,36 @@ async function runConvoy(
     const steps: TaskStep[] | undefined = specTask?.steps
     const taskHooks: Hook[] = specTask?.hooks ?? []
 
+    // ── Context isolation preamble (Phase 41) ────────────────────────────
+    try {
+      const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
+      const depIds = taskRecord.depends_on ? JSON.parse(taskRecord.depends_on) as string[] : []
+      const depResults = resolveDependencyResults(store, convoyId, depIds)
+      const preamble = buildIsolationPreamble(
+        { id: taskRecord.id, description: taskRecord.prompt.slice(0, 200), prompt: taskRecord.prompt, files: taskFiles, agent: taskRecord.agent },
+        depResults,
+      )
+      task.prompt = preamble + '\n\n' + task.prompt
+    } catch { /* non-critical — isolation preamble is best-effort */ }
+
+    // ── Artifact output instructions (Phase 43) ────────────────────────────
+    try {
+      const artifactDir = getArtifactDir(convoyId, taskRecord.id)
+      const artifactInstructions = [
+        '',
+        '## Artifact Output (for large results)',
+        'If your output includes large content (>100 lines of code, full reports, data dumps),',
+        'write it to an artifact file instead of including it inline:',
+        '',
+        '1. Write the content to: ' + artifactDir + '{filename}',
+        '2. In your response, reference it: `[ARTIFACT: {filename}] {1-line summary}`',
+        '3. Keep your inline response focused on the summary and key decisions.',
+        '',
+        'Small outputs (< 100 lines) can remain inline.',
+      ].join('\n')
+      task.prompt = task.prompt + '\n' + artifactInstructions
+    } catch { /* non-critical */ }
+
     // ── Intelligence: inject lessons (Phase 18.1) ─────────────────────────
     if (spec.defaults?.inject_lessons !== false) {
       try {
@@ -1290,6 +1328,12 @@ async function runConvoy(
     // ── Intelligence: inject discovered issues instruction (Phase 18.4) ────
     if (spec.defaults?.track_discovered_issues) {
       task.prompt = injectDiscoveredIssuesInstruction(task.prompt)
+    }
+
+    // ── Output contract injection ─────────────────────────────────────────
+    const contractInstruction = buildContractInstruction(taskRecord.agent)
+    if (contractInstruction) {
+      task.prompt = task.prompt + '\n\n' + contractInstruction
     }
 
     // ── pre_task hooks ────────────────────────────────────────────────────────
@@ -1683,6 +1727,100 @@ async function runConvoy(
             return
           }
         }
+
+        // ── Partition violation check (Phase 41) ────────────────────────────
+        if (changedFiles.length > 0) {
+          try {
+            const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
+            if (taskFiles.length > 0) {
+              const violation = detectPartitionViolations(taskRecord.id, taskFiles, changedFiles)
+              if (violation) {
+                events.emit('partition_violation', {
+                  task_id: taskRecord.id,
+                  allowed: violation.allowedFiles,
+                  actual: violation.actualFiles,
+                  violations: violation.violations,
+                }, { convoy_id: convoyId, task_id: taskRecord.id })
+                process.stdout.write(`  ${c.yellow('⚠')} ${c.bold(`[${taskRecord.id}]`)} partition violation: ${violation.violations.join(', ')}\n`)
+              }
+            }
+          } catch { /* non-critical */ }
+        }
+
+        // ── TDD gate ──────────────────────────────────────────────────────────
+        if (builtInGates.tdd_check && changedFiles.length > 0) {
+          const tddConfig: TDDGateConfig = typeof builtInGates.tdd_check === 'object'
+            ? { ...DEFAULT_TDD_CONFIG, ...builtInGates.tdd_check }
+            : DEFAULT_TDD_CONFIG
+          const specTaskForTDD = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
+          const tddResult = checkTDD(changedFiles, changedFiles, tddConfig, specTaskForTDD?.agent ?? taskRecord.agent)
+
+          if (tddResult.skipped) {
+            events.emit('tdd_check_skipped', {
+              task_id: taskRecord.id,
+              reason: tddResult.skip_reason,
+              agent: specTaskForTDD?.agent ?? taskRecord.agent,
+            }, { convoy_id: convoyId, task_id: taskRecord.id })
+          } else if (tddResult.passed) {
+            events.emit('tdd_check_passed', {
+              task_id: taskRecord.id,
+              new_source_files: tddResult.new_source_files.length,
+              existing_test_files: tddResult.existing_test_files.length,
+            }, { convoy_id: convoyId, task_id: taskRecord.id })
+          } else {
+            const failureMsg = formatTDDFailure(tddResult)
+            events.emit('tdd_check_failed', {
+              task_id: taskRecord.id,
+              missing_test_files: tddResult.missing_test_files,
+              new_source_files: tddResult.new_source_files.length,
+            }, { convoy_id: convoyId, task_id: taskRecord.id })
+
+            if (tddConfig.mode === 'block') {
+              await removeWorktree()
+              const freshRecord = store.getTask(taskRecord.id, convoyId)!
+              if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
+                store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
+                  retries: freshRecord.retries + 1,
+                  worker_id: null,
+                  worktree: null,
+                  started_at: null,
+                  finished_at: null,
+                  prompt: `TDD gate failed.\n${failureMsg}\n\nCreate the missing test files and try again.\n\n${taskRecord.prompt}`,
+                })
+                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+                process.stdout.write(
+                  `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} TDD gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
+                )
+              } else {
+                store.withTransaction(() => {
+                  store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
+                    finished_at: finishedAt,
+                    output: `Built-in gate (tdd_check) failed:\n${failureMsg}`,
+                    exit_code: 1,
+                  })
+                  store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+                })
+                completedCount++
+                process.stdout.write(
+                  `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} TDD gate failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`,
+                )
+                events.emit(
+                  'task_failed',
+                  { reason: 'gate-failed', gate: 'tdd_check', worker_id: workerId },
+                  { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
+                )
+                handleExhaustion(freshRecord, 'tdd-check', failureMsg)
+              }
+              taskAdapterMap.delete(taskRecord.id)
+              return
+            } else {
+              // warn mode — log but continue
+              process.stdout.write(
+                `  ${c.yellow('⚠')} ${c.bold(`[${taskRecord.id}]`)} TDD gate warning: ${tddResult.missing_test_files.length} source file(s) without tests\n`,
+              )
+            }
+          }
+        }
       }
 
       // ── Drift detection ──────────────────────────────────────────────────
@@ -1804,7 +1942,19 @@ async function runConvoy(
             await reviewSemaphore.acquire()
             let reviewResult: ReviewResult
             try {
-              if (reviewRunner) {
+              if (reviewRunner && spec.defaults?.review_stages !== false) {
+                // Two-stage review: spec compliance first, then code quality
+                const twoStageResult = await runTwoStageReview(taskRecord, reviewRunner, reviewerModel)
+                for (const stage of twoStageResult.stages) {
+                  events.emit('review_stage_completed', { stage: stage.stage, verdict: stage.verdict, tokens: stage.tokens_used, task_id: taskRecord.id, model: reviewerModel }, { convoy_id: convoyId, task_id: taskRecord.id })
+                }
+                reviewResult = {
+                  verdict: twoStageResult.overall_verdict,
+                  feedback: twoStageResult.stages.flatMap(s => s.issues).join('\n'),
+                  tokens: twoStageResult.total_tokens,
+                  model: reviewerModel,
+                }
+              } else if (reviewRunner) {
                 reviewResult = await reviewRunner(taskRecord, 'fast', reviewerModel)
               } else {
                 reviewResult = { verdict: 'pass', feedback: '', tokens: 0, model: reviewerModel }
@@ -1865,11 +2015,32 @@ async function runConvoy(
           try {
             const noopRunner = (_t: TaskRecord, _l: ReviewLevel, m: string) => Promise.resolve({ verdict: 'pass' as const, feedback: '', tokens: 0, model: m })
             const runner = reviewRunner ?? noopRunner
-            panelResults = await Promise.all([
-              runner(taskRecord, 'panel', reviewerModel),
-              runner(taskRecord, 'panel', reviewerModel),
-              runner(taskRecord, 'panel', reviewerModel),
-            ])
+            const twoStageEnabled = spec.defaults?.review_stages !== false
+            if (twoStageEnabled && reviewRunner) {
+              // Each panel reviewer runs both stages; majority vote on overall_verdict
+              const twoStageResults = await Promise.all([
+                runTwoStageReview(taskRecord, runner, reviewerModel),
+                runTwoStageReview(taskRecord, runner, reviewerModel),
+                runTwoStageReview(taskRecord, runner, reviewerModel),
+              ])
+              for (const tsr of twoStageResults) {
+                for (const stage of tsr.stages) {
+                  events.emit('review_stage_completed', { stage: stage.stage, verdict: stage.verdict, tokens: stage.tokens_used, task_id: taskRecord.id, model: reviewerModel }, { convoy_id: convoyId, task_id: taskRecord.id })
+                }
+              }
+              panelResults = twoStageResults.map(tsr => ({
+                verdict: tsr.overall_verdict,
+                feedback: tsr.stages.flatMap(s => s.issues).join('\n'),
+                tokens: tsr.total_tokens,
+                model: reviewerModel,
+              }))
+            } else {
+              panelResults = await Promise.all([
+                runner(taskRecord, 'panel', reviewerModel),
+                runner(taskRecord, 'panel', reviewerModel),
+                runner(taskRecord, 'panel', reviewerModel),
+              ])
+            }
           } finally {
             reviewSemaphore.release()
           }
@@ -2107,6 +2278,7 @@ async function runConvoy(
                 dispute_id: null,
                 drift_score: null,
                 drift_retried: 0,
+                compaction_count: 0,
                 outputs: null,
                 inputs: null,
                 discovered_issues: null,
@@ -2154,6 +2326,72 @@ async function runConvoy(
         if (result.usage.total_tokens != null) usageExtra.total_tokens = result.usage.total_tokens
       }
 
+      // ── Context compaction check (Phase 44) ─────────────────────────────
+      const compactionConfig = spec.defaults?.compaction
+      if (compactionConfig?.enabled && usageExtra.total_tokens != null && taskRecord.model) {
+        if (shouldCompact(usageExtra.total_tokens, taskRecord.model, compactionConfig)) {
+          if (canCompact(taskRecord.compaction_count)) {
+            const newCount = taskRecord.compaction_count + 1
+            store.updateTaskCompaction(taskRecord.id, convoyId, newCount)
+
+            const summaryFromOutput = parseCompactionSummary(result.output, taskRecord.id, convoyId)
+            let summaryPath: string | undefined
+            if (summaryFromOutput) {
+              try {
+                summaryPath = saveCompaction(convoyId, taskRecord.id, summaryFromOutput, newCount)
+              } catch { /* non-critical */ }
+            }
+
+            const compactionTaskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
+            const compactionDepIds = taskRecord.depends_on ? JSON.parse(taskRecord.depends_on) as string[] : []
+            const compactionDepResults = resolveDependencyResults(store, convoyId, compactionDepIds)
+            const compactionPreamble = buildIsolationPreamble(
+              { id: taskRecord.id, description: taskRecord.prompt.slice(0, 200), prompt: taskRecord.prompt, files: compactionTaskFiles, agent: taskRecord.agent },
+              compactionDepResults,
+            )
+
+            const continuationPrompt = summaryPath
+              ? buildContinuationPrompt(taskRecord.prompt, summaryPath, compactionPreamble)
+              : compactionPreamble + '\n\n' + generateCompactionPrompt(taskRecord.id) + '\n\n' + taskRecord.prompt
+
+            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
+              worker_id: null,
+              worktree: null,
+              started_at: null,
+              finished_at: null,
+              prompt: continuationPrompt,
+            })
+            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+
+            events.emit('context_compacted', {
+              task_id: taskRecord.id,
+              compaction_count: newCount,
+              summary_path: summaryPath ?? '',
+              model: taskRecord.model,
+              tokens_used: usageExtra.total_tokens,
+            }, { convoy_id: convoyId, task_id: taskRecord.id })
+
+            taskAdapterMap.delete(taskRecord.id)
+            return
+          } else {
+            // Max compactions exceeded — fail the task
+            const exhaustedAt = new Date().toISOString()
+            store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
+              finished_at: exhaustedAt,
+              output: `Context exhausted: reached maximum ${getMaxCompactions()} compactions`,
+              exit_code: 1,
+            })
+            store.updateWorkerStatus(workerId, 'failed', { finished_at: exhaustedAt })
+            events.emit('task_failed', {
+              reason: 'context_exhausted',
+              worker_id: workerId,
+            }, { convoy_id: convoyId, task_id: taskRecord.id })
+            taskAdapterMap.delete(taskRecord.id)
+            return
+          }
+        }
+      }
+
       // ── Capture outputs as artifacts ────────────────────────────────────────
       if (taskRecord.outputs) {
         const outputs: TaskOutput[] = JSON.parse(taskRecord.outputs)
@@ -2188,6 +2426,48 @@ async function runConvoy(
             }
           }
         }
+      }
+
+      // ── Extract filesystem artifacts (Phase 43) ────────────────────────
+      try {
+        const fsArtifactRefs = extractArtifactRefs(taskRecord.id, convoyId, result.output)
+        if (fsArtifactRefs.length > 0) {
+          events.emit('artifacts_extracted', {
+            task_id: taskRecord.id,
+            count: fsArtifactRefs.length,
+            artifacts: fsArtifactRefs.map(r => ({ filename: r.filename, summary: r.summary })),
+          }, { convoy_id: convoyId, task_id: taskRecord.id })
+        }
+      } catch (err) {
+        process.stderr.write(`[artifacts] Warning: extraction failed for task ${taskRecord.id}: ${(err as Error).message}\n`)
+      }
+
+      // ── Output contract validation ────────────────────────────────────────
+      const contractResult = validateOutput(taskRecord.agent, result.output)
+      if (!contractResult.valid) {
+        const freshRecordForContract = store.getTask(taskRecord.id, convoyId)!
+        if (freshRecordForContract.retries < freshRecordForContract.max_retries) {
+          const retryPrefix = buildContractRetryPrompt(contractResult) + '\n\n'
+          store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
+            retries: freshRecordForContract.retries + 1,
+            worker_id: null,
+            worktree: null,
+            started_at: null,
+            finished_at: null,
+            prompt: retryPrefix + taskRecord.prompt,
+          })
+          store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+          process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} contract retry ${freshRecordForContract.retries + 1}/${freshRecordForContract.max_retries}\n`)
+          taskAdapterMap.delete(taskRecord.id)
+          return
+        }
+        events.emit('contract_violation', {
+          task_id: taskRecord.id,
+          agent: taskRecord.agent,
+          missing: contractResult.missing,
+          warnings: contractResult.warnings,
+        }, { convoy_id: convoyId, task_id: taskRecord.id })
+        process.stdout.write(`  ${c.yellow('⚠')} ${c.bold(`[${taskRecord.id}]`)} contract violation: missing ${contractResult.missing.join(', ')}\n`)
       }
 
       // ── Intelligence: capture persistent agent identity (Phase 17.2) ─────
@@ -2231,6 +2511,7 @@ async function runConvoy(
           output: result.output,
           exit_code: result.exitCode,
           ...usageExtra,
+          contract_result: JSON.stringify(contractResult),
         })
         store.updateWorkerStatus(workerId, 'done', { finished_at: finishedAt })
       })
@@ -2514,6 +2795,18 @@ async function runConvoy(
   if (spec.defaults?.track_discovered_issues) {
     try { consolidateIssues(basePath) } catch { /* non-critical */ }
   }
+
+  // ── Intelligence: skill refinement check ───────────────────────────────
+  try {
+    const proposals = runSkillRefinementCheck(convoyId, basePath)
+    for (const p of proposals) {
+      events.emit('skill_refinement_proposed', {
+        skill_name: p.skill,
+        proposal_path: p.proposalPath,
+      }, { convoy_id: convoyId })
+      process.stdout.write(`  ${c.yellow('◆')} Skill refinement proposed for "${p.skill}". Review at ${p.proposalPath}\n`)
+    }
+  } catch { /* non-critical */ }
 
   // ── Final status & summary ────────────────────────────────────────────────
 
@@ -3000,6 +3293,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         dispute_id: null,
         drift_score: null,
         drift_retried: 0,
+        compaction_count: 0,
         outputs: null,
         inputs: null,
         discovered_issues: null,

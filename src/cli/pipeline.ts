@@ -18,6 +18,17 @@ export interface ConvoyGroup {
   depends_on: string[]
 }
 
+function appendTaskComplexity(base: string, taskComplexity: ComplexityAssessment['task_complexity']): string {
+  if (!taskComplexity?.length) return base
+  let result = base + '\n\n## Pre-Computed Task Complexity\n\n'
+  result += '| Workstream | Phase | Complexity | Rationale |\n'
+  result += '|-----------|-------|-----------|----------|\n'
+  for (const tc of taskComplexity) {
+    result += `| ${tc.workstream} | ${tc.phase} | ${tc.complexity} | ${tc.rationale} |\n`
+  }
+  return result
+}
+
 export interface ComplexityAssessment {
   original_prompt: string
   total_tasks: number
@@ -28,6 +39,12 @@ export interface ComplexityAssessment {
   recommended_strategy: 'single' | 'chain'
   chain_rationale?: string
   convoy_groups: ConvoyGroup[]
+  task_complexity?: Array<{
+    workstream: string
+    phase: number
+    complexity: 1 | 2 | 3 | 5 | 8 | 13
+    rationale: string
+  }>
 }
 
 export function parseComplexityAssessment(jsonText: string): ComplexityAssessment | null {
@@ -572,12 +589,13 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
           ].filter(Boolean).join('\n')
 
           const prdContent = await readFile(prdPath, 'utf8')
+          const contextForSpec = appendTaskComplexity(prdContent, complexity?.task_complexity)
           const groupSpecPath = resolve(convoyDir, `${group.name}.convoy.yml`)
 
           const { specPath: resolvedGroupSpecPath } = await generateAndValidateSpec({
             sharedOpts,
             goalText: chainGoal,
-            contextText: prdContent,
+            contextText: contextForSpec,
             specPath: groupSpecPath,
             skipValidation: opts.skipValidation,
             groupName: group.name,
@@ -643,12 +661,13 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
 
   // ── Generate convoy spec ──────────────────────────────────────────────────
   const singlePrdContent = await readFile(prdPath, 'utf8')
+  const singleContextForSpec = appendTaskComplexity(singlePrdContent, complexity?.task_complexity)
   const singleGoal = complexity?.original_prompt ?? opts.text ?? ''
 
   const specResult = await generateAndValidateSpec({
     sharedOpts,
     goalText: singleGoal,
-    contextText: singlePrdContent,
+    contextText: singleContextForSpec,
     specPath: opts.outputSpec ? resolve(process.cwd(), opts.outputSpec) : undefined,
     skipValidation: opts.skipValidation,
     enrichment: complexity ? deriveSpecEnrichment(complexity) : undefined,

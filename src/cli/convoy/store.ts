@@ -17,7 +17,7 @@ import type {
   TaskStepRecord,
 } from './types.js'
 
-const SCHEMA_VERSION = 10
+const SCHEMA_VERSION = 11
 
 // ── Size limits (bytes) ────────────────────────────────────────────────────────
 const LIMIT_SPEC_YAML = 256 * 1024      // 256 KB
@@ -83,7 +83,7 @@ export interface ConvoyStore {
       | 'on_exhausted' | 'injected' | 'provenance' | 'idempotency_key'
       | 'current_step' | 'total_steps' | 'review_level' | 'review_verdict'
       | 'review_tokens' | 'review_model' | 'panel_attempts' | 'dispute_id'
-      | 'drift_score' | 'drift_retried' | 'discovered_issues'
+      | 'drift_score' | 'drift_retried' | 'discovered_issues' | 'compaction_count'
     > & { outputs?: string | null; inputs?: string | null },
   ): void
   insertInjectedTask(record: TaskRecord): void
@@ -101,6 +101,7 @@ export interface ConvoyStore {
         TaskRecord,
         | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
         | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
+        | 'contract_result'
       >
     >,
   ): void
@@ -114,6 +115,7 @@ export interface ConvoyStore {
     convoyId: string,
     fields: Partial<Pick<TaskRecord, 'drift_score' | 'drift_retried'>>,
   ): void
+  updateTaskCompaction(taskId: string, convoyId: string, compactionCount: number): void
   updateTaskDisputeStatus(taskId: string, convoyId: string, status: ConvoyTaskStatus, disputeId: string): void
   getReadyTasks(convoyId: string): TaskRecord[]
   insertTaskStep(record: Omit<TaskStepRecord, 'id'>): number
@@ -259,9 +261,11 @@ class ConvoyStoreImpl implements ConvoyStore {
           dispute_id        TEXT,
           drift_score       REAL,
           drift_retried     INTEGER NOT NULL DEFAULT 0,
+          compaction_count  INTEGER NOT NULL DEFAULT 0,
           outputs           TEXT,
           inputs            TEXT,
-          discovered_issues TEXT
+          discovered_issues TEXT,
+          contract_result   TEXT
         );
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_task_idempotency ON task(convoy_id, idempotency_key)
@@ -416,6 +420,10 @@ class ConvoyStoreImpl implements ConvoyStore {
       migrateSchema(this.db, this.dbPath, 9, 10)
       version = 10
     }
+    if (version === 10) {
+      migrateSchema(this.db, this.dbPath, 10, 11)
+      version = 11
+    }
   }
 
   insertConvoy(
@@ -504,7 +512,7 @@ class ConvoyStoreImpl implements ConvoyStore {
       | 'on_exhausted' | 'injected' | 'provenance' | 'idempotency_key'
       | 'current_step' | 'total_steps' | 'review_level' | 'review_verdict'
       | 'review_tokens' | 'review_model' | 'panel_attempts' | 'dispute_id'
-      | 'drift_score' | 'drift_retried' | 'discovered_issues'
+      | 'drift_score' | 'drift_retried' | 'discovered_issues' | 'compaction_count'
     > & { outputs?: string | null; inputs?: string | null },
   ): void {
     this.db
@@ -592,6 +600,7 @@ class ConvoyStoreImpl implements ConvoyStore {
         TaskRecord,
         | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
         | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
+        | 'contract_result'
       >
     >,
   ): void {
@@ -603,6 +612,7 @@ class ConvoyStoreImpl implements ConvoyStore {
     const extraFields = [
       'worker_id', 'worktree', 'output', 'exit_code', 'started_at', 'finished_at',
       'retries', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_usd', 'prompt',
+      'contract_result',
     ] as const
 
     if (extra) {
@@ -706,6 +716,12 @@ class ConvoyStoreImpl implements ConvoyStore {
 
     if (sets.length === 0) return
     this.db.prepare(`UPDATE task SET ${sets.join(', ')} WHERE id = :id AND convoy_id = :convoy_id`).run(params)
+  }
+
+  updateTaskCompaction(taskId: string, convoyId: string, compactionCount: number): void {
+    this.db
+      .prepare('UPDATE task SET compaction_count = :compaction_count WHERE id = :id AND convoy_id = :convoy_id')
+      .run({ id: taskId, convoy_id: convoyId, compaction_count: compactionCount })
   }
 
   updateTaskDisputeStatus(taskId: string, convoyId: string, status: ConvoyTaskStatus, disputeId: string): void {
@@ -1332,6 +1348,12 @@ export function migrateSchema(db: DatabaseSync, dbPath: string, fromVersion: num
           UPDATE convoy SET total_cost_usd_num = CAST(total_cost_usd AS REAL) WHERE total_cost_usd IS NOT NULL;
           UPDATE task SET cost_usd_num = CAST(cost_usd AS REAL) WHERE cost_usd IS NOT NULL;
           UPDATE pipeline SET total_cost_usd_num = CAST(total_cost_usd AS REAL) WHERE total_cost_usd IS NOT NULL;
+        `)
+      }
+      if (v === 10) {
+        db.exec(`
+          ALTER TABLE task ADD COLUMN contract_result TEXT;
+          ALTER TABLE task ADD COLUMN compaction_count INTEGER NOT NULL DEFAULT 0;
         `)
       }
       db.exec('COMMIT')
