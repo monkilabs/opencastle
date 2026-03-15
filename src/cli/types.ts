@@ -3,7 +3,7 @@ import type { BuiltInGatesConfig, BrowserTestConfig, GuardConfig, CircuitBreaker
 
 // ── Stack selection types ──────────────────────────────────────
 
-export type IdeChoice = 'vscode' | 'cursor' | 'claude-code' | 'opencode';
+export type IdeChoice = 'vscode' | 'cursor' | 'claude-code' | 'opencode' | 'windsurf' | 'codex' | 'antigravity';
 export type TechTool = 'sanity' | 'contentful' | 'strapi' | 'supabase' | 'convex' | 'vercel' | 'nx' | 'chrome-devtools' | 'nextjs' | 'astro' | 'netlify' | 'turborepo' | 'prisma' | 'cypress' | 'playwright' | 'vitest' | 'figma' | 'resend';
 export type TeamTool = 'linear' | 'jira' | 'slack' | 'teams';
 
@@ -138,6 +138,9 @@ export const IDE_LABELS: Record<IdeChoice, string> = {
   cursor: 'Cursor',
   'claude-code': 'Claude Code',
   opencode: 'OpenCode',
+  windsurf: 'Windsurf',
+  codex: 'Codex CLI',
+  antigravity: 'Antigravity',
 };
 
 // ── Run command types ──────────────────────────────────────────

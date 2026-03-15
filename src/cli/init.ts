@@ -95,6 +95,24 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       value: 'opencode',
       ...(detectedIde === 'opencode' && { selected: true }),
     },
+    {
+      label: 'Windsurf',
+      hint: '.windsurfrules & .windsurf/rules/*.md',
+      value: 'windsurf',
+      ...(detectedIde === 'windsurf' && { selected: true }),
+    },
+    {
+      label: 'Codex CLI',
+      hint: 'AGENTS.md & .codex/',
+      value: 'codex',
+      ...(detectedIde === 'codex' && { selected: true }),
+    },
+    {
+      label: 'Antigravity',
+      hint: 'GEMINI.md & .gemini/',
+      value: 'antigravity',
+      ...(detectedIde === 'antigravity' && { selected: true }),
+    },
   ])
   const ides = [selectedIde]
 
@@ -179,6 +197,9 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       '.cursor/mcp.json',
       '.claude/mcp.json',
       'opencode.json',
+      '.windsurf/mcp.json',
+      '.codex/mcp.json',
+      '.gemini/mcp.json',
     ]
     for (const mcpPath of mcpCandidates) {
       const fullPath = resolve(projectRoot, mcpPath)
@@ -328,7 +349,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   let step = 0
   // Reload window messages for relevant IDEs
-  const needsReload = ides.filter((id) => ['vscode', 'cursor'].includes(id))
+  const needsReload = ides.filter((id) => ['vscode', 'cursor', 'windsurf'].includes(id))
   if (needsReload.length > 0) {
     step++
     if (needsReload.includes('vscode')) {
@@ -339,6 +360,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     if (needsReload.includes('cursor')) {
       console.log(
         `  ${step}. ${c.yellow('Reload Cursor window')} to pick up the new rule files`
+      )
+    }
+    if (needsReload.includes('windsurf')) {
+      console.log(
+        `  ${step}. ${c.yellow('Reload Windsurf window')} to pick up the new rule files`
       )
     }
   }

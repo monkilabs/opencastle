@@ -35,7 +35,7 @@ const commands = [
     details: [
       { heading: 'What it does', content: `<ol>
         <li><strong>Scans your repo</strong> — detects frameworks (Next.js, Astro), databases (Supabase, Prisma), monorepo tools (NX, Turborepo), deployment targets, and more</li>
-        <li><strong>Prompts for IDEs</strong> — select VS Code, Cursor, Claude Code, and/or OpenCode</li>
+        <li><strong>Prompts for IDEs</strong> — select VS Code, Cursor, Claude Code, OpenCode, Windsurf, Codex, and/or Antigravity</li>
         <li><strong>Prompts for tech & team tools</strong> — pick from 23 plugins (CMS, database, testing, notifications, etc.)</li>
         <li><strong>Generates files</strong> — instruction files, agent definitions, skills, MCP configs, skill matrix, and <code>.opencastle.json</code> manifest</li>
         <li><strong>Updates .gitignore</strong> — adds entries for framework-managed files</li>
@@ -145,7 +145,7 @@ const commands = [
       { flag: '--output-prd <path>', desc: 'Override output path for the generated PRD' },
       { flag: '--output-spec <path>', desc: 'Override output path for the generated convoy spec' },
       { flag: '--complexity <path>', desc: 'Skip complexity assessment — use an existing complexity assessment file' },
-      { flag: '--adapter, -a <name>', desc: 'Override agent runtime adapter (claude, copilot, cursor, opencode)' },
+      { flag: '--adapter, -a <name>', desc: 'Override agent runtime adapter (claude, copilot, cursor, opencode, windsurf, codex, antigravity)' },
       { flag: '--verbose', desc: 'Show full agent output for each step' },
       { flag: '--dry-run', desc: 'Generate and print the PRD prompt only, then stop' },
       { flag: '--skip-validation', desc: 'Skip PRD and convoy validation (steps 2, 3, 6, 7)' },
@@ -196,7 +196,7 @@ const commands = [
       { flag: '--set key=value', desc: 'Set a formula variable (repeatable)' },
       { flag: '--dry-run', desc: 'Show execution plan without running tasks' },
       { flag: '--concurrency, -c <n>', desc: 'Override max parallel tasks' },
-      { flag: '--adapter, -a <name>', desc: 'Override agent runtime adapter (claude, copilot, cursor, opencode)' },
+      { flag: '--adapter, -a <name>', desc: 'Override agent runtime adapter (claude, copilot, cursor, opencode, windsurf, codex, antigravity)' },
       { flag: '--resume', desc: 'Resume the last interrupted convoy from SQLite state' },
       { flag: '--retry-failed [task-id]', desc: 'Retry failed/gate-failed/timed-out tasks (optionally a specific task)' },
       { flag: '--status', desc: 'Print convoy state summary from SQLite (branch, task breakdown)' },
