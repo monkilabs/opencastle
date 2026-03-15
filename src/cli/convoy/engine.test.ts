@@ -1950,6 +1950,7 @@ function makeTaskRecord(overrides: Partial<TaskRecord> = {}): TaskRecord {
     dispute_id: null,
     drift_score: null,
     drift_retried: 0,
+    compaction_count: 0,
     ...overrides,
   }
 }

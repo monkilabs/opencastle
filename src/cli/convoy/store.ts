@@ -83,7 +83,7 @@ export interface ConvoyStore {
       | 'on_exhausted' | 'injected' | 'provenance' | 'idempotency_key'
       | 'current_step' | 'total_steps' | 'review_level' | 'review_verdict'
       | 'review_tokens' | 'review_model' | 'panel_attempts' | 'dispute_id'
-      | 'drift_score' | 'drift_retried' | 'discovered_issues'
+      | 'drift_score' | 'drift_retried' | 'discovered_issues' | 'compaction_count'
     > & { outputs?: string | null; inputs?: string | null },
   ): void
   insertInjectedTask(record: TaskRecord): void
@@ -512,7 +512,7 @@ class ConvoyStoreImpl implements ConvoyStore {
       | 'on_exhausted' | 'injected' | 'provenance' | 'idempotency_key'
       | 'current_step' | 'total_steps' | 'review_level' | 'review_verdict'
       | 'review_tokens' | 'review_model' | 'panel_attempts' | 'dispute_id'
-      | 'drift_score' | 'drift_retried' | 'discovered_issues'
+      | 'drift_score' | 'drift_retried' | 'discovered_issues' | 'compaction_count'
     > & { outputs?: string | null; inputs?: string | null },
   ): void {
     this.db
