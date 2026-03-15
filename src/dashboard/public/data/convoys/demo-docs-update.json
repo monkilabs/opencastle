@@ -70,7 +70,7 @@
     {
       "type": "task_started",
       "task_id": "docs-t2",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-28T15:15:00.000Z"
     },
     {
@@ -82,7 +82,7 @@
     {
       "type": "task_started",
       "task_id": "docs-t1",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-28T15:00:05.000Z"
     }
   ],

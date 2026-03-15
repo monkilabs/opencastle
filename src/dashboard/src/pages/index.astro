@@ -39,6 +39,8 @@ try {
       <ul class="dash-sidebar__list">
         <li><a class="dash-sidebar__link dash-sidebar__link--active" href="#overall-section" data-section="overall-section" data-view="home" aria-label="Overview section">Overview</a></li>
         <li><a class="dash-sidebar__link" href="#convoy-list-section" data-section="convoy-list-section" data-view="home" aria-label="Convoys section">Convoys</a></li>
+        <li><a class="dash-sidebar__link" href="#activity-timeline-section" data-section="activity-timeline-section" data-view="home" aria-label="Activity Timeline section">Activity</a></li>
+        <li><a class="dash-sidebar__link" href="#sessions-section" data-section="sessions-section" data-view="home" aria-label="Sessions section">Sessions</a></li>
         <li><a class="dash-sidebar__link" href="#tasks-section" data-section="tasks-section" data-view="detail" aria-label="Tasks section">Tasks</a></li>
         <li><a class="dash-sidebar__link" href="#pipeline-section" data-section="pipeline-section" data-view="detail" aria-label="Pipeline section">Pipeline</a></li>
         <li><a class="dash-sidebar__link" href="#agent-section" data-section="agent-section" data-view="detail" aria-label="Agents section">Agents</a></li>
@@ -50,8 +52,8 @@ try {
         <li><a class="dash-sidebar__link" href="#outputs-section" data-section="outputs-section" data-view="detail" aria-label="Outputs section">Outputs</a></li>
         <li><a class="dash-sidebar__link" href="#execution-section" data-section="execution-section" data-view="detail" aria-label="Execution Log section">Execution Log</a></li>
         <li><a class="dash-sidebar__link" href="#event-timeline-section" data-section="event-timeline-section" data-view="detail" aria-label="Event Log section">Event Log</a></li>
-        <li><a class="dash-sidebar__link" href="#panel-section" data-section="panel-section" data-view="detail" aria-label="Panel Reviews section">Panel Reviews</a></li>
         <li><a class="dash-sidebar__link" href="#reviews-section" data-section="reviews-section" data-view="detail" aria-label="Fast Reviews section">Fast Reviews</a></li>
+        <li><a class="dash-sidebar__link" href="#panel-section" data-section="panel-section" data-view="detail" aria-label="Panel Reviews section">Panel Reviews</a></li>
       </ul>
     </nav>
 
@@ -93,7 +95,24 @@ try {
           <span class="overall-kpi__label">Total Cost</span>
           <span class="overall-kpi__value">&mdash;</span>
         </div>
+        <div class="overall-kpi" id="overall-total-tasks">
+          <span class="overall-kpi__label">Total Tasks</span>
+          <span class="overall-kpi__value">&mdash;</span>
+        </div>
+        <div class="overall-kpi" id="overall-total-retries">
+          <span class="overall-kpi__label">Total Retries</span>
+          <span class="overall-kpi__value">&mdash;</span>
+        </div>
       </div>
+    </section>
+
+    <!-- Activity Timeline -->
+    <section class="chart-card" id="activity-timeline-section" data-nav-section>
+      <div class="chart-card__header">
+        <h2 class="chart-card__title">Activity Timeline</h2>
+        <p class="chart-card__desc">Convoy runs over time</p>
+      </div>
+      <div class="chart-card__body" id="activity-timeline-chart"></div>
     </section>
 
     <!-- Convoy List Section -->
@@ -136,12 +155,23 @@ try {
         <p class="convoy-list-empty__text">No convoys match your filters</p>
       </div>
     </section>
+
+    <!-- Recent Sessions -->
+    <section class="chart-card" id="sessions-section" data-nav-section>
+      <div class="chart-card__header">
+        <h2 class="chart-card__title">Recent Sessions</h2>
+        <p class="chart-card__desc">Latest agent sessions from observability log</p>
+      </div>
+      <div class="chart-card__body chart-card__body--table" id="sessions-table"></div>
+    </section>
     </div><!-- .view-home -->
 
     <div class="view-convoy-detail" id="view-convoy-detail" data-view-hidden>
     <section class="convoy-detail-hero" id="convoy-detail-hero">
-      <div class="convoy-detail-hero__title" id="detail-hero-title"></div>
-      <span class="convoy-detail-hero__status" id="detail-hero-status"></span>
+      <div class="convoy-detail-hero__top">
+        <div class="convoy-detail-hero__title" id="detail-hero-title"></div>
+        <span class="convoy-detail-hero__status" id="detail-hero-status"></span>
+      </div>
       <div class="convoy-detail-hero__meta" id="detail-hero-meta"></div>
     </section>
 
@@ -163,7 +193,7 @@ try {
     <section class="chart-card" id="pipeline-section" data-nav-section>
       <div class="chart-card__header">
         <h2 class="chart-card__title">Task Pipeline</h2>
-        <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Task flow across execution phases." data-tooltip="Task flow across execution phases."><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+        <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Visualizes how tasks progress through sequential execution phases." data-tooltip="Visualizes how tasks progress through sequential execution phases — from initial setup through integration, validation, and final quality gate."><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
         <p class="chart-card__desc">Task flow across execution phases</p>
       </div>
       <div class="chart-card__body" id="pipeline-view"></div>
@@ -275,7 +305,7 @@ try {
       <div class="chart-card__header">
         <h2 class="chart-card__title">Event Timeline</h2>
         <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Chronological log of everything that happened during this run." data-tooltip="Chronological log of everything that happened during this run."><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
-        <p class="chart-card__desc">Convoy events in reverse chronological order</p>
+        <p class="chart-card__desc">Convoy events in chronological order</p>
       </div>
       <div class="chart-card__body">
         <div id="event-timeline-filters" class="timeline-filters"></div>
@@ -296,16 +326,6 @@ try {
       <div class="chart-card__body" id="execution-log"></div>
     </section>
 
-    <!-- Panel Reviews -->
-    <section class="chart-card" id="panel-section" data-nav-section>
-      <div class="chart-card__header">
-        <h2 class="chart-card__title">Panel Reviews</h2>
-        <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Quality gate verdicts from majority-vote panels." data-tooltip="Quality gate verdicts from majority-vote panels."><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
-        <p class="chart-card__desc">Quality gate verdicts and fix items</p>
-      </div>
-      <div class="chart-card__body" id="panel-chart"></div>
-    </section>
-
     <!-- Fast Reviews -->
     <section class="chart-card" id="reviews-section" data-nav-section>
       <div class="chart-card__header">
@@ -314,6 +334,16 @@ try {
         <p class="chart-card__desc">Single-reviewer quality gate results</p>
       </div>
       <div class="chart-card__body chart-card__body--table" id="reviews-table"></div>
+    </section>
+
+    <!-- Panel Reviews -->
+    <section class="chart-card" id="panel-section" data-nav-section>
+      <div class="chart-card__header">
+        <h2 class="chart-card__title">Panel Reviews</h2>
+        <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Quality gate verdicts from majority-vote panels." data-tooltip="Quality gate verdicts from majority-vote panels."><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+        <p class="chart-card__desc">Quality gate verdicts and fix items</p>
+      </div>
+      <div class="chart-card__body" id="panel-chart"></div>
     </section>
 
     </div><!-- .view-convoy-detail -->
@@ -361,6 +391,7 @@ try {
     standard: '#a78bfa',
     utility: '#3b82f6',
     economy: '#64748b',
+    unknown: '#94a3b8',
   };
 
   const MODEL_COLORS = {
@@ -493,6 +524,8 @@ try {
       }
       renderOverallStats();
       renderConvoyList();
+      renderActivityTimeline();
+      renderRecentSessions();
     } catch {
       // Non-fatal
     }
@@ -678,6 +711,14 @@ try {
   }
 
   // ── Convoy List ─────────────────────────────────────────
+  var convoyListCurrentPage = 1;
+  var CONVOY_LIST_PAGE_SIZE = 10;
+  var convoyChainExpanded = {};
+  var executionLogPageSize = 20;
+  var executionLogCurrentPage = 1;
+  var executionLogAllSortedTasks = [];
+  var executionLogLimit = 10;
+
   function renderConvoyList() {
     const data = window.__DASHBOARD_DATA__;
     const list = data?.convoyList ?? [];
@@ -698,35 +739,111 @@ try {
 
     if (filtered.length === 0) {
       wrap.innerHTML = '';
+      var existingPag = document.getElementById('convoy-list-pagination');
+      if (existingPag) existingPag.remove();
       if (emptyEl) emptyEl.style.display = '';
       return;
     }
     if (emptyEl) emptyEl.style.display = 'none';
 
     const statusBadgeClass = (s) => {
-      const map = { done: '--done', running: '--running', failed: '--failed', 'gate-failed': '--gate-failed', pending: '--pending' };
+      const map = { done: '--done', running: '--running', failed: '--failed', 'gate-failed': '--gate-failed', gate_failed: '--gate-failed', pending: '--pending' };
       return 'status-badge ' + (map[s] || '');
     };
+
+    // Group convoys by pipeline_id (non-null pipeline_id forms a chain)
+    var grouped = [];
+    var pipelineMap = {};
+    for (var gi = 0; gi < filtered.length; gi++) {
+      var gc = filtered[gi];
+      if (gc.pipeline_id) {
+        if (!pipelineMap[gc.pipeline_id]) {
+          pipelineMap[gc.pipeline_id] = { pipeline_id: gc.pipeline_id, convoys: [] };
+          grouped.push(pipelineMap[gc.pipeline_id]);
+        }
+        pipelineMap[gc.pipeline_id].convoys.push(gc);
+      } else {
+        grouped.push(gc);
+      }
+    }
+
+    // Pagination on grouped top-level items
+    var totalPages = Math.ceil(grouped.length / CONVOY_LIST_PAGE_SIZE);
+    if (convoyListCurrentPage > totalPages) convoyListCurrentPage = 1;
+    var pageStart = (convoyListCurrentPage - 1) * CONVOY_LIST_PAGE_SIZE;
+    var paginated = grouped.slice(pageStart, pageStart + CONVOY_LIST_PAGE_SIZE);
 
     let html = '<table class="convoy-list-table"><thead><tr>' +
       '<th>Name</th><th>Status</th><th>Tasks</th><th>Created</th><th>Duration</th>' +
       '</tr></thead><tbody>';
 
-    for (const c of filtered) {
-      const name = escapeHtml(c.name || c.id);
-      const dateStr = c.created_at ? formatTime(c.created_at) : '\u2014';
-      const duration = c.started_at && c.finished_at ? formatDuration(c.started_at, c.finished_at) : (c.status === 'running' ? 'In progress' : '\u2014');
-      const taskCount = c.task_count ?? c.taskCount ?? '\u2014';
-      html += '<tr data-convoy-id="' + escapeHtml(c.id) + '" class="task-row--clickable">' +
-        '<td><strong>' + name + '</strong></td>' +
-        '<td><span class="' + statusBadgeClass(c.status) + '">' + escapeHtml(c.status || 'unknown') + '</span></td>' +
-        '<td>' + taskCount + '</td>' +
-        '<td>' + dateStr + '</td>' +
-        '<td>' + (duration || '\u2014') + '</td>' +
-        '</tr>';
+    for (var pi = 0; pi < paginated.length; pi++) {
+      var item = paginated[pi];
+      if (item.convoys) {
+        // Pipeline group row
+        var grpConvoys = item.convoys;
+        var grpPipelineId = item.pipeline_id;
+        var isExpanded = !!convoyChainExpanded[grpPipelineId];
+        var grpStatus = (function(cs) {
+          if (cs.some(function(x) { return x.status === 'failed' || x.status === 'gate_failed'; })) return 'gate_failed';
+          if (cs.some(function(x) { return x.status === 'running'; })) return 'running';
+          if (cs.every(function(x) { return x.status === 'done'; })) return 'done';
+          return cs[0] ? cs[0].status : 'pending';
+        })(grpConvoys);
+        var grpTasks = grpConvoys.reduce(function(s, x) { return s + (x.task_count || 0); }, 0);
+        var grpEarliestCreated = grpConvoys.reduce(function(a, x) { return (!a || (x.created_at && x.created_at < a)) ? x.created_at : a; }, null);
+        var grpLatestFinished = grpConvoys.reduce(function(a, x) { return (!a || (x.finished_at && x.finished_at > a)) ? x.finished_at : a; }, null);
+        var grpAllFinished = grpConvoys.every(function(x) { return !!x.finished_at; });
+        var grpDuration = grpEarliestCreated && grpAllFinished && grpLatestFinished ? formatDuration(grpEarliestCreated, grpLatestFinished) : (grpStatus === 'running' ? 'In progress' : '\u2014');
+        var grpName = grpConvoys[0].pipeline_name || grpPipelineId.replace(/-/g, ' ').replace(/\b\w/g, function(l) { return l.toUpperCase(); });
+        var toggleIcon = isExpanded ? '\u25bc' : '\u25b6';
+        html += '<tr class="convoy-chain-row task-row--clickable" data-pipeline-group-id="' + escapeHtml(grpPipelineId) + '" aria-expanded="' + isExpanded + '" role="row">' +
+          '<td><span class="convoy-chain-toggle">' + toggleIcon + '</span><strong>' + escapeHtml(grpName) + '</strong></td>' +
+          '<td><span class="' + statusBadgeClass(grpStatus) + '">' + escapeHtml(grpStatus) + '</span></td>' +
+          '<td>' + grpTasks + '</td>' +
+          '<td>' + (grpEarliestCreated ? formatTime(grpEarliestCreated) : '\u2014') + '</td>' +
+          '<td>' + grpDuration + '</td>' +
+          '</tr>';
+        if (isExpanded) {
+          for (var ci = 0; ci < grpConvoys.length; ci++) {
+            var cc = grpConvoys[ci];
+            var ccName = escapeHtml(cc.name || cc.id);
+            var ccDate = cc.created_at ? formatTime(cc.created_at) : '\u2014';
+            var ccDur = cc.started_at && cc.finished_at ? formatDuration(cc.started_at, cc.finished_at) : (cc.status === 'running' ? 'In progress' : '\u2014');
+            var ccTasks = cc.task_count != null ? cc.task_count : '\u2014';
+            html += '<tr data-convoy-id="' + escapeHtml(cc.id) + '" class="task-row--clickable convoy-chain-child">' +
+              '<td><strong>' + ccName + '</strong></td>' +
+              '<td><span class="' + statusBadgeClass(cc.status) + '">' + escapeHtml(cc.status || 'unknown') + '</span></td>' +
+              '<td>' + ccTasks + '</td>' +
+              '<td>' + ccDate + '</td>' +
+              '<td>' + ccDur + '</td>' +
+              '</tr>';
+          }
+        }
+      } else {
+        var name = escapeHtml(item.name || item.id);
+        var dateStr = item.created_at ? formatTime(item.created_at) : '\u2014';
+        var duration = item.started_at && item.finished_at ? formatDuration(item.started_at, item.finished_at) : (item.status === 'running' ? 'In progress' : '\u2014');
+        var taskCount = item.task_count != null ? item.task_count : '\u2014';
+        html += '<tr data-convoy-id="' + escapeHtml(item.id) + '" class="task-row--clickable">' +
+          '<td><strong>' + name + '</strong></td>' +
+          '<td><span class="' + statusBadgeClass(item.status) + '">' + escapeHtml(item.status || 'unknown') + '</span></td>' +
+          '<td>' + taskCount + '</td>' +
+          '<td>' + dateStr + '</td>' +
+          '<td>' + (duration || '\u2014') + '</td>' +
+          '</tr>';
+      }
     }
     html += '</tbody></table>';
     wrap.innerHTML = html;
+
+    wrap.querySelectorAll('tr[data-pipeline-group-id]').forEach(row => {
+      row.addEventListener('click', () => {
+        const groupId = row.dataset.pipelineGroupId;
+        convoyChainExpanded[groupId] = !convoyChainExpanded[groupId];
+        renderConvoyList();
+      });
+    });
 
     wrap.querySelectorAll('tr[data-convoy-id]').forEach(row => {
       row.addEventListener('click', () => {
@@ -735,6 +852,26 @@ try {
         showConvoyDetailView(id, nameCell ? nameCell.textContent : id);
       });
     });
+
+    // Render pagination controls
+    var oldPag = document.getElementById('convoy-list-pagination');
+    if (oldPag) oldPag.remove();
+    if (grouped.length > CONVOY_LIST_PAGE_SIZE) {
+      var pagEl = document.createElement('div');
+      pagEl.id = 'convoy-list-pagination';
+      pagEl.className = 'convoy-list-pagination';
+      pagEl.innerHTML =
+        '<button class="dash-btn dash-btn--ghost" id="convoy-list-prev" type="button"' + (convoyListCurrentPage === 1 ? ' disabled' : '') + '>Previous</button>' +
+        '<span class="convoy-list-pagination__info">Page ' + convoyListCurrentPage + ' of ' + totalPages + '</span>' +
+        '<button class="dash-btn dash-btn--ghost" id="convoy-list-next" type="button"' + (convoyListCurrentPage === totalPages ? ' disabled' : '') + '>Next</button>';
+      wrap.after(pagEl);
+      pagEl.querySelector('#convoy-list-prev').addEventListener('click', function() {
+        if (convoyListCurrentPage > 1) { convoyListCurrentPage--; renderConvoyList(); }
+      });
+      pagEl.querySelector('#convoy-list-next').addEventListener('click', function() {
+        if (convoyListCurrentPage < totalPages) { convoyListCurrentPage++; renderConvoyList(); }
+      });
+    }
   }
 
   // ── Overall Stats Rendering ──────────────────────────────
@@ -757,8 +894,28 @@ try {
 
     const avgSec = ds.avg_sec;
     setKpiValue('overall-avg-duration', avgSec != null ? formatDurationSec(avgSec) : '\u2014');
-    setKpiValue('overall-total-tokens', formatTokens(tc.total_tokens || 0));
-    setKpiValue('overall-total-cost', '$' + (tc.total_cost_usd || 0).toFixed(2));
+    var totalTokens = (tc && tc.total_tokens) || 0;
+    var totalCost = (tc && tc.total_cost_usd) || 0;
+    setKpiValue('overall-total-tokens', formatTokens(totalTokens));
+    setKpiValue('overall-total-cost', '$' + totalCost.toFixed(2));
+
+    // Fallback: if overall stats show 0 tokens, sum from convoy list
+    if (totalTokens === 0) {
+      var convoyListFallback = (window.__DASHBOARD_DATA__ && window.__DASHBOARD_DATA__.convoyList) || [];
+      if (convoyListFallback.length > 0) {
+        var sumTokens = convoyListFallback.reduce(function(s, c) { return s + (c.total_tokens != null ? c.total_tokens : 0); }, 0);
+        var sumCost = convoyListFallback.reduce(function(s, c) { return s + (c.total_cost_usd != null ? c.total_cost_usd : 0); }, 0);
+        if (sumTokens > 0) {
+          setKpiValue('overall-total-tokens', formatTokens(sumTokens));
+          setKpiValue('overall-total-cost', '$' + sumCost.toFixed(2));
+        }
+      }
+    }
+
+    // Total tasks and retries
+    var tt = stats.taskTotals || {};
+    setKpiValue('overall-total-tasks', String(tt.totalTasks || 0));
+    setKpiValue('overall-total-retries', String(tt.totalRetries || 0));
   }
 
   function setKpiValue(id, value) {
@@ -779,7 +936,70 @@ try {
     return hr + 'h ' + remMin + 'm';
   }
 
+  function renderActivityTimeline() {
+    var el = document.getElementById('activity-timeline-chart');
+    if (!el) return;
+    var data = window.__DASHBOARD_DATA__;
+    var timeline = (data && data.overallStats && data.overallStats.activityTimeline) || [];
+    if (timeline.length === 0) {
+      el.innerHTML = emptyStateHtml('timeline', 'No activity yet', 'Convoy run activity will appear here as runs complete.');
+      return;
+    }
+    var maxCount = Math.max.apply(null, timeline.map(function(d) { return d.count; }));
+    var html = '<div class="activity-timeline">';
+    for (var i = 0; i < timeline.length; i++) {
+      var d = timeline[i];
+      var pct = maxCount > 0 ? Math.round((d.count / maxCount) * 100) : 0;
+      html += '<div class="bar-row">' +
+        '<span class="bar-label">' + formatShortDate(d.date) + '</span>' +
+        '<div class="bar-track"><div class="bar-segment bar--accent" style="width:' + pct + '%"></div></div>' +
+        '<span class="bar-value">' + d.count + '</span>' +
+        '</div>';
+    }
+    html += '</div>';
+    el.innerHTML = html;
+  }
+
+  async function renderRecentSessions() {
+    var el = document.getElementById('sessions-table');
+    if (!el) return;
+    try {
+      var allEvents = await loadNdjson(base + 'data/events.ndjson');
+      var sessions = allEvents.filter(function(e) { return e.type === 'session'; });
+      sessions.sort(function(a, b) {
+        return (b.timestamp || '').localeCompare(a.timestamp || '');
+      });
+      sessions = sessions.slice(0, 15);
+      if (sessions.length === 0) {
+        el.innerHTML = emptyStateHtml('sessions', 'No sessions recorded yet', 'Agent session data will appear here when sessions are logged via opencastle log.');
+        return;
+      }
+      var thead = '<thead><tr>' +
+        '<th>Agent</th><th>Task</th><th>Outcome</th><th>Duration</th><th>Retries</th><th>Files</th><th>Time</th>' +
+        '</tr></thead>';
+      var tbody = '<tbody>';
+      for (var i = 0; i < sessions.length; i++) {
+        var s = sessions[i];
+        var outcomeClass = s.outcome === 'success' ? 'outcome-badge--success' : s.outcome === 'failed' ? 'outcome-badge--failed' : 'outcome-badge--partial';
+        tbody += '<tr>' +
+          '<td class="td-agent">' + escapeHtml(s.agent || '\u2014') + '</td>' +
+          '<td class="td-task">' + escapeHtml(s.task || '\u2014') + '</td>' +
+          '<td><span class="outcome-badge ' + outcomeClass + '">' + escapeHtml(s.outcome || '\u2014') + '</span></td>' +
+          '<td>' + (s.duration_min != null ? s.duration_min + 'm' : '\u2014') + '</td>' +
+          '<td>' + (s.retries || 0) + '</td>' +
+          '<td>' + (s.files_changed || 0) + '</td>' +
+          '<td>' + (s.timestamp ? formatTime(s.timestamp) : '\u2014') + '</td>' +
+          '</tr>';
+      }
+      tbody += '</tbody>';
+      el.innerHTML = '<table class="sessions-table">' + thead + tbody + '</table>';
+    } catch (e) {
+      el.innerHTML = emptyStateHtml('sessions', 'No sessions recorded yet', 'Agent session data will appear here when sessions are logged.');
+    }
+  }
+
   async function loadConvoyDetail(convoyId) {
+    executionLogLimit = 10;
     if (!convoyId) {
       renderConvoyDetailHeader(null);
       ['pipeline-section', 'agent-section', 'tier-section', 'model-section', 'quality-section', 'reliability-section', 'drift-section', 'outputs-section', 'execution-section', 'event-timeline-section', 'panel-section', 'reviews-section'].forEach(function(id) {
@@ -1034,6 +1254,21 @@ try {
 
   function deriveTier(model) {
     if (!model) return 'unknown';
+    var TIER_MAP = {
+      'claude-opus-4-6': 'premium',
+      'claude-opus-4': 'premium',
+      'claude-sonnet-4-6': 'standard',
+      'claude-sonnet-4': 'standard',
+      'claude-haiku-3-5': 'economy',
+      'claude-haiku-4': 'economy',
+      'gpt-5-mini': 'economy',
+      'gpt-5.3-codex': 'standard',
+      'gpt-5': 'standard',
+      'gemini-3.1-pro': 'standard',
+      'gemini-3.0-flash': 'economy',
+    };
+    if (TIER_MAP[model]) return TIER_MAP[model];
+    // Fallback heuristics for unknown models
     var m = model.toLowerCase();
     if (m.includes('opus')) return 'premium';
     if (m.includes('sonnet') || m.includes('pro')) return 'standard';
@@ -1186,8 +1421,9 @@ try {
     var mechOrder = ['sub-agent', 'background', 'unknown'];
     var mechs = mechOrder.filter(function(m) { return mechCounts[m]; }).map(function(m) { return { name: m, count: mechCounts[m] }; });
 
-    if (mechs.length === 0) {
-      el.innerHTML = emptyStateHtml('mechanism', 'No delegation data yet', 'The split between sub-agent and background delegations will be shown here.');
+    var isAllUnknown = mechs.length === 0 || (mechs.length === 1 && mechs[0].name === 'unknown');
+    if (isAllUnknown) {
+      el.innerHTML = emptyStateHtml('mechanism', 'No delegation data', 'Delegation mechanism data is not available for this convoy.');
       return;
     }
 
@@ -1265,7 +1501,7 @@ try {
     var models = Object.entries(modelCounts).sort(function(a, b) { return b[1] - a[1]; });
 
     if (models.length === 0) {
-      el.innerHTML = emptyStateHtml('models', 'No model data yet', 'Model utilization across tasks will be shown here.');
+      el.innerHTML = emptyStateHtml('models', tasks.length > 0 ? 'Model information unavailable' : 'No model data yet', tasks.length > 0 ? 'No model information was recorded for tasks in this convoy.' : 'Model utilization across tasks will be shown here.');
       return;
     }
 
@@ -1293,7 +1529,8 @@ try {
       return;
     }
 
-    var sorted = tasks.slice().filter(function(t) { return t.started_at; }).sort(function(a, b) { return new Date(b.started_at) - new Date(a.started_at); }).slice(0, 10);
+    var allSorted = tasks.slice().filter(function(t) { return t.started_at; }).sort(function(a, b) { return new Date(a.started_at) - new Date(b.started_at); });
+    var sorted = allSorted.slice(0, executionLogLimit);
 
     if (sorted.length === 0) {
       el.innerHTML = emptyStateHtml('execLog', 'No execution history yet', 'A step-by-step trace of task activity will appear here.');
@@ -1335,6 +1572,15 @@ try {
           '</div>';
       }).join('') +
       '</div>';
+    if (allSorted.length > executionLogLimit) {
+      var remaining = allSorted.length - executionLogLimit;
+      el.innerHTML += '<div style="text-align:center;padding:16px"><button class="dash-btn dash-btn--ghost" id="exec-log-more-btn" type="button">Show more (' + remaining + ' remaining)</button></div>';
+      document.getElementById('exec-log-more-btn')?.addEventListener('click', function() {
+        executionLogLimit = allSorted.length;
+        var convoy = window.__SELECTED_CONVOY__;
+        renderDetailExecutionLog((convoy && convoy.tasks) ? convoy.tasks : []);
+      });
+    }
   }
 
   // ── Convoy Detail: Panel Reviews ─────────────────────────
@@ -1346,7 +1592,7 @@ try {
     var panelTasks = (tasks || []).filter(function(t) { return t.panel_attempts > 0; });
 
     if (panelTasks.length === 0) {
-      el.innerHTML = emptyStateHtml('panels', 'No panel reviews yet', 'Quality gate verdicts from majority-vote panels will be shown here.');
+      el.innerHTML = emptyStateHtml('panels', 'No panel reviews', 'This convoy completed without requiring panel reviews.');
       return;
     }
 
@@ -1382,7 +1628,7 @@ try {
     var reviewedTasks = (tasks || []).filter(function(t) { return t.review_level != null; });
 
     if (reviewedTasks.length === 0) {
-      el.innerHTML = emptyStateHtml('panels', 'No fast reviews yet', 'Single-reviewer quality gate results will be listed here.');
+      el.innerHTML = emptyStateHtml('panels', 'No fast reviews', 'This convoy completed without fast review gates.');
       return;
     }
 
@@ -1487,13 +1733,27 @@ try {
 
     var dlqCount = detail.dlq_count || 0;
     var dlqEntries = detail.dlq_entries || [];
+    var tasks = detail.tasks || [];
 
     var dlqCardEl = document.getElementById('reliability-dlq-card');
     if (dlqCardEl) {
+      var totalRetries = tasks.reduce(function(s, t) { return s + (t.retries || 0); }, 0);
+      var doneTasks = tasks.filter(function(t) { return t.status === 'done'; }).length;
+      var successRate = tasks.length > 0 ? Math.round((doneTasks / tasks.length) * 100) + '%' : '\u2014';
       dlqCardEl.innerHTML =
+        '<div class="task-summary-cards">' +
         '<div class="task-summary-card task-summary-card--' + (dlqCount > 0 ? 'errors' : 'done') + '">' +
         '<span class="task-summary-card__label">Retry Queue <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Tasks that failed too many times and need manual attention. Also known as Dead Letter Queue (DLQ)." data-tooltip="Tasks that failed too many times and need manual attention. Also known as Dead Letter Queue (DLQ).">' + INFO_ICON + '</span></span>' +
         '<span class="task-summary-card__value">' + dlqCount + '</span>' +
+        '</div>' +
+        '<div class="task-summary-card task-summary-card--running">' +
+        '<span class="task-summary-card__label">Total Retries <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Total number of task retries across all tasks in this convoy." data-tooltip="Total number of task retries across all tasks in this convoy.">' + INFO_ICON + '</span></span>' +
+        '<span class="task-summary-card__value">' + totalRetries + '</span>' +
+        '</div>' +
+        '<div class="task-summary-card task-summary-card--done">' +
+        '<span class="task-summary-card__label">Task Success Rate <span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Percentage of tasks that completed successfully." data-tooltip="Percentage of tasks that completed successfully.">' + INFO_ICON + '</span></span>' +
+        '<span class="task-summary-card__value">' + successRate + '</span>' +
+        '</div>' +
         '</div>';
     }
 
@@ -1523,7 +1783,6 @@ try {
 
     var errorEl = document.getElementById('reliability-error-overview');
     if (errorEl) {
-      var tasks = detail.tasks || [];
       var errorCategories = [
         { key: 'failed', label: 'Failed', color: '#ef4444' },
         { key: 'gate-failed', label: 'Quality Check Failed', color: '#f59e0b' },
@@ -1605,8 +1864,8 @@ try {
     if (!section) return;
     section.style.display = '';
 
-    var artifactCount = detail.artifact_count != null ? detail.artifact_count : 0;
     var artifacts = detail.artifacts || [];
+    var artifactCount = artifacts.length;
 
     var cardsEl = document.getElementById('outputs-cards');
     if (cardsEl) {
@@ -1649,7 +1908,7 @@ try {
   }
 
   // ── Event Timeline Section ─────────────────────────────
-  var eventTimelinePageSize = 50;
+  var eventTimelinePageSize = 20;
   var eventTimelineCurrentPage = 1;
   var eventTimelineActiveFilter = 'all';
   var eventTimelineAllEvents = [];
@@ -1686,7 +1945,10 @@ try {
     if (!section) return;
     section.style.display = '';
 
-    eventTimelineAllEvents = detail.events || [];
+    eventTimelineAllEvents = (detail.events || []).slice().sort(function(a, b) {
+      if (!a.created_at || !b.created_at) return 0;
+      return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0;
+    });
     eventTimelineCurrentPage = 1;
     eventTimelineActiveFilter = 'all';
 
@@ -1772,8 +2034,15 @@ try {
     });
 
     var loadMoreEl = document.getElementById('event-timeline-load-more');
+    var loadMoreBtn = document.getElementById('event-timeline-more-btn');
     if (loadMoreEl) {
-      loadMoreEl.style.display = visible.length < filtered.length ? '' : 'none';
+      if (visible.length < filtered.length) {
+        loadMoreEl.style.display = '';
+        var remaining = filtered.length - visible.length;
+        if (loadMoreBtn) loadMoreBtn.textContent = 'Show more (' + remaining + ' remaining)';
+      } else {
+        loadMoreEl.style.display = 'none';
+      }
     }
   }
 
@@ -1823,6 +2092,8 @@ try {
 
     renderOverallStats();
     renderConvoyList();
+    renderActivityTimeline();
+    renderRecentSessions();
 
     var loadMoreBtn = document.getElementById('event-timeline-more-btn');
     if (loadMoreBtn) {
@@ -1837,15 +2108,47 @@ try {
       showHomeView();
     });
 
-    document.getElementById('cl-filter-search')?.addEventListener('input', renderConvoyList);
-    document.getElementById('cl-filter-status')?.addEventListener('change', renderConvoyList);
-    document.getElementById('cl-filter-from')?.addEventListener('change', renderConvoyList);
-    document.getElementById('cl-filter-to')?.addEventListener('change', renderConvoyList);
+    document.getElementById('export-btn')?.addEventListener('click', function() {
+      var exportData = {
+        overallStats: window.__DASHBOARD_DATA__ && window.__DASHBOARD_DATA__.overallStats,
+        convoyList: window.__DASHBOARD_DATA__ && window.__DASHBOARD_DATA__.convoyList,
+      };
+      if (window.__SELECTED_CONVOY__) {
+        exportData.selectedConvoy = window.__SELECTED_CONVOY__;
+      }
+      var blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'opencastle-dashboard-export.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('cl-filter-search')?.addEventListener('input', function() {
+      convoyListCurrentPage = 1;
+      renderConvoyList();
+    });
+    document.getElementById('cl-filter-status')?.addEventListener('change', function() {
+      convoyListCurrentPage = 1;
+      renderConvoyList();
+    });
+    document.getElementById('cl-filter-from')?.addEventListener('change', function() {
+      convoyListCurrentPage = 1;
+      renderConvoyList();
+    });
+    document.getElementById('cl-filter-to')?.addEventListener('change', function() {
+      convoyListCurrentPage = 1;
+      renderConvoyList();
+    });
     document.getElementById('cl-filter-reset')?.addEventListener('click', () => {
       const s = document.getElementById('cl-filter-search'); if (s) s.value = '';
       const st = document.getElementById('cl-filter-status'); if (st) st.value = '';
       const f = document.getElementById('cl-filter-from'); if (f) f.value = '';
       const t = document.getElementById('cl-filter-to'); if (t) t.value = '';
+      convoyListCurrentPage = 1;
       renderConvoyList();
     });
 

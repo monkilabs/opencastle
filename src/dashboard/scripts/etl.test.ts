@@ -33,6 +33,8 @@ describe('runEtl — no database', () => {
       topAgents: [],
       topModels: [],
       dlqSummary: { count: 0, top_failure_types: [] },
+      taskTotals: { totalTasks: 0, totalRetries: 0 },
+      activityTimeline: [],
     })
   })
 
@@ -133,6 +135,18 @@ describe('runEtl — with seeded database', () => {
     expect(Array.isArray(stats.topAgents)).toBe(true)
     expect(Array.isArray(stats.topModels)).toBe(true)
     expect(stats.dlqSummary).toHaveProperty('count')
+  })
+
+  it('overall-stats.json includes taskTotals and activityTimeline', async () => {
+    await runEtl({ dbPath, outputDir })
+    const stats = JSON.parse(readFileSync(join(outputDir, 'overall-stats.json'), 'utf8'))
+    expect(stats).toHaveProperty('taskTotals')
+    expect(stats.taskTotals).toHaveProperty('totalTasks')
+    expect(stats.taskTotals).toHaveProperty('totalRetries')
+    expect(typeof stats.taskTotals.totalTasks).toBe('number')
+    expect(typeof stats.taskTotals.totalRetries).toBe('number')
+    expect(stats).toHaveProperty('activityTimeline')
+    expect(Array.isArray(stats.activityTimeline)).toBe(true)
   })
 
   it('convoy-list.json contains all convoys with required fields', async () => {

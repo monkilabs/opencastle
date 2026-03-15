@@ -6,7 +6,9 @@
     "created_at": "2026-03-11T08:00:00.000Z",
     "finished_at": null,
     "total_tokens": null,
-    "total_cost_usd": null
+    "total_cost_usd": null,
+    "task_count": 3,
+    "pipeline_id": null
   },
   {
     "id": "demo-docs-update",
@@ -15,7 +17,9 @@
     "created_at": "2026-02-28T15:00:00.000Z",
     "finished_at": "2026-02-28T15:22:00.000Z",
     "total_tokens": 14800,
-    "total_cost_usd": 1.48
+    "total_cost_usd": 1.48,
+    "task_count": 3,
+    "pipeline_id": null
   },
   {
     "id": "demo-data-pipeline",
@@ -24,7 +28,9 @@
     "created_at": "2026-02-22T13:00:00.000Z",
     "finished_at": "2026-02-22T13:38:00.000Z",
     "total_tokens": 28900,
-    "total_cost_usd": 2.89
+    "total_cost_usd": 2.89,
+    "task_count": 4,
+    "pipeline_id": null
   },
   {
     "id": "demo-perf-opt",
@@ -33,7 +39,9 @@
     "created_at": "2026-02-17T10:00:00.000Z",
     "finished_at": "2026-02-17T11:02:00.000Z",
     "total_tokens": 37200,
-    "total_cost_usd": 3.72
+    "total_cost_usd": 3.72,
+    "task_count": 5,
+    "pipeline_id": null
   },
   {
     "id": "demo-api-v2",
@@ -42,7 +50,9 @@
     "created_at": "2026-02-12T16:00:00.000Z",
     "finished_at": "2026-02-12T16:28:00.000Z",
     "total_tokens": 24600,
-    "total_cost_usd": 2.46
+    "total_cost_usd": 2.46,
+    "task_count": 3,
+    "pipeline_id": null
   },
   {
     "id": "demo-dashboard-ui",
@@ -51,7 +61,9 @@
     "created_at": "2026-02-07T14:00:00.000Z",
     "finished_at": "2026-02-07T15:38:00.000Z",
     "total_tokens": 78400,
-    "total_cost_usd": 7.84
+    "total_cost_usd": 7.84,
+    "task_count": 7,
+    "pipeline_id": "demo-pipeline-1"
   },
   {
     "id": "demo-auth-revamp",
@@ -60,6 +72,8 @@
     "created_at": "2026-02-03T09:00:00.000Z",
     "finished_at": "2026-02-03T09:47:00.000Z",
     "total_tokens": 42850,
-    "total_cost_usd": 4.28
+    "total_cost_usd": 4.28,
+    "task_count": 5,
+    "pipeline_id": "demo-pipeline-1"
   }
 ]
