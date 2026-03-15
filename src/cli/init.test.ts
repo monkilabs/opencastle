@@ -90,7 +90,7 @@ const STACK_SUPABASE_SLACK: StackConfig = {
 }
 
 const STACK_FULL: StackConfig = {
-  ides: ['vscode', 'cursor', 'claude-code', 'opencode'],
+  ides: ['vscode', 'cursor', 'claude-code', 'opencode', 'windsurf', 'codex', 'antigravity'],
   techTools: ['sanity', 'supabase', 'vercel'],
   teamTools: ['linear', 'slack'],
 }
@@ -937,6 +937,180 @@ describe('OpenCode adapter install', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════
+// § 6b  Windsurf Adapter — Rule Conversion & Trigger Validation
+// ═══════════════════════════════════════════════════════════════
+
+describe('Windsurf adapter install', () => {
+  let tmpDir: string
+
+  beforeEach(async () => { tmpDir = await mkdtemp(join(tmpdir(), 'oc-windsurf-')) })
+  afterEach(async () => { await rm(tmpDir, { recursive: true }) })
+
+  it('creates .windsurfrules with intro text', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const content = await readFile(join(tmpDir, '.windsurfrules'), 'utf8')
+    expect(content).toContain('Project Instructions')
+    expect(content).toContain('.windsurf/rules/')
+  })
+
+  it('creates .windsurf/rules/ with .md instruction files (not .mdc)', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const rulesDir = join(tmpDir, '.windsurf', 'rules')
+    expect(existsSync(rulesDir)).toBe(true)
+    const mdFiles = (await readdir(rulesDir)).filter(f => f.endsWith('.md'))
+    expect(mdFiles.length).toBeGreaterThan(0)
+    // Should NOT have .mdc files
+    const mdcFiles = (await readdir(rulesDir)).filter(f => f.endsWith('.mdc'))
+    expect(mdcFiles.length).toBe(0)
+  })
+
+  it('uses trigger frontmatter instead of alwaysApply', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const rulesDir = join(tmpDir, '.windsurf', 'rules')
+    const mdFiles = (await readdir(rulesDir)).filter(f => f.endsWith('.md'))
+    const content = await readFile(join(rulesDir, mdFiles[0]), 'utf8')
+    expect(content).toContain('trigger:')
+    expect(content).not.toContain('alwaysApply:')
+  })
+
+  it('instruction rules use trigger: always_on', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const rulesDir = join(tmpDir, '.windsurf', 'rules')
+    const mdFiles = (await readdir(rulesDir)).filter(f => f.endsWith('.md'))
+    // All instruction-level rules should be always_on
+    for (const file of mdFiles) {
+      const content = await readFile(join(rulesDir, file), 'utf8')
+      expect(content).toContain('trigger: always_on')
+    }
+  })
+
+  it('creates agent rules in .windsurf/rules/agents/', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_FULL)
+    const agentsDir = join(tmpDir, '.windsurf', 'rules', 'agents')
+    expect(existsSync(agentsDir)).toBe(true)
+    const files = await readdir(agentsDir)
+    expect(files.length).toBeGreaterThan(0)
+  })
+
+  it('creates skill rules in .windsurf/rules/skills/', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const skillsDir = join(tmpDir, '.windsurf', 'rules', 'skills')
+    expect(existsSync(skillsDir)).toBe(true)
+    const files = (await readdir(skillsDir)).filter(f => f.endsWith('.md'))
+    expect(files.length).toBeGreaterThan(0)
+  })
+
+  it('generates Windsurf MCP config with mcpServers format', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const mcpPath = join(tmpDir, '.windsurf', 'mcp.json')
+    expect(existsSync(mcpPath)).toBe(true)
+    const mcp = await readJson(mcpPath)
+    expect(mcp).toHaveProperty('mcpServers')
+  })
+
+  it('getManagedPaths returns expected Windsurf paths', async () => {
+    const adapter = await IDE_ADAPTERS['windsurf']()
+    const paths = adapter.getManagedPaths()
+    expect(paths.framework).toContain('.windsurfrules')
+    expect(paths.framework.some(p => p.includes('.windsurf/rules/'))).toBe(true)
+    expect(paths.customizable).toContain('.windsurf/mcp.json')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════
+// § 6c  Codex Adapter — Single-File Root Document
+// ═══════════════════════════════════════════════════════════════
+
+describe('Codex adapter install', () => {
+  let tmpDir: string
+
+  beforeEach(async () => { tmpDir = await mkdtemp(join(tmpdir(), 'oc-codex-')) })
+  afterEach(async () => { await rm(tmpDir, { recursive: true }) })
+
+  it('creates AGENTS.md root file', async () => {
+    const adapter = await IDE_ADAPTERS['codex']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const content = await readFile(join(tmpDir, 'AGENTS.md'), 'utf8')
+    expect(content).toContain('Project Instructions')
+    expect(content).toContain('.codex/')
+  })
+
+  it('creates files in .codex/ directory structure', async () => {
+    const adapter = await IDE_ADAPTERS['codex']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    expect(existsSync(join(tmpDir, '.codex', 'agents'))).toBe(true)
+    expect(existsSync(join(tmpDir, '.codex', 'skills'))).toBe(true)
+  })
+
+  it('generates Codex MCP config with mcpServers format', async () => {
+    const adapter = await IDE_ADAPTERS['codex']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const mcpPath = join(tmpDir, '.codex', 'mcp.json')
+    expect(existsSync(mcpPath)).toBe(true)
+    const mcp = await readJson(mcpPath)
+    expect(mcp).toHaveProperty('mcpServers')
+  })
+
+  it('getManagedPaths includes AGENTS.md and .codex dirs', async () => {
+    const adapter = await IDE_ADAPTERS['codex']()
+    const paths = adapter.getManagedPaths()
+    expect(paths.framework).toContain('AGENTS.md')
+    expect(paths.framework.some(p => p.includes('.codex/'))).toBe(true)
+    expect(paths.customizable).toContain('.codex/mcp.json')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════
+// § 6d  Antigravity Adapter — Single-File Root Document
+// ═══════════════════════════════════════════════════════════════
+
+describe('Antigravity adapter install', () => {
+  let tmpDir: string
+
+  beforeEach(async () => { tmpDir = await mkdtemp(join(tmpdir(), 'oc-antigravity-')) })
+  afterEach(async () => { await rm(tmpDir, { recursive: true }) })
+
+  it('creates GEMINI.md root file', async () => {
+    const adapter = await IDE_ADAPTERS['antigravity']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const content = await readFile(join(tmpDir, 'GEMINI.md'), 'utf8')
+    expect(content).toContain('Project Instructions')
+    expect(content).toContain('.gemini/')
+  })
+
+  it('creates files in .gemini/ directory structure', async () => {
+    const adapter = await IDE_ADAPTERS['antigravity']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    expect(existsSync(join(tmpDir, '.gemini', 'agents'))).toBe(true)
+    expect(existsSync(join(tmpDir, '.gemini', 'skills'))).toBe(true)
+  })
+
+  it('generates Antigravity MCP config with mcpServers format', async () => {
+    const adapter = await IDE_ADAPTERS['antigravity']()
+    await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
+    const mcpPath = join(tmpDir, '.gemini', 'mcp.json')
+    expect(existsSync(mcpPath)).toBe(true)
+    const mcp = await readJson(mcpPath)
+    expect(mcp).toHaveProperty('mcpServers')
+  })
+
+  it('getManagedPaths includes GEMINI.md and .gemini dirs', async () => {
+    const adapter = await IDE_ADAPTERS['antigravity']()
+    const paths = adapter.getManagedPaths()
+    expect(paths.framework).toContain('GEMINI.md')
+    expect(paths.framework.some(p => p.includes('.gemini/'))).toBe(true)
+    expect(paths.customizable).toContain('.gemini/mcp.json')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════
 // § 7  Cross-Adapter MCP Format Consistency
 // ═══════════════════════════════════════════════════════════════
 
@@ -1008,7 +1182,7 @@ describe('agent and skill parity across adapters', () => {
   it('all IDEs install the same number of agents for a given stack', async () => {
     const agentCountByIde: Record<string, number> = {}
 
-    for (const ideId of ['vscode', 'cursor', 'claude-code', 'opencode'] as const) {
+    for (const ideId of ['vscode', 'cursor', 'claude-code', 'opencode', 'windsurf', 'codex', 'antigravity'] as const) {
       const dir = await mkdtemp(join(tmpdir(), `opencastle-parity-${ideId}-`))
       try {
         const adapter = await IDE_ADAPTERS[ideId]()
@@ -1019,6 +1193,9 @@ describe('agent and skill parity across adapters', () => {
           cursor: join(dir, '.cursor', 'rules', 'agents'),
           'claude-code': join(dir, '.claude', 'agents'),
           opencode: join(dir, '.opencode', 'agents'),
+          windsurf: join(dir, '.windsurf', 'rules', 'agents'),
+          codex: join(dir, '.codex', 'agents'),
+          antigravity: join(dir, '.gemini', 'agents'),
         }
 
         const agents = await readdir(agentPaths[ideId])
@@ -1033,6 +1210,9 @@ describe('agent and skill parity across adapters', () => {
     expect(agentCountByIde['cursor']).toBe(vscodeCount)
     expect(agentCountByIde['claude-code']).toBe(vscodeCount)
     expect(agentCountByIde['opencode']).toBe(vscodeCount)
+    expect(agentCountByIde['windsurf']).toBe(vscodeCount)
+    expect(agentCountByIde['codex']).toBe(vscodeCount)
+    expect(agentCountByIde['antigravity']).toBe(vscodeCount)
   })
 })
 

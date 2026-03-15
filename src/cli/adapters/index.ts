@@ -8,6 +8,12 @@ export const IDE_ADAPTERS: Record<string, () => Promise<IdeAdapter>> = {
     import('./claude-code.js') as Promise<IdeAdapter>,
   opencode: () =>
     import('./opencode.js') as Promise<IdeAdapter>,
+  windsurf: () =>
+    import('./windsurf.js') as Promise<IdeAdapter>,
+  codex: () =>
+    import('./codex.js') as Promise<IdeAdapter>,
+  antigravity: () =>
+    import('./antigravity.js') as Promise<IdeAdapter>,
 }
 
 export const VALID_IDES = Object.keys(IDE_ADAPTERS)

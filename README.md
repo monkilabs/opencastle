@@ -25,7 +25,7 @@
 
 ---
 
-Works with **[GitHub Copilot](https://github.com/features/copilot)**, **[Cursor](https://www.cursor.com/)**, **[Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)**, and **[OpenCode](https://opencode.ai/)**.
+Works with **[GitHub Copilot](https://github.com/features/copilot)**, **[Cursor](https://www.cursor.com/)**, **[Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)**, **[OpenCode](https://opencode.ai/)**, **[Windsurf](https://windsurf.com/)**, **[Codex CLI](https://github.com/openai/codex)**, and **[Antigravity](https://developers.google.com/)**.
 
 One command sets up specialized agents that decompose tasks, work in parallel, and verify each other's output.
 
@@ -57,6 +57,9 @@ You can select multiple IDEs and tools — the output is adapted for each one.
 | **Cursor** | `.cursorrules` + `.cursor/rules/` |
 | **Claude Code** | `CLAUDE.md` + `.claude/` |
 | **OpenCode** | `AGENTS.md` + `.opencode/` + `opencode.json` |
+| **Windsurf** | `.windsurfrules` + `.windsurf/rules/` |
+| **Codex CLI** | `AGENTS.md` + `.codex/` |
+| **Antigravity** | `GEMINI.md` + `.gemini/` |
 
 MCP servers are auto-configured for your stack in each IDE's native format.
 
@@ -177,7 +180,7 @@ gates:
 - **Crash-safe** — SQLite WAL persistence survives crashes, power loss, OOM kills. Resume with `--resume`.
 - **Isolated** — each worker runs in its own git worktree. Changes merge back in dependency order.
 - **Observable** — real-time dashboard auto-starts during execution.
-- **Multi-runtime** — mix Copilot, Claude Code, Cursor, and OpenCode in the same convoy.
+- **Multi-runtime** — mix Copilot, Claude Code, Cursor, OpenCode, Windsurf, Codex, and Antigravity in the same convoy.
 
 Generate a validated convoy spec from a plain text description — no YAML by hand:
 

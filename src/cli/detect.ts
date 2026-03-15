@@ -15,6 +15,9 @@ export function detectCurrentIde(): IdeChoice | undefined {
   // Cursor sets its own TERM_PROGRAM or CURSOR-specific env vars
   if (env.CURSOR_TRACE_DIR || env.CURSOR_CHANNEL) return 'cursor';
 
+  // Windsurf sets WINDSURF_TRACE_DIR or TERM_PROGRAM=windsurf
+  if (env.WINDSURF_TRACE_DIR || env.TERM_PROGRAM === 'windsurf') return 'windsurf';
+
   // VS Code sets TERM_PROGRAM=vscode in its integrated terminal
   if (env.TERM_PROGRAM === 'vscode') return 'vscode';
 

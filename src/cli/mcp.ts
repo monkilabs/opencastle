@@ -28,7 +28,10 @@ function transformMcpForIde(
 ): Record<string, unknown> {
   switch (ide) {
     case 'cursor':
-    case 'claude-code': {
+    case 'claude-code':
+    case 'windsurf':
+    case 'codex':
+    case 'antigravity': {
       // mcpServers format — no 'type' field
       const mcpServers: Record<string, unknown> = {};
       for (const [name, server] of Object.entries(servers)) {
@@ -197,6 +200,12 @@ function getMcpConfigRelPath(ide: IdeChoice): string {
       return '.claude/mcp.json';
     case 'opencode':
       return 'opencode.json';
+    case 'windsurf':
+      return '.windsurf/mcp.json';
+    case 'codex':
+      return '.codex/mcp.json';
+    case 'antigravity':
+      return '.gemini/mcp.json';
   }
 }
 
