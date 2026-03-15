@@ -21,6 +21,8 @@ const EMPTY_OVERALL_STATS = {
   topAgents: [] as unknown[],
   topModels: [] as unknown[],
   dlqSummary: { count: 0, top_failure_types: [] as unknown[] },
+  taskTotals: { totalTasks: 0, totalRetries: 0 },
+  activityTimeline: [] as Array<{ date: string; count: number }>,
 }
 
 export async function runEtl(options: EtlOptions): Promise<EtlResult> {
@@ -50,24 +52,41 @@ export async function runEtl(options: EtlOptions): Promise<EtlResult> {
       topAgents: store.getTopAgents(5),
       topModels: store.getTopModels(5),
       dlqSummary: store.getDlqSummary(),
+      taskTotals: { totalTasks: 0, totalRetries: 0 },
+      activityTimeline: [] as Array<{ date: string; count: number }>,
     }
-    writeFileSync(
-      resolve(outputDir, 'overall-stats.json'),
-      JSON.stringify(overallStats, null, 2),
-      'utf8',
-    )
-
     const allConvoys = store.getConvoyList(1000, 0)
-    const convoyList = allConvoys.map(c => ({
-      id: c.id,
-      name: c.name,
-      status: c.status,
-      created_at: c.created_at,
-      started_at: c.started_at,
-      finished_at: c.finished_at,
-      total_tokens: c.total_tokens,
-      total_cost_usd: c.total_cost_usd,
-    }))
+    const dateCountMap = new Map<string, number>()
+    for (const c of allConvoys) {
+      const dateKey = c.created_at ? c.created_at.slice(0, 10) : null
+      if (dateKey) dateCountMap.set(dateKey, (dateCountMap.get(dateKey) || 0) + 1)
+    }
+    overallStats.activityTimeline = Array.from(dateCountMap.entries())
+      .map(([date, count]) => ({ date, count }))
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    const uniquePipelineIds = [...new Set(allConvoys.map(c => c.pipeline_id).filter(Boolean))] as string[]
+    const pipelineNames = new Map<string, string>()
+    for (const pid of uniquePipelineIds) {
+      const pipeline = store.getPipeline(pid)
+      if (pipeline?.name) pipelineNames.set(pid, pipeline.name)
+    }
+    const convoyList = allConvoys.map(c => {
+      const taskCount = store.getTasksByConvoy(c.id).length
+      return {
+        id: c.id,
+        name: c.name,
+        status: c.status,
+        created_at: c.created_at,
+        started_at: c.started_at,
+        finished_at: c.finished_at,
+        total_tokens: c.total_tokens,
+        total_cost_usd: c.total_cost_usd,
+        task_count: taskCount,
+        pipeline_id: c.pipeline_id || null,
+        pipeline_name: c.pipeline_id ? (pipelineNames.get(c.pipeline_id) || null) : null,
+      }
+    })
     writeFileSync(
       resolve(outputDir, 'convoy-list.json'),
       JSON.stringify(convoyList, null, 2),
@@ -76,9 +95,15 @@ export async function runEtl(options: EtlOptions): Promise<EtlResult> {
 
     mkdirSync(resolve(outputDir, 'convoys'), { recursive: true })
     let detailCount = 0
+    let totalTasks = 0
+    let totalRetries = 0
     for (const c of allConvoys) {
       const detail = store.getConvoyDetails(c.id)
       if (detail) {
+        for (const t of detail.tasks) {
+          totalTasks++
+          totalRetries += t.retries
+        }
         writeFileSync(
           resolve(outputDir, 'convoys', c.id + '.json'),
           JSON.stringify(detail, null, 2),
@@ -87,6 +112,13 @@ export async function runEtl(options: EtlOptions): Promise<EtlResult> {
         detailCount++
       }
     }
+
+    overallStats.taskTotals = { totalTasks, totalRetries }
+    writeFileSync(
+      resolve(outputDir, 'overall-stats.json'),
+      JSON.stringify(overallStats, null, 2),
+      'utf8',
+    )
 
     console.log(`ETL complete: ${allConvoys.length} convoys summarized, ${detailCount} detail files generated.`)
 

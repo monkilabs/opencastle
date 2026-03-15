@@ -77,7 +77,7 @@
     {
       "type": "task_started",
       "task_id": "auth-t5",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-03T09:38:00.000Z"
     },
     {
@@ -89,7 +89,7 @@
     {
       "type": "task_started",
       "task_id": "auth-t4",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-03T09:25:00.000Z"
     },
     {
@@ -101,7 +101,7 @@
     {
       "type": "task_started",
       "task_id": "auth-t3",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-03T09:10:00.000Z"
     },
     {
@@ -113,7 +113,7 @@
     {
       "type": "task_started",
       "task_id": "auth-t2",
-      "data": null,
+      "data": {"mechanism": "background"},
       "created_at": "2026-02-03T09:10:00.000Z"
     },
     {
@@ -125,7 +125,7 @@
     {
       "type": "task_started",
       "task_id": "auth-t1",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-03T09:00:05.000Z"
     }
   ],

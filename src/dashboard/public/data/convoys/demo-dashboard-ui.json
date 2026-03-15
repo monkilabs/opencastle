@@ -100,7 +100,7 @@
     {
       "type": "task_started",
       "task_id": "ui-t7",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-07T15:03:00.000Z"
     },
     {
@@ -112,7 +112,7 @@
     {
       "type": "task_started",
       "task_id": "ui-t6",
-      "data": null,
+      "data": {"mechanism": "background"},
       "created_at": "2026-02-07T14:45:00.000Z"
     },
     {
@@ -124,7 +124,7 @@
     {
       "type": "task_started",
       "task_id": "ui-t5",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-07T14:45:00.000Z"
     },
     {
@@ -136,7 +136,7 @@
     {
       "type": "task_started",
       "task_id": "ui-t4",
-      "data": null,
+      "data": {"mechanism": "background"},
       "created_at": "2026-02-07T14:20:00.000Z"
     },
     {
@@ -148,7 +148,7 @@
     {
       "type": "task_started",
       "task_id": "ui-t3",
-      "data": null,
+      "data": {"mechanism": "background"},
       "created_at": "2026-02-07T14:20:00.000Z"
     },
     {
@@ -160,7 +160,7 @@
     {
       "type": "task_started",
       "task_id": "ui-t2",
-      "data": null,
+      "data": {"mechanism": "background"},
       "created_at": "2026-02-07T14:00:05.000Z"
     },
     {
@@ -172,7 +172,7 @@
     {
       "type": "task_started",
       "task_id": "ui-t1",
-      "data": null,
+      "data": {"mechanism": "sub-agent"},
       "created_at": "2026-02-07T14:00:05.000Z"
     }
   ],

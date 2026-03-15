@@ -12,7 +12,6 @@
   <a href="https://github.com/etylsarin/opencastle/stargazers"><img src="https://img.shields.io/github/stars/etylsarin/opencastle?style=flat" alt="GitHub stars" /></a>
   <a href="https://www.npmjs.com/package/opencastle"><img src="https://img.shields.io/npm/v/opencastle.svg?v=1" alt="npm version" /></a>
   <a href="https://github.com/etylsarin/opencastle/actions/workflows/ci.yml"><img src="https://github.com/etylsarin/opencastle/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/npm/l/opencastle.svg?v=1" alt="license" /></a>
   <a href="https://www.npmjs.com/package/opencastle"><img src="https://img.shields.io/npm/dm/opencastle.svg?v=1" alt="downloads" /></a>
 </p>
 

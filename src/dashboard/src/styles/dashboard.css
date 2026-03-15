@@ -284,6 +284,10 @@ body {
 
 .chart-card__header {
   padding: 20px 24px 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
 }
 
 .chart-card__title {
@@ -296,6 +300,7 @@ body {
   font-size: 0.75rem;
   color: var(--text-tertiary);
   margin-top: 2px;
+  width: 100%;
 }
 
 .chart-card__body {
@@ -1894,6 +1899,7 @@ body {
   z-index: 100;
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  text-transform: none;
 }
 .tooltip-trigger:focus {
   opacity: 1;
@@ -1923,6 +1929,7 @@ body {
   z-index: 100;
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  text-transform: none;
 }
 
 /* ── Additional Status Badges ── */
@@ -2510,6 +2517,23 @@ body {
   text-overflow: ellipsis;
 }
 
+/* ── Convoy List Pagination ──────────────────────────── */
+.convoy-list-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 0;
+  margin-top: 4px;
+}
+
+.convoy-list-pagination__info {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  min-width: 100px;
+  text-align: center;
+}
+
 /* ── Convoy List Empty ───────────────────────────────── */
 .convoy-list-empty {
   display: flex;
@@ -2563,6 +2587,32 @@ body {
   align-items: center;
   gap: 14px;
   flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.convoy-chain-toggle {
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.75rem;
+  margin-right: 6px;
+  opacity: 0.6;
+}
+
+.convoy-chain-row {
+  background: rgba(167, 139, 250, 0.04);
+}
+
+.convoy-chain-row td:first-child {
+  font-weight: 600;
+}
+
+.convoy-chain-child td:first-child {
+  padding-left: 28px;
+}
+
+.convoy-chain-child td:first-child::before {
+  content: '└ ';
+  opacity: 0.4;
 }
 
 .convoy-detail-hero__title {
@@ -2819,4 +2869,10 @@ body {
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+.activity-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }

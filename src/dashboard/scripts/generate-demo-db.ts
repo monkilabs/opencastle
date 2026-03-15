@@ -12,6 +12,12 @@ function iso(base: string, offsetMs = 0): string {
 }
 function min(m: number): number { return m * 60_000 }
 function sec(s: number): number { return s * 1_000 }
+function getMechanism(phase: number, agent: string): string {
+  if (agent === 'Architect' || agent === 'Reviewer' || agent === 'Security Expert') return 'sub-agent'
+  if (phase === 1) return 'sub-agent'
+  if (phase >= 3) return 'sub-agent'
+  return 'background'
+}
 
 // ---------------------------------------------------------------------------
 // Demo timestamps – spread over 40 days (2026-02-01 → 2026-03-12)
@@ -37,9 +43,11 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   mkdirSync(dirname(dbPath), { recursive: true })
   const store = createConvoyStore(dbPath)
 
+  store.insertPipeline({ id: 'demo-pipeline-1', name: 'Auth & Dashboard Sprint', status: 'done', branch: 'sprint/auth-ui', spec_yaml: 'name: auth-dashboard-sprint', convoy_specs: JSON.stringify(['auth-revamp.yml', 'dashboard-ui.yml']), created_at: dayTs(2, 9) })
+
   // ── Convoy 1: Auth Revamp – DONE ─────────────────────────────────────
   const C1 = dayTs(2, 9)
-  store.insertConvoy({ id: 'demo-auth-revamp', name: 'Auth System Revamp', spec_hash: 'h1', status: 'done', branch: 'feat/auth-v2', created_at: C1, spec_yaml: 'name: auth-revamp' })
+  store.insertConvoy({ id: 'demo-auth-revamp', name: 'Auth System Revamp', spec_hash: 'h1', status: 'done', branch: 'feat/auth-v2', created_at: C1, spec_yaml: 'name: auth-revamp', pipeline_id: 'demo-pipeline-1' })
   store.updateConvoyStatus('demo-auth-revamp', 'done', { started_at: C1, finished_at: iso(C1, min(47)), total_tokens: 42850, total_cost_usd: 4.28 })
   const authTasks = [
     { id: 'auth-t1', phase: 1, prompt: 'Design OAuth2 token refresh architecture', agent: 'Architect', status: 'done' as const, retries: 0, tokens: 8400, cost: 0.84, start: iso(C1, sec(5)), end: iso(C1, min(9)) },
@@ -51,13 +59,13 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   for (const t of authTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-auth-revamp', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: t.agent === 'Architect' ? 'claude-opus-4-6' : 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
     store.updateTaskStatus(t.id, 'demo-auth-revamp', t.status, { started_at: t.start, finished_at: t.end, total_tokens: t.tokens, cost_usd: t.cost })
-    store.insertEvent({ convoy_id: 'demo-auth-revamp', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+    store.insertEvent({ convoy_id: 'demo-auth-revamp', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
     store.insertEvent({ convoy_id: 'demo-auth-revamp', task_id: t.id, worker_id: null, type: 'task_done', data: null, created_at: t.end })
   }
 
   // ── Convoy 2: Dashboard UI – DONE ────────────────────────────────────
   const C2 = dayTs(6, 14)
-  store.insertConvoy({ id: 'demo-dashboard-ui', name: 'Observability Dashboard UI', spec_hash: 'h2', status: 'done', branch: 'feat/dashboard-v2', created_at: C2, spec_yaml: 'name: dashboard-ui' })
+  store.insertConvoy({ id: 'demo-dashboard-ui', name: 'Observability Dashboard UI', spec_hash: 'h2', status: 'done', branch: 'feat/dashboard-v2', created_at: C2, spec_yaml: 'name: dashboard-ui', pipeline_id: 'demo-pipeline-1' })
   store.updateConvoyStatus('demo-dashboard-ui', 'done', { started_at: C2, finished_at: iso(C2, min(98)), total_tokens: 78400, total_cost_usd: 7.84 })
   const uiTasks = [
     { id: 'ui-t1', phase: 1, prompt: 'Design dark-theme component system', agent: 'UI/UX Expert', status: 'done' as const, retries: 0, tokens: 14200, cost: 1.42, start: iso(C2, sec(5)), end: iso(C2, min(19)) },
@@ -71,7 +79,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   for (const t of uiTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-dashboard-ui', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: t.agent === 'UI/UX Expert' ? 'claude-opus-4-6' : 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
     store.updateTaskStatus(t.id, 'demo-dashboard-ui', t.status, { started_at: t.start, finished_at: t.end, total_tokens: t.tokens, cost_usd: t.cost })
-    store.insertEvent({ convoy_id: 'demo-dashboard-ui', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+    store.insertEvent({ convoy_id: 'demo-dashboard-ui', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
     store.insertEvent({ convoy_id: 'demo-dashboard-ui', task_id: t.id, worker_id: null, type: 'task_done', data: null, created_at: t.end })
   }
 
@@ -87,7 +95,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   for (const t of apiTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-api-v2', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: t.status === 'gate_failed' ? JSON.stringify({ gate_failure: 'SQL injection risk detected in query builder' }) : JSON.stringify({ result: 'done' }), inputs: null })
     store.updateTaskStatus(t.id, 'demo-api-v2', t.status, { started_at: t.start, finished_at: t.end, total_tokens: t.tokens, cost_usd: t.cost })
-    store.insertEvent({ convoy_id: 'demo-api-v2', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+    store.insertEvent({ convoy_id: 'demo-api-v2', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
     store.insertEvent({ convoy_id: 'demo-api-v2', task_id: t.id, worker_id: null, type: t.eventType, data: t.status === 'gate_failed' ? JSON.stringify({ reason: 'SQL injection risk' }) : null, created_at: t.end })
   }
 
@@ -104,7 +112,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   for (const t of perfTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-perf-opt', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
     store.updateTaskStatus(t.id, 'demo-perf-opt', t.status, { started_at: t.start, finished_at: t.end, total_tokens: t.tokens, cost_usd: t.cost })
-    store.insertEvent({ convoy_id: 'demo-perf-opt', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+    store.insertEvent({ convoy_id: 'demo-perf-opt', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
     store.insertEvent({ convoy_id: 'demo-perf-opt', task_id: t.id, worker_id: null, type: 'task_done', data: null, created_at: t.end })
   }
 
@@ -120,7 +128,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   for (const t of etlTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-data-pipeline', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
     store.updateTaskStatus(t.id, 'demo-data-pipeline', t.status, { started_at: t.start, finished_at: t.end, total_tokens: t.tokens, cost_usd: t.cost })
-    store.insertEvent({ convoy_id: 'demo-data-pipeline', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+    store.insertEvent({ convoy_id: 'demo-data-pipeline', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
     store.insertEvent({ convoy_id: 'demo-data-pipeline', task_id: t.id, worker_id: null, type: 'task_done', data: null, created_at: t.end })
   }
 
@@ -137,11 +145,11 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
     store.insertTask({ id: t.id, convoy_id: 'demo-deploy-ci', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: t.status === 'done' ? JSON.stringify({ result: 'done' }) : null, inputs: null })
     if (t.status === 'done') {
       store.updateTaskStatus(t.id, 'demo-deploy-ci', t.status, { started_at: t.start, finished_at: t.end, total_tokens: t.tokens, cost_usd: t.cost })
-      store.insertEvent({ convoy_id: 'demo-deploy-ci', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+      store.insertEvent({ convoy_id: 'demo-deploy-ci', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
       store.insertEvent({ convoy_id: 'demo-deploy-ci', task_id: t.id, worker_id: null, type: 'task_done', data: null, created_at: t.end })
     } else if (t.running) {
       store.updateTaskStatus(t.id, 'demo-deploy-ci', t.status, { started_at: t.start })
-      store.insertEvent({ convoy_id: 'demo-deploy-ci', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+      store.insertEvent({ convoy_id: 'demo-deploy-ci', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
     }
   }
 
@@ -156,7 +164,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   for (const t of docTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-docs-update', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-haiku-3-5', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
     store.updateTaskStatus(t.id, 'demo-docs-update', t.status, { started_at: t.start, finished_at: t.end, total_tokens: t.tokens, cost_usd: t.cost })
-    store.insertEvent({ convoy_id: 'demo-docs-update', task_id: t.id, worker_id: null, type: 'task_started', data: null, created_at: t.start })
+    store.insertEvent({ convoy_id: 'demo-docs-update', task_id: t.id, worker_id: null, type: 'task_started', data: JSON.stringify({ mechanism: getMechanism(t.phase, t.agent) }), created_at: t.start })
     store.insertEvent({ convoy_id: 'demo-docs-update', task_id: t.id, worker_id: null, type: 'task_done', data: null, created_at: t.end })
   }
 
