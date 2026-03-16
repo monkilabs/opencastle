@@ -28,7 +28,7 @@ export async function execute(task: Task, options: ExecuteOptions = {}): Promise
     prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
   }
 
-  const args = ['--headless', '-p', prompt]
+  const args = ['--headless', '-p', prompt, '--output-format', 'json']
 
   const cwd = options?.cwd ?? process.cwd()
   const mcpJsonPath = join(cwd, 'mcp.json')

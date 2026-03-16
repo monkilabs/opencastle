@@ -31,7 +31,7 @@ export interface PipelineResult {
     skipped: number
   }
   duration: string
-  cost?: { total_tokens: number }
+  cost?: { total_tokens: number; total_cost_usd?: number }
 }
 
 export interface PipelineOrchestrator {
