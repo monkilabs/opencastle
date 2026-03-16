@@ -250,6 +250,7 @@ const SUBCATEGORY_TO_SLOT: Record<string, string> = {
   framework: 'framework',
   'codebase-tool': 'codebase-tool',
   'task-management': 'task-management',
+  'knowledge-management': 'knowledge-management',
   testing: 'testing',
   'e2e-testing': 'e2e-testing',
 };

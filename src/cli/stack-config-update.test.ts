@@ -32,6 +32,10 @@ function makeTemplate(): SkillMatrixData {
         entries: [],
         description: 'Issue tracking, naming, priorities, workflow states',
       },
+      'knowledge-management': {
+        entries: [],
+        description: 'Workspace knowledge base, research capture, ADRs, specs, page hierarchy',
+      },
     },
     agents: {},
   };
@@ -89,6 +93,22 @@ describe('updateSkillMatrixContent', () => {
     const data = parse(updateSkillMatrixContent(templateJson(), stack));
     expect(data.bindings['task-management'].entries).toEqual([
       { name: 'Linear', skill: 'linear-task-management' },
+    ]);
+  });
+
+  it('fills task-management slot when trello is selected', () => {
+    const stack: StackConfig = { ides: ['vscode'], techTools: [], teamTools: ['trello'] };
+    const data = parse(updateSkillMatrixContent(templateJson(), stack));
+    expect(data.bindings['task-management'].entries).toEqual([
+      { name: 'Trello', skill: 'trello-task-management' },
+    ]);
+  });
+
+  it('fills knowledge-management slot when notion is selected', () => {
+    const stack: StackConfig = { ides: ['vscode'], techTools: [], teamTools: ['notion'] };
+    const data = parse(updateSkillMatrixContent(templateJson(), stack));
+    expect(data.bindings['knowledge-management'].entries).toEqual([
+      { name: 'Notion', skill: 'notion-knowledge-management' },
     ]);
   });
 

@@ -278,6 +278,27 @@ describe('bootstrapCustomizations', () => {
     expect(result.renamed.some(r => r.includes('jira-config.md'))).toBe(true)
   })
 
+  it('renames tracker-config.md to trello-config.md when trello in teamTools', async () => {
+    const stack: StackConfig = { ides: ['vscode'], techTools: [], teamTools: ['trello'] }
+    const result = await bootstrapCustomizations(tempDir, {}, stack)
+    expect(existsSync(join(tempDir, '.opencastle', 'project', 'trello-config.md'))).toBe(true)
+    expect(existsSync(join(tempDir, '.opencastle', 'project', 'tracker-config.md'))).toBe(false)
+    const content = await readFile(
+      join(tempDir, '.opencastle', 'project', 'trello-config.md'),
+      'utf8',
+    )
+    expect(content).toContain('# Trello Configuration')
+    expect(result.renamed.some(r => r.includes('trello-config.md'))).toBe(true)
+  })
+
+  it('does not treat notion as a tracker and removes tracker-config.md', async () => {
+    const stack: StackConfig = { ides: ['vscode'], techTools: [], teamTools: ['notion'] }
+    const result = await bootstrapCustomizations(tempDir, {}, stack)
+    expect(existsSync(join(tempDir, '.opencastle', 'project', 'tracker-config.md'))).toBe(false)
+    expect(existsSync(join(tempDir, '.opencastle', 'project', 'notion-config.md'))).toBe(false)
+    expect(result.removed).toContain('project/tracker-config.md')
+  })
+
   it('removes tracker-config.md when no tracker in teamTools', async () => {
     const result = await bootstrapCustomizations(tempDir, {}, STACK_EMPTY)
     expect(existsSync(join(tempDir, '.opencastle', 'project', 'tracker-config.md'))).toBe(false)

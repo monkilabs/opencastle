@@ -1,5 +1,7 @@
 import type { PluginConfig } from './types.js';
 import { config as sanity } from './sanity/config.js';
+import { config as trello } from './trello/config.js';
+import { config as notion } from './notion/config.js';
 import { config as contentful } from './contentful/config.js';
 import { config as strapi } from './strapi/config.js';
 import { config as supabase } from './supabase/config.js';
@@ -46,6 +48,8 @@ export const PLUGINS: Record<string, PluginConfig> = {
   astro,
   linear,
   jira,
+  trello,
+  notion,
   slack,
   teams,
 };
