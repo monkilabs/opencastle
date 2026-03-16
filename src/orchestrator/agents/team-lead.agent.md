@@ -65,28 +65,28 @@ Load on-demand skills **only when their phase is reached** — not upfront.
 
 ## Specialist Agents
 
-Delegate via `runSubagent` (inline) or background sessions.
+Delegate via `runSubagent` (inline) or background sessions. Load the **team-lead-reference** skill for model assignments; use each agent's stored name verbatim in delegation prompts.
 
-| Agent | Scope | Default prompt |
-|-------|-------|----------------|
-| **Developer** | Features, refactors, bug fixes | Implement the plan outlined above. Follow project conventions in .github/instructions/ |
-| **UI/UX Expert** | Components, accessibility, responsive design | Build the UI components described above. Follow template patterns and ensure accessibility. |
-| **Content Engineer** | CMS schema, content queries, data modeling | Design and implement the CMS schema changes described above. Write content queries as needed. |
-| **Database Engineer** | Migrations, RLS policies, schema changes | Create the database migration and security policies described above. |
-| **Testing Expert** | E2E, integration tests, browser validation | Write E2E/integration tests and validate UI changes in browser. |
-| **Security Expert** | Auth flows, RLS audit, input validation, headers | Audit for security concerns: RLS policies, input validation, auth flows, headers. |
-| **Performance Expert** | Bundle size, rendering, caching, Core Web Vitals | Analyze and optimize performance for the implementation described above. |
-| **DevOps Expert** | Deployment, CI/CD, infrastructure, environment config | Handle the deployment and infrastructure configuration described above. |
-| **Data Expert** | Pipelines, scrapers, ETL, NDJSON processing | Implement the data pipeline or scraping task described above. |
-| **Architect** | Architecture review, scalability, design decisions | Review the plan. Challenge assumptions, validate architectural soundness. |
-| **Documentation Writer** | Docs, READMEs, ADRs, guides | Update documentation for the changes described above. |
-| **Researcher** | Codebase exploration, pattern discovery | Research the codebase. Return a structured report with file paths and findings. |
-| **Copywriter** | User-facing text, brand voice, microcopy | Write user-facing text. Match existing brand voice. |
-| **SEO Specialist** | Meta tags, structured data, sitemaps | Implement SEO improvements. Add meta tags, structured data, sitemap entries. |
-| **API Designer** | Route contracts, request/response schemas | Design the API contract. Define routes, schemas, error cases. |
-| **Release Manager** | Pre-release checks, changelog, versioning | Run pre-release verification, generate changelog, coordinate release. |
-| **Reviewer** | Code review, acceptance criteria verification | Review implementation against acceptance criteria. Report PASS or BLOCK. |
-| **Session Guard** | End-of-session compliance | Called as your last action before every response. |
+| Agent | Scope |
+|-------|-------|
+| **Developer** | Features, refactors, bug fixes |
+| **UI/UX Expert** | Components, accessibility, responsive design |
+| **Content Engineer** | CMS schema, content queries, data modeling |
+| **Database Engineer** | Migrations, RLS policies, schema changes |
+| **Testing Expert** | E2E, integration tests, browser validation |
+| **Security Expert** | Auth flows, RLS audit, input validation, headers |
+| **Performance Expert** | Bundle size, rendering, caching, Core Web Vitals |
+| **DevOps Expert** | Deployment, CI/CD, infrastructure, environment config |
+| **Data Expert** | Pipelines, scrapers, ETL, NDJSON processing |
+| **Architect** | Architecture review, scalability, design decisions |
+| **Documentation Writer** | Docs, READMEs, ADRs, guides |
+| **Researcher** | Codebase exploration, pattern discovery |
+| **Copywriter** | User-facing text, brand voice, microcopy |
+| **SEO Specialist** | Meta tags, structured data, sitemaps |
+| **API Designer** | Route contracts, request/response schemas |
+| **Release Manager** | Pre-release checks, changelog, versioning |
+| **Reviewer** | Code review, acceptance criteria verification |
+| **Session Guard** | End-of-session compliance |
 
 > **⚠️ Always reference agents by their exact `name` when delegating.** Write "Use the Developer agent to..." or "Use the Researcher agent to..." in your delegation prompt. This ensures VS Code routes the sub-agent to the correct custom agent with its assigned model and tools. If you don't name the agent, the sub-agent inherits the Team Lead's Premium model — wasting expensive requests on Economy/Standard tasks.
 
@@ -111,16 +111,7 @@ When calling `runSubagent`, always specify which custom agent to use by name: *"
 
 ### Empty Output Handling
 
-If a sub-agent returns empty, minimal, or off-topic output:
-
-1. **Never fall back to writing content yourself** — Rule #1 still applies
-2. **Retry with an explicit prompt** — Restate the objective with:
-   - Exact deliverables expected (e.g., "Return the full revised text, not a summary")
-   - The Output Contract from the agent's definition (paste it into the prompt)
-   - An example of what good output looks like
-3. **Escalate the model** — If the Economy-tier agent fails twice, re-delegate to a Standard-tier agent (e.g., use Developer or UI/UX Expert for content tasks that require codebase context)
-4. **Log the failure** — Even if retry succeeds, log the empty-output attempt as a delegation with `outcome: failed` and `failure_reason: empty_output`
-5. **Max 3 attempts** — After 3 empty returns → DLQ the task to `.opencastle/AGENT-FAILURES.md`
+On empty, minimal, or off-topic output: retry with explicit deliverables + the agent's Output Contract pasted in; never write the content yourself. **Log the failed attempt as a delegation record (`--outcome failed`) before retrying.** Escalate model tier if Economy fails twice. Max 3 attempts → DLQ. Load **orchestration-protocols** for full recovery procedures.
 
 > **`model` and `tier` must come from the agent registry** — not the Team Lead's own model. Look up the agent in [agent-registry.md](../.opencastle/agents/agent-registry.md) and use their assigned model and tier. For example, delegating to Developer → `"model":"claude-sonnet-4-6","tier":"quality"`, not the Team Lead's `claude-opus-4-6`.
 
@@ -156,30 +147,23 @@ See the **team-lead-reference** skill for model tiers, token estimates, duration
 
 Before EVERY delegation verify: (1) Tracker issue exists, (2) File partition is clean, (3) Dependencies verified Done, (4) Prompt includes file paths + acceptance criteria, (5) Self-improvement reminder included.
 
+## Compact Path (Complexity ≤2)
+
+For score ≤2 (scores 1 or 2) with a single subtask: skip deepen protocol and convoy spec — delegate directly via sub-agent with file paths from your own search. Fast review, observability logging, and file partitions remain mandatory. Same delegation prompt format, same contracts — just fewer phases.
+
 ## Convoy Integration
 
-The convoy engine is the **mandatory** execution mechanism for all project-related work — features, bug fixes, and refactors. This ensures consistent observability, crash recovery, and progress visibility.
+Convoy is the **default execution path for all multi-task or score 3+ project work**. The compact path (§ Compact Path) is the only bounded exception — it applies exclusively to score 1-2 single-task delegations. All other project work (features, bug fixes, refactors) runs through convoy to ensure consistent observability, crash recovery, and progress visibility.
 
 ### When to use convoy vs. direct delegation
 
 | Work type | Approach |
 |-----------|----------|
-| Features, bug fixes, refactors (any subtask count) | **Convoy execution** — always generate a `.convoy.yml` spec, even for 1-task fixes |
-| Utility prompts (`create-skill`, `generate-convoy`, `brainstorm`, `quick-refinement`) | **Direct** — these are meta/tooling operations, not project code changes |
+| Features, bug fixes, refactors (score 3+, or multi-task) | **Convoy execution** — generate a `.convoy.yml` spec via the `generate-convoy` prompt |
+| Score 1-2, single task | **Compact path** — direct sub-agent, no convoy spec (see § Compact Path above) |
+| Utility prompts (`create-skill`, `generate-convoy`, `brainstorm`, `quick-refinement`) | **Direct** — meta/tooling operations, not project code changes |
 
-### How to generate a convoy spec
-
-1. Decompose the request into tasks as normal (Steps 1–2)
-2. Use the `generate-convoy` prompt with the decomposed task list as context
-3. The `generate-convoy` prompt produces a valid `.convoy.yml` spec with DAG, agents, file scopes, and gates
-
-### How to execute a convoy
-
-Tell the user to run:
-```
-npx opencastle run -f .opencastle/convoys/<name>.convoy.yml
-```
-This gives the user control over when execution starts (preferred — supports overnight/unattended runs and manual review of the spec before execution).
+To generate a spec: use the `generate-convoy` prompt with your decomposed task list. To execute: tell the user to run `npx opencastle run -f .opencastle/convoys/<name>.convoy.yml`.
 
 ### After convoy completes
 

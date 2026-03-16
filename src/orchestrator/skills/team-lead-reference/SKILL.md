@@ -116,7 +116,27 @@ See the Team Lead agent file § Pre-Delegation Checks for the mandatory 5-point 
 
 **Additional checks for high-risk work:** (9) Panel review planned, (10) Rollback path identified.
 
-## Cost Tracking Convention
+## Compact Delegation Envelope
+
+Use this envelope for every sub-agent delegation — compact path and convoy alike. Fill all fields; omit none.
+
+```json
+{
+  "tracker": "TAS-XX",
+  "agent": "Agent Name",
+  "objective": "One sentence: what to do and why.",
+  "files": ["path/to/file.ts", "path/to/other.ts"],
+  "acceptance_criteria": ["AC 1", "AC 2"],
+  "constraints": "Only modify files listed above. Read LESSONS-LEARNED.md before starting.",
+  "output_contract": "Return: files changed, lint/type/test pass/fail, discovered issues listed."
+}
+```
+
+**Rules:**
+- `tracker` — required even for compact-path delegations (no issue = no delegation)
+- `files` — exact file paths in the final delegation envelope (not directory globs); every file the agent may touch must be listed. Directory-level partitions are acceptable during Step 2 planning/ownership mapping — resolve them to exact paths before finalizing this envelope.
+- `acceptance_criteria` — copy verbatim from the tracker issue
+- `output_contract` — paste the agent’s Base Output Contract (from the observability-logging skill) if available
 
 After completing a feature (all tracker issues Done), add a cost summary to the roadmap update:
 

@@ -46,18 +46,7 @@ Load the corresponding skill for detailed conventions before writing code in tha
 
 ## Task Decomposition Protocol
 
-Before starting multi-step work, decompose it into individually verifiable tasks:
-
-1. **Decompose first** — split the work into the smallest meaningful units before writing any code
-2. **Verify each step** — after completing each unit, verify it (run tests, check types, lint, or visually inspect) before moving to the next
-3. **Choose the right verification** — match the check to the change type:
-   - Logic change → run unit tests
-   - Type/interface change → run the project's type-check / lint command (see the **codebase-tool** skill)
-   - UI change → start dev server and visually inspect in the browser
-   - Build config change → run a full build
-4. **Batch edits, then build** — group related edits across files, then run one build — not build-per-edit
-5. **Stop and re-plan** — if execution diverges from the plan (unexpected errors, wrong assumptions, scope growth), stop immediately, reassess, and revise the plan before continuing
-6. **When unsure how to verify** — ask the user rather than skipping verification
+For multi-step work: decompose → verify each step → batch edits → build once. Stop and re-plan when execution diverges. Match verification to the change type (logic → tests; types → lint; UI → browser; build config → full build). Load the **decomposition** skill for delegation spec templates and dependency resolution.
 
 ## Testing
 
@@ -68,17 +57,7 @@ Before starting multi-step work, decompose it into individually verifiable tasks
 
 ## Build & Task Commands
 
-Use the project's configured task runner for all build, test, lint, and serve commands. **Never invoke test runners or linters directly** — always use the task runner wrapper.
-
-Resolve exact commands by loading the **codebase-tool** skill from the skill matrix. Common tasks:
-
-- **Test** — run project tests (with optional coverage)
-- **Lint** — run linter with auto-fix
-- **Build** — production build
-- **Serve** — start dev server
-- **Affected** — run a target for all projects affected by current changes
-
-**Exception:** Tools without task runner targets may be invoked directly (e.g., CMS CLI commands, database CLI commands). Check the project's task runner config first; only bypass it when no target exists.
+Always use the project's configured task runner — never invoke test runners or linters directly. Load the **codebase-tool** skill from the skill matrix for exact commands (test, lint, build, serve, affected). Tools without task runner targets (e.g., CMS CLI, database CLI) may be invoked directly after checking the task runner config first.
 
 ## Documentation
 
@@ -129,20 +108,7 @@ These rules apply to ALL specialist agents automatically. **Do not duplicate the
 
 ## Pre-Response Quality Gate
 
-> **⛔ STOP before responding to the user.** Run through this checklist. If ANY required item is missing, fix it NOW.
-
-- [ ] **Lessons read** — `LESSONS-LEARNED.md` was read at session start
-- [ ] **Lessons captured** — If any retry occurred, a new lesson was added via the **self-improvement** skill
-- [ ] **Discovered issues tracked** — Any pre-existing bugs found were tracked (Discovered Issues Policy)
-- [ ] **Lint/type/test pass** — No new errors introduced; verification ran after code changes (Constitution rule #5)
-- [ ] **Session logged** — `events.ndjson` has a new `session` record (Constitution rule #6 — ALWAYS required)
-- [ ] **Delegations logged** — `events.ndjson` has a `delegation` record for each delegation (Team Lead only)
-- [ ] **Reviews logged** — `events.ndjson` has a `review` record for each fast review (if any)
-- [ ] **Panels logged** — `events.ndjson` has a `panel` record for each panel review (if any)
-- [ ] **Agent expertise updated** — `AGENT-EXPERTISE.md` updated for each delegation (strong/weak areas + file familiarity) (Team Lead only)
-- [ ] **Knowledge graph appended** — `KNOWLEDGE-GRAPH.md` has new rows for file relationships discovered (Team Lead only)
-
-Load the **observability-logging** skill for CLI commands, Base Output Contract, and detailed schemas.
+> **⛔ STOP before responding to the user.** Load the **observability-logging** skill and run its full pre-response quality gate checklist. Do not respond until every item passes. At minimum, confirm that session, delegation, and review log counts are non-zero and that no discovered issues are untracked.
 
 ## Workflow & Governance Skills
 
