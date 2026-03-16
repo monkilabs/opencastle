@@ -245,7 +245,11 @@ function printConvoyResult(result: ConvoyResult): void {
     }
   }
   if (result.cost) {
-    console.log(`  Tokens: ${formatTokens(result.cost.total_tokens)}`)
+    const parts = [`Tokens: ${formatTokens(result.cost.total_tokens)}`]
+    if (result.cost.total_cost_usd != null) {
+      parts.push(`Cost: $${result.cost.total_cost_usd.toFixed(2)}`)
+    }
+    console.log(`  ${parts.join(' | ')}`)
   }
 }
 
@@ -265,7 +269,11 @@ function printPipelineResult(result: PipelineResult): void {
     console.log(`    ${icon} ${cr.convoyId}: ${cr.status} (${cr.duration})`)
   }
   if (result.cost) {
-    console.log(`  Tokens: ${formatTokens(result.cost.total_tokens)}`)
+    const parts = [`Tokens: ${formatTokens(result.cost.total_tokens)}`]
+    if (result.cost.total_cost_usd != null) {
+      parts.push(`Cost: $${result.cost.total_cost_usd.toFixed(2)}`)
+    }
+    console.log(`  ${parts.join(' | ')}`)
   }
 }
 

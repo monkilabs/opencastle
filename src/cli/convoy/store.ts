@@ -101,7 +101,7 @@ export interface ConvoyStore {
         TaskRecord,
         | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
         | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
-        | 'contract_result'
+        | 'contract_result' | 'model'
       >
     >,
   ): void
@@ -600,7 +600,7 @@ class ConvoyStoreImpl implements ConvoyStore {
         TaskRecord,
         | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
         | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
-        | 'contract_result'
+        | 'contract_result' | 'model'
       >
     >,
   ): void {
@@ -612,7 +612,7 @@ class ConvoyStoreImpl implements ConvoyStore {
     const extraFields = [
       'worker_id', 'worktree', 'output', 'exit_code', 'started_at', 'finished_at',
       'retries', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_usd', 'prompt',
-      'contract_result',
+      'contract_result', 'model',
     ] as const
 
     if (extra) {

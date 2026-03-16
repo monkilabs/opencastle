@@ -94,6 +94,12 @@ body {
   gap: 10px;
 }
 
+.dash-header__logo-link {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+
 .dash-header__icon {
   width: 32px;
   height: 32px;

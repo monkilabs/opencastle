@@ -40,6 +40,7 @@ import { checkTDD, formatTDDFailure, DEFAULT_TDD_CONFIG } from './tdd-gate.js'
 import { runSkillRefinementCheck } from './skill-refinement.js'
 import { getArtifactDir, extractArtifactRefs } from './artifacts.js'
 import { shouldCompact, parseCompactionSummary, saveCompaction, canCompact, getMaxCompactions, generateCompactionPrompt, buildContinuationPrompt } from './compaction.js'
+import { calculateCost } from './pricing.js'
 
 const execFile = promisify(execFileCb)
 
@@ -68,7 +69,7 @@ export interface ConvoyResult {
   summary: { total: number; done: number; failed: number; skipped: number; timedOut: number }
   duration: string
   gateResults?: Array<{ command: string; exitCode: number; passed: boolean; output?: string }>
-  cost?: { total_tokens: number }
+  cost?: { total_tokens: number; total_cost_usd?: number }
 }
 
 export interface ConvoyEngine {
@@ -2324,6 +2325,8 @@ async function runConvoy(
         if (result.usage.prompt_tokens != null) usageExtra.prompt_tokens = result.usage.prompt_tokens
         if (result.usage.completion_tokens != null) usageExtra.completion_tokens = result.usage.completion_tokens
         if (result.usage.total_tokens != null) usageExtra.total_tokens = result.usage.total_tokens
+      } else if (verbose) {
+        process.stdout.write(`    ${c.dim('ℹ')} No token usage data returned by adapter ${taskAdapter.name}\n`)
       }
 
       // ── Context compaction check (Phase 44) ─────────────────────────────
@@ -2505,12 +2508,17 @@ async function runConvoy(
         } catch { /* non-critical */ }
       }
 
+      const taskModel = taskRecord.model ?? taskAdapter.name
+      const taskCost = calculateCost(taskModel, usageExtra.prompt_tokens, usageExtra.completion_tokens)
+
       store.withTransaction(() => {
         store.updateTaskStatus(taskRecord.id, convoyId, 'done', {
           finished_at: finishedAt,
           output: result.output,
           exit_code: result.exitCode,
           ...usageExtra,
+          model: taskModel,
+          cost_usd: taskCost,
           contract_result: JSON.stringify(contractResult),
         })
         store.updateWorkerStatus(workerId, 'done', { finished_at: finishedAt })
@@ -2826,17 +2834,22 @@ async function runConvoy(
       ? 'failed'
       : 'done'
 
-  // Aggregate token usage across completed tasks
+  // Aggregate token usage and cost across completed tasks
   let convoyTotalTokens: number | null = null
+  let convoyTotalCost: number | null = null
   for (const t of allTasksFinal) {
     if (t.total_tokens != null) {
       convoyTotalTokens = (convoyTotalTokens ?? 0) + t.total_tokens
+    }
+    if (t.cost_usd != null) {
+      convoyTotalCost = (convoyTotalCost ?? 0) + (typeof t.cost_usd === 'number' ? t.cost_usd : parseFloat(t.cost_usd))
     }
   }
 
   store.updateConvoyStatus(convoyId, finalStatus, {
     finished_at: new Date().toISOString(),
     total_tokens: convoyTotalTokens,
+    total_cost_usd: convoyTotalCost,
   })
 
   if (finalStatus === 'done') {
@@ -2864,7 +2877,9 @@ async function runConvoy(
     summary,
     duration: formatDuration(Date.now() - startTime),
     gateResults: spec.gates && spec.gates.length > 0 ? gateResults : undefined,
-    cost: convoyTotalTokens != null ? { total_tokens: convoyTotalTokens } : undefined,
+    cost: convoyTotalTokens != null || convoyTotalCost != null
+      ? { total_tokens: convoyTotalTokens ?? 0, total_cost_usd: convoyTotalCost ?? undefined }
+      : undefined,
   }
 }
 

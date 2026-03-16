@@ -21,7 +21,9 @@ try {
   <header class="dash-header">
     <div class="dash-header__inner">
       <div class="dash-header__brand">
-        <img class="dash-header__icon" src={`${base}icon-192.png`} alt="OpenCastle" width="32" height="32" />
+        <a href="https://www.opencastle.dev/" class="dash-header__logo-link">
+          <img class="dash-header__icon" src={`${base}icon-192.png`} alt="OpenCastle" width="28" height="28" />
+        </a>
         <h1 class="dash-header__title">Observability Dashboard</h1>
       </div>
       <div class="dash-header__actions">
@@ -906,8 +908,8 @@ try {
     setKpiValue('overall-avg-duration', avgSec != null ? formatDurationSec(avgSec) : '\u2014');
     var totalTokens = (tc && tc.total_tokens) || 0;
     var totalCost = (tc && tc.total_cost_usd) || 0;
-    setKpiValue('overall-total-tokens', formatTokens(totalTokens));
-    setKpiValue('overall-total-cost', '$' + totalCost.toFixed(2));
+    setKpiValue('overall-total-tokens', totalTokens > 0 ? formatTokens(totalTokens) : '\u2014');
+    setKpiValue('overall-total-cost', totalCost > 0 ? '$' + totalCost.toFixed(2) : '\u2014');
 
     // Fallback: if overall stats show 0 tokens, sum from convoy list
     if (totalTokens === 0) {
