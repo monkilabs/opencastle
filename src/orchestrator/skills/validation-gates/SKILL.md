@@ -34,17 +34,7 @@ Scan every diff **before** any other gate. A secret leak caught after merge is e
 
 ### What to scan
 
-Run a regex scan of all changed files for patterns that match common secret formats:
-
-```bash
-# Scan staged/changed files for common secret patterns
-grep -rn -E '(AKIA[0-9A-Z]{16}|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{36}|glpat-[a-zA-Z0-9\-]{20}|xox[bpors]-[a-zA-Z0-9\-]+|eyJ[a-zA-Z0-9]{10,}\.[a-zA-Z0-9]{10,}|-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----|mongodb(\+srv)?://[^\s]+|postgres(ql)?://[^\s]+|mysql://[^\s]+|redis://[^\s]+)' <changed-files>
-```
-
-Also check for:
-- Hardcoded `password`, `secret`, `api_key`, `apiKey`, `token` assignments (not just references)
-- `.env` file contents copied into source files
-- Base64-encoded secrets (common obfuscation attempt)
+Run regex scan of changed files for AWS keys, API tokens, private keys, database URIs, and hardcoded secrets. Also scan for hardcoded `password`, `secret`, `api_key`, `apiKey`, `token` assignments, `.env` file contents copied into source files, and Base64-encoded secrets.
 
 ### On detection
 
@@ -152,13 +142,9 @@ Clear framework caches and task runner caches before starting the dev server for
 
 1. **Start the dev server** — use the project's serve command (see the **codebase-tool** skill) — wait for it to be ready
 2. **Navigate to affected pages** — Verify the new feature renders correctly
-3. **Verify SPECIFIC features** — Check every feature listed in the acceptance criteria. If the criteria say "icons, groups, and AND/OR toggle", you must see all three in the browser
-4. **Test interactions** — Click buttons, fill forms, toggle filters, submit data
-5. **Test responsive** — Resize to each breakpoint defined in your project's testing config
-6. **Test edge cases** — Empty states, error states, loading states, long content
-7. **Screenshot evidence (REQUIRED)** — Take screenshots of key states. These are mandatory proof
-
-> **Anti-pattern:** Testing only at desktop width and assuming responsive classes work. They can be wrong — always verify at all defined breakpoints.
+3. **Verify features and interactions** — Confirm every acceptance-criteria item renders and behaves correctly; click buttons, fill forms, toggle filters, submit data
+4. **Test responsive and edge cases** — Resize to each breakpoint; verify empty, error, and loading states
+5. **Screenshot evidence (REQUIRED)** — Take screenshots of key states. These are mandatory proof
 
 Load the **browser-testing** skill for Chrome MCP commands, breakpoint details, and reporting format.
 
@@ -184,32 +170,17 @@ If the panel returns BLOCK, extract MUST-FIX items, re-delegate to the same agen
 
 ## Gate 10: Final Smoke Test (Feature-Level)
 
-> Runs once after ALL tasks in a feature are Done — not per-task.
-
-Individual tasks pass gates 1–9 independently. But the combined result may have integration issues that per-task testing misses. This gate verifies the feature as a cohesive unit.
-
-### Steps
+> Runs once after ALL tasks are Done. Individual tasks pass gates 1–9 independently but the combined result may have integration issues — this gate verifies the feature as a cohesive unit.
 
 1. **Full build** — Build all affected projects from clean state (not incremental)
 2. **Full test suite** — Run tests across all projects that consumed any changed files
-3. **End-to-end browser walkthrough** — Navigate the complete user flow from start to finish:
-   - Verify all states: loading, empty, populated, error, partial
-   - Test every state transition end-to-end (not just individual screens)
-   - Confirm data flows correctly between pages/components
-   - Test the happy path AND at least one error path
+3. **End-to-end browser walkthrough** — All states (loading, empty, populated, error, partial), transitions, data flows, and error paths
 4. **Cross-task integration check** — Verify that outputs from different tasks (e.g., DB migration + component + page) compose correctly
 5. **Smoke test at all breakpoints** — If the feature has UI, one final responsive sweep
 
-### When to skip
+**Skip for:** non-UI features with comprehensive test coverage, or single-task features (Gate 8 already covers those).
 
-- Non-UI features with comprehensive test coverage (e.g., pure backend/data pipeline work where tests verify integration)
-- Single-task features (Gate 8 already covers regression)
-
-### On failure
-
-Re-delegate the specific failing integration point to the agent responsible for that layer. Do NOT re-run the entire feature implementation.
-
----
+**On failure:** re-delegate the specific failing integration point; do NOT re-run the entire feature.
 
 ## Universal Completion Checklist
 
@@ -226,7 +197,3 @@ Use this checklist for any orchestration workflow:
 - [ ] No regressions in adjacent functionality (Gate 8)
 - [ ] Panel review passed for high-stakes changes (Gate 9)
 - [ ] **Final smoke test passed** for multi-task features (Gate 10)
-- [ ] Shared code changes tested across all consuming apps
-- [ ] No duplicated code — shared logic extracted to libraries
-- [ ] Lessons learned captured if any retries occurred
-- [ ] Known issues updated if new limitations were discovered

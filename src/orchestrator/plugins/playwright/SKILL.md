@@ -103,25 +103,12 @@ export class LoginPage {
 }
 ```
 
-### Custom Fixtures
+## API Mocking
 
 ```typescript
-// tests/fixtures/auth.fixture.ts
-import { test as base } from '@playwright/test';
-
-type AuthFixtures = {
-  authenticatedPage: Page;
-};
-
-export const test = base.extend<AuthFixtures>({
-  authenticatedPage: async ({ page }, use) => {
-    await page.goto('/login');
-    await page.getByTestId('email-input').fill('test@example.com');
-    await page.getByTestId('password-input').fill('password');
-    await page.getByTestId('login-button').click();
-    await page.waitForURL('**/dashboard');
-    await use(page);
-  },
+// Mock API responses for deterministic tests
+await page.route('/api/login', (route) => {
+  route.fulfill({ status: 200, body: JSON.stringify({ token: 'test' }) });
 });
 ```
 
@@ -189,3 +176,4 @@ The Playwright MCP server enables AI agents to interact with browsers directly:
 - Run tests in parallel (`fullyParallel: true`) for speed
 - Use `trace: 'on-first-retry'` to debug flaky tests
 - Use `codegen` to bootstrap tests, then refactor into page objects
+- Use `page.route()` to mock API responses — create isolated, deterministic tests without backend dependencies

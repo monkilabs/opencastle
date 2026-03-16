@@ -55,39 +55,15 @@ Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents
 
 ## Research Task Types
 
-### 1. Pre-Implementation Research
+Answer these questions for each task type:
 
-Given a feature request, answer:
-- What existing code is related? (file paths + line numbers)
-- What patterns does the codebase use for similar features?
-- What shared libraries/components can be reused?
-- Are there any known issues or lessons learned that apply?
-- What files will need to change? (draft a context map)
+**Pre-Implementation:** What files are related (paths + lines)? What patterns exist for similar features? What can be reused? Draft a context map of files that will change.
 
-### 2. Bug Investigation
+**Bug Investigation:** Where is the entry point and data flow? What does `git log` show for recent changes? Any entries in `KNOWN-ISSUES.md` or `LESSONS-LEARNED.md`? What test coverage exists?
 
-Given a bug report, answer:
-- Where does the relevant code live? (entry points → data flow)
-- What does the git history show? (recent changes that might have caused it)
-- Are there related known issues in `.opencastle/KNOWN-ISSUES.md`?
-- Are there related lessons in `.opencastle/LESSONS-LEARNED.md`?
-- What test coverage exists for the affected area?
+**Pattern Audit:** How many files use this pattern? Any inconsistencies or deviations? What's the evolution over time? Should deviations be normalized?
 
-### 3. Pattern Audit
-
-Given a pattern or convention question, answer:
-- How many files use this pattern? (exhaustive list)
-- Are there inconsistencies or deviations?
-- What's the oldest and newest usage? (evolution over time)
-- Should any deviations be normalized?
-
-### 4. Dependency Mapping
-
-Given a file or module, answer:
-- What depends on it? (downstream consumers)
-- What does it depend on? (upstream sources)
-- What's the blast radius of a change?
-- Are there circular dependencies?
+**Dependency Mapping:** What depends on the target (downstream)? What does it depend on (upstream)? What's the blast radius? Any circular dependencies?
 
 ## Done When
 
@@ -143,3 +119,12 @@ Return findings in this structure:
 - **Sequential searches when parallel would work** — batch independent searches
 - **Reporting "not found" after one search** — try regex variations, semantic search, and directory listing before giving up
 - **Modifying files** — you are read-only. If you notice something that needs fixing, report it
+
+## When Stuck
+
+| Problem | Solution |
+|---------|----------|
+| Symbol not found in search | Try regex alternation (`name1\|name2`); check re-exports and index files |
+| File contents too large to read | Use `grep_search` to locate the relevant section, then read a targeted range |
+| Git history shows no relevant commits | Broaden keyword; check `git log --all` to include other branches |
+| Pattern count seems wrong | Use `file_search` with a glob to confirm file scope before grepping |

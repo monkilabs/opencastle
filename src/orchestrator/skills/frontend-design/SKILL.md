@@ -193,29 +193,5 @@ Run this checklist before delivering any frontend work. Every item is a gate —
 - [ ] Images and decorative elements have proper `alt` text or `aria-hidden`
 - [ ] Focus indicators are visible and styled to match the aesthetic
 - [ ] Performance: no layout thrashing from scroll-triggered animations without `will-change`
-## Convoy-Aware Design
-
-When building as part of a multi-agent convoy (multiple pages or sections built in parallel), additional rules apply:
-
-### If you ARE the foundation task agent
-
-You are establishing the design system for the entire project. Your output is the source of truth that all other agents will consume. Focus on:
-
-1. **Design tokens file** — comprehensive CSS custom properties covering all visual dimensions
-2. **Layout component** — shared page container used by every page
-3. **UI component library** — shared primitives (Button, Card, Heading, etc.)
-4. **Style guide brief** — aesthetic direction, content tone, terminology, nav labels
-
-Make explicit, decisive choices. Ambiguity in the foundation cascades into inconsistency across pages.
-
-### If you are a page task agent (consuming the foundation)
-
-You are NOT making design decisions — you are executing within an established system.
-
-- **Import** design tokens. **Do not** create new color values, font sizes, or spacing units.
-- **Import** the Layout component. **Do not** create a page-local layout wrapper.
-- **Import** UI components (Button, Card, etc.). **Do not** recreate them.
-- **Follow** the aesthetic direction and content tone from the foundation.
-- If a token you need doesn't exist, flag it in your output — NEVER add an inline value as a workaround.
 
 > Load the **project-consistency** skill for the full Foundation Phase pattern and prompt templates.

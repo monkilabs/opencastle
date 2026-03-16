@@ -54,17 +54,21 @@ Place functions in `netlify/functions/`:
 
 ```typescript
 // netlify/functions/hello.ts
-import type { Handler } from '@netlify/functions';
+import type { Context, Config } from "@netlify/functions";
 
-export const handler: Handler = async (event) => {
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ message: 'Hello from Netlify Functions' }),
-  };
+export default async (req: Request, context: Context) => {
+  return new Response(JSON.stringify({ message: "Hello from Netlify Functions" }), {
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+export const config: Config = {
+  path: "/hello",
 };
 ```
 
-- Functions are available at `/.netlify/functions/<name>`
+Functions use web standard Request/Response. The `Config` export defines routing (path) instead of the default `/.netlify/functions/<name>` path.
+
 - Supports TypeScript out of the box
 - Default timeout: 10s (extendable to 26s on Pro)
 - Use background functions for long-running tasks (up to 15 min)
@@ -110,15 +114,15 @@ export const config = { path: '/geo' };
 
 ```typescript
 // netlify/functions/daily-task.ts
-import type { Handler } from '@netlify/functions';
+import type { Config } from "@netlify/functions";
 
-export const handler: Handler = async () => {
-  // Run daily task
-  return { statusCode: 200, body: 'OK' };
+export default async (req: Request) => {
+  const { next_run } = await req.json();
+  console.log("Next invocation at:", next_run);
 };
 
-export const config = {
-  schedule: '0 0 * * *', // Daily at midnight UTC
+export const config: Config = {
+  schedule: "0 0 * * *", // Daily at midnight UTC
 };
 ```
 

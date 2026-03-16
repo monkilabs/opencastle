@@ -11,16 +11,36 @@ Generic Convex development methodology. For project-specific schema, functions, 
 
 ## Critical Development Rules
 
-1. **Schema-first design** — define schema in `convex/schema.ts` using `defineSchema` and `defineTable`
-2. **Queries are reactive** — Convex queries automatically re-run when underlying data changes
-3. **Mutations are transactional** — mutations run as ACID transactions; leverage this for consistency
-4. **Actions for side effects** — use actions (not mutations) for external API calls, file uploads, etc.
-5. **Never await queries in mutations** — queries and mutations run in separate contexts
-6. **Use validators** — validate all function arguments with `v` (Convex's validator library)
-7. **Index design** — create indexes for frequently filtered/sorted fields in the schema
-8. **Paginated queries** — use `.paginate()` for large result sets
-9. **File storage** — use Convex's built-in file storage API, not external services
-10. **Environment variables** — set via Convex dashboard, access with `process.env` in actions only
+**Function Registration**
+- Public: `query`/`mutation`/`action`; Private: `internalQuery`/`internalMutation`/`internalAction` (import from `./_generated/server`)
+- Always include `returns` validator; use `returns: v.null()` when the function returns nothing (JS implicitly returns `null`)
+
+**Function References**
+- Use `api.filename.functionName` for public and `internal.filename.functionName` for internal functions (from `./_generated/api`)
+- Never pass functions directly to `ctx.runQuery`/`ctx.runMutation`/`ctx.runAction` — always use function references
+
+**Queries**
+- Do NOT use `.filter()` — define an index in the schema and use `.withIndex()` instead
+- Use `.unique()` for single document queries
+- No `.delete()` on queries — collect results, then call `ctx.db.delete(row._id)` on each
+
+**Actions**
+- Add `"use node";` at the top of files containing actions that use Node.js built-in modules
+- Never use `ctx.db` inside actions — actions don't have database access; use `ctx.runQuery`/`ctx.runMutation` instead
+
+**Schema**
+- Index name must include all fields: `["field1", "field2"]` → `"by_field1_and_field2"`
+- Index fields must be queried in definition order
+- Do NOT define `_id` or `_creationTime` — they are automatic system fields
+
+**General**
+- Schema-first design: define in `convex/schema.ts` using `defineSchema`/`defineTable`
+- Mutations are ACID transactional; use actions for external API calls or side effects
+- Never await queries in mutations — they run in separate contexts
+- Use `.paginate()` for large result sets
+- Use `Id<'tableName'>` for document ID types (from `./_generated/dataModel`)
+- Use `v.null()` not `v.undefined()` — `undefined` is not a valid Convex value
+- Environment variables: set via Convex dashboard; access with `process.env` in actions only
 
 ## Schema Patterns
 
@@ -34,7 +54,9 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     role: v.union(v.literal("admin"), v.literal("user")),
-  }).index("by_email", ["email"]),
+  })
+    .index("by_email", ["email"])
+    .index("by_role", ["role"]),
 });
 ```
 
@@ -45,9 +67,12 @@ import { v } from "convex/values";
 
 export const list = query({
   args: { role: v.optional(v.string()) },
+  returns: v.array(v.any()),
   handler: async (ctx, args) => {
     if (args.role) {
-      return await ctx.db.query("users").filter(q => q.eq(q.field("role"), args.role)).collect();
+      return await ctx.db.query("users")
+        .withIndex("by_role", q => q.eq("role", args.role!))
+        .collect();
     }
     return await ctx.db.query("users").collect();
   },
@@ -61,6 +86,7 @@ import { v } from "convex/values";
 
 export const create = mutation({
   args: { name: v.string(), email: v.string() },
+  returns: v.id("users"),
   handler: async (ctx, args) => {
     return await ctx.db.insert("users", { ...args, role: "user" });
   },

@@ -24,6 +24,13 @@ The Team Lead provides a **session summary** with:
 - **Files changed** — count and key paths
 - **Commits/branch** — whether changes were committed and to which branch
 
+## Anti-Patterns
+
+- **Modifying log files instead of just reading them** — you verify, never write; if logs are wrong, provide fix commands only
+- **Guessing at record counts instead of counting** — always run `grep -c` to get exact numbers
+- **Skipping checks because they 'seem fine'** — every check runs every time; no exceptions
+- **Taking longer than 2 minutes** — this is fast verification; if a check stalls, flag it and move on
+
 ## Checks
 
 Run ALL checks. Report each as ✅ or ❌.

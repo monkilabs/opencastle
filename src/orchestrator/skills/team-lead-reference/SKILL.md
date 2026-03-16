@@ -37,13 +37,13 @@ During decomposition, assign a **complexity score** (Fibonacci: 1, 2, 3, 5, 8, 1
 
 ### Scoring Criteria
 
-| Factor | Low (1-2) | Medium (3-5) | High (8-13) |
-|--------|-----------|--------------|-------------|
-| **Files touched** | 1-2 files | 3-5 files | 6+ files or cross-library |
-| **Reasoning depth** | Mechanical / boilerplate | Pattern matching, moderate logic | Architecture decisions, security, tradeoffs |
-| **Ambiguity** | Clear spec, obvious approach | Some judgment calls | Multiple valid approaches, needs exploration |
-| **Risk** | No data loss, easily reversible | Moderate impact, testable | DB migrations, auth changes, breaking changes |
-| **Dependencies** | None | 1-2 upstream tasks | Complex dependency chain |
+| Factor | Low → High |
+|--------|------------|
+| **Files touched** | 1–2 → 3–5 → 6+ / cross-library |
+| **Reasoning depth** | Boilerplate → pattern matching → architecture/security/tradeoffs |
+| **Ambiguity** | Clear spec → some judgment → multiple valid approaches |
+| **Risk** | Reversible → moderate impact → DB/auth/breaking changes |
+| **Dependencies** | None → 1–2 upstream → complex chain |
 
 ### Score to Model Tier Mapping
 
@@ -75,22 +75,7 @@ After initial decomposition, **enrich the plan** with concrete codebase evidence
 
 ### Quick Deepen (Single Researcher)
 
-Fire one **Researcher** sub-agent with this prompt:
-
-```
-Research the following planned subtasks and enrich each with:
-1. Exact file paths and line numbers for code that will change
-2. Existing patterns to follow (with file:line examples)
-3. Related lessons from .opencastle/LESSONS-LEARNED.md
-4. Risks or blockers (missing dependencies, known issues)
-
-Subtasks:
-- [Subtask 1 description]
-- [Subtask 2 description]
-- ...
-
-Return a structured report per subtask.
-```
+Fire one **Researcher** sub-agent asking for: exact file paths & line numbers for changed code, existing patterns to follow (with file:line examples), relevant lessons from `.opencastle/LESSONS-LEARNED.md`, and risks/blockers per subtask.
 
 ### Full Deepen (Parallel Researchers)
 
@@ -111,6 +96,17 @@ After deepening, each subtask in the plan should have:
 ### Integrating Results
 
 Take the Researcher output and update delegation prompts with concrete file paths, patterns, and lessons. This transforms vague prompts into precise instructions that agents can execute without discovery overhead.
+
+## Agent Output Status Handling
+
+When a sub-agent returns, interpret the result before proceeding to fast review:
+
+- **Complete** — output addresses all acceptance criteria → proceed to fast review
+- **Complete with concerns** — agent flagged doubts → read concerns; if about correctness or scope, address before review
+- **Needs context** — agent couldn't proceed → provide missing info, re-dispatch same agent
+- **Blocked** — agent hit a wall → context problem: provide context; task too complex: upgrade model; plan wrong: escalate to human
+
+Never ignore a BLOCKED or NEEDS_CONTEXT status. If the agent said it's stuck, something must change before re-dispatching.
 
 ## Pre-Delegation Policy Checks
 
@@ -136,73 +132,23 @@ After completing a feature (all tracker issues Done), add a cost summary to the 
 | Est. total tokens | ~XXK |
 ```
 
-This data helps optimize future model assignments. If no meaningful data was collected, skip the summary.
+This data helps optimize future model assignments.
 
-During execution, maintain a running delegation log in the session checkpoint (see the **session-checkpoints** skill § Delegation Cost Log). Update it after each delegation completes or fails.
+During execution, maintain a running delegation log in the session checkpoint (see the **session-checkpoints** skill § Delegation Cost Log).
 
 ## Context Source Tagging
 
-When collecting results from multiple sub-agents or background agents, **tag each result by its source** to prevent context confusion:
-
-```markdown
-### [Content Engineer] TAS-42 Schema
-- Created `schemas/review.ts` with star rating field
-- Deployed to CMS studio
-- Verification: lint ✅, type-check ✅
-
-### [DB Engineer] TAS-43 Migration
-- Created migration file for reviews table
-- RLS policies for authenticated users
-- Verification: migration applied ✅, tests ✅
-```
-
-**Rules:**
-- Prefix each agent's output summary with `### [Agent Name] TAS-XX Description`
-- Never merge outputs from different agents into a single undifferentiated block
-- When referencing prior agent output in a delegation prompt, cite the source: *"The Content Engineer created `schemas/review.ts` — follow that pattern"*
-- In the session checkpoint "Completed Work" table, always include the Agent column
-
-This prevents the Team Lead from confusing which agent produced what, especially after 5+ delegations when context is dense.
+Prefix each agent's output summary with `### [Agent Name] TAS-XX Description`. Never merge outputs from different agents into a single undifferentiated block. When referencing prior agent output in a delegation prompt, cite the source agent. Always include the Agent column in session checkpoint "Completed Work" tables.
 
 ## Dead Letter Queue Format
 
-Log to `.opencastle/AGENT-FAILURES.md` when:
-- A delegated agent fails to complete its task after 2+ attempts
-- A background agent produces output that fails all verification gates
-- An agent encounters an unrecoverable error (e.g., MCP server down, tool unavailable)
-
-> **Note:** When a panel review BLOCKs 3 times, create a **dispute record** instead of a DLQ entry. See § Dispute Protocol below.
+Log to `.opencastle/AGENT-FAILURES.md` when a delegated agent fails after 2+ attempts, background agent output fails all verification gates, or an unrecoverable error occurs. When a panel BLOCKs 3 times, create a **dispute record** instead (see § Dispute Protocol).
 
 ### Failure Entry Format
 
-```markdown
-### DLQ-XXX: Short description
+Each DLQ entry (`DLQ-XXX: Short description`) must include: **Date**, **Agent**, **Tracker Issue**, **Failure Type** (`verification-fail` / `tool-error` / `panel-block` / `timeout` / `scope-creep`), **Attempts**, **Task** (what was asked), **Failure Details** (what went wrong), and **Resolution** (outcome or "pending").
 
-| Field | Value |
-|-------|-------|
-| **Date** | YYYY-MM-DD |
-| **Agent** | Agent name |
-| **Tracker Issue** | TAS-XX (if applicable) |
-| **Failure Type** | `verification-fail` / `tool-error` / `panel-block` / `timeout` / `scope-creep` |
-| **Attempts** | Number of attempts before logging |
-| **Est. Tokens Spent** | ~XXK across all attempts |
-| **Model Tier** | Economy / Utility / Standard / Premium |
-
-**Task:** What was the agent supposed to do?
-
-**Failure Details:** What went wrong? Include error messages, failed checks, or panel BLOCK reasons.
-
-**Root Cause:** Why did it fail? (if known)
-
-**Resolution:** How was it eventually resolved? (or "pending" if unresolved)
-```
-
-### Review Cadence
-
-At the start of each session, scan the agent failures doc for:
-- **Pending failures** that need retry
-- **Patterns** — same agent failing repeatedly may indicate a prompt or skill issue
-- **Tool issues** — MCP servers or external dependencies that need attention
+At session start, scan the DLQ for pending retries, failure patterns, and tool issues.
 
 ## Error Recovery
 
@@ -240,26 +186,10 @@ When automated resolution is exhausted (panel 3x BLOCK, approach conflicts, or c
 
 ### After Human Resolution
 
-When a human resolves a dispute:
 1. Update the dispute `Status` → `resolved` or `deferred`
 2. Record which option was chosen and any additional instructions
-3. If `resolved` → re-delegate the task with the human's decision as an explicit constraint
+3. If `resolved` → re-delegate the task with the human's decision as an **explicit constraint**
 4. If `deferred` → create a follow-up tracker issue and continue with other work
-5. Log the resolution in `events.ndjson` using the **observability-logging** skill's dispute record command (update or append a resolution event)
+5. Log the resolution in `events.ndjson` using the **observability-logging** skill's dispute record command
 
-### Session Start: Check Disputes
 
-At the start of each session, after checking the DLQ, also check `DISPUTES.md` for:
-- **Pending disputes** that a human has resolved since the last session → act on the resolution
-- **Critical/high disputes** that are still pending → flag to the user before proceeding
-- **Patterns** — recurring disputes may indicate a skill gap, ambiguous instructions, or a need for a new validation gate
-
-## Background Agent Git Merge Strategy
-
-Background agents work in isolated Git worktrees. When merging their output:
-
-1. **Merge order matters:** Merge the most foundational changes first (DB migrations -> queries -> components -> pages -> tests -> docs)
-2. **Test after each merge:** Run affected tests after merging each agent's work
-3. **Resolve conflicts immediately:** Don't accumulate multiple agent outputs before merging
-4. **Discard stale worktrees:** If an agent's output is no longer compatible with the main branch (due to other agents' changes merging first), re-delegate rather than force-merge
-5. **Atomic merge preference:** Use `git merge --no-ff` to keep agent work traceable in history

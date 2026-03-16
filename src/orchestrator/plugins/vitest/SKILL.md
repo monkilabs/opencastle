@@ -158,9 +158,9 @@ export default defineConfig({
 - Use `describe` blocks to group related tests
 - Each test should be independent — no shared mutable state between tests
 - Clean up mocks with `vi.restoreAllMocks()` in `afterEach`
-- Use `vi.mock()` at the top level — Vitest hoists mock calls automatically
+- Mock dependencies before imports — `vi.mock()` calls are hoisted automatically but declare them at the top for clarity
 - Prefer `toEqual` for objects, `toBe` for primitives
 - Use `test.each` for parameterized tests
 - Set coverage thresholds to prevent regression
 - Use `vi.useFakeTimers()` for time-dependent code — never `setTimeout` in tests
-- Use `--reporter=json` in CI for machine-readable output
+- Aim for 3-5 focused tests per file for maintainability — split large test suites

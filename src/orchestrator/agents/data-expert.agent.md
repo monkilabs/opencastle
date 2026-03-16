@@ -21,19 +21,37 @@ Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents
 1. **Validate before importing** — always run Zod schema validation before any CMS import
 2. **Idempotent operations** — use `createOrReplace` with deterministic `_id` for all imports
 3. **Respect rate limits** — enforce delays between requests for scraping and API calls
+4. **Never drop records silently** — log every rejected or skipped record with its reason and count
+5. **Use configurable sources** — source URLs and API endpoints must be env vars, not hardcoded
+
+## Anti-Patterns
+
+- Importing without validation — letting malformed records reach the CMS undetected
+- Non-idempotent operations — re-running the pipeline creates duplicates instead of upserting
+- Ignoring rate limits on external APIs — causes bans or throttling that halts the run
+- Hardcoding source URLs instead of making them configurable via environment variables
+- Silent data loss — dropping records without logging the reason or count
 
 ## Guidelines
 
 - Design pipelines as composable, single-responsibility stages
 - Use NDJSON for all intermediate data — one JSON object per line
-- Idempotent imports with `createOrReplace` and deterministic `_id`
 - Validate with Zod before importing — never import invalid data
 - Respect `robots.txt` and rate limit all scraping requests
 - Use the project's web crawling library for concurrent crawling (see the **data-engineering** skill)
-- Handle errors gracefully — skip bad records, don't halt pipeline
+- Handle errors gracefully — skip bad records, don't halt the pipeline; log every skip with a reason
 - Preserve UTF-8 encoding for special characters and diacritics
-- Backup before bulk operations
-- Log progress with structured logging
+- Backup before bulk operations; log progress with structured logging
+
+## When Stuck
+
+| Problem | Action |
+|---------|--------|
+| Pipeline rerun creates duplicates | Switch to `createOrReplace` with a deterministic `_id` derived from stable fields |
+| Scraper is rate-limited or blocked | Add jitter delay; check `robots.txt`; reduce concurrency |
+| Zod validation rejecting too many records | Log rejected samples; adjust schema or fix the source data |
+| Import counts don't match expected totals | Add per-stage counters; diff input vs output NDJSON line counts |
+| External API is unreliable mid-run | Implement retry with exponential backoff; write failed records to a dead-letter file |
 
 ## Done When
 
