@@ -31,6 +31,10 @@
     "task-management": {
       "entries": [],
       "description": "Issue tracking, naming, priorities, workflow states"
+    },
+    "knowledge-management": {
+      "entries": [],
+      "description": "Workspace knowledge base, research capture, ADRs, specs, page hierarchy"
     }
   },
   "agents": {
@@ -71,7 +75,7 @@
       "directSkills": ["validation-gates", "performance-optimization"]
     },
     "Architect": {
-      "slots": ["codebase-tool"],
+      "slots": ["codebase-tool", "knowledge-management"],
       "directSkills": ["documentation-standards"]
     },
     "Copywriter": {
@@ -91,15 +95,15 @@
       "directSkills": ["validation-gates", "documentation-standards"]
     },
     "Documentation Writer": {
-      "slots": [],
+      "slots": ["knowledge-management"],
       "directSkills": ["documentation-standards", "code-commenting"]
     },
     "Researcher": {
-      "slots": [],
+      "slots": ["knowledge-management"],
       "directSkills": ["context-map", "self-improvement"]
     },
     "Team Lead (OpenCastle)": {
-      "slots": ["task-management"],
+      "slots": ["task-management", "knowledge-management"],
       "directSkills": ["team-lead-reference", "session-checkpoints", "validation-gates", "fast-review", "panel-majority-vote", "context-map", "memory-merger", "agent-hooks", "decomposition", "orchestration-protocols"]
     }
   }

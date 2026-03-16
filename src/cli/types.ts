@@ -5,7 +5,7 @@ import type { BuiltInGatesConfig, BrowserTestConfig, GuardConfig, CircuitBreaker
 
 export type IdeChoice = 'vscode' | 'cursor' | 'claude-code' | 'opencode' | 'windsurf' | 'codex' | 'antigravity';
 export type TechTool = 'sanity' | 'contentful' | 'strapi' | 'supabase' | 'convex' | 'vercel' | 'nx' | 'chrome-devtools' | 'nextjs' | 'astro' | 'netlify' | 'turborepo' | 'prisma' | 'cypress' | 'playwright' | 'vitest' | 'figma' | 'resend';
-export type TeamTool = 'linear' | 'jira' | 'slack' | 'teams';
+export type TeamTool = 'linear' | 'jira' | 'trello' | 'notion' | 'slack' | 'teams';
 
 export interface StackConfig {
   ides: IdeChoice[];

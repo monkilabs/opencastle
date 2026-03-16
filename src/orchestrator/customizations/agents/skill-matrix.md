@@ -58,6 +58,26 @@ When resolving, load **all** skills listed in the slot's entries.
 2. Update `skill-matrix.json`: replace the `task-management` entries
 3. **No agent files change** — Team Lead still references the `task-management` slot
 
+### Example: Switch knowledge-management tool (Notion → Confluence)
+
+1. Create (or install) the Confluence plugin: `plugins/confluence/SKILL.md` + `plugins/confluence/config.ts`
+2. Update `skill-matrix.json`: replace the `knowledge-management` entries
+3. **No agent files change** — Team Lead, Researcher, Documentation Writer, and Architect still reference the `knowledge-management` slot
+
+## Capability Slots Reference
+
+| Slot | Description | Agents That Use It |
+|------|-------------|-------------------|
+| `framework` | SSR/SSG, routing, layouts | Developer, SEO Specialist, API Designer |
+| `database` | Schema, migrations, auth flow | Database Engineer, Security Expert |
+| `cms` | Document types, queries | Content Engineer, Copywriter, SEO Specialist |
+| `deployment` | Hosting, cron, env vars | DevOps Expert, Release Manager |
+| `codebase-tool` | Task running, linting, testing | Architect, Release Manager |
+| `testing` | Unit testing frameworks | Testing Expert |
+| `e2e-testing` | Browser automation | UI/UX Expert, Testing Expert |
+| `task-management` | Issue tracking, workflow states | Team Lead |
+| `knowledge-management` | Knowledge base, research, ADRs, specs | Team Lead, Researcher, Documentation Writer, Architect |
+
 ### Example: Add a second plugin
 
 1. Update `skill-matrix.json`: add another entry to the `framework` slot

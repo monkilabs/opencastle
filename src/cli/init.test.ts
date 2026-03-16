@@ -89,6 +89,12 @@ const STACK_SUPABASE_SLACK: StackConfig = {
   teamTools: ['slack'],
 }
 
+const STACK_TRELLO_NOTION: StackConfig = {
+  ides: ['vscode'],
+  techTools: [],
+  teamTools: ['trello', 'notion'],
+}
+
 const STACK_FULL: StackConfig = {
   ides: ['vscode', 'cursor', 'claude-code', 'opencode', 'windsurf', 'codex', 'antigravity'],
   techTools: ['sanity', 'supabase', 'vercel'],
@@ -147,6 +153,14 @@ describe('stack-config: getExcludedSkills', () => {
     expect(excluded.has('slack-notifications')).toBe(true)
     expect(excluded.has('vercel-deployment')).toBe(true)
   })
+
+  it('includes trello and notion skills when selected', () => {
+    const excluded = getExcludedSkills(STACK_TRELLO_NOTION)
+    expect(excluded.has('trello-task-management')).toBe(false)
+    expect(excluded.has('notion-knowledge-management')).toBe(false)
+    expect(excluded.has('linear-task-management')).toBe(true)
+    expect(excluded.has('slack-notifications')).toBe(true)
+  })
 })
 
 describe('stack-config: getIncludedMcpServers', () => {
@@ -203,6 +217,20 @@ describe('stack-config: getRequiredMcpEnvVars', () => {
       ])
     )
   })
+
+  it('returns trello env vars when trello is selected', () => {
+    const vars = getRequiredMcpEnvVars({
+      ides: ['vscode'],
+      techTools: [],
+      teamTools: ['trello'],
+    })
+    expect(vars).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ envVar: 'TRELLO_API_KEY' }),
+        expect.objectContaining({ envVar: 'TRELLO_TOKEN' }),
+      ])
+    )
+  })
 })
 
 describe('stack-config: getAgentToolInjections', () => {
@@ -241,6 +269,24 @@ describe('stack-config: getAgentToolInjections', () => {
     // Linear + Slack tools on team-lead
     expect(teamLeadTools).toContain('linear/create_issue')
     expect(teamLeadTools).toContain('slack/*')
+  })
+
+  it('injects notion tools into relevant agents when notion selected', () => {
+    const injections = getAgentToolInjections({
+      ides: ['vscode'],
+      techTools: [],
+      teamTools: ['notion'],
+    })
+
+    const teamLeadTools = injections.get('team-lead')
+    expect(teamLeadTools).toBeDefined()
+    expect(teamLeadTools).toContain('Notion/search')
+    expect(teamLeadTools).toContain('Notion/query_database')
+
+    const architectTools = injections.get('architect')
+    expect(architectTools).toBeDefined()
+    expect(architectTools).toContain('Notion/create_page')
+    expect(architectTools).toContain('Notion/update_page')
   })
 })
 
