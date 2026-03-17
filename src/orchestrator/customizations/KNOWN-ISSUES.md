@@ -14,7 +14,6 @@ Tracked issues, limitations, and accepted risks discovered during agent sessions
 
 | Issue ID | Status | Severity | Summary | Evidence | Root Cause | Solution Options |
 |----------|--------|----------|---------|----------|------------|------------------|
-| KI-001 | Open | Medium | Convoy engine run()/resume() don't catch unexpected errors from runConvoy() — convoy DB records can get stuck in 'running' status | `src/cli/convoy/engine.ts` lines 452-510 (run) and 520-570 (resume): if `runConvoy()` throws, the convoy record is never updated to 'failed' | The try/finally block exports and closes the store but doesn't catch to update convoy status | Add a catch block before finally that calls `store.updateConvoyStatus(convoyId, 'failed', ...)` before rethrowing |
 
 ### Status Values
 

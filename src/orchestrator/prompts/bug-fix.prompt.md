@@ -15,8 +15,6 @@ You are the Team Lead. Investigate and fix the bug described below. Bugs are rea
 
 ---
 
-> **Canonical workflow:** `.github/agent-workflows/bug-fix.md` defines the phase structure. This prompt expands each phase with delegation-specific detail. If the two diverge, update the workflow first (SSOT) then sync the prompt.
-
 ## How Bug Fixes Differ from Other Workflows
 
 | Aspect | Roadmap Task | Follow-Up | Bug Fix |
@@ -33,52 +31,27 @@ You are the Team Lead. Investigate and fix the bug described below. Bugs are rea
 
 ### 1. Triage & Reproduce
 
-Before fixing anything, understand the bug:
-
 1. **Check known issues** — Search `.opencastle/KNOWN-ISSUES.md` for an existing entry. If found, note workarounds and decide if a fix is now feasible
 2. **Check tracker** — Search for existing bug tickets. If one exists, take it over instead of creating a duplicate
 3. **Read lessons learned** — Check `.opencastle/LESSONS-LEARNED.md` for related pitfalls
-4. **Reproduce the bug** — Start the dev server and confirm you can trigger the issue:
-   - Start the dev server (see the **codebase-tool** skill for the serve command)
-   - Navigate to the affected page in Chrome
-   - Follow the reproduction steps from the bug report
-   - Take a screenshot of the broken state as evidence
+4. **Reproduce the bug** — Start the dev server (see **codebase-tool** skill), navigate to the affected page in Chrome, follow the repro steps, and screenshot the broken state
 5. **Determine scope** — Which apps are affected? (see `project.instructions.md` for the app inventory)
-6. **Assess severity**:
-   - **Critical** — App crashes, data loss, auth bypass, page won't load
-   - **High** — Feature broken but workaround exists, significant UI breakage
-   - **Medium** — Minor functional issue, cosmetic but noticeable
-   - **Low** — Edge case, minor visual glitch
+6. **Assess severity**: Critical (crash/data loss/auth bypass) | High (broken + workaround) | Medium (minor functional) | Low (edge case/cosmetic)
 
 ### 2. Create Tracker Issue
 
 Every bug gets tracked. Create a tracker issue with:
 
 - **Title**: `[Bug] Short description of the symptom`
-- **Label**: `bug`
-- **Priority**: Based on severity assessment above
-- **Description**:
-  - **Symptom**: What the user sees
-  - **Reproduction steps**: Exact steps to trigger
-  - **Expected behavior**: What should happen
-  - **Actual behavior**: What happens instead
-  - **Affected apps**: which apps from the project inventory
-  - **Affected files** (once identified): File paths for the partition
-  - **Screenshot**: Link or description of the broken state
+- **Label**: `bug`; **Priority**: based on severity
+- **Description**: Symptom, reproduction steps, expected vs actual behavior, affected apps + files, screenshot
 
 ### 3. Root Cause Analysis
 
-Find WHY the bug happens, not just WHERE:
-
 1. **Search the codebase** — Find the components, queries, styles, and logic involved
-2. **Trace the data flow** — Follow the data from source (CMS/database) → query → component → render
-3. **Check recent changes** — Use `git log` on suspected files to see if a recent commit introduced the issue
-4. **Identify the root cause** — Distinguish between:
-   - **Code bug** — Logic error, wrong condition, missing null check
-   - **Data issue** — Unexpected data shape, missing field, bad reference
-   - **Race condition** — Timing issue, hydration mismatch, async ordering
-   - **CSS/Layout** — Specificity conflict, missing responsive rule, overflow
-   - **Integration** — API contract mismatch, schema drift, stale cache
+2. **Trace the data flow** — Source (CMS/database) → query → component → render
+3. **Check recent changes** — `git log` on suspected files
+4. **Identify the root cause** — Code bug, Data issue, Race condition, CSS/Layout, or Integration failure
 5. **Update the tracker issue** — Add root cause findings and affected file paths
 
 ### 4. Implement the Fix
@@ -91,37 +64,29 @@ All bug fixes are executed via the convoy engine — even single-task fixes — 
 
 #### Convoy Task Prompt Must Include
 
-- **Tracker issue ID and title** — e.g., `TAS-XX — [Bug] Description`
-- **Root cause** — What's wrong and why
-- **Fix approach** — How to fix it (be specific)
-- **File paths** — Exact files to read and modify
-- **Reproduction steps** — So the agent can verify the fix
-- **Boundaries** — "Only modify files listed above. Fix the bug, do not refactor surrounding code."
-- **Self-improvement reminder** — include per the **self-improvement** skill
+- Tracker issue ID and title, root cause, fix approach, file paths, reproduction steps
+- Boundaries: "Only modify files listed above. Fix the bug, do not refactor surrounding code."
+- Self-improvement reminder (see **self-improvement** skill)
 
 #### Implementation Rules
 
-- **Minimal change** — Fix the bug with the smallest correct change. Resist the urge to refactor
-- **Fix the cause, not the symptom** — A CSS `!important` or silent `catch {}` is not a fix
-- **DRY** — If the fix involves logic that exists elsewhere, reuse it
-- **Add a test** — If no test covers this scenario, add one. Bugs that aren't tested come back
-- **Cross-app awareness** — If the fix is in shared code (`libs/`), verify it works for both apps
+- **Fix cause not symptom** — Minimal change, no refactoring. A CSS `!important` or silent `catch {}` is not a fix
+- **Add a test** — If no test covers this scenario, add one
+- **Cross-app awareness** — If the fix is in `libs/`, verify it works in all consuming apps
 
 ### 5. Validate
 
 > Load the **validation-gates** skill for detailed steps on each gate.
 
-Every bug fix must pass ALL applicable gates:
-
-1. **Gate 1: Secret Scanning** — scan diff for API keys, tokens, passwords, connection strings — block immediately if found
-2. **Gate 2: Deterministic Checks** — run lint, test, and build for all affected projects (see the **codebase-tool** skill for commands) — all zero errors
-3. **Gate 3: Blast Radius Check** — verify the fix is minimal and scoped (bug fixes should be ≤100 lines, ≤3 files; escalate if larger)
-4. **Gate 4: Dependency Audit** (when `package.json` or lockfiles change) — vulnerability scan, license check, bundle size, duplicates
-5. **Gate 5: Fast Review** (MANDATORY) — single reviewer sub-agent validates the fix. No auto-PASS for sensitive files
-6. **Gate 6: Bug-Specific Verification** (MANDATORY) — start dev server, reproduce original bug (should be gone), verify correct behavior, test edge cases, screenshot before/after, check both apps if shared code
-7. **Gate 7: Browser Testing** (for UI-related bugs) — clear cache, start server, verify fix + responsive + screenshots
-8. **Gate 8: Regression Testing** — run tests for all projects consuming modified files, browser-test adjacent functionality
-9. **Gate 9: Panel Review** (only if needed) — use **panel-majority-vote** skill if fix touches auth/authorization, RLS, security headers/CSP, or sensitive data
+1. **Secret Scanning** — block if API keys/tokens/passwords found in diff
+2. **Deterministic Checks** — lint, test, build — zero errors (see **codebase-tool** skill)
+3. **Blast Radius** — bug fixes should be ≤100 lines / ≤3 files; escalate if larger
+4. **Dependency Audit** — when `package.json` or lockfiles change
+5. **Fast Review** (MANDATORY) — single reviewer sub-agent
+6. **Bug-Specific Verification** (MANDATORY) — reproduce original bug (should be gone), verify correct behavior, screenshot before/after, check both apps if shared code
+7. **Browser Testing** (for UI bugs) — clear cache, verify fix + responsive + screenshots
+8. **Regression Testing** — run tests for all projects consuming modified files
+9. **Panel Review** — only if fix touches auth/authorization, RLS, security headers, or sensitive data (use **panel-majority-vote** skill)
 
 ### 6. Delivery
 
@@ -129,10 +94,9 @@ Follow the **Delivery Outcome** defined in the **git-workflow** skill — commit
 
 ### 7. Wrap Up
 
-1. **Move tracker issue to Done** — Only after all validation passes
-2. **Update Known Issues** — If this was a documented known issue, remove or update the entry in `.opencastle/KNOWN-ISSUES.md`
-3. **Capture lessons** — If the root cause reveals a pattern that other agents should know about, use the **self-improvement** skill to add a lesson
-4. **Note prevention** — If this class of bug could be caught earlier (by a lint rule, test, or type check), note that in the tracker issue as a follow-up suggestion
+1. **Close out** — Move tracker to Done; remove or update any `.opencastle/KNOWN-ISSUES.md` entry if applicable
+2. **Capture lessons** — Use the **self-improvement** skill if the root cause reveals a pattern others should know
+3. **Note prevention** — If the bug class could be caught earlier, note it in the tracker as a follow-up
 
 ### 8. Completion Criteria
 
@@ -142,9 +106,7 @@ The bug fix is complete when:
 - [ ] Tracker issue created with full details
 - [ ] Fix implemented with minimal change
 - [ ] Test added covering the bug scenario
-- [ ] Lint, test, and build pass for all affected projects
 - [ ] Bug verified fixed in the browser
-- [ ] No regressions in adjacent functionality
 - [ ] Both apps checked if shared code was modified
 - [ ] Delivery Outcome completed (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
 - [ ] Tracker issue moved to Done

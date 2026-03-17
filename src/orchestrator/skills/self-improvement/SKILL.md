@@ -3,96 +3,62 @@ name: self-improvement
 description: "Protocol for reading and updating the lessons-learned knowledge base. MUST be followed by ALL agents — read lessons before work, write lessons after retries. This makes the agent team self-improving across sessions."
 ---
 
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
-
 # Self-Improvement Protocol
 
-This skill defines how agents learn from mistakes and share knowledge so the same pitfalls are never repeated.
+## Core Rule
 
-## Core Principle
+**Retry with a different approach and it works → document the lesson immediately.** File: `.opencastle/LESSONS-LEARNED.md`
 
-**If you retry something with a different approach and it works, document the lesson immediately.** The cost of writing a lesson (2 minutes) is always less than the cost of someone else hitting the same pitfall (5-30 minutes).
+## Writing a Lesson
 
-## The Lessons File
-
-Location: `.opencastle/LESSONS-LEARNED.md`
-
-This is the team's collective memory — a structured log of tool/command pitfalls, workarounds, and correct approaches discovered through execution.
-
-## Protocol for All Agents
-
-The core protocol (read lessons → write on retry → log session) is referenced from `general.instructions.md` via the **Workflow & Governance** table. This skill provides the detailed reference material for writing lessons.
-
-## How to Write a Lesson
-
-> **⛔ HARD GATE — Use the CLI to write lessons. Do NOT edit LESSONS-LEARNED.md directly.**
-
-Use the `opencastle lesson` CLI command. It auto-increments the lesson ID, formats the entry, and updates the category index.
+> **⛔ HARD GATE — Use the CLI. Do NOT edit LESSONS-LEARNED.md directly.**
 
 ```sh
 opencastle lesson --title "Short descriptive title" --category general --severity high \
-  --problem "What went wrong and what error/behavior was observed" \
-  --wrong "The obvious/intuitive approach that fails" \
-  --correct "The working solution" \
-  --why "Root cause explanation"
+  --problem "What was observed" --wrong "Failing approach" --correct "Working solution" \
+  --why "Root cause"
 ```
 
-Required flags: `--title`, `--category`, `--severity`, `--problem`
-Optional flags: `--wrong`, `--correct`, `--why`
+Required: `--title`, `--category`, `--severity`, `--problem` · Optional: `--wrong`, `--correct`, `--why`
 
-Run `opencastle lesson --help` for full usage and valid category/severity values.
-
-### After writing the lesson
-
-If the lesson reveals a gap in existing instruction/skill files, **also update those files** to include the correct approach. This prevents the pitfall at the source level, not just as a retroactive note.
-
-Examples:
-- Lesson about task tracker tools → update the skill mapped by the `task-management` slot in the skill matrix
-- Lesson about codebase-tool commands → update the skill mapped by the `codebase-tool` slot in the skill matrix
-- Lesson about CMS queries → update the skill mapped by the `cms` slot in the skill matrix
-- Lesson about browser testing → update the skill mapped by the `e2e-testing` slot in the skill matrix
+After writing: if the lesson reveals a gap in a skill/instruction file, update that file too (prevents the pitfall at source).
 
 ## Categories
 
 | Category | Covers |
 |----------|--------|
 | `task-management` | Task tracker tools, issue management, workflow states |
-| `jira` | Jira MCP tools (Atlassian Rovo), issue management, workflows |
-| `mcp-tools` | Any MCP server tool quirks (deferred loading, parameters) |
+| `jira` | Jira MCP tools (Atlassian Rovo) |
+| `mcp-tools` | MCP server tool quirks (deferred loading, parameters) |
 | `codebase-tool` | Task runner CLI commands, caching, build tools |
-| `terminal` | Shell commands, port management, process management |
+| `terminal` | Shell commands, port/process management |
 | `framework` | App framework, build, dev server, SSR |
 | `cms` | CMS content queries, schema deployment |
 | `database` | Database auth, migrations, RLS, SQL |
 | `git` | Git operations, branching, merge conflicts |
 | `deployment` | Deployment, environment variables, edge config |
 | `browser-testing` | E2E testing, screenshots, browser automation |
-| `general` | Anything that doesn't fit above |
+| `general` | Anything else |
 
-## Severity Guide
+## Severity
 
-| Level | Meaning | Impact |
-|-------|---------|--------|
-| `high` | Blocks work entirely | Agent cannot proceed without the workaround |
-| `medium` | Wastes 5+ minutes | Agent will eventually figure it out but wastes time |
-| `low` | Minor friction | Slight annoyance, easy to work around |
+| Level | Impact |
+|-------|--------|
+| `high` | Blocks work — agent cannot proceed without the workaround |
+| `medium` | Wastes 5+ minutes |
+| `low` | Minor friction |
 
-## Quality Standards
+## Quality Rules
 
-- **Be specific** — include exact error messages, exact commands, exact tool parameters
-- **Show both wrong and right** — the contrast is what makes lessons actionable
-- **Explain why** — root cause helps agents reason about similar situations
-- **Keep it concise** — one lesson per entry, no essays
-- **Code blocks are mandatory** — for commands, tool calls, and configurations
+- Include exact error messages, commands, and tool parameters
+- Show wrong **and** correct approaches — the contrast is actionable
+- Explain why (root cause)
+- One lesson per entry; code blocks mandatory for commands
 
 ## Anti-Patterns
 
-- **Never skip reading lessons** before starting work — this is the #1 cause of repeated mistakes
-- **Never "fix it and move on"** without documenting — your fix dies with your session
-- **Never write vague lessons** like "the tracker is tricky" — be specific about what fails and what works
-- **Never duplicate existing lessons** — check the index first
-- **Never wait until the end of a session** to write lessons — write them immediately when the retry succeeds
+Never skip reading lessons · Never fix without documenting · Never write vague entries · Never duplicate · Never defer to end of session
 
-## Agent Memory Protocol
+## Agent Memory
 
-For agent expertise tracking and cross-session knowledge graphs, load the **agent-memory** skill. It covers memory templates, update triggers, retrieval protocols, and the knowledge graph format.
+For expertise tracking and cross-session knowledge graphs, load the **agent-memory** skill.

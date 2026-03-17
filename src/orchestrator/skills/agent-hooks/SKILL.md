@@ -3,150 +3,100 @@ name: agent-hooks
 description: "Lifecycle hooks for AI agent sessions — reusable actions that run at specific points (session start, session end, pre-delegation, post-delegation). Defines what to do at each lifecycle event so agents behave consistently."
 ---
 
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
-
 # Agent Lifecycle Hooks
 
-Hooks are **standardized actions** that agents execute at specific points during their lifecycle. They enforce consistency across sessions and prevent common oversights (missing lessons, forgotten checkpoints, untracked issues).
-
-## Hook Execution Model
-
-Hooks are **conventions, not automated triggers**. Agents must explicitly follow them. The Team Lead includes hook reminders in delegation prompts; specialist agents include them in their own workflow.
+Conventions (not auto-triggers) agents execute at specific lifecycle points. Team Lead includes hook reminders in delegation prompts; specialists follow them in their own workflow.
 
 ```
-Session Lifecycle:
-  on-session-start  →  [work loop]  →  on-session-end
-                          ↓   ↑
-                    on-pre-delegate → on-post-delegate
+on-session-start → [work loop] → on-session-end
+                        ↓   ↑
+               on-pre-delegate → on-post-delegate
 ```
 
 ---
 
-## Hook: on-session-start
+## on-session-start — First action in any session
 
-**When:** First action in any agent session (Team Lead or specialist).
+| # | Action | Detail |
+|---|--------|--------|
+| 1 | Read lessons | Scan `.opencastle/LESSONS-LEARNED.md` for task-relevant entries. |
+| 2 | Check checkpoint | If `.opencastle/SESSION-CHECKPOINT.md` exists, resume from it. |
+| 3 | Check pending approvals | If checkpoint has `## Pending Approvals`, check replies via messaging provider (`stack.teamTools` in `.opencastle.json`). Skip if no messaging configured. |
+| 4 | Check DLQ | Scan `.opencastle/AGENT-FAILURES.md` for failures in current scope. |
+| 5 | Validate skill-matrix | Open `.opencastle/agents/skill-matrix.json` — if all `bindings` entries are empty, **warn** user to run *"Bootstrap Customizations"* prompt first. |
+| 6 | Check project context | If `.opencastle/project.instructions.md` has only empty template rows, warn bootstrap hasn't run. |
+| 7 | Load domain skills | Load appropriate skills before writing code. |
 
-### Actions
-
-1. **Read lessons learned** — Scan `.opencastle/LESSONS-LEARNED.md` for entries relevant to the current task domain. Apply proactively.
-2. **Check for checkpoint** — If `.opencastle/SESSION-CHECKPOINT.md` exists, read it. Resume from last known state instead of re-analyzing.
-3. **Check pending approvals** — If the checkpoint has a `## Pending Approvals` section, check for replies using the configured messaging provider's MCP tools (e.g., `conversations_replies` for Slack). Read `.opencastle.json` → `stack.teamTools` to determine the provider. If no messaging is configured, skip this step.
-4. **Check dead letter queue** — Scan `.opencastle/AGENT-FAILURES.md` for pending failures related to the current scope.
-5. **Validate skill-matrix bindings** — Open `.opencastle/agents/skill-matrix.json` and check whether the `bindings` object has any slots with non-empty `entries` arrays. If all entries are empty, **warn the user** that the bootstrap hasn't been run and capability slots will not resolve. Suggest running the *"Bootstrap Customizations"* prompt first. Do NOT silently continue with empty bindings.
-6. **Check project context** — If `.opencastle/project.instructions.md` has only empty template rows (`| | | |`), warn the user that bootstrap hasn't populated project context.
-7. **Load domain skills** — Based on the task description, load the appropriate skills before writing code. Don't start coding without the relevant skill loaded.
-
-### Template for Delegation Prompts
-
-Include this reminder in every delegation:
-
+**Delegation reminder:**
 ```
-**Session Start:** Read `.opencastle/LESSONS-LEARNED.md` before starting.
-Check `.opencastle/SESSION-CHECKPOINT.md` for prior state and pending approvals.
-If pending approvals exist, check for replies via the messaging provider.
-Validate `.opencastle/agents/skill-matrix.json` — warn if skill bindings are empty (bootstrap not run).
-Load relevant skills before writing code.
+Session Start: Read `.opencastle/LESSONS-LEARNED.md`. Check `.opencastle/SESSION-CHECKPOINT.md` for prior state and pending approvals. Validate `.opencastle/agents/skill-matrix.json` — warn if bindings empty. Load relevant skills before coding.
 ```
 
 ---
 
-## Hook: on-session-end
+## on-session-end — Before yielding control, every time unconditionally
 
-**When:** Before the agent yields control back to the user — every time, unconditionally.
+> **⛔ HARD GATE** — See [logging-mandatory](../../snippets/logging-mandatory.md). Run the Pre-Response Quality Gate from the **observability-logging** skill.
 
-> **⛔ HARD GATE — Run the Pre-Response Quality Gate checklist from the **observability-logging** skill before responding.**
-> A session without log records is a failed session. A session without lessons captured after retries is a failed session.
+| # | Action | Who |
+|---|--------|-----|
+| 1 | Call Session Guard with session summary; execute fix commands it returns | Team Lead only |
+| 2 | Run Pre-Response Quality Gate checklist from **observability-logging** skill | Specialists only |
+| 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if work is incomplete (load **session-checkpoints** skill) | Team Lead only |
+| 4 | Flag for memory merge if 5+ new lessons this session | All |
+| 5 | Remove temp files created during session | All |
 
-### Actions
-
-1. **Call Session Guard** (Team Lead only) — Delegate to the **Session Guard** agent with a session summary (delegations, retries, discoveries, files changed). Execute any fix commands it returns. This replaces the manual Pre-Response Quality Gate checklist — the guard runs it automatically with a fresh context window.
-2. **For specialist agents** (not Team Lead) — Run the Pre-Response Quality Gate checklist from the **observability-logging** skill manually. Specialist agents don't have access to the Session Guard.
-3. **Save checkpoint** (Team Lead only) — If work is incomplete, write `.opencastle/SESSION-CHECKPOINT.md` with current state so the next session can resume. Load **session-checkpoints** skill for format.
-4. **Memory merge check** — If `LESSONS-LEARNED.md` has grown significantly (5+ new entries this session), flag for memory merge consideration.
-5. **Clean up** — Remove any temporary files created during the session (e.g., test fixtures, debug outputs).
-
-### Template for Delegation Prompts
-
+**Delegation reminder (specialists):**
 ```
-**Session End:** Run the Pre-Response Quality Gate from the **observability-logging** skill:
-- Log your session using the observability-logging skill's session record command (Constitution rule #6)
-- If you retried anything with a different approach that worked, use the **self-improvement** skill to add a lesson
-- Track any discovered issues in KNOWN-ISSUES.md or a tracker ticket
-- Clean up temp files
+Session End: Log session via observability-logging skill (Constitution rule #6). Add lesson via self-improvement if retried. Track discovered issues in KNOWN-ISSUES.md or tracker. Clean up temp files.
 ```
-
-> **Note for Team Lead:** You do NOT use this template yourself. Instead, call the **Session Guard** agent (step 10 in your role). This template is only for specialist agents you delegate to.
 
 ---
 
-## Hook: on-pre-delegate
+## on-pre-delegate — Team Lead only, before every delegation
 
-**When:** Team Lead only — before every delegation (sub-agent or background agent).
+Run the 5-point Pre-Delegation Checks from the Team Lead agent file: (1) Tracker issue exists, (2) File partition clean, (3) Dependencies verified Done, (4) Prompt has file paths + acceptance criteria, (5) Self-improvement reminder included. For 5+ files, generate a context map.
 
-Run the 5-point Pre-Delegation Checks from the Team Lead agent file: (1) Tracker issue exists, (2) File partition clean, (3) Dependencies verified Done, (4) Prompt has file paths + acceptance criteria, (5) Self-improvement reminder included. For complex tasks (5+ files), also generate a context map.
+## on-post-delegate — Team Lead only, after receiving delegation results
 
----
+| # | Action |
+|---|--------|
+| 0 | **⛔ Log delegation** via observability-logging skill — BLOCKING |
+| 1 | **Fast review (mandatory)** — run `fast-review` skill; **⛔ log review** — BLOCKING. Escalate to panel if needed; **⛔ log panel** — BLOCKING |
+| 2 | Read changed files; verify within file partition |
+| 3 | Run lint, type-check, tests |
+| 4 | Verify each acceptance criterion against tracker issue |
+| 5 | Confirm Discovered Issues Policy followed (KNOWN-ISSUES.md or tracker ticket) |
+| 6 | If agent retried, verify lesson added via **self-improvement** skill |
+| 7 | Move issue to Done or re-delegate; on 3rd failure → log to `.opencastle/AGENT-FAILURES.md` |
+| 8 | Update `.opencastle/AGENT-EXPERTISE.md` (strong/weak area + file familiarity) |
+| 9 | Append file relationships to `.opencastle/KNOWLEDGE-GRAPH.md` |
 
-## Hook: on-post-delegate
-
-**When:** Team Lead only — after receiving results from a delegated agent.
-
-### Actions
-
-0. **Log the delegation (⛔ hard gate)** — Use the **observability-logging** skill's delegation record command. Do NOT proceed to review or any other action until the delegation is logged and verified.
-1. **Fast review (mandatory)** — Run the `fast-review` skill against the agent's output. This is a **non-skippable gate**. See the fast-review skill for the full procedure (single reviewer sub-agent, automatic retry, escalation). **Log the review (⛔ hard gate)** using the **observability-logging** skill's review record command immediately after — do NOT proceed until logged. Only after both the fast review passes and the review is logged do you proceed to the remaining post-delegate actions below.
-2. **Verify output** — Read changed files. Check that changes stay within the agent's file partition.
-2. **Run verification** — Execute appropriate checks: lint, type-check, tests, or visual inspection.
-3. **Check acceptance criteria** — Compare output against the tracker issue's acceptance criteria. Each criterion must be independently verified.
-4. **Discovered issues tracked** — Verify the agent followed the Discovered Issues Policy. If they found issues, check that they're in KNOWN-ISSUES.md or a new tracker ticket.
-5. **Lessons captured** — If the agent retried anything, verify a lesson was added via the **self-improvement** skill.
-6. **Update tracker** — Move the issue to Done (if passing) or add failure notes and re-delegate (if failing). On 3rd failure → log to `.opencastle/AGENT-FAILURES.md` (DLQ format in file header).
-7. **Update agent expertise** — In `.opencastle/AGENT-EXPERTISE.md`: first-attempt success → add strong area; 2+ retries → add weak area. Update file familiarity with touched files.
-8. **Append knowledge graph** — Add file-to-file relationships the agent touched to `.opencastle/KNOWLEDGE-GRAPH.md` (one row per dependency discovered).
-
-### Quick Checklist
-
+**Quick checklist:**
 ```
-Post-Delegate:
-☐ ⛔ Delegation logged (observability-logging skill — verify with tail -1) — BLOCKING
-☐ Changed files reviewed
-☐ Files within partition
+☐ ⛔ Delegation logged (verify: tail -1 events.ndjson) — BLOCKING
+☐ Changed files reviewed; within partition
 ☐ Lint/test/build passes
-☐ Fast review PASS (mandatory — load fast-review skill)
-☐ ⛔ Review logged (observability-logging skill — verify with tail -1) — BLOCKING
-☐ ⛔ Panel logged if escalated (observability-logging skill — verify with tail -1) — BLOCKING
+☐ Fast review PASS; ⛔ Review logged — BLOCKING
+☐ ⛔ Panel logged if escalated — BLOCKING
 ☐ Acceptance criteria met
-☐ Discovered issues tracked (not ignored)
-☐ Lessons captured (if retries occurred)
+☐ Discovered issues tracked
+☐ Lessons captured (if retries)
 ☐ Issue updated
-☐ Agent expertise updated (AGENT-EXPERTISE.md — strong/weak area + file familiarity)
-☐ Knowledge graph appended (KNOWLEDGE-GRAPH.md — file relationships)
+☐ AGENT-EXPERTISE.md updated
+☐ KNOWLEDGE-GRAPH.md appended
 ```
-
----
-
-## Hook Integration
-
-### For Team Lead
-
-The on-pre-delegate and on-post-delegate hooks are already encoded in the Team Lead's orchestration workflow. Reference this skill to ensure consistency.
-
-### For Specialist Agents
-
-Include on-session-start and on-session-end actions in every delegation prompt. Use the templates above.
-
-### For Workflow Templates
-
-Each workflow's **Delivery phase** naturally serves as the on-session-end hook for that workflow type. The Delivery phase steps should include session logging, lesson verification, and memory merge checks.
 
 ---
 
 ## Anti-Patterns
 
-- **Skipping on-session-start** — Leads to repeated mistakes already documented in lessons learned
-- **Forgetting session logging** — Makes the observability dashboard empty and performance tracking impossible. This is the #1 most common failure.
-- **Treating logging as optional** — Every session gets logged. No threshold, no exceptions.
-- **Batch-logging retrospectively** — Log each task as it completes, not all at once at the end of a long conversation.
-- **Partial post-delegate checks** — "It compiled, ship it" without checking acceptance criteria
-- **No cleanup** — Temp files accumulate and confuse future sessions
-- **Hooks as blockers** — Hooks should add ~2 minutes overhead, not 20. If a hook takes too long, skip the optional parts
+| Anti-pattern | Why it matters |
+|---|---|
+| Skipping on-session-start | Repeated mistakes already in lessons learned |
+| Forgetting session logging | Observability dashboard empty; #1 most common failure |
+| Treating logging as optional | Every session logged — no threshold, no exceptions |
+| Batch-logging retrospectively | Log each task as it completes, not all at end |
+| Partial post-delegate checks | Must verify acceptance criteria, not just "it compiled" |
+| No cleanup | Temp files accumulate and confuse future sessions |
+| Hooks as blockers | Hooks add ~2 min overhead — skip optional parts if needed |

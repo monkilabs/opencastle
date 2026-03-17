@@ -3,168 +3,98 @@ name: panel-majority-vote
 description: "Run 3 isolated reviewer sub-agents against the same question and decide PASS/BLOCK by majority vote (2/3 wins). Use when deterministic verification is insufficient."
 ---
 
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
-
-# Skill: Panel majority vote (3 reviewers)
-
-Use this skill when deterministic verification is unavailable and you need a panel to decide PASS/BLOCK for a single question against a declared artifact scope.
+# Skill: Panel majority vote
 
 ## Contract
-- Scope is exactly one run root and one panel key.
-- Reviewers must only use the declared in-scope artifacts.
-- Exactly 3 isolated reviewer runs.
-- Majority vote decides overall verdict (2/3 wins).
-- Consolidated panel report must include a short retry summary when BLOCK.
 
-## Inputs
-- Run root: `<runRoot>`
-- Panel key: `<panelKey>` (a filesystem-safe identifier used to name output files)
-- Exact question text (single question)
-- Explicit in-scope artifact list (all under the same run root)
+| Rule | Detail |
+|------|--------|
+| Scope | One run root, one panel key |
+| Artifacts | Reviewers use only declared in-scope artifacts |
+| Runners | Exactly 3 isolated reviewer runs |
+| Verdict | Majority (2/3 wins) |
+| On BLOCK | Consolidated report must include retry summary |
 
-Optional (defaults shown):
-- Panel output directory: `<panelDir>` (default: `<runRoot>/panel/`)
+## Inputs / Outputs
 
-## Outputs (files)
-- (Optional) Prompt payload: `<panelDir>/<panelKey>-panel-prompt.md`
-- Raw reviewer outputs: `<panelDir>/<panelKey>-reviewer-outputs.md`
-- Consolidated report: `<panelDir>/<panelKey>.md`
+**Inputs:** `<runRoot>`, `<panelKey>` (filesystem-safe), question text, artifact list. Panel dir default: `<runRoot>/panel/`.
 
-## Procedure (required: run in isolation)
-Run this skill in an isolated subagent (using `runSubagent`) so the panel cannot accidentally consult unrelated workspace context.
+| File | Path |
+|------|------|
+| Prompt payload (optional) | `<panelDir>/<panelKey>-panel-prompt.md` |
+| Raw reviewer outputs | `<panelDir>/<panelKey>-reviewer-outputs.md` |
+| Consolidated report | `<panelDir>/<panelKey>.md` |
 
-The isolated runner subagent must:
-1. Validate scope
-  - Ensure every in-scope artifact path is under `<runRoot>`.
-  - Ensure the in-scope list is sufficient to answer the question.
+## Procedure
 
-2. Spawn exactly 3 reviewers (in parallel)
-  - Launch 3 isolated reviewer subagents (using `runSubagent`) with the exact same prompt payload.
-  - The prompt payload may be passed directly to the reviewer subagents (no file required).
-  - If you want an explicit artifact of the prompt payload, optionally write it to `<panelDir>/<panelKey>-panel-prompt.md`.
-  - Reviewer prompt must require this strict output format:
-    1) VERDICT: PASS | BLOCK
-    2) MUST-FIX:
-    - ...
-    3) SHOULD-FIX:
-    - ...
-    4) QUESTIONS:
-    - ...
-    5) TEST IDEAS:
-    - ...
-    6) CONFIDENCE: low | med | high
-  - Reviewers must not include any other sections.
-
-3. Persist reviewer outputs (required audit trail)
-  - Create/overwrite `<panelDir>/<panelKey>-reviewer-outputs.md`.
-  - Include at the top:
-    - Run root
-    - Panel key
-    - Question text
-    - In-scope artifact list
-    - (Optional) The exact prompt payload text provided to reviewers
-  - Then include each reviewer output verbatim, clearly separated.
-
-4. Consolidate by majority vote (2/3 wins)
-  - Compute:
-    - PASS count
-    - BLOCK count
-    - Overall = PASS if PASS >= 2 else BLOCK
-  - Deduplicate MUST-FIX and SHOULD-FIX items; annotate how many reviewers flagged each.
-  - Record disagreements (items flagged by only 1 reviewer; or materially conflicting assessments).
-  - Include determinize-next recommendations.
-  - If Overall = BLOCK, include a short Retry summary:
-    - top changes required before retrying
-
-5. Write the consolidated panel report
- - Create `<panelDir>/<panelKey>.md` using the template in `panel-report.template.md` (in this directory).
-
-6. Print a concise summary to chat
-  - Overall verdict + vote tally + path to `<panelDir>/<panelKey>.md`.
-
-7. Log the panel result **(⛔ hard gate — do NOT return the verdict or proceed until logged)**
-  - Log the panel result using the **observability-logging** skill's panel record command. An unlogged panel is a failed panel.
-  - Include: `panel_key`, `verdict`, `pass_count`, `block_count`, `must_fix`, `should_fix`, `reviewer_model`, `weighted`, `attempt`, `tracker_issue`, `artifacts_count`, `report_path`.
-  - The skill's panel record command includes a verify step.
-
-Finally: ensure whatever produced the claim being verified links the consolidated panel report as verification evidence.
+1. **Validate scope** — every artifact path is under `<runRoot>`; list is sufficient to answer the question.
+2. **Spawn 3 reviewers in parallel** — identical prompt to 3 isolated subagents. Optionally write payload to `<panelDir>/<panelKey>-panel-prompt.md`. Required output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
+3. **Persist outputs** — write `<panelDir>/<panelKey>-reviewer-outputs.md` with header (run root, panel key, question, artifacts) and each reviewer output verbatim, separated.
+4. **Consolidate** — count PASS/BLOCK; overall PASS if ≥ 2. Deduplicate MUST-FIX/SHOULD-FIX with reviewer counts. Record disagreements. Include determinize-next recs. If BLOCK, add retry summary.
+5. **Write report** — create `<panelDir>/<panelKey>.md` using `panel-report.template.md`.
+6. **Print summary** — overall verdict + vote tally + report path.
+7. **Log (⛔ hard gate)** — use **observability-logging** skill panel command. Fields: `panel_key`, `verdict`, `pass_count`, `block_count`, `must_fix`, `should_fix`, `reviewer_model`, `weighted`, `attempt`, `tracker_issue`, `artifacts_count`, `report_path`. Link report as verification evidence.
 
 ## Notes
-- If the panel output is BLOCK, prefer to change the underlying work and re-run the same panel question over re-wording the question.
-- After 3 consecutive BLOCKs on the same panel key, create a **dispute record** in `.opencastle/DISPUTES.md` instead of retrying further. The dispute packages the agent's position, all reviewer feedback, attempt history, and resolution options for human decision-making. See the **team-lead-reference** skill § Dispute Protocol for the full procedure.
 
-## Model Selection for Reviewers
+- On BLOCK: change the underlying work and re-run; do not re-word the question.
+- After 3 consecutive BLOCKs on the same panel key: create a dispute record per **team-lead-reference** § Dispute Protocol.
 
-Choose reviewer models based on the domain being reviewed:
-- **Security, architecture, complex logic** → Quality (Claude Sonnet 4.6) for all 3 reviewers
-- **Feature implementation, UI, queries** → Standard (Gemini 3.1 Pro) for all 3 reviewers
-- **Mixed-domain review** → Use Quality for at least 1 reviewer, Standard for the other 2
+## Model Selection
 
-All 3 reviewers should use the same model to ensure comparable verdicts. Mixing models can lead to inconsistent review depth and confusing disagreements.
+| Domain | Model |
+|--------|-------|
+| Security, architecture, complex logic | Quality (Claude Sonnet 4.6) × 3 |
+| Feature implementation, UI, queries | Standard (Gemini 3.1 Pro) × 3 |
+| Mixed-domain | Quality × 1, Standard × 2 |
+
+Use same model for all 3 reviewers.
 
 ## Weighted Consensus Variant
 
-Extends the panel system for subjective decisions where domain expertise should weight more heavily than a simple head-count.
+For subjective decisions where domain expertise should weight more than head-count.
 
-### When to Use Weighted Consensus
+### When to Use
 
-| Decision Type | Use Simple Majority | Use Weighted Consensus |
-|--------------|--------------------|-----------------------|
-| Security vulnerability present? | ✅ | — |
-| Code correctness | ✅ | — |
-| Best UI approach for user experience | — | ✅ |
-| Architecture tradeoff (performance vs maintainability) | — | ✅ |
-| Data model design choices | — | ✅ |
-| Naming conventions / code style disputes | — | ✅ |
+| Decision Type | Mode |
+|--------------|------|
+| Security vulnerability, code correctness | Simple majority |
+| UI/UX, architecture tradeoffs, data model, naming | Weighted |
 
-### Weight Assignment Rules
+### Weight Assignment
 
-Each reviewer gets a weight based on 3 factors:
+Base weight: 1. Add bonuses:
 
-| Factor | Weight Bonus | Example |
-|--------|-------------|---------|
-| **Domain expertise** | +2 | Security Expert reviewing auth code |
-| **Confidence level** | +1 (high) / 0 (med) / -1 (low) | Self-reported by reviewer |
-| **Prior success** | +1 | Agent has >80% success rate for similar reviews (from AGENT-PERFORMANCE.md) |
+| Factor | Bonus |
+|--------|-------|
+| Domain expertise (relevant to review) | +2 |
+| Confidence high / med / low | +1 / 0 / -1 |
+| Prior success rate >80% (AGENT-PERFORMANCE.md) | +1 |
 
-**Base weight:** 1 for all reviewers. Add bonuses to get final weight.
+Example: Security Expert + high = **4**; Architect + med = **2**.
 
-**Example:**
+### Voting Protocol
 
-```text
-Reviewer 1 (Security Expert, reviewing auth): base 1 + domain 2 + confidence 1 = weight 4
-Reviewer 2 (Frontend Dev, reviewing auth):    base 1 + domain 0 + confidence 1 = weight 2
-Reviewer 3 (Architect, reviewing auth):        base 1 + domain 1 + confidence 0 = weight 2
-```
-
-### Weighted Voting Protocol
-
-1. **Assign weights** to each reviewer before spawning them (based on their role relative to the review domain)
-2. **Spawn reviewers** with the same prompt as simple majority (use the existing procedure)
-3. **Collect verdicts** — each reviewer submits PASS/BLOCK with confidence level
-4. **Calculate weighted score:**
-   - Sum weights of PASS reviewers → PASS score
-   - Sum weights of BLOCK reviewers → BLOCK score
-   - Overall = PASS if PASS score > BLOCK score, else BLOCK
-5. **Tie-breaking:** If scores are equal, the reviewer with the highest individual weight breaks the tie. If weights are also equal, default to BLOCK (conservative).
+1. Assign weights before spawning.
+2. Spawn with same prompt; collect PASS/BLOCK + confidence.
+3. Score: sum weights by verdict; PASS if PASS score > BLOCK score.
+4. Tie: highest individual weight breaks tie; if equal, default BLOCK.
 
 ### Conflict Resolution
 
-- If a low-weight reviewer BLOCKs but high-weight reviewers PASS: note the BLOCK concerns in the report but overall PASS. Include the low-weight MUST-FIX items as SHOULD-FIX instead.
-- If the domain expert BLOCKs but generalists PASS: overall BLOCK. Domain expertise overrides general opinion.
-- If all reviewers have equal weight: falls back to simple majority vote (2/3 wins).
+| Scenario | Outcome |
+|----------|---------|
+| Low-weight BLOCKs, high-weight PASSes | PASS; move BLOCK's MUST-FIX → SHOULD-FIX |
+| Domain expert BLOCKs, generalists PASS | BLOCK |
+| All equal weight | Simple majority (2/3 wins) |
 
-### Weighted Panel Report Extension
-
-Add these fields to the consolidated panel report template when using weighted consensus:
+### Report Extension
 
 ```markdown
 ### Weighting
 | Reviewer | Role | Domain | Confidence | Prior Success | Final Weight |
 |----------|------|--------|------------|---------------|-------------|
 | 1 | [Agent] | +X | +X | +X | X |
-| 2 | [Agent] | +X | +X | +X | X |
-| 3 | [Agent] | +X | +X | +X | X |
 
 ### Weighted Score
 - PASS: X (reviewers: 1, 3)
@@ -172,12 +102,7 @@ Add these fields to the consolidated panel report template when using weighted c
 - **Overall: PASS/BLOCK** (weighted)
 ```
 
-### Integration with Existing Panel Workflow
+### Integration
 
-The weighted consensus variant follows the SAME procedure steps (1-6) from the main panel protocol. The only differences are:
-1. Weight assignment happens in step 2 (before spawning reviewers)
-2. Step 4 uses weighted calculation instead of simple count
-3. The consolidated report includes the weighting table
-
-The Team Lead decides whether to use simple majority or weighted consensus when scheduling the panel review. Include the decision rationale in the delegation prompt.
+Same steps 1–7 as standard panel. Differences: assign weights in step 2; use weighted calculation in step 4; add weighting table to report. Team Lead decides simple vs. weighted; include rationale in delegation prompt.
 

@@ -3,123 +3,86 @@ name: memory-merger
 description: "Protocol for graduating mature lessons from LESSONS-LEARNED.md into permanent instruction and skill files. Closes the self-improvement loop by codifying validated knowledge at the source level."
 ---
 
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
+# Memory Merger
 
-# Skill: Memory Merger
-
-This skill automates the final step of the self-improvement cycle: promoting validated lessons into the instruction and skill files where they have structural, permanent impact.
-
-## Why Merge?
-
-`.opencastle/LESSONS-LEARNED.md` is a flatfile that grows over time. Lessons buried in a 400+ line file lose their impact — agents skim past them or miss relevant entries. The most valuable lessons should **graduate** into the instruction/skill files where they're encountered naturally during every task.
+Promotes validated lessons from `.opencastle/LESSONS-LEARNED.md` into instruction/skill files where they have permanent impact.
 
 ## When to Run
 
-Invoke a memory merge when:
-
-- **LESSONS-LEARNED.md exceeds 50 entries** — periodic cleanup
-- **A lesson has been cited 3+ times** — it's clearly a recurring pattern
-- **A lesson is older than 60 days** — mature enough to be considered stable
-- **After a major feature ships** — good checkpoint to extract patterns
-- **Team Lead's discretion** — any time the lessons file feels stale
+| Trigger | Threshold |
+|---------|-----------|
+| File size | >50 entries |
+| Citation count | Cited 3+ times |
+| Age | >60 days old |
+| Category cluster | 5+ lessons in same category |
+| Discretionary | Lessons file feels stale |
 
 ## Merge Protocol
 
-### Step 1: Scan for Merge Candidates
-
-Read `.opencastle/LESSONS-LEARNED.md` and identify lessons that meet any of these criteria:
+### 1 — Scan Candidates
 
 | Criterion | Signal |
 |-----------|--------|
-| **High frequency** | Cited or re-discovered 3+ times |
-| **High severity** | Marked `high` severity |
-| **Age** | Added more than 60 days ago and still relevant |
-| **Category concentration** | 5+ lessons in the same category → extract a pattern |
-| **Tool-specific** | Lesson about a specific MCP tool, codebase-tool command, or framework pattern |
+| Frequency | Cited/re-discovered 3+ times |
+| Severity | Marked `high` |
+| Age | >60 days, still relevant |
+| Concentration | 5+ in same category → extract pattern |
+| Tool-specific | MCP tool, codebase-tool command, or framework pattern |
 
-### Step 2: Map Lessons to Target Files
+### 2 — Map to Target File
 
-Each lesson has a natural home in the instruction/skill hierarchy:
-
-| Lesson Category | Target File |
-|----------------|-------------|
-| `task-management` | The skill mapped by the `task-management` slot in the skill matrix |
-| `mcp-tools` | The corresponding agent file or skill that uses the tool |
-| `codebase-tool` | The skill mapped by the `codebase-tool` slot in the skill matrix |
-| `cms` | The skill mapped by the `cms` slot in the skill matrix |
-| `database` | The skill mapped by the `database` slot in the skill matrix |
-| `browser-testing` | The skill mapped by the `e2e-testing` slot in the skill matrix |
+| Category | Target |
+|----------|--------|
+| `task-management` | skill-matrix `task-management` slot |
+| `mcp-tools` | agent/skill that uses the tool |
+| `codebase-tool` | skill-matrix `codebase-tool` slot |
+| `cms` / `database` | respective skill-matrix slots |
+| `browser-testing` | skill-matrix `e2e-testing` slot |
 | `git-workflow` | `.github/skills/git-workflow/SKILL.md` |
 | `deployment` | `.github/skills/deployment-infrastructure/SKILL.md` |
-| `delegation` | `.github/agents/team-lead.agent.md` or `.github/skills/team-lead-reference/SKILL.md` |
+| `delegation` | `.github/agents/team-lead.agent.md` or `team-lead-reference` skill |
 | `testing` | `.github/skills/testing-workflow/SKILL.md` |
-| `ui` / `framework` | The skill mapped by the `framework` slot or the `react-development` direct skill |
-| Cross-cutting pattern | `.github/instructions/general.instructions.md` |
+| `ui` / `framework` | `framework` slot or `react-development` skill |
+| Cross-cutting | `.github/instructions/general.instructions.md` |
 
-### Step 3: Draft the Merge
+### 3 — Draft Edit
 
-For each candidate lesson, draft a concrete edit to the target file:
+```
+Lesson: LES-XXX — [title]
+Target: [file path]
+Section: [section name]
+Edit: [exact text]
+```
+Strategies: add rule, add anti-pattern, add code example, expand existing rule, add table row.
+
+### 4 — Apply & Attribute
+
+Edit target file; add `<!-- Merged from LES-XXX -->` attribution inline.
+
+### 5 — Archive
+
+Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.md`:
 
 ```markdown
-**Lesson:** LES-XXX — [title]
-**Target:** [target file path]
-**Section:** [which section to add to or modify]
-**Edit:** [exact text to add or modify]
-**Rationale:** [why this belongs here rather than staying in lessons]
+### LES-XXX: [title] → Merged to `[target]` on YYYY-MM-DD
 ```
 
-#### Merge Strategies
+**Never delete lessons** — archive for traceability.
 
-- **Add a rule** — if the lesson reveals a new "always do X" or "never do Y", add it to the target file's rules section
-- **Add an anti-pattern** — if the lesson describes a common mistake, add it to an anti-patterns or "Common Mistakes" section
-- **Add a code example** — if the lesson includes a correct approach with a code block, add it as a documented pattern
-- **Expand existing rule** — if a rule already exists but the lesson adds nuance (edge case, exception), update the rule
-- **Add a table row** — if the target has a reference table, add the lesson as a new row
+### 6 — Update Index
 
-### Step 4: Apply Edits
-
-1. Edit each target file with the drafted changes
-2. Add a comment or note attributing the source: `<!-- Merged from LES-XXX -->`
-3. Verify the edit reads naturally in context (not just pasted in)
-
-### Step 5: Archive the Merged Lessons
-
-Move merged lessons from the main body of `LESSONS-LEARNED.md` to an `## Archived (Merged)` section at the bottom of the file:
-
-```markdown
-## Archived (Merged)
-
-Lessons below have been merged into instruction/skill files. They are kept here for historical reference.
-
-### LES-XXX: [title] → Merged to `[target file]` on YYYY-MM-DD
-```
-
-**Do NOT delete lessons.** Archive them so they remain searchable and traceable.
-
-### Step 6: Update the Index
-
-Update the `## Index by Category` table in `LESSONS-LEARNED.md` to reflect which lessons are now archived.
+Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
 ## Quality Gates
 
-Before finalizing a merge:
-
-- [ ] The merged content reads naturally in the target file (not copy-pasted)
-- [ ] The target file's structure and tone are preserved
-- [ ] No duplicate information created (check if a similar rule already exists)
-- [ ] The archived lesson references the target file
-- [ ] The lesson's core insight is preserved — don't lose nuance when summarizing
+- [ ] Merged content reads naturally (not copy-pasted)
+- [ ] No duplicate rules created
+- [ ] Archived lesson references target file
+- [ ] Core insight preserved — no loss of nuance
 
 ## Anti-Patterns
 
-- **Don't merge too eagerly** — a lesson needs to prove itself (3+ citations or 60+ days) before graduating
-- **Don't copy verbatim** — lessons are written as incident reports; instruction files should read as rules/guidelines
-- **Don't merge conflicting lessons** — if two lessons contradict, resolve the conflict first
-- **Don't merge without context** — if the lesson only makes sense with the full story, either include enough context in the target file or keep it in LESSONS-LEARNED.md
-- **Don't create new files for merged content** — merge INTO existing files; only create new skills if a genuinely new domain emerges
-
-## Frequency
-
-- **Quarterly review** — schedule a full scan of LESSONS-LEARNED.md every ~3 months
-- **Post-feature review** — after major features ship, scan for relevant lessons
-- **Ad-hoc** — any time an agent notices "this lesson should be a permanent rule"
+- Merge too eagerly — must meet 3+ citations or 60+ day threshold
+- Copy verbatim — rewrite as rules/guidelines, not incident reports
+- Merge conflicting lessons — resolve conflict first
+- Create new files for merged content — merge INTO existing files only

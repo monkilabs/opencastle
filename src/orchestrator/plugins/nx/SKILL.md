@@ -96,98 +96,46 @@ The NX MCP server provides tools for understanding and working with the workspac
 
 ## Code Generation Workflow
 
-Use this workflow whenever scaffolding new code (libraries, applications, features) or running automated code transformations. **Always prefer generators over manual file creation** when a generator exists for the task.
+Always prefer generators over manual file creation when a generator exists.
 
 ### Phase 1: Discover
 
-1. **List available generators** using `nx_generators` MCP tool
-   - This includes plugin generators (e.g., `@nx/react:library`) and local workspace generators
-2. **Match generator to request** — identify which generator(s) could fulfill the need
-3. **Prefer local generators** — when both local and plugin generators could work, **always prefer local** (they're customized for this repo's patterns)
-4. **If no generator fits** — check `nx_available_plugins` for installable plugins. Only fall back to manual creation after exhausting all generator options
+1. List available generators using `nx_generators` MCP tool (plugin + local workspace generators)
+2. Prefer local generators over plugin generators — they're customized for this repo
+3. If no generator fits, check `nx_available_plugins`; only fall back to manual creation after exhausting all generator options
 
 ### Phase 2: Understand
 
-Before running any generator, complete these steps:
-
-1. **Fetch generator schema** using `nx_generator_schema` MCP tool
-   - Identify required vs optional options
-   - Note default values that may need overriding
-   - Pay attention to options that affect file structure or naming
-
-2. **Read generator source code** (for unfamiliar generators)
-   - Find source: `node -e "console.log(require.resolve('@nx/<plugin>/generators.json'));"`
-   - If that fails: read from `node_modules/<plugin>/generators.json`
-   - Local generators: check `tools/generators/` or local plugin directories
-   - Understanding the source reveals side effects (config updates, dep installs) and files created/modified
-
-3. **Reevaluate generator choice** — after understanding what the generator does, confirm it's the right one. If not, go back to Phase 1 and select a different generator.
-
-4. **Examine repo context** — study existing similar artifacts in the codebase:
-   - Look at how similar projects are structured (naming, test runner, build tool, linter)
-   - Match conventions when configuring the generator
-   - Note directory structures, file patterns, and config styles
-
-5. **Validate required options** — map the user's request to generator options:
-   - Infer values from context where possible
-   - Ask for critical missing information if it cannot be inferred
+1. Fetch generator schema using `nx_generator_schema` — note required options, defaults, and file structure impacts
+2. Read generator source to understand side effects (config updates, dep installs, files created/modified)
+3. Examine existing similar artifacts for naming, structure, test runner, and config conventions; map user's request to generator options
 
 ### Phase 3: Execute
 
-1. **Consider dry-run first** (recommended for complex/unfamiliar generators):
-   ```bash
-   yarn nx generate <generator-name> <options> --dry-run --no-interactive
-   ```
-   - Shows files that would be created/deleted/modified (but not content)
-   - Some generators don't support dry-run (e.g., if they install packages) — skip and run for real
-   - For simple, well-understood generators, you may skip dry-run
+```bash
+yarn nx generate <generator-name> <options> --dry-run --no-interactive  # optional preview
+yarn nx generate <generator-name> <options> --no-interactive
+```
 
-2. **Run the generator**:
-   ```bash
-   yarn nx generate <generator-name> <options> --no-interactive
-   ```
-   **CRITICAL**: Always include `--no-interactive` to prevent prompts that hang execution.
+**CRITICAL**: Always include `--no-interactive` to prevent prompts that hang execution.
 
-   **CRITICAL**: Generators may behave differently based on the current working directory (e.g., library generators use cwd to determine placement). Verify cwd before running.
+**CRITICAL**: Verify cwd before running — generators may use it to determine file placement.
 
-3. **Handle failures** — if the generator fails:
-   - Read the error message carefully
-   - Common causes: missing required options, invalid values, conflicting files, missing dependencies
-   - Adjust options and retry
-   - Use the **self-improvement** skill to add a lesson if the fix was non-obvious
+On failure: read the error, adjust options, and retry. Use the **self-improvement** skill for non-obvious fixes.
 
 ### Phase 4: Post-Generation
 
-1. **Modify generated code** if needed — generators provide a starting point:
-   - Adjust functionality to match specific requirements
-   - Update imports, exports, configurations
-   - Integrate with existing code patterns
-
-2. **Format code**:
-   ```bash
-   yarn nx format --fix
-   ```
-
-3. **Run verification** on generated/affected projects:
-   ```bash
-   yarn nx run <new-project>:lint --fix
-   yarn nx run <new-project>:test
-   yarn nx run <new-project>:build
-   ```
-
-4. **Handle verification failures**:
-   - **Small scope** (few lint errors, minor type issues) — fix directly, re-verify
-   - **Large scope** (many errors, complex problems) — fix obvious issues first, escalate remaining with description of what was generated, what's failing, and what was attempted
+1. Modify generated code to match requirements (imports, exports, config, integrations)
+2. Format: `yarn nx format --fix`
+3. Verify lint, test, and build on generated/affected projects; fix small-scope issues directly, escalate large-scope failures
 
 ## Running Tasks Workflow
 
-When helping with build, test, lint, or serve tasks:
-
 1. Use `nx_current_running_tasks_details` to check for active/completed/failed tasks
-2. For a specific task, use `nx_current_running_task_output` to get its terminal output
+2. Use `nx_current_running_task_output` to get terminal output for a specific task
 3. Diagnose issues from the output and apply fixes
-4. To rerun a task, always use `yarn nx run <taskId>` to preserve the NX context
-5. **Continuous tasks** (like `serve`) are already running — don't offer to rerun, just check output
+4. To rerun, use `yarn nx run <taskId>` to preserve NX context
+5. **Continuous tasks** (like `serve`) are already running — don't rerun, just check output
 
 ## Project Names
 
