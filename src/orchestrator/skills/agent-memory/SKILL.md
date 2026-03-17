@@ -3,19 +3,11 @@ name: agent-memory
 description: "Agent expertise tracking and cross-session knowledge graph. Use when delegating tasks to track agent strengths/weaknesses, or when building context about file relationships and patterns."
 ---
 
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
-
 # Agent Memory Protocol
-
-## Purpose
-
-Track which agents have expertise with which files, patterns, and tools across sessions. This information helps the Team Lead make better delegation decisions by matching tasks to agents with proven track records.
 
 ## Expertise File
 
-Location: `.opencastle/AGENT-EXPERTISE.md` — a structured record of agent performance per domain.
-
-Template structure:
+**Location:** `.opencastle/AGENT-EXPERTISE.md`
 
 ```markdown
 # Agent Expertise Registry
@@ -24,123 +16,82 @@ Template structure:
 ### Strong Areas
 | Area | Evidence | Last Updated |
 |------|----------|-------------|
-| Feature implementation | Successfully built 5 pages (TAS-XX, TAS-YY) | YYYY-MM-DD |
-| Server-side logic | Fixed auth flow (TAS-ZZ) | YYYY-MM-DD |
+| Feature implementation | Built 5 pages (TAS-XX, TAS-YY) | YYYY-MM-DD |
 
 ### Weak Areas
 | Area | Evidence | Last Updated |
 |------|----------|-------------|
-| Styling approach | Required 2 retries on styling task (TAS-AA) | YYYY-MM-DD |
+| Styling | 2 retries on TAS-AA | YYYY-MM-DD |
 
 ### File Familiarity
-- `apps/web-app/places/` — 3 tasks completed
-- `libs/queries/src/lib/` — 2 tasks completed
+- `apps/web-app/places/` — 3 tasks
 ```
 
-## Memory Update Triggers
+## Update Triggers
 
 | Trigger | Action |
 |---------|--------|
-| Agent completes task successfully on first attempt | Add/update Strong Area entry |
-| Agent requires 2+ retries | Add/update Weak Area entry |
-| Agent modifies a file | Update File Familiarity count |
-| Agent fails a task entirely (DLQ) | Add Weak Area with failure reference |
-| >3 months since last update in an area | Mark as "stale" — needs re-evaluation |
+| First-attempt success | Add/update Strong Area |
+| 2+ retries | Add/update Weak Area |
+| File modified | Increment File Familiarity |
+| DLQ failure | Add Weak Area with ref |
+| >3 months stale | Mark as "stale" |
 
-## Memory Retrieval Protocol
+## Retrieval & Delegation
 
-1. Before delegating, check `.opencastle/AGENT-EXPERTISE.md` for the candidate agent
-2. If the task matches a Strong Area, include in the prompt: *"You have prior experience with [area] from [TAS-XX]. Apply the same patterns."*
-3. If the task matches a Weak Area, either: (a) add extra context to the prompt to compensate, or (b) consider a different agent
-4. If the file has high familiarity, mention it: *"You've worked on [file] before in [TAS-XX]."*
-
-## Memory Pruning Rules
-
-- Remove entries older than 6 months without recent updates
-- Consolidate similar entries (e.g., 5 "App Router pages" entries → 1 entry with count)
-- Remove File Familiarity entries for files that no longer exist
-- The Team Lead should prune at the start of major feature work (not every session)
-
-## Integration with Delegation
-
-Add relevant expertise context to delegation prompts. Example addition:
+Check `.opencastle/AGENT-EXPERTISE.md` before delegating. Add to prompt:
 
 ```
-### Agent Context (from expertise registry)
-- Strong: Server Components, CMS queries (3 successful tasks)
-- Weak: Component styling (1 retry on TAS-AA)
-- Familiar files: libs/queries/src/lib/search/ (2 tasks)
+### Agent Context
+- Strong: Server Components, CMS queries (3 tasks)  → "Prior experience from TAS-XX."
+- Weak: Component styling (retry TAS-AA)            → add context or reassign
+- Familiar: libs/queries/src/lib/search/ (2 tasks)  → "You've worked on [file] in TAS-XX."
 ```
 
-## Cross-Session Knowledge Graph
+## Pruning
 
-### Purpose
+- Remove entries >6 months old; consolidate repetitive entries; remove familiarity for deleted files
+- Prune at start of major feature work
 
-Capture structured relationships between concepts, files, agents, and decisions. Goes beyond flat lesson lists to show how pieces of the system connect.
+## Knowledge Graph
 
-### Entity Types
+**Location:** `.opencastle/KNOWLEDGE-GRAPH.md` (append-only)
 
-| Entity Type | Examples | Notation |
-|-------------|----------|----------|
-| `File` | `libs/queries/src/lib/search/searchModule.ts` | `F:path` |
-| `Agent` | Developer, Security Expert | `A:name` |
-| `Pattern` | Server Component data fetching, RLS policy structure | `P:name` |
-| `Decision` | "Use Jotai over Redux" (from DECISIONS.md) | `D:name` |
-| `Bug` | Known issue KI-XXX | `B:id` |
-| `Lesson` | LES-XXX from LESSONS-LEARNED.md | `L:id` |
+### Entities & Relationships
 
-### Relationship Types
+| Entity | Notation | Relationships |
+|--------|----------|--------------|
+| File | `F:path` | `depends-on`, `blocks` |
+| Agent | `A:name` | `expert-in` |
+| Pattern/Decision | `P:name` / `D:name` | `related-to`, `obsoletes` |
+| Bug/Lesson | `B:id` / `L:id` | `caused-by`, `related-to` |
 
-| Relationship | Meaning | Example |
-|-------------|---------|---------|
-| `depends-on` | X requires Y to function | `F:places/page.tsx depends-on F:searchModule.ts` |
-| `caused-by` | X was caused by Y | `B:KI-042 caused-by D:use-server-components` |
-| `expert-in` | Agent X has expertise in Y | `A:Content Engineer expert-in P:CMS-queries` |
-| `related-to` | Loose conceptual connection | `L:LES-15 related-to P:RLS-policies` |
-| `obsoletes` | X replaces/supersedes Y | `D:use-app-router obsoletes D:use-pages-router` |
-| `blocks` | X prevents Y from working | `B:KI-099 blocks F:auth/middleware.ts` |
-
-### Knowledge Graph File
-
-Location: `.opencastle/KNOWLEDGE-GRAPH.md` — an append-only relationship log.
-
-Template structure:
+### Graph Template
 
 ```markdown
 # Knowledge Graph
-
 ## Relationships
-
 | Source | Relationship | Target | Added | Context |
 |--------|-------------|--------|-------|---------|
-| A:Content Engineer | expert-in | P:CMS-queries | 2026-02-23 | Completed 3 CMS query tasks |
-| F:searchModule.ts | depends-on | F:cms-client.ts | 2026-02-23 | Search uses CMS client |
-| L:LES-15 | related-to | P:cookie-sessions | 2026-02-23 | Lesson about auth token format |
+| A:Content Engineer | expert-in | P:CMS-queries | 2026-02-23 | 3 tasks |
+| F:searchModule.ts | depends-on | F:cms-client.ts | 2026-02-23 | |
 ```
 
-### When to Add Relationships
+### Add Relationships When
 
-| Trigger | What to Record |
-|---------|---------------|
-| Agent completes a task touching multiple files | `depends-on` between the files |
-| A lesson is added that relates to a pattern | `related-to` between lesson and pattern |
-| An agent demonstrates expertise | `expert-in` between agent and domain |
-| A decision causes a known issue | `caused-by` between bug and decision |
-| A new pattern supersedes an old approach | `obsoletes` between decisions/patterns |
+| Trigger | Record |
+|---------|--------|
+| Task touches multiple files | `depends-on` |
+| Lesson relates to a pattern | `related-to` |
+| Agent demonstrates expertise | `expert-in` |
+| Decision causes known issue | `caused-by` |
+| Pattern supersedes old approach | `obsoletes` |
 
-### Query Patterns
+### Pre-Delegation Queries
 
-When gathering context for a delegation:
+Follow `depends-on` for related reads, `expert-in` to confirm agent, `related-to` for patterns, `blocks` for known issues.
 
-1. Find the target file(s) in the graph
-2. Follow `depends-on` edges to identify related files the agent might need to read
-3. Follow `expert-in` edges to confirm the right agent is assigned
-4. Follow `related-to` edges from relevant lessons to discover applicable patterns
-5. Check for `blocks` edges that might indicate known issues affecting the task
+### Maintenance
 
-### Maintenance Rules
-
-- Add relationships as you discover them — don't batch
-- Review and prune at the start of major features (remove obsolete relationships)
-- Keep the graph focused — max ~100 active relationships. Archive old ones quarterly
-- Relationships are append-only during a session; pruning happens between sessions
+- Add as discovered; prune between sessions
+- Max ~100 active relationships; archive quarterly

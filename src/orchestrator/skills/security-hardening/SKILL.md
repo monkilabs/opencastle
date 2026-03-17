@@ -3,118 +3,74 @@ name: security-hardening
 description: "Security architecture including authentication, authorization, RLS policies, security headers, CSP, input validation, API security, and OAuth patterns. Use when implementing auth flows, writing RLS policies, configuring security headers, validating inputs, or auditing security."
 ---
 
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
-
 # Security Hardening
 
-## Security Architecture
+## Architecture
 
-```
-Edge Network (WAF, DDoS)
-  → Security Headers (framework config: HSTS, CSP, X-Frame-Options)
-    → Middleware (session refresh)
-      → Server Actions (Auth: CSRF protection)
-        → RLS Policies (row-level authorization)
-```
-
-| Layer | Role | Protection |
+| Layer | Tool | Protection |
 |-------|------|------------|
 | Edge | WAF / CDN | DDoS, bot detection |
-| Headers | Framework config | HSTS, CSP, XSS protection |
-| Middleware | Proxy / middleware layer | Session management |
+| Headers | Framework config | HSTS, CSP, X-Frame-Options |
+| Middleware | Proxy layer | Session refresh, protected routes |
 | Server Actions | Auth provider | Authentication, CSRF |
 | Database | RLS Policies | Row-level authorization |
-| API Routes | CRON_SECRET | Cron job authorization |
+| API Routes | `CRON_SECRET` | Cron job authorization |
 | Input | Zod | Schema validation |
 | Rate Limiting | Proxy layer | IP-based throttling |
 
 ## Authentication
 
-**Platform:** Auth provider with Server Actions pattern. Resolve specific auth library and configuration via the **database** capability slot in the skill matrix.
+Auth provider with Server Actions pattern. Resolve library via **database** capability slot in skill matrix.
 
-- **Server Actions** for sign in/up/out, session management.
-- **Middleware** for session refresh, protected routes.
-- **RLS Policies** in the database.
-- **OAuth providers:** Configured in the auth provider's dashboard.
-- **User roles:** Stored in the user profiles table (e.g., `profiles.roles TEXT[]`).
-- **Key auth files:** Resolve via project-specific customization files.
-- **Cron authorization:** `CRON_SECRET` env var, `Bearer` token in `authorization` header
+| Concern | Approach |
+|---------|----------|
+| Sign in/up/out | Server Actions (POST-only → automatic CSRF protection) |
+| Session refresh | Middleware `updateSession()`, HTTP-only cookies |
+| Protected routes | Middleware check |
+| OAuth | Configured in auth provider dashboard |
+| User roles | `profiles.roles TEXT[]` |
+| Cron auth | `CRON_SECRET` env var, `Bearer` token in `authorization` header |
 
-### Server Actions Pattern Benefits
+## CSP
 
-- Automatic CSRF protection (POST-only Server Actions).
-- No exposed API endpoints for auth.
-- Server-side session management.
+Principle of least privilege. External domains are project-specific (see deployment customization).
 
-### Session Management
+- `default-src 'self'` — deny by default
+- `object-src 'none'` — block plugins
+- `frame-ancestors 'self'` — prevent clickjacking
+- `upgrade-insecure-requests` — enforce HTTPS
+- Whitelist only required external domains per directive
 
-- HTTP-only cookies (auth client managed).
-- Automatic refresh via middleware (`updateSession()`).
-- Sign out clears cookie and invalidates session.
+**Note:** `'unsafe-inline'`/`'unsafe-eval'` may be required in dev mode — use nonces/hashes in production.
 
-## Content Security Policy
+## RLS
 
-### Allowed External Domains (framework config)
+> **SQL examples and role system:** See the **database** skill (authoritative source for RLS).
 
-| Purpose | Domains |
-|---------|--------|
-| Scripts | Project-specific — see deployment customization |
-| Styles | Project-specific — see deployment customization |
-| Fonts | Project-specific — see deployment customization |
-| Frames | Project-specific — see deployment customization |
-
-### Directives
-
-General CSP directives follow the principle of least privilege:
-- `default-src 'self'` — deny by default.
-- Whitelist only required external domains per directive.
-- `object-src 'none'` — block plugins.
-- `frame-ancestors 'self'` — prevent clickjacking.
-- `upgrade-insecure-requests` — enforce HTTPS.
-
-**Known weaknesses:** `'unsafe-inline'` and `'unsafe-eval'` in script-src (may be required for framework dev mode). Consider nonces/hashes for production inline scripts.
-
-## RLS Policy Patterns
-
-> **Detailed RLS patterns and SQL examples:** See the **database** skill (resolved via skill matrix), which is the authoritative source for RLS policies, role systems, and migration rules.
-
-### Best Practices
-
-- Enable RLS on all tables: `ALTER TABLE x ENABLE ROW LEVEL SECURITY;`
-- Test policies with different user roles.
-- Use `auth.uid()` for authentication checks.
-- EXISTS subqueries for role checks.
-- Never rely solely on client-side authorization.
-- Never disable RLS in production.
+- `ALTER TABLE x ENABLE ROW LEVEL SECURITY;` on all tables
+- Use `auth.uid()` for auth checks; EXISTS subqueries for role checks
+- Never rely solely on client-side authorization; never disable RLS in production
 
 ## API Security
 
-### Cron Job Authorization
-
 ```typescript
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+// Cron authorization pattern
+const authHeader = request.headers.get('authorization');
+if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
 ```
 
-- Strong random CRON_SECRET: `openssl rand -hex 32`
-- Rotate quarterly.
+Generate secret: `openssl rand -hex 32`. Rotate quarterly.
 
-### Input Validation
-
-- Zod schemas for all request validation.
-- React Hook Form for client-side validation.
-- Server-side validation in all Server Actions and route handlers.
+Input: Zod schemas in all Server Actions and route handlers; React Hook Form client-side.
 
 ## Critical Rules
 
-1. Never commit secrets — use deployment platform environment variables.
-2. Always use Server Actions for auth operations.
-3. Enable RLS on all tables — default-deny, explicit-allow.
-4. Validate all inputs with Zod before database operations.
-5. Sanitize user content — escape HTML in reviews/descriptions.
-6. Parameterized queries (database client handles automatically).
-7. Rotate secrets regularly (quarterly).
+1. Never commit secrets — use env vars.
+2. Server Actions for all auth operations.
+3. RLS on all tables — default-deny, explicit-allow.
+4. Validate all inputs with Zod before DB operations.
+5. Sanitize user content (escape HTML).
+6. Parameterized queries (DB client handles automatically).
+7. Rotate secrets quarterly.

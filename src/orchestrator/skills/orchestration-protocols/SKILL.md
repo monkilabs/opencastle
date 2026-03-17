@@ -9,173 +9,114 @@ Runtime patterns for managing delegated agents. **Load at:** Execution phase (St
 
 ## Active Steering
 
-Monitor agent sessions during execution. Intervene early when you spot:
+Intervene early when you spot:
 
-- **Failing tests/builds** — the agent can't resolve a dependency or breaks existing code
-- **Unexpected file changes** — files outside the agent's partition appear in the diff
-- **Scope creep** — the agent starts refactoring code you didn't ask about
-- **Circular behavior** — the agent retries the same failing approach without adjusting
-- **Intent misunderstanding** — session log shows the agent interpreted the prompt differently
+| Signal | Action |
+|--------|--------|
+| Failing tests/builds | Can't resolve dependency or breaks existing code |
+| Unexpected file changes | Files outside partition in diff |
+| Scope creep | Refactors code not in scope |
+| Circular behavior | Same failing approach retried without change |
+| Intent misunderstanding | Session log shows wrong prompt interpretation |
 
-**When redirecting, be specific.** Explain *why* you're redirecting and *how* to proceed:
+When redirecting, explain *why* and *how*:
 
-> "Don't modify `libs/data/src/lib/product.ts` — that file is shared across features. Instead, add the new query in `libs/data/src/lib/reviews.ts`. This keeps the change isolated."
+> "Don't modify `libs/data/src/lib/product.ts` — shared across features. Add the new query in `libs/data/src/lib/reviews.ts`."
 
-**Timing matters.** Catching a problem 5 minutes in can save an hour. Don't wait until the agent finishes.
-
-**Background agent caveat:** The drift signals above apply only to **sub-agents** (inline) where you see results in real-time. Background agents run autonomously — you cannot inspect their intermediate state or redirect mid-execution. For background agents, steering is **post-hoc**: invest more effort in prompt specificity and file partition constraints upfront, then review thoroughly when the agent returns its output.
+**Sub-agents:** Catch problems early (5 min in can save an hour). **Background agents:** Steer post-hoc — invest in prompt specificity and partition constraints upfront.
 
 ## Background Agents
 
-Background agents run autonomously in isolated Git worktrees. Use for well-scoped subtasks with clear acceptance criteria.
+Run autonomously in isolated Git worktrees. Reserve for well-scoped tasks >5 min with clear acceptance criteria.
 
 - **Spawn:** Delegate Session → Background → Select agent → Enter prompt
-- **Auto-compaction:** At 95% token limit, context is automatically compressed
-- **Resume:** Use `--resume` for previous sessions
-- **Duration threshold:** Reserve for tasks expected to take >5 minutes
-- **No real-time monitoring:** You cannot inspect intermediate state. Drift detection happens only at completion review. Mitigate with: (a) highly specific prompts, (b) strict file partition constraints, (c) acceptance criteria checklists in the prompt
+- **Auto-compaction:** At 95% token limit; use `--resume` to continue
+- **No real-time monitoring:** Invest in specific prompts, strict partition constraints, and acceptance criteria checklists upfront
 
 ## Parallel Research Protocol
 
-When a task requires broad exploration before implementation, spawn multiple research sub-agents in parallel to gather context efficiently.
-
-### When to Use
-
-- 3+ independent research questions need answering before implementation can begin
-- Broad codebase exploration across multiple libraries or domains
-- Multi-area analysis (e.g., "How do we handle X in the frontend, backend, and CMS?")
+Spawn multiple research sub-agents in parallel when 3+ independent questions must be answered before implementation. **Use when:** 3+ independent research questions, broad codebase exploration, or multi-area analysis (frontend/backend/CMS). **Skip when:** single-file investigation, answer in one known location, sequential results, or fewer than 3 questions.
 
 ### Spawn Strategy
 
-- **Divide by topic/area**, not by file count — each researcher should own a coherent domain
-- **Max 3-5 parallel researchers** — more than 5 creates diminishing returns and token waste
-- **Each researcher gets a focused scope** — explicit directories, file patterns, or questions
-- **Use Economy/Standard tier** for research sub-agents to manage cost
+| Rule | Detail |
+|------|--------|
+| Divide by topic/area | Each researcher owns a coherent domain |
+| Max 3–5 researchers | More creates diminishing returns and token waste |
+| Focused scope per agent | Explicit dirs, file patterns, or questions |
+| Economy/Standard tier | Manage cost for research sub-agents |
 
-### Research Sub-Agent Prompt Template
-
+**Prompt template:**
 ```
 Research: [specific question]
 Scope: [files/directories to search]
-Return: A structured summary with:
-- Key findings (bullet list)
-- Relevant file paths (with line numbers)
-- Patterns observed
-- Unanswered questions
+Return: key findings, relevant file paths (with line numbers), patterns, unanswered questions
 ```
 
 ### Result Merge Protocol
 
-After all research sub-agents return:
-
-1. **Collect** all sub-agent results into a single context
-2. **Deduplicate** findings — same file/pattern reported by multiple agents counts once
-3. **Resolve conflicts** — if agents report contradictory information, trust the one with more specific evidence (exact file paths + line numbers > general observations)
-4. **Synthesize** into a single context block for the next phase — distill the combined findings into a concise summary that can be included in implementation delegation prompts
-
-### When NOT to Use
-
-- Single-file investigation — just read the file directly
-- When the answer is in one known location — a single sub-agent or direct read is faster
-- When results must be sequential (e.g., "find X, then based on X find Y")
-- For fewer than 3 questions — overhead of parallel coordination exceeds time saved
+1. Collect all results into single context
+2. Deduplicate (same file/pattern counts once)
+3. Resolve conflicts — specific evidence beats general observations
+4. Synthesize into concise context block for implementation prompts
 
 ## Batch Reviews
 
-When multiple background agents complete work simultaneously, batch similar reviews to save time:
-
-- Group reviews by domain (e.g., all UI changes together, all data changes together)
-- Run fast reviews in parallel for independent outputs
-- If multiple outputs share the same file partition boundary, review them sequentially to catch integration issues
-- For panel reviews, combine related artifacts into a single panel question when they share acceptance criteria
+- Group by domain (UI, data); run fast reviews in parallel for independent outputs
+- Review sequentially when outputs share the same partition boundary
+- Combine related artifacts into one panel question when they share acceptance criteria
 
 ## Context Compaction
 
-Between phases, summarize prior agent output before passing it to the next agent. Never paste raw sub-agent results into a downstream prompt.
+Summarize prior phase output before passing to the next agent. **Extract:** files changed, key decisions, verification (pass/fail), blockers. **Discard:** raw tool output, reasoning traces, failed attempts.
 
-**When:** Multi-phase chains where the next agent only needs outcomes, not full reasoning traces. Skip for single-phase work or when raw detail is needed (e.g., code review).
-
-**How:** After a sub-agent returns, extract only: files changed, key decisions, verification results (pass/fail), and blockers. Discard raw tool output, reasoning traces, and failed attempts.
-
-**Template for delegation prompts:**
-
+**Template:**
 ```
 ### Prior Phase Output
 **Phase [N] — [Agent Name] — [Task Title]**
-- Files changed: [list with one-line descriptions]
-- Decisions: [key decisions that affect downstream work]
+- Files changed: [list]
+- Decisions: [key decisions affecting downstream work]
 - Verification: [lint ✅ | types ✅ | tests ✅]
 - Blockers: [none | list]
 ```
 
-## Agent Health-Check Protocol
-
-Monitor delegated agents for failure signals. Intervene early rather than waiting for completion.
+## Agent Health Monitoring
 
 ### Health Signals
 
-| Signal | Detection | Threshold | Recovery |
-|--------|-----------|-----------|----------|
-| **Stuck** | No new terminal output or file changes | Sub-agent: 5 min / Background: 15 min | Check terminal output. If idle, nudge with clarification. If frozen, abort and re-delegate with simpler scope. |
-| **Looping** | Same error message repeated 3+ times | 3 consecutive identical failures | Abort immediately. Analyze the error, add context the agent is missing, re-delegate with explicit fix path. |
-| **Scope creep** | Files outside assigned partition appear in diff | Any file outside partition | Redirect: "Only modify files in [partition]. Revert changes to [file]." |
-| **Context exhaustion** | Responses become repetitive, confused, or lose earlier instructions | Visible confusion or instruction amnesia | Checkpoint immediately. End session. Resume in fresh context. |
-| **Permission loop** | Agent repeatedly asks for confirmation or waits for input | 2+ consecutive prompts without progress | Auto-approve if safe, or abort and re-delegate with `--dangerously-skip-permissions` flag or equivalent. |
+| Signal | Threshold | Recovery |
+|--------|-----------|----------|
+| **Stuck** — no output/changes | Sub: 5 min / BG: 15 min | Nudge; if frozen, abort + re-delegate with simpler scope |
+| **Looping** — same error repeated | 3 consecutive failures | Abort; add context; re-delegate with explicit fix path |
+| **Scope creep** — files outside partition | Any | Redirect: "Only modify files in [partition]. Revert [file]." |
+| **Context exhaustion** — confused/repetitive | Visible instruction amnesia | Checkpoint, end session, resume in fresh context |
+| **Permission loop** — waiting for input | 2+ prompts without progress | Auto-approve if safe; abort + re-delegate |
 
-### Health-Check Cadence
-
-- **Sub-agents (inline):** Monitor continuously — you see output in real-time
-- **Background agents:** Check terminal output after 10 minutes, then every 10 minutes
-- **After completion:** Always review the full diff before accepting output
+**Cadence:** Sub-agents — continuous (real-time). Background agents — check at 10 min, then every 10 min. Always review full diff before accepting.
 
 ### Escalation Path
 
-1. **First failure:** Re-delegate with more specific prompt + error context
-2. **Second failure:** Downscope the task (split into smaller pieces) and re-delegate
-3. **Third failure:** Log to Dead Letter Queue (`.opencastle/AGENT-FAILURES.md`), escalate to Architect for root cause analysis. If the failure involves a panel 3x BLOCK or unresolvable agent/reviewer conflict, create a **dispute record** in `.opencastle/DISPUTES.md` instead (see **team-lead-reference** skill § Dispute Protocol).
+1. **Failure 1:** Re-delegate with more specific prompt + error context
+2. **Failure 2:** Downscope (split into smaller pieces), re-delegate
+3. **Failure 3:** Log to `.opencastle/AGENT-FAILURES.md`; if 3× panel BLOCK or conflict, create dispute in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol)
 
 ## Error Recovery Playbook
 
-Common failure modes and how to recover:
-
-### Agent Stuck in Retry Loop
-
-**Symptom:** Agent retries the same failing command 3+ times without changing approach.
-**Recovery:** Intervene immediately. Read the error output, identify the root cause, and re-delegate with explicit fix instructions. Use the **self-improvement** skill to add a lesson.
-
-### MCP Tool Unavailable
-
-**Symptom:** Tool calls fail with connection or timeout errors.
-**Recovery:** (1) Check if the MCP server is running. (2) If transient, retry once. (3) If persistent, work around: use CLI tools as alternatives. Log to DLQ if critical.
-
-### Background Agent Produces Broken Output
-
-**Symptom:** Background agent returns, but files have lint/type/test errors.
-**Recovery:** (1) Review the diff to understand intent. (2) If fixable with small edits, fix inline. (3) If fundamentally wrong, discard the worktree changes and re-delegate with a more specific prompt. (4) Log to DLQ after 2 failed attempts.
-
-### Merge Conflict from Parallel Agents
-
-**Symptom:** Two background agents modified overlapping files.
-**Recovery:** (1) This should never happen if file partitioning was followed. (2) Accept one agent's changes first (the one with more complex work). (3) Re-delegate the simpler changes to adapt to the new state. (4) Use the **self-improvement** skill to add a lesson about the conflict.
-
-### Context Window Exhausted
-
-**Symptom:** Agent responses become confused, repetitive, or lose track of earlier instructions.
-**Recovery:** (1) Save a session checkpoint immediately. (2) End the current session. (3) Resume in a new session, loading the checkpoint. (4) Reduce parallel work in the next session.
-
-### Test Failures After Merge
-
-**Symptom:** Tests pass individually but fail when multiple agent outputs are merged.
-**Recovery:** (1) Run affected tests to identify which projects break. (2) Check for import conflicts, duplicate definitions, or state pollution. (3) Delegate fix to the agent whose changes are most likely the cause.
+| Failure | Symptom | Recovery |
+|---------|---------|----------|
+| **Retry loop** | Same command fails 3+ times | Abort; identify root cause; re-delegate with explicit fix; log lesson |
+| **MCP unavailable** | Tool connection/timeout errors | Check server; retry once; fall back to CLI; log to DLQ if critical |
+| **Broken BG output** | Lint/type/test errors on return | Fix inline if small; discard + re-delegate if fundamental; DLQ after 2 fails |
+| **Parallel merge conflict** | Two agents modified overlapping files | Accept complex side first; re-delegate simple side to adapt; log lesson |
+| **Context exhausted** | Confused/repetitive responses | Checkpoint; end session; resume with checkpoint; reduce parallel work |
+| **Post-merge test failure** | Tests pass alone but fail merged | Run affected tests; check import/state conflicts; delegate fix to likely cause |
 
 ## Agent Circuit Breaker
 
-Track per-agent failure counts across the session (not just per-task). If the same agent keeps failing, the problem is likely systemic.
-
 | Threshold | Action |
 |-----------|--------|
-| **2 failures** | Warning — investigate: same error class? Model endpoint healthy? Prompt pattern issue? |
-| **3 failures** | Open circuit — stop delegating to that agent. Reassign tasks to an overlapping agent, try a different model tier, or checkpoint and escalate to the user. |
-| **Next session** | Half-open — circuit resets. If the agent fails again immediately, re-open and add a lesson via **self-improvement**. |
+| **2 failures** | Investigate: same error class? Model healthy? Prompt pattern? |
+| **3 failures** | Open circuit — stop delegating; reassign or escalate to user |
+| **Next session** | Half-open — resets; re-open + add lesson if fails again |
 
-This is a judgment-based pattern, not a hard gate. 3 failures on similar tasks with the same error is more concerning than 3 unrelated failures.
+Judgment-based, not a hard gate. 3 similar failures with the same error is more concerning than 3 unrelated failures.

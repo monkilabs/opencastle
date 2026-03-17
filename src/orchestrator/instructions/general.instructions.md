@@ -61,13 +61,15 @@ See [project.instructions.md](../.opencastle/project.instructions.md).
 
 ## Discovered Issues Policy
 
-> **⛔ No issue gets ignored.** Untracked bugs found during work = quality gate failure.
+> Inherits: [discovered-issues-policy](../snippets/discovered-issues-policy.md)
 
-Check `KNOWN-ISSUES.md` or tracker. If not tracked, track it. See **git-workflow** skill.
+See **git-workflow** skill for full tracking procedure.
 
 ## Observability Logging
 
-> **⛔ HARD GATE** — Log every session to `.opencastle/logs/events.ndjson`. No exceptions. Load **observability-logging** skill for CLI commands and schemas.
+> Inherits: [logging-mandatory](../snippets/logging-mandatory.md)
+
+Load **observability-logging** skill for CLI commands and schemas.
 
 ## Self-Improvement Protocol
 
