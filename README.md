@@ -65,7 +65,7 @@ MCP servers are auto-configured for your stack in each IDE's native format.
 
 <br>
 
-### CLI
+### Project CLI
 
 | Command | Description |
 |---------|-------------|
@@ -73,11 +73,23 @@ MCP servers are auto-configured for your stack in each IDE's native format.
 | `opencastle update` | Update framework files (keeps your customizations) |
 | `opencastle eject` | Remove the dependency, keep all files |
 | `opencastle destroy` | Remove ALL OpenCastle files (reverse of init) |
+| `opencastle skills` | Skill refinement and failure tracking |
+| `opencastle package` | Package orchestrator as a plugin for IDE marketplaces |
+
+### Convoy CLI
+
+| Command | Description |
+|---------|-------------|
 | `opencastle start` | Go from idea to convoy spec in one command (PRD → validate → convoy → validate → fix) |
 | `opencastle plan` | Run a single prompt template step (generate PRD, convoy spec, or validate) |
 | `opencastle validate` | Validate a convoy YAML spec file without executing it |
 | `opencastle run` | Run the Convoy Engine (deterministic, crash-recoverable orchestrator) |
 | `opencastle dispute` | Manage convoy dispute resolution |
+
+### Observability CLI
+
+| Command | Description |
+|---------|-------------|
 | `opencastle dashboard` | Open the observability dashboard |
 | `opencastle doctor` | Validate your setup and surface issues |
 | `opencastle agents` | Manage persistent agent identities |
@@ -86,8 +98,6 @@ MCP servers are auto-configured for your stack in each IDE's native format.
 | `opencastle lesson` | Append a structured lesson to LESSONS-LEARNED.md |
 | `opencastle artifacts` | Manage filesystem artifact storage (prune old convoy artifacts) |
 | `opencastle insights` | Analyze convoy execution history and generate recommendations |
-| `opencastle skills` | Skill refinement and failure tracking |
-| `opencastle package` | Package orchestrator as a plugin for IDE marketplaces |
 
 Add `--dry-run` to any command to preview what it would change without writing files.
 

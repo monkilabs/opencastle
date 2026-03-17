@@ -31,68 +31,45 @@ You are the Team Lead. Handle the follow-up refinement described below. This is 
 
 ### 1. Triage: Decide Tracking Level
 
-Before doing anything, decide whether this follow-up needs issue tracking:
-
 **Create a tracker issue if ANY of these are true:**
-- The change affects user-visible behavior (not just cosmetic)
-- It touches more than 2–3 files
-- It modifies shared library code (`libs/`)
-- It changes data queries, API routes, or Server Actions
-- It could introduce regressions in other features
-- You want a record for future reference (e.g., "why was this changed?")
+- Affects user-visible behavior, touches >2–3 files, or modifies `libs/`, queries, API routes, or Server Actions
+- Could introduce regressions in other features
+- You want a record for future reference
 
 **Skip tracking if ALL of these are true:**
-- Pure cosmetic/spacing/copy tweak
+- Pure cosmetic/spacing/copy change with no behavioral impact
 - Isolated to a single component or page
-- No behavioral change
 - Trivial to verify visually
 
-If creating a tracker issue, use:
-- **Title**: `[Follow-up] Short description`
-- **Label**: agent name + `follow-up`
-- **Priority**: Low or Medium
-- **Description**: What changed, why, and which files
+If creating: title `[Follow-up] Short description`, label `follow-up`, priority Low/Medium, description: what changed, why, files
 
 ### 2. Understand the Request
-
-Before touching any code:
 
 1. **Clarify scope** — Identify exactly which pages, components, or behaviors need to change
 2. **Find affected files** — Search the codebase for the relevant components, styles, queries, and tests
 3. **Check known issues** — Scan `.opencastle/KNOWN-ISSUES.md` in case this is a documented limitation
 4. **Read lessons learned** — Check `.opencastle/LESSONS-LEARNED.md` for relevant pitfalls before starting
-5. **Assess complexity** — If the request turns out to be larger than expected (touches >5 files, needs a migration, or affects auth/security), escalate it:
-   - Inform the user that this should be a tracked task
-   - Create a tracker issue (if not already created in triage) and switch to the `implement-feature` workflow
+5. **Assess complexity** — If larger than expected (>5 files, migration, or auth/security), inform the user, create a tracker issue, and switch to the `implement-feature` workflow
 
 ### 3. Plan the Fix
 
-Think before you act:
-
-1. **Identify root cause** — For bugs, find why it happens, not just where. For UI tweaks, understand the current styling/layout chain
-2. **Check for shared impact** — Will the fix affect other pages or apps? Check component usage across the codebase
-3. **Determine the minimal change** — Follow the principle of least surprise. Change only what's necessary
-4. **Reuse existing patterns** — Use components, utilities, and styles that already exist in the codebase. Never introduce a new pattern for a one-off fix
+1. **Identify root cause** — For bugs, find why; for UI tweaks, understand the styling/layout chain
+2. **Assess shared impact** — Will the fix affect other pages or apps? Check component usage across the codebase
+3. **Minimal change** — Reuse existing components, utilities, and styles. Never introduce a new pattern for a one-off fix
 
 ### 4. Implement
 
-Delegate to the appropriate specialist agent(s). Since follow-ups are scoped and focused, prefer **sub-agents** (inline) over background agents.
-
 #### Delegation Prompt Must Include
 
-- **What to fix** — clear description of the problem and desired outcome
-- **Where** — exact file paths to read and modify
-- **How to verify** — what the result should look like or how to test it
-- **Boundaries** — "Only modify files listed above. Do not refactor unrelated code."
-- **Self-improvement reminder** — include per the **self-improvement** skill
+- What to fix, exact file paths, and how to verify the result
+- Boundaries: "Only modify files listed above. Do not refactor unrelated code."
+- Self-improvement reminder (see **self-improvement** skill)
 
 #### Implementation Rules
 
-- **No scope creep** — Fix what was asked. If you notice other issues, note them but don't fix them in this pass
-- **DRY** — Search before creating. Reuse existing components and utilities
-- **Visual consistency** — Match the existing design system (spacing, colors, typography)
-- **Cross-app check** — If the change is in shared code (`libs/`), verify it works for both apps
-- **Accessibility** — Don't regress keyboard navigation, screen reader support, or contrast ratios
+- **No scope creep** — Fix only what was asked; note but don't fix adjacent issues
+- **DRY + Visual consistency** — Reuse existing components, utilities, and design system patterns
+- **Cross-app + Accessibility** — Verify `libs/` changes across apps; don't regress keyboard nav/contrast
 
 ### 5. Validate
 
@@ -100,46 +77,34 @@ Delegate to the appropriate specialist agent(s). Since follow-ups are scoped and
 
 Every follow-up, no matter how small, must pass these gates:
 
-1. **Gate 1: Secret Scanning** — scan diff for API keys, tokens, passwords, connection strings — block immediately if found
-2. **Gate 2: Deterministic Checks** — run lint, test, and build for all affected projects (see the **codebase-tool** skill for commands) — all zero errors
-3. **Gate 3: Blast Radius Check** — verify scope matches the "small follow-up" expectation (≤100 lines, ≤3 files normal; if larger, escalate to `implement-feature` workflow)
-4. **Gate 4: Dependency Audit** (when `package.json` or lockfiles change) — vulnerability scan, license check, bundle size, duplicates
-5. **Gate 5: Fast Review** (MANDATORY) — single reviewer sub-agent validates the change. No auto-PASS for sensitive files
-6. **Gate 6: Browser Testing** (MANDATORY for any visual change) — clear cache, start server, verify scenario + responsive + screenshot evidence
-7. **Gate 7: Regression Testing** — if shared component/library modified, run tests for all consuming projects and browser-test at least one page per affected app
+1. **Secret Scanning** — block if API keys/tokens/passwords found in diff
+2. **Deterministic Checks** — lint, test, build — zero errors (see **codebase-tool** skill)
+3. **Blast Radius** — ≤100 lines / ≤3 files for follow-ups; if larger, escalate to `implement-feature`
+4. **Dependency Audit** — when `package.json` or lockfiles change
+5. **Fast Review** (MANDATORY) — single reviewer sub-agent
+6. **Browser Testing** (MANDATORY for visual changes) — clear cache, verify + responsive + screenshots
+7. **Regression Testing** — if shared component/library modified, test all consuming projects
 
 ### 6. Delivery
 
-If triage determined this follow-up needs tracker tracking, follow the **Delivery Outcome** defined in the **git-workflow** skill — commit, push, open PR (not merged), and link to the tracker.
+If tracked: follow the **Delivery Outcome** in the **git-workflow** skill — commit, push, open PR (not merged), tracker linked.
 
-If triage determined no tracker tracking is needed (pure cosmetic/isolated/trivial), commit the changes to the current working branch. A dedicated branch and PR are not required because the Team Lead will include these changes in the parent task's existing PR — the "every change goes through a PR" rule is still satisfied via the parent PR.
+If untracked: commit to the current branch; Team Lead includes in the parent task's existing PR.
 
 ### 7. Escalation Triggers
 
-Stop the follow-up workflow and switch to a full roadmap task if:
-
-- The fix requires a **database migration**
-- The fix involves **authentication or authorization** changes
-- The fix touches **more than 5 files** across multiple libraries
-- The fix introduces a **new dependency** or **new API endpoint**
-- The fix changes **data models** (CMS schemas, database tables)
-- You discover the "small fix" is actually a **systemic issue** requiring architectural changes
-
-When escalating, explain to the user what you found and why it needs proper tracking.
-
-- **Multi-task escalation** — If the refinement decomposes into 3+ subtasks, switch to `implement-feature` (which will use convoy execution for multi-task work)
+- Requires a database migration or data model changes (CMS schemas, tables)
+- Involves auth/authorization changes
+- Touches >5 files across multiple libraries
+- Introduces a new dependency or API endpoint
+- Is a systemic issue requiring architectural changes
+- Decomposes into 3+ subtasks → switch to `implement-feature`
 
 ### 8. Completion
 
-The follow-up is complete when:
-
 - [ ] The specific request is resolved
 - [ ] Tracker issue created and moved to Done (if triage determined tracking was needed)
-- [ ] Lint, test, and build pass for all affected projects
-- [ ] **Dev server started with CLEAN cache** (clear framework + task runner caches before serving — see the **codebase-tool** skill)
 - [ ] **Visual changes verified in Chrome with screenshot taken as proof**
-- [ ] No regressions in adjacent functionality
 - [ ] Shared component changes tested across all consuming apps
 - [ ] Delivery Outcome completed if tracked (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
-- [ ] Lessons learned captured if any retries occurred
-- [ ] Known issues updated if a new limitation was discovered
+- [ ] Lessons learned captured and known issues updated if applicable

@@ -23,6 +23,8 @@ const HELP = `
     eject       Remove dependency, keep all files standalone
     destroy     Remove ALL OpenCastle files (reverse of init)
     doctor      Validate your OpenCastle setup
+    package     Package your OpenCastle project for IDE marketplaces
+    skills      Manage and analyze agent skills and failures
 
   Convoy Commands:
     start       Run the full generate PRD → validate PRD → auto-fix PRD

@@ -11,8 +11,6 @@ For the specialist agent registry and model assignments, see [agent-registry.md]
 
 ## Cost-Aware Model Routing
 
-Choose models deliberately based on task complexity. Not every task needs the most expensive model.
-
 ### Model Cost Tiers
 
 | Tier | Cost | Use For |
@@ -26,14 +24,12 @@ Choose models deliberately based on task complexity. Not every task needs the mo
 ### Selection Rules
 
 1. **Default to the agent's assigned model** — the registry maps tasks to appropriate tiers
-2. **Downgrade when possible** — If a task is pure docs/config with no reasoning needed, prefer Economy tier
-3. **Upgrade for ambiguity** — If the task involves security, architecture decisions, or complex tradeoffs, use Quality/Premium
-4. **Never use Premium/Quality for boilerplate** — Writing test scaffolding, updating docs, or config changes should use Economy/Fast/Standard
-5. **Parallel sub-agents are cost multipliers** — When firing 3+ parallel sub-agents, prefer Economy/Fast/Standard unless precision is critical
+2. **Downgrade when possible** — pure docs/config → Economy tier
+3. **Upgrade for ambiguity** — security, architecture, or complex tradeoffs → Quality/Premium
+4. **Never use Premium/Quality for boilerplate** — scaffolding, docs, config → Economy/Fast/Standard
+5. **Parallel sub-agents are cost multipliers** — 3+ parallel agents → prefer Economy/Fast/Standard
 
 ## Complexity-Based Task Scoring
-
-During decomposition, assign a **complexity score** (Fibonacci: 1, 2, 3, 5, 8, 13) to each subtask. The score determines which model tier handles the task.
 
 ### Scoring Criteria
 
@@ -63,8 +59,6 @@ During decomposition, assign a **complexity score** (Fibonacci: 1, 2, 3, 5, 8, 1
 
 ## Deepen-Plan Protocol
 
-After initial decomposition, **enrich the plan** with concrete codebase evidence before delegating. This prevents agents from wasting time on discovery that the Team Lead can do upfront.
-
 ### When to Deepen
 
 | Plan Complexity | Action |
@@ -83,8 +77,6 @@ For large plans, split research by domain and fire parallel Researcher sub-agent
 
 ### What Deepening Produces
 
-After deepening, each subtask in the plan should have:
-
 | Field | Before Deepen | After Deepen |
 |-------|--------------|--------------|
 | **Files** | "some component" | Exact file path with line range |
@@ -93,20 +85,14 @@ After deepening, each subtask in the plan should have:
 | **Lessons** | unchecked | Relevant lessons applied |
 | **Dependencies** | assumed | Verified with exact imports |
 
-### Integrating Results
-
-Take the Researcher output and update delegation prompts with concrete file paths, patterns, and lessons. This transforms vague prompts into precise instructions that agents can execute without discovery overhead.
-
 ## Agent Output Status Handling
 
-When a sub-agent returns, interpret the result before proceeding to fast review:
+- **Complete** — all acceptance criteria addressed → proceed to fast review
+- **Complete with concerns** — address correctness/scope concerns before review
+- **Needs context** — provide missing info, re-dispatch same agent
+- **Blocked** — provide context, upgrade model, or escalate; never re-dispatch unchanged
 
-- **Complete** — output addresses all acceptance criteria → proceed to fast review
-- **Complete with concerns** — agent flagged doubts → read concerns; if about correctness or scope, address before review
-- **Needs context** — agent couldn't proceed → provide missing info, re-dispatch same agent
-- **Blocked** — agent hit a wall → context problem: provide context; task too complex: upgrade model; plan wrong: escalate to human
-
-Never ignore a BLOCKED or NEEDS_CONTEXT status. If the agent said it's stuck, something must change before re-dispatching.
+Never ignore BLOCKED or NEEDS_CONTEXT — something must change before re-dispatching.
 
 ## Pre-Delegation Policy Checks
 
@@ -133,26 +119,8 @@ Use this envelope for every sub-agent delegation — compact path and convoy ali
 ```
 
 **Rules:**
-- `tracker` — required even for compact-path delegations (no issue = no delegation)
-- `files` — exact file paths in the final delegation envelope (not directory globs); every file the agent may touch must be listed. Directory-level partitions are acceptable during Step 2 planning/ownership mapping — resolve them to exact paths before finalizing this envelope.
-- `acceptance_criteria` — copy verbatim from the tracker issue
-- `output_contract` — paste the agent’s Base Output Contract (from the observability-logging skill) if available
-
-After completing a feature (all tracker issues Done), add a cost summary to the roadmap update:
-
-```markdown
-**Cost Summary:**
-| Metric | Value |
-|--------|-------|
-| Sub-agent delegations | X |
-| Background agent delegations | X |
-| Panel reviews | X |
-| Model tiers used | Premium: X, Standard: X, Utility: X, Economy: X |
-| Upgrades/downgrades | [reason if any] |
-| Est. total tokens | ~XXK |
-```
-
-This data helps optimize future model assignments.
+- `tracker` required (no issue = no delegation); `acceptance_criteria` copy verbatim from tracker.
+- `files` = exact paths in the final envelope (not globs; resolve directory partitions before finalizing); `output_contract` = agent’s Base Output Contract.
 
 During execution, maintain a running delegation log in the session checkpoint (see the **session-checkpoints** skill § Delegation Cost Log).
 
@@ -193,16 +161,12 @@ When automated resolution is exhausted (panel 3x BLOCK, approach conflicts, or c
 
 ### Dispute Creation Procedure
 
-1. **Number the dispute** — Increment from the last `DSP-XXX` ID in the Index table
-2. **Set priority** — Use the priority guidelines in DISPUTES.md (critical/high/medium/low)
-3. **Document both perspectives** — Agent's position AND reviewer's position with specific file/code references
-4. **Build attempt history** — List every fast review and panel attempt with one-line verdict summaries
-5. **Present resolution options** — At least 2 concrete options with rationale and risk for each
-6. **Recommend an action** — Which option the Team Lead thinks is best, with specific next steps
-7. **Link artifacts** — Panel reports, review logs, changed files, DLQ entries
-8. **Log to events.ndjson** — Use the **observability-logging** skill's dispute record command
-9. **Update the tracker issue** — Add the dispute ID and link to the dispute record
-10. **Update the Index table** — Add the new dispute to the bottom of the Index
+1. **Number and prioritize** — increment from last `DSP-XXX`; set priority (critical/high/medium/low)
+2. **Document perspectives** — agent's and reviewer's positions with specific file/code references
+3. **Build attempt history** — list every fast review and panel attempt with one-line verdict summaries
+4. **Present and recommend** — at least 2 options with rationale and risk; identify recommended action
+5. **Link artifacts** — panel reports, review logs, changed files, DLQ entries
+6. **Log and update** — use **observability-logging** dispute record command; add dispute ID to tracker issue and Index table
 
 ### After Human Resolution
 

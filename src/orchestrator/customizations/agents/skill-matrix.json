@@ -1,4 +1,16 @@
 {
+  "skillDependencies": {
+    "validation-gates": ["fast-review", "browser-testing", "codebase-tool", "panel-majority-vote"],
+    "fast-review": ["observability-logging", "panel-majority-vote"],
+    "decomposition": ["panel-majority-vote", "project-consistency", "self-improvement"],
+    "agent-hooks": ["session-checkpoints", "observability-logging", "self-improvement"],
+    "orchestration-protocols": ["self-improvement", "team-lead-reference"],
+    "team-lead-reference": ["orchestration-protocols"],
+    "deployment-infrastructure": ["security-hardening", "codebase-tool"],
+    "git-workflow": ["task-management"],
+    "self-improvement": ["agent-memory"],
+    "testing-workflow": ["e2e-testing"]
+  },
   "bindings": {
     "framework": {
       "entries": [],

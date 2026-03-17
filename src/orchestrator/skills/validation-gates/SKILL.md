@@ -30,18 +30,15 @@ Canonical reference for validation gates shared across all orchestration workflo
 
 > **HARD GATE — Constitution rule #1.** No tokens, keys, passwords, or connection strings in code, logs, commits, or terminal output.
 
-Scan every diff **before** any other gate. A secret leak caught after merge is exponentially more expensive than one caught at review time.
-
 ### What to scan
 
-Run regex scan of changed files for AWS keys, API tokens, private keys, database URIs, and hardcoded secrets. Also scan for hardcoded `password`, `secret`, `api_key`, `apiKey`, `token` assignments, `.env` file contents copied into source files, and Base64-encoded secrets.
+- Run regex scan for AWS keys, API tokens, private keys, database URIs, hardcoded secrets, and `password`/`secret`/`api_key`/`apiKey`/`token` assignments.
+- Check for `.env` file contents copied into source and Base64-encoded secrets.
 
 ### On detection
 
-- **BLOCK immediately** — do not proceed to Gate 2
-- Flag the specific file and line number
-- Re-delegate to the agent with explicit instruction to use environment variables instead
-- If a secret was already committed, **rotate it immediately** — git history is permanent
+- **BLOCK immediately** — flag file + line; re-delegate with instruction to use environment variables.
+- If a secret was already committed, **rotate it immediately** — git history is permanent.
 
 ### Exceptions
 
@@ -61,8 +58,6 @@ All must pass with zero errors. Run for **every** project that consumed modified
 
 ## Gate 3: Blast Radius Check
 
-Assess the scope of changes to catch scope creep and ensure reviewers can evaluate the diff effectively.
-
 ### Thresholds
 
 | Metric | Normal | Warning | Escalate |
@@ -74,12 +69,8 @@ Assess the scope of changes to catch scope creep and ensure reviewers can evalua
 ### Actions
 
 - **Normal** — proceed to Gate 4
-- **Warning** — log a note in the delegation record. Ask: *"Was this scope expected?"* If yes, proceed. If unexpected, investigate whether the agent drifted from the partition
-- **Escalate** — **STOP.** The Team Lead must review the diff before proceeding:
-  1. Verify all changed files are within the agent's assigned partition
-  2. Check whether the task should have been split into smaller subtasks
-  3. If scope creep: revert extra changes, re-delegate with tighter scope
-  4. If legitimately large: proceed, but **always run fast review** (no auto-PASS) and consider panel review
+- **Warning** — log in delegation record; if scope is unexpected, investigate partition drift before proceeding
+- **Escalate** — **STOP.** Team Lead reviews diff: verify changed files are within partition; split task if needed; revert scope creep or proceed with mandatory fast review (no auto-PASS)
 
 ### Sensitive files
 
@@ -98,30 +89,23 @@ Changes to these file categories always trigger Warning regardless of line count
 
 When agents add, remove, or update npm packages, verify:
 
-1. **Vulnerability scan** — Run `npm audit` (or the project's equivalent). No new `high` or `critical` vulnerabilities
-2. **License compatibility** — New packages must use MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, or ISC licenses. Flag any copyleft (GPL, LGPL, AGPL) or proprietary licenses for human review
-3. **Bundle size impact** — For frontend packages, note the minified + gzipped size. Flag packages >50KB gzipped that have lighter alternatives
-4. **Duplicate functionality** — Check whether the new dependency overlaps with an existing one (e.g., adding `moment` when `date-fns` is already installed)
-5. **Maintenance health** — Flag packages with no updates in >2 years or <100 weekly downloads
+- **Vulnerability scan** — `npm audit`; no new `high` or `critical` vulnerabilities
+- **License compatibility** — permit MIT, Apache-2.0, BSD-*, ISC; flag copyleft/proprietary for human review
+- **Bundle size** — flag frontend packages >50KB gzipped with lighter alternatives
+- **Duplicate functionality** — check for overlap with existing dependencies
+- **Maintenance health** — flag packages with no updates in >2 years or <100 weekly downloads
 
 ### On failure
 
-- **Vulnerability:** BLOCK. Re-delegate with instruction to use a patched version or alternative package
-- **License concern:** Flag for human review. Do not block, but document in the PR description
-- **Size/duplicate:** Flag as SHOULD-FIX in the fast review. Not blocking unless egregious (>200KB)
+- **Vulnerability:** BLOCK — use patched version or alternative
+- **License concern:** flag for human review; document in PR (non-blocking)
+- **Size/duplicate:** SHOULD-FIX in fast review; blocking only if >200KB
 
 ## Gate 5: Fast Review (MANDATORY)
 
 > **HARD GATE:** Every agent delegation output must pass fast review before acceptance. This is non-negotiable — even for overnight/unattended runs. Load the **fast-review** skill for the full procedure.
 
-After gates 1–4 pass:
-
-1. **Spawn a single reviewer sub-agent** with the review prompt from the fast-review skill
-2. **On PASS** — proceed to remaining gates
-3. **On FAIL** — re-delegate to the same agent with reviewer feedback (up to 2 retries)
-4. **On 3x FAIL** — escalate to panel review (Gate 9)
-
-The reviewer validates: acceptance criteria met, file partition respected, no regressions, type safety, error handling, security basics, and edge cases.
+Spawn a reviewer sub-agent (see **fast-review** skill). On PASS → proceed. On FAIL → re-delegate with feedback (up to 2 retries). On 3x FAIL → escalate to Gate 9 panel review. Reviewer validates: acceptance criteria, partition, regressions, type safety, security, edge cases.
 
 **Auto-PASS conditions** (skip the reviewer sub-agent):
 - Pure research/exploration with no code changes
@@ -138,24 +122,20 @@ Clear framework caches and task runner caches before starting the dev server for
 
 ## Gate 7: Browser Testing (MANDATORY for UI Changes)
 
-> **HARD GATE:** A task with UI changes is NOT done until you have screenshots in Chrome proving the feature works. "The code looks correct" is not proof. "Tests pass" is not proof. Only a screenshot of the working UI in Chrome is proof.
+> **HARD GATE:** UI changes are NOT done without screenshots in Chrome proving the feature works.
 
-1. **Start the dev server** — use the project's serve command (see the **codebase-tool** skill) — wait for it to be ready
-2. **Navigate to affected pages** — Verify the new feature renders correctly
-3. **Verify features and interactions** — Confirm every acceptance-criteria item renders and behaves correctly; click buttons, fill forms, toggle filters, submit data
-4. **Test responsive and edge cases** — Resize to each breakpoint; verify empty, error, and loading states
-5. **Screenshot evidence (REQUIRED)** — Take screenshots of key states. These are mandatory proof
+1. **Start the dev server** — see the **codebase-tool** skill; wait until ready
+2. **Verify features and interactions** — confirm every acceptance-criteria item renders and behaves correctly; test all interactive elements
+3. **Test responsive and edge cases** — resize to each breakpoint; verify empty, error, and loading states
+4. **Screenshot evidence (REQUIRED)** — mandatory proof of key states
 
 Load the **browser-testing** skill for Chrome MCP commands, breakpoint details, and reporting format.
 
 ## Gate 8: Regression Testing
 
-New features must not break existing functionality:
-
-1. **Run full test suite** for affected projects — not just the new tests
-2. **Browser-test adjacent pages** — If you changed a shared component, test pages that use it
-3. **Verify navigation** — Ensure routing, links, and back-button behavior still work
-4. **Check shared components** — If a component from a shared library was modified, test it in all apps that consume it
+1. **Run full test suite** for all affected projects — not just new tests
+2. **Browser-test adjacent pages** and **verify navigation** — routing, links, and back-button behavior
+3. **Check shared components** in all consuming apps if a shared library was modified
 
 ## Gate 9: Panel Review (High-Stakes Only)
 
@@ -170,30 +150,11 @@ If the panel returns BLOCK, extract MUST-FIX items, re-delegate to the same agen
 
 ## Gate 10: Final Smoke Test (Feature-Level)
 
-> Runs once after ALL tasks are Done. Individual tasks pass gates 1–9 independently but the combined result may have integration issues — this gate verifies the feature as a cohesive unit.
+> Runs once after ALL tasks are Done — verifies the feature as a cohesive unit.
 
-1. **Full build** — Build all affected projects from clean state (not incremental)
-2. **Full test suite** — Run tests across all projects that consumed any changed files
-3. **End-to-end browser walkthrough** — All states (loading, empty, populated, error, partial), transitions, data flows, and error paths
-4. **Cross-task integration check** — Verify that outputs from different tasks (e.g., DB migration + component + page) compose correctly
-5. **Smoke test at all breakpoints** — If the feature has UI, one final responsive sweep
+1. **Full build + full test suite** — all affected projects from clean state
+2. **End-to-end browser walkthrough** — all states (loading, empty, populated, error), transitions, data flows
+3. **Cross-task integration check** — verify outputs from different tasks compose correctly
+4. **Smoke test at all breakpoints** — one final responsive sweep if the feature has UI
 
-**Skip for:** non-UI features with comprehensive test coverage, or single-task features (Gate 8 already covers those).
-
-**On failure:** re-delegate the specific failing integration point; do NOT re-run the entire feature.
-
-## Universal Completion Checklist
-
-Use this checklist for any orchestration workflow:
-
-- [ ] **No secrets in diff** (Gate 1)
-- [ ] Lint, test, and build pass for all affected projects (Gate 2)
-- [ ] Blast radius assessed — scope is expected (Gate 3)
-- [ ] Dependency audit passed if packages changed (Gate 4)
-- [ ] **Fast review passed** (mandatory — load **fast-review** skill) (Gate 5)
-- [ ] Dev server started with **clean cache** (Gate 6)
-- [ ] UI changes verified in Chrome with screenshots at all breakpoints (Gate 7)
-- [ ] Every acceptance criteria item visually confirmed — not just "page loads"
-- [ ] No regressions in adjacent functionality (Gate 8)
-- [ ] Panel review passed for high-stakes changes (Gate 9)
-- [ ] **Final smoke test passed** for multi-task features (Gate 10)
+**Skip for:** non-UI with comprehensive test coverage, or single-task features (Gate 8 covers those). **On failure:** re-delegate the specific failing integration point only.

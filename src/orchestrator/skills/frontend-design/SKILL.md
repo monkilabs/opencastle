@@ -6,46 +6,30 @@ license: Complete terms in LICENSE.txt
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
-This skill guides creation of distinctive, production-grade frontend interfaces that avoid generic "AI slop" aesthetics. Implement real working code with exceptional attention to aesthetic details and creative choices.
-
-The user provides frontend requirements: a component, page, application, or interface to build. They may include context about the purpose, audience, or technical constraints.
-
 ## Design Thinking
 
-Before coding, understand the context and commit to a BOLD aesthetic direction:
 - **Purpose**: What problem does this interface solve? Who uses it?
-- **Tone**: Pick an extreme: brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian, etc. There are so many flavors to choose from. Use these for inspiration but design one that is true to the aesthetic direction.
+- **Tone**: Pick an extreme — brutally minimal, maximalist chaos, retro-futuristic, organic/natural, luxury/refined, playful/toy-like, editorial/magazine, brutalist/raw, art deco/geometric, soft/pastel, industrial/utilitarian. Commit to one direction fully.
 - **Constraints**: Technical requirements (framework, performance, accessibility).
 - **Differentiation**: What makes this UNFORGETTABLE? What's the one thing someone will remember?
 
 **CRITICAL**: Choose a clear conceptual direction and execute it with precision. Bold maximalism and refined minimalism both work - the key is intentionality, not intensity.
 
-Then implement working code (HTML/CSS/JS, React, Vue, etc.) that is:
-- Production-grade and functional
-- Visually striking and memorable
-- Cohesive with a clear aesthetic point-of-view
-- Meticulously refined in every detail
-
 ## Frontend Aesthetics Guidelines
 
-Focus on:
 - **Typography**: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics; unexpected, characterful font choices. Pair a distinctive display font with a refined body font.
 - **Color & Theme**: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes.
-- **Motion**: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions. Use scroll-triggering and hover states that surprise.
+- **Motion**: Use animations for effects and micro-interactions; prioritize CSS-only for HTML, Motion library for React. Focus on high-impact moments — one orchestrated page load with staggered reveals (animation-delay) beats scattered micro-interactions. Use scroll-triggering and hover states that surprise.
 - **Spatial Composition**: Unexpected layouts. Asymmetry. Overlap. Diagonal flow. Grid-breaking elements. Generous negative space OR controlled density.
 - **Backgrounds & Visual Details**: Create atmosphere and depth rather than defaulting to solid colors. Add contextual effects and textures that match the overall aesthetic. Apply creative forms like gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, decorative borders, custom cursors, and grain overlays.
 
-NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character.
+NEVER use generic AI aesthetics — overused fonts (Inter, Roboto, Arial, system fonts), clichéd gradients (purple on white), predictable layouts, or cookie-cutter patterns. No two designs should look alike.
 
-Interpret creatively and make unexpected choices that feel genuinely designed for the context. No design should be the same. Vary between light and dark themes, different fonts, different aesthetics. NEVER converge on common choices (Space Grotesk, for example) across generations.
-
-**IMPORTANT**: Match implementation complexity to the aesthetic vision. Maximalist designs need elaborate code with extensive animations and effects. Minimalist or refined designs need restraint, precision, and careful attention to spacing, typography, and subtle details. Elegance comes from executing the vision well.
-
-Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+Match implementation complexity to the aesthetic vision — maximalist designs need elaborate code; minimalist designs need restraint and precision.
 
 ## Design System Foundations
 
-Every design starts with a token layer. Define CSS custom properties that encode the aesthetic direction — never scatter raw values through stylesheets. A well-structured variable system makes the entire interface feel cohesive even as complexity grows.
+Define CSS custom properties for all values — never scatter raw hex/px through stylesheets.
 
 ```css
 /* --- Palette: warm editorial with a punch of citron --- */
@@ -82,13 +66,9 @@ Every design starts with a token layer. Define CSS custom properties that encode
 }
 ```
 
-**Anti-pattern:** Never scatter raw hex/px values through stylesheets. Every value should trace back to a token. Change the palette once and the entire interface follows.
-
 ## Component Patterns
 
 ### Distinctive Card
-
-A card should never look like a Bootstrap default. Give it tension — an unexpected border treatment, an oversized label, or a hover that reveals hidden depth.
 
 ```css
 .card {
@@ -122,7 +102,7 @@ A card should never look like a Bootstrap default. Give it tension — an unexpe
 
 ### Hero Section with Staggered Reveal
 
-Orchestrate entrance animations with `animation-delay` for a cinematic first impression. One coordinated sequence beats a dozen scattered `fadeIn`s.
+Orchestrate entrance animations with `animation-delay` for a cinematic first impression.
 
 ```css
 @keyframes rise {
@@ -137,11 +117,9 @@ Orchestrate entrance animations with `animation-delay` for a cinematic first imp
 .hero__cta         { animation: rise var(--duration-slow) var(--ease-out-expo) both; animation-delay: 550ms; }
 ```
 
-**Anti-pattern:** Don't animate everything. If the nav bounces, the sidebar slides, and the footer pulses — it's visual noise, not design. Motion has a narrative: one orchestrated entrance, then stillness.
-
 ## Typography Pairing Examples
 
-Never reach for the same font twice. Each project deserves a pairing chosen for its specific character. These are starting points — not a rotation list.
+Starting points only — each project deserves a pairing chosen for its specific character.
 
 | Aesthetic | Display | Body | Mood |
 |-----------|---------|------|------|
@@ -152,11 +130,9 @@ Never reach for the same font twice. Each project deserves a pairing chosen for 
 | Art nouveau organic | Cormorant Garamond | Lora | Flowing, calligraphic sensibility |
 | Retro-futuristic | Syne | Outfit | Geometric boldness meets clean body |
 
-Always include a fallback chain that preserves metrics: `'Fraunces', 'Georgia', serif` not just `'Fraunces', serif`. And never default to the same "safe" choices (Inter, Roboto, system-ui) — if every project looks the same, the typography isn't doing its job.
+Always include a metric-preserving fallback chain (e.g., `'Fraunces', 'Georgia', serif`).
 
 ## Design Quality Checklist
-
-Run this checklist before delivering any frontend work. Every item is a gate — if something fails, the design isn't finished.
 
 ### Identity & Cohesion
 - [ ] Can you name the aesthetic direction in 2-3 words? (e.g., "warm editorial," "cold brutalist")

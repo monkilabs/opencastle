@@ -16,8 +16,6 @@ description: "Technical SEO patterns for meta tags, structured data, sitemaps, U
 
 ## Meta Tags & Open Graph
 
-Every page template must include the full set of meta tags:
-
 ```tsx
 // Next.js App Router — layout or page metadata
 export const metadata: Metadata = {
@@ -99,9 +97,8 @@ function StructuredData({ breadcrumbs, article }: Props) {
 
 ### Validation
 
-- Run every JSON-LD block through [Google's Rich Results Test](https://search.google.com/test/rich-results) before merging.
-- Validate against [schema.org](https://schema.org) definitions for required/recommended properties.
-- Check the Search Console **Enhancements** report after deployment.
+- Validate every JSON-LD block via [Google's Rich Results Test](https://search.google.com/test/rich-results) and [schema.org](https://schema.org) definitions before merging.
+- Check Search Console **Enhancements** report after deployment.
 
 ## Sitemap & Crawlability
 
@@ -133,11 +130,6 @@ Sitemap: https://example.com/sitemap.xml
 
 ## URL Strategy
 
-- Use lowercase, hyphen-separated slugs: `/blog/my-post-title`
-- Keep URLs short, keyword-relevant, and human-readable.
-- Enforce trailing-slash consistency (pick one, redirect the other).
-- Implement 301 redirects for any renamed or moved pages.
-
 | Pattern | Good | Bad |
 |---------|------|-----|
 | Slug format | `/products/blue-widget` | `/products/Blue_Widget` |
@@ -161,9 +153,8 @@ const nextConfig = {
 
 ## Rendering & Indexability
 
-- **Server-render** all content that must be indexed — titles, descriptions, body text, structured data.
-- **Client-hydrated** interactive elements (filters, modals) are fine, but content behind JS-only rendering will not be indexed reliably.
-- Use semantic HTML (`<h1>`–`<h6>`, `<article>`, `<nav>`, `<main>`) for crawlers to understand page structure.
+- **Server-render** all indexed content — titles, descriptions, body text, structured data. Client-hydrated interactive elements are fine.
+- Use semantic HTML (`<h1>`–`<h6>`, `<article>`, `<nav>`, `<main>`) for crawler structure.
 
 ### Image SEO
 

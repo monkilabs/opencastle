@@ -8,17 +8,13 @@ description: "Mandatory single-reviewer gate that runs after every agent delegat
 
 # Skill: Fast Review
 
-Mandatory lightweight review after **every** agent delegation — fills the gap between unchecked output and expensive panel reviews.
-
 ## Contract
 
 - Runs **after every delegation** — no exceptions.
-- Single reviewer sub-agent (not 3).
-- Uses Economy/Standard tier models (cost-efficient).
+- Single reviewer sub-agent (not 3); Economy/Standard tier.
 - Produces PASS or FAIL with structured feedback.
-- On FAIL: automatic retry with reviewer feedback (up to 2 retries).
-- On 3rd FAIL: auto-escalates to panel review.
-- Total review time budget: ~2-5 minutes per review.
+- On FAIL: automatic retry with feedback (up to 2 retries); on 3rd FAIL → escalate to panel review.
+- Total review time budget: ~2-5 minutes.
 
 ## Reviewer Model Selection
 
@@ -28,17 +24,17 @@ Use Economy-tier reviewer by default; upgrade to Standard for Premium agent work
 
 ### Step 1: Collect Review Context
 
-1. **Issue** — acceptance criteria from the tracked issue
-2. **File diff** — list of changed files and their contents (or key sections)
-3. **File partition** — the agent's assigned files (to check for boundary violations)
-4. **Deterministic results** — lint, test, build output (already run as part of validation gates)
-5. **Agent's self-report** — what the agent claims to have done
+1. **Issue** — acceptance criteria
+2. **File diff** — changed files and contents (key sections)
+3. **File partition** — agent’s assigned files (boundary check)
+4. **Deterministic results** — lint, test, build output
+5. **Agent’s self-report** — what the agent claims to have done
 
 ### Step 2: Spawn Reviewer Sub-Agent
 
 Launch a single `runSubagent` with the review prompt (see § Reviewer Prompt Template below).
 
-**Critical:** The reviewer runs in an isolated sub-agent context. It must NOT have access to the original delegation prompt — it reviews the *output*, not the *intent*. Construct the review context precisely — provide only the acceptance criteria, file diff, partition, and deterministic results. No session history, no delegation prompt, no prior conversation.
+**Critical:** Reviewer context = ONLY acceptance criteria, file diff, partition, and deterministic results — no session history, no delegation prompt.
 
 ### Step 3: Parse Verdict
 
@@ -57,9 +53,8 @@ CONFIDENCE: low | medium | high
 ```
 
 **Verdict rules:**
-- **PASS** — No critical or major issues. Minor issues are noted but don't block.
-- **FAIL** — At least one critical or major issue found.
-- If the reviewer output doesn't match the expected format, treat it as FAIL and re-dispatch with the prompt template re-emphasized.
+- **PASS** — no critical/major issues; minor issues noted but don't block.
+- **FAIL** — at least one critical/major issue, OR output format mismatch (re-dispatch emphasizing format).
 
 **Auto-PASS conditions (skip reviewer):**
 - The delegation was pure research/exploration with no code changes
@@ -72,22 +67,17 @@ CONFIDENCE: low | medium | high
 
 #### On PASS
 
-1. Accept the agent's output
-2. Log the review result (see § Logging)
-3. Continue orchestration
+- Log the review result (§ Logging), accept output, continue orchestration.
 
 #### On FAIL (attempt 1 or 2)
 
-1. Log the review result
-2. Re-delegate to the **same agent** with reviewer feedback appended and the note: "This is retry attempt N/2 after fast review — address the following issues before resubmitting"
-3. After the agent re-submits, run fast review again (go back to Step 1)
+- Log result; re-delegate to the **same agent** with feedback: "Retry N/2 — address listed issues before resubmitting."
+- After re-submission, run fast review again (return to Step 1).
 
 #### On FAIL (attempt 3 — escalation)
 
-1. Log the review result with `escalated: true`
-2. **Auto-escalate to panel review** — load the `panel-majority-vote` skill
-3. Include all 3 fast review reports as context for the panel
-4. If panel BLOCKs 3 times → create a **dispute record** in `.opencastle/DISPUTES.md` (see **team-lead-reference** skill § Dispute Protocol)
+- Log with `escalated: true`; load **panel-majority-vote** skill with all 3 reports as context.
+- If panel BLOCKs 3 times → create dispute record in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol).
 
 ## Reviewer Prompt Template
 
@@ -131,25 +121,16 @@ CONFIDENCE: low | medium | high
 
 > **⛔ HARD GATE — Do NOT proceed to the next task or accept the review result until the review is logged.**
 
-After each fast review, log the result using the **observability-logging** skill's review record command. See the skill for the exact CLI syntax, required fields, and verify step. An unlogged review is a failed review.
+Log each review using the **observability-logging** skill's review record command.
 
 ## Integration with Existing Workflow
 
-Fast review hooks into `on-post-delegate` as Gate 5. The hook sequence is:
-
-1. Verify output (file changes within partition) — validation-gates Gate 1
-2. Run deterministic checks (lint, test, build) — validation-gates Gates 2–4
-3. **Run fast review** — validation-gates Gate 5
-4. Check acceptance criteria (cross-checked by reviewer)
-5. Update issue
-
-Fast review adds ~5-15% token overhead — far cheaper than panel review on every step.
+Hooks into `on-post-delegate` as Gate 5 — runs after deterministic checks (Gates 1–4). Adds ~5-15% token overhead; far cheaper than panel review per step.
 
 ## Overnight/Long-Run Mode
 
-- **Upgrade reviewer** one tier for extra safety when unattended.
-- **Stricter escalation** — escalate to panel after 2 FAILs instead of 3.
-- **Checkpoint on escalation** — save a session checkpoint before proceeding to panel.
+- Upgrade reviewer one tier; escalate to panel after 2 FAILs instead of 3.
+- Save a session checkpoint before proceeding to panel.
 
 ## Anti-Patterns
 

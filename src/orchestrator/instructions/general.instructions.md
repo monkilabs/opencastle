@@ -25,99 +25,71 @@ applyTo: '**'
 
 ## General Coding Principles
 
-- **Clean Code**: Prioritize readability, maintainability, reusability
-- **Self-documenting Code**: Comment WHY, not WHAT — for detailed patterns, load the **code-commenting** skill
-- **TypeScript First**: All code in TypeScript with proper types — never `as any`
-- **DRY**: Extract reusable logic into functions, custom hooks, or components
-- **Feature Grouping**: Co-locate code that changes together; avoid barrel files
-- **Shared Code**: Place reusable UI components and data queries in shared libraries
+Clean code, readability, maintainability. TypeScript with proper types (never `as any`). DRY. Co-locate code that changes together; avoid barrel files. Shared code in shared libraries. Comment WHY, not WHAT (load **code-commenting** skill for patterns).
 
 ## Technology Standards
 
-Load the corresponding skill for detailed conventions before writing code in that domain. These are **not optional**. See `.opencastle/agents/skill-matrix.json` for the full domain-to-skill mapping.
+Load the corresponding skill before writing code in that domain. See `.opencastle/agents/skill-matrix.json` for domain-to-skill mapping. Key domains: UI Components (**ui-library**), App Framework (**framework**), Accessibility (**accessibility-standards**), Performance (**performance-optimization**), Frontend Design (**frontend-design**).
 
-| Domain | Skill |
-|--------|-------|
-| UI Components | **ui-library** (via skill matrix) |
-| App Framework | **framework** (via skill matrix) |
-| Accessibility | **accessibility-standards** |
-| Performance | **performance-optimization** |
-| Frontend Design | **frontend-design** |
+## Task Decomposition
 
-## Task Decomposition Protocol
-
-For multi-step work: decompose → verify each step → batch edits → build once. Stop and re-plan when execution diverges. Match verification to the change type (logic → tests; types → lint; UI → browser; build config → full build). Load the **decomposition** skill for delegation spec templates and dependency resolution.
+Decompose → verify each step → batch edits → build once. Re-plan when execution diverges. Match verification to change type. Load **decomposition** skill for templates.
 
 ## Testing
 
-- **95% minimum** unit test coverage for all new code
-- **Test plan before implementation**: initial state, user interactions, state transitions, edge cases, integration
-- **Browser testing mandatory** for any UI change — verified at responsive breakpoints defined in `testing-config.md`
-- Load the **testing-workflow** skill for test patterns and the **browser-testing** skill for E2E automation
+95% minimum unit test coverage. Test plan before implementation. Browser testing mandatory for UI changes. Load **testing-workflow** and **browser-testing** skills.
 
 ## Build & Task Commands
 
-Always use the project's configured task runner — never invoke test runners or linters directly. Load the **codebase-tool** skill from the skill matrix for exact commands (test, lint, build, serve, affected). Tools without task runner targets (e.g., CMS CLI, database CLI) may be invoked directly after checking the task runner config first.
+Always use the project's configured task runner. Load **codebase-tool** skill for exact commands. Direct CLI only for tools without task runner targets.
 
 ## Documentation
 
-Follow markdown formatting and documentation standards when writing docs. For templates, structure, and detailed patterns, load the **documentation-standards** skill.
+Follow markdown formatting standards. Load **documentation-standards** skill for templates.
 
 ## AI Optimization
 
-See [ai-optimization.instructions.md](ai-optimization.instructions.md) for batch processing, tool efficiency, and anti-patterns.
+See [ai-optimization.instructions.md](ai-optimization.instructions.md).
 
 ## Project Context
 
-For project-specific context (apps, libraries, tech stack, ports, URLs), see [project.instructions.md](../.opencastle/project.instructions.md).
+See [project.instructions.md](../.opencastle/project.instructions.md).
 
 ## Git Workflow
 
-**NEVER commit or push directly to the `main` branch.** All changes go through a feature/fix branch and a pull request. Load the **git-workflow** skill for branch naming, PR rules, and the Delivery Outcome checklist.
+**NEVER push to `main`.** All changes via feature/fix branch → PR. Load **git-workflow** skill for branch naming and PR rules.
 
 ## Discovered Issues Policy
 
-> **⛔ No issue gets ignored.** Untracked bugs discovered during work are a quality gate failure.
+> **⛔ No issue gets ignored.** Untracked bugs found during work = quality gate failure.
 
-When you encounter a bug unrelated to the current task: check if already tracked in `KNOWN-ISSUES.md` or the task tracker. If NOT tracked, track it (known issue entry or bug ticket). Never assume a pre-existing issue is somebody else's problem. See the **git-workflow** skill for the full procedure.
+Check `KNOWN-ISSUES.md` or tracker. If not tracked, track it. See **git-workflow** skill.
 
 ## Observability Logging
 
-> **⛔ HARD GATE — This is a blocking requirement, not a suggestion.**
-> Do NOT respond to the user until you have appended the required log records.
-> A session without log records is a failed session — regardless of code quality.
-
-**Every agent MUST log every session** to `.opencastle/logs/events.ndjson`. No exceptions. No threshold. No "too small to log." Load the **observability-logging** skill for CLI commands, record schemas, and the full logging checklist.
+> **⛔ HARD GATE** — Log every session to `.opencastle/logs/events.ndjson`. No exceptions. Load **observability-logging** skill for CLI commands and schemas.
 
 ## Self-Improvement Protocol
 
-> **⛔ HARD GATE — Lessons are the team's collective memory. Skipping them causes repeated failures.**
-
-1. **Before starting work:** Read `.opencastle/LESSONS-LEARNED.md` — apply relevant lessons proactively. This is NOT optional.
-2. **During execution:** If you retry with a different approach and it works, use the **self-improvement** skill to add a lesson immediately.
-3. **Update source files:** If the lesson reveals a gap in instruction/skill files, update those files too.
+> **⛔ HARD GATE** — Read `.opencastle/LESSONS-LEARNED.md` before starting work. Add lessons via **self-improvement** skill when retries succeed.
 
 ## Universal Agent Rules
 
-These rules apply to ALL specialist agents automatically. **Do not duplicate them in individual agent files.**
-
-1. **Never delegate** — Specialist agents complete their own work and return results. Never invoke the Team Lead or spawn sub-agents.
-2. **Follow the Discovered Issues Policy** — Track any pre-existing bugs found during your work (see above).
-3. **Read and update lessons** — See Self-Improvement Protocol above.
-4. **Log every session** — See Observability Logging above. This is Constitution rule #6 — a blocking gate, not optional.
+1. Never delegate (specialists complete their own work)
+2. Follow Discovered Issues Policy
+3. Read and update lessons
+4. Log every session (Constitution rule #6)
 
 ## Pre-Response Quality Gate
 
-> **⛔ STOP before responding to the user.** Load the **observability-logging** skill and run its full pre-response quality gate checklist. Do not respond until every item passes. At minimum, confirm that session, delegation, and review log counts are non-zero and that no discovered issues are untracked.
+> **⛔ STOP before responding.** Load **observability-logging** skill and run its pre-response checklist.
 
-## Workflow & Governance Skills
-
-These skills provide detailed procedures. Load when their phase is reached.
+## Governance Skills
 
 | Concern | Skill |
 |---------|-------|
-| Branch naming, PR rules, delivery outcome, task tracking | **git-workflow** |
-| Log CLI commands, record schemas, output contracts | **observability-logging** |
-| Lesson writing CLI, categories, quality standards | **self-improvement** |
+| Branching, PR rules, delivery, tracking | **git-workflow** |
+| Log commands, schemas, output contracts | **observability-logging** |
+| Lesson writing, categories, quality | **self-improvement** |
 
 <!-- End of Coding Standards -->
