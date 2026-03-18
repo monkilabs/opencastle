@@ -363,6 +363,10 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
     max_retries: 1,
   }
 
+  if (opts.verbose) {
+    console.log(c.dim(`    Adapter: ${adapterName} | Template: ${templateName} | Agent: ${agentField}`))
+  }
+
   const stop = opts.verbose ? null : startProgress(templateName)
   let execResult
   try {
@@ -373,7 +377,19 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
   } finally {
     stop?.()
   }
+
+  if (!execResult.success) {
+    throw new Error(
+      `Adapter "${adapterName}" returned failure (exit code ${execResult.exitCode}) for template "${templateName}".\n` +
+      `Output (${execResult.output.length} chars):\n${execResult.output.slice(0, 2000)}`
+    )
+  }
+
   const rawOutput = execResult.output
+
+  if (opts.verbose) {
+    console.log(c.dim(`    Output: ${rawOutput.length} chars | Exit code: ${execResult.exitCode}`))
+  }
 
   if (outputType === 'validation') {
     const { isValid, errors } = parseValidationResult(rawOutput)
@@ -386,11 +402,11 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
     // since task prompts may contain triple backticks in code examples
     const jsonFenceMatch = rawOutput.match(/```json\s*\n([\s\S]*)```/)
     if (!jsonFenceMatch) {
-      const preview = rawOutput.slice(0, 300)
       throw new Error(
         `Expected a fenced \`\`\`json block in the AI response but found none.\n\n` +
-        `Raw output (truncated):\n${preview}\n\n` +
-        `Tip: re-run with --verbose to see the full output.`
+        `Adapter: ${adapterName} | Output length: ${rawOutput.length} chars\n\n` +
+        `Raw output:\n${rawOutput}\n\n` +
+        `Tip: re-run with --verbose to see the full adapter output.`
       )
     }
     const jsonContent = jsonFenceMatch[1].trim()
@@ -419,7 +435,7 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
   // convoy-spec (default)
   const yamlContent = extractYamlBlock(rawOutput)
   if (!yamlContent) {
-    const preview = rawOutput.slice(0, 500)
+    const preview = rawOutput.slice(0, 10_000)
     throw new Error(
       `No YAML code block found in the agent response.\n\nRaw output (truncated):\n${preview}`
     )

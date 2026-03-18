@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { stringify } from 'yaml'
@@ -8,7 +8,7 @@ import type { PromptStepOptions } from './plan.js'
 import { cleanupAdapters } from './run/adapters/index.js'
 import type { CliContext } from './types.js'
 import { parseYaml, validateSpec } from './run/schema.js'
-import { buildConvoyYaml, parseTaskPlan, parsePatches, applyPatches, deriveSpecEnrichment, detectJsonTruncation } from './convoy/spec-builder.js'
+import { buildConvoyYaml, parseTaskPlanWithReason, parsePatches, applyPatches, deriveSpecEnrichment, detectJsonTruncation } from './convoy/spec-builder.js'
 import type { TaskPlan, SpecEnrichment } from './convoy/spec-builder.js'
 
 export interface ConvoyGroup {
@@ -738,10 +738,18 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
         const convoyDir = resolve(process.cwd(), '.opencastle', 'convoys')
         await mkdir(convoyDir, { recursive: true })
 
+        // Extract feature name early for convoy naming
+        const chainPrdContent = await readFile(prdPath, 'utf8')
+        const featureNameMatch = chainPrdContent.match(/^# (.+?)\s*(?:—|-)?\s*PRD/m)
+        const featureName = featureNameMatch
+          ? featureNameMatch[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')
+          : 'feature'
+
         const groupSpecPaths: string[] = []
 
         for (let i = 0; i < complexity.convoy_groups.length; i++) {
           const group = complexity.convoy_groups[i]
+          console.log(c.cyan(`  [${i + 1}/${complexity.convoy_groups.length}] Generating convoy: ${group.name}`) + c.dim(` (phases: ${group.phases.join(', ')})`))
 
           const chainGoal = [
             complexity.original_prompt,
@@ -761,7 +769,7 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
           const relevantPrd = extractRelevantPrdSections(prdContent, group.phases)
           const relevantComplexity = filterTaskComplexityByPhases(complexity?.task_complexity, group.phases)
           const contextForSpec = appendTaskComplexity(relevantPrd, relevantComplexity)
-          const groupSpecPath = resolve(convoyDir, `${group.name}.convoy.yml`)
+          const groupSpecPath = resolve(convoyDir, `${featureName}-${group.name}.convoy.yml`)
 
           const { specPath: resolvedGroupSpecPath } = await generateAndValidateSpec({
             sharedOpts,
@@ -770,18 +778,13 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
             specPath: groupSpecPath,
             skipValidation: opts.skipValidation,
             groupName: group.name,
+            featureName,
             enrichment: complexity ? deriveSpecEnrichment(complexity) : undefined,
           })
           groupSpecPaths.push(resolvedGroupSpecPath)
         }
 
         // Build master pipeline spec (version 2)
-        const chainPrdContent = await readFile(prdPath, 'utf8')
-        const featureNameMatch = chainPrdContent.match(/^# (.+?)\s*(?:—|-)?\s*PRD/m)
-        const featureName = featureNameMatch
-          ? featureNameMatch[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')
-          : 'feature'
-
         const branchMatch = chainPrdContent.match(/`feat\/([^`]+)`/)
         const branch = branchMatch ? `feat/${branchMatch[1]}` : `feat/${featureName}`
 
@@ -948,12 +951,21 @@ async function generateAndValidateSpec(params: {
   specPath?: string
   skipValidation: boolean
   groupName?: string
+  featureName?: string
   enrichment?: SpecEnrichment
 }): Promise<{ specPath: string; taskPlan: TaskPlan }> {
   const label = params.groupName
     ? `Generating task plan: ${params.groupName}…`
     : 'Generating task plan…'
   console.log(c.cyan(`  ${label}`))
+
+  // Temp file for debugging — kept on failure, deleted on success
+  const convoyDir = resolve(process.cwd(), '.opencastle', 'convoys')
+  await mkdir(convoyDir, { recursive: true })
+  const tempJsonName = params.groupName
+    ? `${params.featureName ? `${params.featureName}-` : ''}${params.groupName}.task-plan.json`
+    : `${params.featureName ?? 'task-plan'}.task-plan.json`
+  const tempJsonPath = resolve(convoyDir, tempJsonName)
 
   let taskPlanResult
   try {
@@ -968,12 +980,15 @@ async function generateAndValidateSpec(params: {
     process.exit(1)
   }
 
-  let taskPlan = parseTaskPlan(taskPlanResult.rawOutput)
-  if (!taskPlan) {
-    console.log(c.yellow(`  ⚠ Failed to parse task plan JSON — retrying generation…\n`))
-    if (params.sharedOpts.verbose) {
-      console.log(c.dim(taskPlanResult.rawOutput.slice(0, 500)))
-    }
+  // Write raw JSON to temp file for debugging
+  await writeFile(tempJsonPath, taskPlanResult.rawOutput + '\n', 'utf8')
+
+  let result = parseTaskPlanWithReason(taskPlanResult.rawOutput)
+  if (!result.plan) {
+    console.log(c.yellow(`  ⚠ Failed to parse task plan JSON: ${result.reason}`))
+    console.log(c.dim(`    Output length: ${taskPlanResult.rawOutput.length} chars`))
+    console.log(c.dim(`    Temp file: ${relPath(tempJsonPath)}`))
+    console.log(c.yellow(`    Retrying generation…\n`))
 
     let retryResult
     try {
@@ -988,20 +1003,23 @@ async function generateAndValidateSpec(params: {
       process.exit(1)
     }
 
-    taskPlan = parseTaskPlan(retryResult.rawOutput)
-    if (!taskPlan) {
-      const truncation = detectJsonTruncation(retryResult.rawOutput)
-      if (truncation) {
-        console.error(`  ✗ Task plan JSON was truncated: ${truncation}`)
-        console.error(c.dim(`\n  The AI model ran out of output tokens before finishing the JSON.`))
-        console.error(c.dim(`  Try reducing the PRD size or re-running with a model that supports longer output.`))
-      } else {
-        console.error('  ✗ Failed to parse task plan JSON after retry')
-      }
-      console.error(c.dim(retryResult.rawOutput.slice(0, 500)))
+    // Overwrite temp file with retry output
+    await writeFile(tempJsonPath, retryResult.rawOutput + '\n', 'utf8')
+
+    result = parseTaskPlanWithReason(retryResult.rawOutput)
+    if (!result.plan) {
+      console.error(`  ✗ Failed to parse task plan JSON after retry: ${result.reason}`)
+      console.error(c.dim(`    Output length: ${retryResult.rawOutput.length} chars`))
+      console.error(c.dim(`    Raw JSON saved to ${relPath(tempJsonPath)} for inspection.`))
+      console.error(c.dim(`\n${retryResult.rawOutput}`))
       process.exit(1)
     }
   }
+
+  let taskPlan = result.plan
+
+  // Success — clean up temp file
+  await unlink(tempJsonPath).catch(() => {})
 
   console.log(c.green(`  ✓ Task plan generated (${taskPlan.tasks.length} tasks)`))
 

@@ -231,86 +231,114 @@ export function detectJsonTruncation(jsonText: string): string | null {
 }
 
 /**
+ * Result of parsing a task plan JSON. Contains either a valid plan or a diagnostic reason.
+ */
+export interface ParseTaskPlanResult {
+  plan: TaskPlan | null
+  reason?: string
+}
+
+/**
  * Parses a JSON string into a TaskPlan. Returns null if parsing fails or required fields are missing.
  */
 export function parseTaskPlan(jsonText: string): TaskPlan | null {
+  return parseTaskPlanWithReason(jsonText).plan
+}
+
+/**
+ * Like parseTaskPlan but returns a diagnostic reason on failure.
+ */
+export function parseTaskPlanWithReason(jsonText: string): ParseTaskPlanResult {
   const truncation = detectJsonTruncation(jsonText)
   if (truncation) {
     console.warn(`  ⚠ parseTaskPlan: ${truncation}`)
-    return null
+    return { plan: null, reason: truncation }
   }
 
+  let parsed: Record<string, unknown>
   try {
-    const parsed = JSON.parse(jsonText.trim()) as Record<string, unknown>
-    if (!parsed || typeof parsed.name !== 'string') return null
-    if (!Array.isArray(parsed.tasks) || (parsed.tasks as unknown[]).length === 0) return null
-    for (const task of parsed.tasks as unknown[]) {
-      const t = task as Record<string, unknown>
-      if (typeof t.id !== 'string' || typeof t.prompt !== 'string') return null
-      if ((t.prompt as string).length === 0) return null
-    }
-
-    // Validate unique task IDs
-    const tasks = parsed.tasks as Array<Record<string, unknown>>
-    const ids = new Set<string>()
-    const duplicates: string[] = []
-    for (const task of tasks) {
-      const id = task.id as string
-      if (ids.has(id)) duplicates.push(id)
-      ids.add(id)
-    }
-    if (duplicates.length > 0) {
-      console.warn(`  ⚠ parseTaskPlan: duplicate task IDs: ${duplicates.join(', ')}`)
-      return null
-    }
-
-    // Validate depends_on references
-    for (const task of tasks) {
-      if (Array.isArray(task.depends_on)) {
-        for (const dep of task.depends_on as string[]) {
-          if (!ids.has(dep)) {
-            console.warn(`  ⚠ parseTaskPlan: task "${task.id as string}" depends on unknown task "${dep}"`)
-            return null
-          }
-        }
-      }
-    }
-
-    // Cycle detection (Kahn's algorithm)
-    const inDegree = new Map<string, number>()
-    const adj = new Map<string, string[]>()
-    for (const id of ids) {
-      inDegree.set(id, 0)
-      adj.set(id, [])
-    }
-    for (const task of tasks) {
-      if (Array.isArray(task.depends_on)) {
-        for (const dep of task.depends_on as string[]) {
-          adj.get(dep)!.push(task.id as string)
-          inDegree.set(task.id as string, (inDegree.get(task.id as string) ?? 0) + 1)
-        }
-      }
-    }
-    const queue = [...ids].filter(id => inDegree.get(id) === 0)
-    let visited = 0
-    while (queue.length > 0) {
-      const node = queue.shift()!
-      visited++
-      for (const next of adj.get(node) ?? []) {
-        const deg = (inDegree.get(next) ?? 1) - 1
-        inDegree.set(next, deg)
-        if (deg === 0) queue.push(next)
-      }
-    }
-    if (visited < ids.size) {
-      console.warn(`  ⚠ parseTaskPlan: dependency cycle detected`)
-      return null
-    }
-
-    return parsed as unknown as TaskPlan
-  } catch {
-    return null
+    parsed = JSON.parse(jsonText.trim()) as Record<string, unknown>
+  } catch (err) {
+    return { plan: null, reason: `JSON.parse failed: ${err instanceof Error ? err.message : String(err)}` }
   }
+
+  if (!parsed || typeof parsed.name !== 'string') {
+    return { plan: null, reason: `missing or invalid top-level "name" field (got ${typeof parsed?.name})` }
+  }
+  if (!Array.isArray(parsed.tasks) || (parsed.tasks as unknown[]).length === 0) {
+    return { plan: null, reason: `missing or empty "tasks" array` }
+  }
+  for (let i = 0; i < (parsed.tasks as unknown[]).length; i++) {
+    const t = (parsed.tasks as unknown[])[i] as Record<string, unknown>
+    if (typeof t.id !== 'string') {
+      return { plan: null, reason: `task[${i}] missing "id" field` }
+    }
+    if (typeof t.prompt !== 'string') {
+      return { plan: null, reason: `task "${t.id ?? i}" missing "prompt" field (has keys: ${Object.keys(t).join(', ')})` }
+    }
+    if ((t.prompt as string).length === 0) {
+      return { plan: null, reason: `task "${t.id}" has empty "prompt" field` }
+    }
+  }
+
+  // Validate unique task IDs
+  const tasks = parsed.tasks as Array<Record<string, unknown>>
+  const ids = new Set<string>()
+  const duplicates: string[] = []
+  for (const task of tasks) {
+    const id = task.id as string
+    if (ids.has(id)) duplicates.push(id)
+    ids.add(id)
+  }
+    if (duplicates.length > 0) {
+    console.warn(`  ⚠ parseTaskPlan: duplicate task IDs: ${duplicates.join(', ')}`)
+    return { plan: null, reason: `duplicate task IDs: ${duplicates.join(', ')}` }
+  }
+
+  // Validate depends_on references
+  for (const task of tasks) {
+    if (Array.isArray(task.depends_on)) {
+      for (const dep of task.depends_on as string[]) {
+        if (!ids.has(dep)) {
+          console.warn(`  ⚠ parseTaskPlan: task "${task.id as string}" depends on unknown task "${dep}"`)
+          return { plan: null, reason: `task "${task.id as string}" depends on unknown task "${dep}"` }
+        }
+      }
+    }
+  }
+
+  // Cycle detection (Kahn's algorithm)
+  const inDegree = new Map<string, number>()
+  const adj = new Map<string, string[]>()
+  for (const id of ids) {
+    inDegree.set(id, 0)
+    adj.set(id, [])
+  }
+  for (const task of tasks) {
+    if (Array.isArray(task.depends_on)) {
+      for (const dep of task.depends_on as string[]) {
+        adj.get(dep)!.push(task.id as string)
+        inDegree.set(task.id as string, (inDegree.get(task.id as string) ?? 0) + 1)
+      }
+    }
+  }
+  const queue = [...ids].filter(id => inDegree.get(id) === 0)
+  let visited = 0
+  while (queue.length > 0) {
+    const node = queue.shift()!
+    visited++
+    for (const next of adj.get(node) ?? []) {
+      const deg = (inDegree.get(next) ?? 1) - 1
+      inDegree.set(next, deg)
+      if (deg === 0) queue.push(next)
+    }
+  }
+  if (visited < ids.size) {
+    console.warn(`  ⚠ parseTaskPlan: dependency cycle detected`)
+    return { plan: null, reason: 'dependency cycle detected' }
+  }
+
+  return { plan: parsed as unknown as TaskPlan }
 }
 
 /**
