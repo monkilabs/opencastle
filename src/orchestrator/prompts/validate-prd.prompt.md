@@ -10,9 +10,7 @@ output: validation
 
 You are a senior technical reviewer. Your job is to validate the PRD below against strict quality criteria before it is used to generate an automated convoy spec. A PRD that passes this gate will produce a clean, executable convoy spec. A PRD that fails will produce bad tasks.
 
-Be strict. Do not pass a PRD with vague language or missing sections just because it "looks mostly right."
-
-> **⚠ EXHAUSTIVENESS MANDATE**: You MUST report ALL issues in a single pass. Do NOT stop at the first few problems. Systematically evaluate every section against every check below. A second validation pass should find zero new issues — if it would, your first pass was incomplete.
+Focus on **structural completeness** only — the PRD generator already enforces language quality and style. Your job is to catch structural problems that would break convoy spec generation. **Pass the PRD if sections exist and the structure is internally consistent.** Do not fail for stylistic preferences, word choice, or minor phrasing.
 
 ## PRD to Validate
 
@@ -22,47 +20,26 @@ Be strict. Do not pass a PRD with vague language or missing sections just becaus
 
 ## Validation Checklist
 
-> If the PRD below contains the marker `<!-- validation-pass: N -->`, this is validation pass N. On pass 1, be maximally thorough — report every issue you can find. On pass 2+, verify that previous fixes were applied correctly and check for regressions, but do NOT invent new categories of issues not covered by the checks below.
+> If the PRD contains `<!-- validation-pass: N -->`, this is pass N. On pass 2+, only verify previous fixes were applied — do NOT invent new issues.
 
-Evaluate **every item** below. If ALL items pass, respond `VALID`. If ANY item fails, respond `INVALID` with a specific, actionable issue list.
+Evaluate the checks below. If ALL pass, respond `VALID`. Only fail for checks marked BLOCKING.
 
-### Required Sections
+### Required Sections (BLOCKING)
 
-- [ ] `Overview` section is present and non-empty (at least 2 sentences)
-- [ ] `Goals` section is present with at least one numbered, specific goal
-- [ ] `Non-Goals` section is present (may say "None" but must not be missing)
-- [ ] `User Stories & Acceptance Criteria` section is present with at least one user story
-- [ ] Each user story has associated acceptance criteria (not just the story itself)
-- [ ] `Technical Requirements` section is present and non-empty
-- [ ] `Implementation Scope` section is present with a table or list of specific files/directories
-- [ ] `Task Breakdown` section is present with at least one phase and workstream
-- [ ] `Success Criteria` section is present with at least 3 measurable checks
-- [ ] `Risks & Open Questions` section is present (may say "None identified")
+All of these sections must exist and contain real content (not just the heading):
+`Overview`, `Goals`, `Non-Goals`, `User Stories & Acceptance Criteria`, `Technical Requirements`, `Implementation Scope`, `Task Breakdown`, `Success Criteria`, `Risks & Open Questions`.
 
-### Acceptance Criteria Quality
+### Structural Integrity (BLOCKING)
 
-- [ ] All acceptance criteria can be evaluated as pass/fail (no subjective language like "looks good", "feels responsive", "is clean")
-- [ ] No criterion uses modal verbs that imply optionality ("should", "might", "could", "may")
-- [ ] No criterion references undefined external systems without explaining what they are
-
-### Implementation Scope Quality
-
-- [ ] Scope lists **specific** file names or subdirectory names — not broad paths like `src/` or `the frontend`
-- [ ] Scope table does not use glob patterns (`*`, `**`)
-- [ ] Every concern area has at least one specific file or directory
-
-### Task Breakdown Quality
-
-- [ ] Each workstream lists the exact files it will modify
 - [ ] No two parallel workstreams (same phase) claim the same file
-- [ ] Phases have explicit dependency declarations (`depends on: Phase N`)
-- [ ] No circular dependencies
-
-### Language Quality
-
-- [ ] No **domain-specific** acronyms or jargon used without explanation (standard software acronyms like API, CSS, HTML, CI/CD, CMS, SDK, CLI, URL, JSON, REST, SQL, SSR, SSG, CDN, DNS, TLS, JWT, OAuth, CRUD, DOM, UI, UX, HTTP, HTTPS, LTS, WCAG, RTL, MCP, PRD, E2E are considered universally understood and do not need expansion)
-- [ ] No conflicting requirements (e.g., "must be fast AND run full suite on every change")
+- [ ] No circular dependencies between phases
+- [ ] No conflicting requirements across sections (e.g., a Non-Goal contradicts a Technical Requirement)
 - [ ] Section content is not placeholder/template text (e.g., "2–3 sentences about…", "Description here")
+
+### Implementation Coherence (BLOCKING)
+
+- [ ] Implementation Scope lists specific files or subdirectories (not just `src/` or `the frontend`)
+- [ ] Each workstream lists the files it will modify
 
 ---
 
@@ -76,7 +53,7 @@ Your entire response must be a single fenced JSON block — no text before or af
 }
 ```
 
-Or if any check fails:
+Or if any **BLOCKING** check fails:
 
 ```json
 {

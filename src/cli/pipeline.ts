@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
+import { resolve } from 'node:path'
 import { stringify } from 'yaml'
 import { c, confirm, closePrompts } from './prompt.js'
 import { runPromptStep, readProjectMcpServers } from './plan.js'
@@ -8,7 +8,7 @@ import type { PromptStepOptions } from './plan.js'
 import { cleanupAdapters } from './run/adapters/index.js'
 import type { CliContext } from './types.js'
 import { parseYaml, validateSpec } from './run/schema.js'
-import { buildConvoyYaml, parseTaskPlan, parsePatches, applyPatches, deriveSpecEnrichment } from './convoy/spec-builder.js'
+import { buildConvoyYaml, parseTaskPlan, parsePatches, applyPatches, deriveSpecEnrichment, detectJsonTruncation } from './convoy/spec-builder.js'
 import type { TaskPlan, SpecEnrichment } from './convoy/spec-builder.js'
 
 export interface ConvoyGroup {
@@ -27,6 +27,104 @@ function appendTaskComplexity(base: string, taskComplexity: ComplexityAssessment
     result += `| ${tc.workstream} | ${tc.phase} | ${tc.complexity} | ${tc.rationale} |\n`
   }
   return result
+}
+
+/**
+ * For chain mode, extract only the PRD sections relevant to the given phases.
+ * Keeps Overview, Technical Requirements, and the matching phase sections from
+ * Task Breakdown, while trimming the full User Stories, Implementation Scope,
+ * and non-matching phases to reduce context size and avoid output truncation.
+ */
+function extractRelevantPrdSections(prdContent: string, phases: number[]): string {
+  const phaseSet = new Set(phases)
+  const lines = prdContent.split('\n')
+  const result: string[] = []
+
+  // Sections to always include (key context)
+  const alwaysInclude = ['overview', 'goals', 'non-goals', 'technical requirements']
+  // Sections to include condensed
+  const condenseSection = ['user stories & acceptance criteria', 'implementation scope', 'success criteria', 'risks & open questions']
+
+  let currentSection = ''
+  let inTaskBreakdown = false
+  let inRelevantPhase = false
+  let skipSection = false
+
+  for (const line of lines) {
+    // Detect heading (## level)
+    const h2Match = line.match(/^## (.+)/)
+    if (h2Match) {
+      const heading = h2Match[1].trim().toLowerCase()
+      currentSection = heading
+      inTaskBreakdown = heading === 'task breakdown'
+      inRelevantPhase = false
+      skipSection = false
+
+      if (alwaysInclude.some(s => heading.startsWith(s))) {
+        result.push(line)
+        continue
+      }
+
+      if (inTaskBreakdown) {
+        result.push(line)
+        result.push('')
+        result.push(`*(Only phases ${phases.join(', ')} shown — other phases omitted for brevity)*`)
+        result.push('')
+        continue
+      }
+
+      if (condenseSection.some(s => heading.startsWith(s))) {
+        // Include the heading but mark as condensed
+        result.push(line)
+        result.push('')
+        result.push('*(Condensed — see full PRD for details)*')
+        result.push('')
+        skipSection = true
+        continue
+      }
+
+      // # title heading — always include
+      result.push(line)
+      continue
+    }
+
+    // H1 heading — always include
+    if (line.match(/^# /)) {
+      result.push(line)
+      continue
+    }
+
+    if (skipSection) continue
+
+    if (inTaskBreakdown) {
+      // Detect phase headers like "Phase 1 —" or "Phase 2 —"
+      const phaseMatch = line.match(/Phase\s+(\d+)/i)
+      if (phaseMatch) {
+        const phaseNum = parseInt(phaseMatch[1], 10)
+        inRelevantPhase = phaseSet.has(phaseNum)
+      }
+      if (inRelevantPhase) {
+        result.push(line)
+      }
+      continue
+    }
+
+    result.push(line)
+  }
+
+  return result.join('\n')
+}
+
+/**
+ * Filter task complexity entries to only those matching the given phases.
+ */
+function filterTaskComplexityByPhases(
+  taskComplexity: ComplexityAssessment['task_complexity'],
+  phases: number[],
+): ComplexityAssessment['task_complexity'] {
+  if (!taskComplexity?.length) return taskComplexity
+  const phaseSet = new Set(phases)
+  return taskComplexity.filter(tc => phaseSet.has(tc.phase))
 }
 
 export interface ComplexityAssessment {
@@ -310,6 +408,79 @@ function stepLabel(n: number, total: number, name: string): string {
   return c.bold(c.cyan(`  [${n}/${total}] ${name}`))
 }
 
+async function fixPrd(
+  sharedOpts: Omit<PromptStepOptions, 'template' | 'goalText'>,
+  prdPath: string,
+  prdContent: string,
+  initialErrors: string,
+  totalSteps: number,
+  adapterFlag: string | null,
+): Promise<void> {
+  const MAX_PRD_FIX_RETRIES = 2
+  let fixedPrdContent = prdContent
+  let prdValidationErrors = initialErrors
+  let prdFixed = false
+
+  for (let attempt = 1; attempt <= MAX_PRD_FIX_RETRIES; attempt++) {
+    const label = `Fix PRD attempt ${attempt}/${MAX_PRD_FIX_RETRIES}…`
+    console.log(stepLabel(3, totalSteps, label))
+
+    try {
+      await runPromptStep({
+        ...sharedOpts,
+        template: 'fix-prd',
+        goalText: fixedPrdContent,
+        contextText: prdValidationErrors,
+        outputPath: prdPath,
+      })
+    } catch (err) {
+      console.error(`\n  ✗ Step 3 (attempt ${attempt}) failed: ${err instanceof Error ? err.message : String(err)}`)
+      process.exit(1)
+    }
+
+    console.log(c.dim(`  Re-validating after fix…`))
+
+    fixedPrdContent = await readFile(prdPath, 'utf8')
+
+    let revalidation
+    try {
+      revalidation = await runPromptStep({
+        ...sharedOpts,
+        template: 'validate-prd',
+        goalText: `<!-- validation-pass: ${attempt + 1} -->\n${fixedPrdContent}`,
+      })
+    } catch (err) {
+      console.error(`\n  ✗ Re-validation failed: ${err instanceof Error ? err.message : String(err)}`)
+      process.exit(1)
+    }
+
+    if (revalidation.isValid) {
+      console.log(c.green(`  ✓ PRD fixed and validated\n`))
+      prdFixed = true
+      break
+    }
+
+    prdValidationErrors = revalidation.errors ?? revalidation.rawOutput
+
+    if (attempt < MAX_PRD_FIX_RETRIES) {
+      console.log(c.yellow(`  ⚠ Still has issues after fix attempt ${attempt} — retrying…\n`))
+      console.log(c.dim(prdValidationErrors))
+      console.log()
+    }
+  }
+
+  if (!prdFixed) {
+    console.log(c.yellow(`\n  ⚠ Could not fully auto-fix the PRD after ${MAX_PRD_FIX_RETRIES} attempts — continuing with best-effort PRD.\n`))
+    console.log(c.dim(`  Remaining issues:\n`))
+    console.log(c.dim(prdValidationErrors))
+    console.log(
+      c.dim(`\n  PRD saved to ${relPath(prdPath)} with best available fixes.`) +
+        c.dim(`\n  You can re-validate later with:\n`) +
+        `    opencastle start --prd ${relPath(prdPath)}${adapterFlag ? ` --adapter ${adapterFlag}` : ''}\n`
+    )
+  }
+}
+
 export default async function pipeline({ args, pkgRoot }: CliContext): Promise<void> {
   const opts = parseArgs(args)
 
@@ -386,98 +557,11 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
     return
   }
 
-  // ── Step 2: Validate PRD ──────────────────────────────────────────────────
-  if (!opts.skipValidation) {
-    console.log(stepLabel(2, totalSteps, 'Validating PRD…'))
+  // ── Steps 2 + 4: Validate PRD & Assess complexity (in parallel) ────────
+  // Both only read the PRD — run them concurrently to save one LLM round-trip.
+  // If validation fails we still use the complexity result (fix-prd patches
+  // issues without changing the overall structure/phases).
 
-    const prdContent = await readFile(prdPath, 'utf8')
-    let result
-    try {
-      result = await runPromptStep({
-        ...sharedOpts,
-        template: 'validate-prd',
-        goalText: `<!-- validation-pass: 1 -->\n${prdContent}`,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Step 2 failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    if (!result.isValid) {
-      let prdValidationErrors = result.errors ?? result.rawOutput
-      console.log(c.yellow(`  ⚠ PRD has validation issues — attempting auto-fix…\n`))
-      console.log(c.dim(prdValidationErrors))
-      console.log()
-
-      // ── Step 3: Fix PRD (up to 2 retries) ──────────────────────────────────
-      const MAX_PRD_FIX_RETRIES = 2
-      let fixedPrdContent = prdContent
-      let prdFixed = false
-
-      for (let attempt = 1; attempt <= MAX_PRD_FIX_RETRIES; attempt++) {
-        const label = `Fix PRD attempt ${attempt}/${MAX_PRD_FIX_RETRIES}…`
-        console.log(stepLabel(3, totalSteps, label))
-
-        try {
-          await runPromptStep({
-            ...sharedOpts,
-            template: 'fix-prd',
-            goalText: fixedPrdContent,
-            contextText: prdValidationErrors,
-            outputPath: prdPath, // overwrite in place
-          })
-        } catch (err) {
-          console.error(`\n  ✗ Step 3 (attempt ${attempt}) failed: ${err instanceof Error ? err.message : String(err)}`)
-          process.exit(1)
-        }
-
-        console.log(c.dim(`  Re-validating after fix…`))
-
-        fixedPrdContent = await readFile(prdPath, 'utf8')
-
-        let revalidation
-        try {
-          revalidation = await runPromptStep({
-            ...sharedOpts,
-            template: 'validate-prd',
-            goalText: `<!-- validation-pass: ${attempt + 1} -->\n${fixedPrdContent}`,
-          })
-        } catch (err) {
-          console.error(`\n  ✗ Re-validation failed: ${err instanceof Error ? err.message : String(err)}`)
-          process.exit(1)
-        }
-
-        if (revalidation.isValid) {
-          console.log(c.green(`  ✓ PRD fixed and validated\n`))
-          prdFixed = true
-          break
-        }
-
-        prdValidationErrors = revalidation.errors ?? revalidation.rawOutput
-
-        if (attempt < MAX_PRD_FIX_RETRIES) {
-          console.log(c.yellow(`  ⚠ Still has issues after fix attempt ${attempt} — retrying…\n`))
-          console.log(c.dim(prdValidationErrors))
-          console.log()
-        }
-      }
-
-      if (!prdFixed) {
-        console.log(c.yellow(`\n  ⚠ Could not fully auto-fix the PRD after ${MAX_PRD_FIX_RETRIES} attempts — continuing with best-effort PRD.\n`))
-        console.log(c.dim(`  Remaining issues:\n`))
-        console.log(c.dim(prdValidationErrors))
-        console.log(
-          c.dim(`\n  PRD saved to ${relPath(prdPath)} with best available fixes.`) +
-            c.dim(`\n  You can re-validate later with:\n`) +
-            `    opencastle start --prd ${relPath(prdPath)}${opts.adapter ? ` --adapter ${opts.adapter}` : ''}\n`
-        )
-      }
-    } else {
-      console.log(c.green(`  ✓ PRD is valid\n`))
-    }
-  }
-
-  // ── Complexity-aware strategy decision ────────────────────────────────────
   const complexityStep = opts.skipValidation ? 2 : 4
 
   let complexity: ComplexityAssessment | null = null
@@ -485,6 +569,7 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
     ? resolve(process.cwd(), opts.complexity)
     : deriveComplexityPath(prdPath)
 
+  // Check for cached / provided complexity before launching LLM calls
   if (opts.complexity) {
     if (!existsSync(complexityFilePath)) {
       console.error(`  ✗ Complexity file not found: ${opts.complexity}`)
@@ -516,23 +601,107 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
     }
   }
 
-  if (!complexity) {
-    console.log(stepLabel(complexityStep, totalSteps, 'Assessing complexity…'))
-    try {
-      const complexityResult = await runPromptStep({
-        ...sharedOpts,
-        template: 'assess-complexity',
-        filePath: prdPath,
-        contextText: opts.text ?? undefined,
-      })
-      complexity = parseComplexityAssessment(complexityResult.rawOutput)
-      if (complexity) {
-        await writeFile(complexityFilePath, JSON.stringify(complexity, null, 2), 'utf8')
-        console.log(c.green(`  ✓ Complexity assessment saved to ${relPath(complexityFilePath)}\n`))
+  const needsValidation = !opts.skipValidation
+  const needsComplexity = !complexity
+
+  if (needsValidation || needsComplexity) {
+    const prdContent = await readFile(prdPath, 'utf8')
+
+    // Launch validation and complexity in parallel when both are needed
+    if (needsValidation && needsComplexity) {
+      console.log(stepLabel(2, totalSteps, 'Validating PRD…'))
+      console.log(stepLabel(complexityStep, totalSteps, 'Assessing complexity…'))
+      console.log(c.dim(`  (running in parallel)\n`))
+
+      const [validationResult, complexityResult] = await Promise.all([
+        runPromptStep({
+          ...sharedOpts,
+          template: 'validate-prd',
+          goalText: `<!-- validation-pass: 1 -->\n${prdContent}`,
+        }).catch((err) => {
+          console.error(`\n  ✗ Validation failed: ${err instanceof Error ? err.message : String(err)}`)
+          return null
+        }),
+        runPromptStep({
+          ...sharedOpts,
+          template: 'assess-complexity',
+          filePath: prdPath,
+          contextText: opts.text ?? undefined,
+        }).catch((err) => {
+          console.warn(c.yellow(`  ⚠ Complexity assessment failed: ${err instanceof Error ? err.message : String(err)}`))
+          return null
+        }),
+      ])
+
+      // Process complexity result
+      if (complexityResult) {
+        complexity = parseComplexityAssessment(complexityResult.rawOutput)
+        if (complexity) {
+          await writeFile(complexityFilePath, JSON.stringify(complexity, null, 2), 'utf8')
+          console.log(c.green(`  ✓ Complexity assessment saved to ${relPath(complexityFilePath)}`))
+        }
       }
-    } catch (err) {
-      console.warn(c.yellow(`  ⚠ Complexity assessment failed: ${err instanceof Error ? err.message : String(err)}`))
-      console.warn(c.dim(`    Falling back to single convoy strategy.\n`))
+
+      // Process validation result
+      if (!validationResult) {
+        process.exit(1)
+      }
+
+      if (!validationResult.isValid) {
+        let prdValidationErrors = validationResult.errors ?? validationResult.rawOutput
+        console.log(c.yellow(`  ⚠ PRD has validation issues — attempting auto-fix…\n`))
+        console.log(c.dim(prdValidationErrors))
+        console.log()
+
+        await fixPrd(sharedOpts, prdPath, prdContent, prdValidationErrors, totalSteps, opts.adapter)
+      } else {
+        console.log(c.green(`  ✓ PRD is valid\n`))
+      }
+    } else if (needsValidation) {
+      // Only validation needed (complexity was cached)
+      console.log(stepLabel(2, totalSteps, 'Validating PRD…'))
+
+      let result
+      try {
+        result = await runPromptStep({
+          ...sharedOpts,
+          template: 'validate-prd',
+          goalText: `<!-- validation-pass: 1 -->\n${prdContent}`,
+        })
+      } catch (err) {
+        console.error(`\n  ✗ Step 2 failed: ${err instanceof Error ? err.message : String(err)}`)
+        process.exit(1)
+      }
+
+      if (!result.isValid) {
+        let prdValidationErrors = result.errors ?? result.rawOutput
+        console.log(c.yellow(`  ⚠ PRD has validation issues — attempting auto-fix…\n`))
+        console.log(c.dim(prdValidationErrors))
+        console.log()
+
+        await fixPrd(sharedOpts, prdPath, prdContent, prdValidationErrors, totalSteps, opts.adapter)
+      } else {
+        console.log(c.green(`  ✓ PRD is valid\n`))
+      }
+    } else {
+      // Only complexity needed (validation skipped)
+      console.log(stepLabel(complexityStep, totalSteps, 'Assessing complexity…'))
+      try {
+        const complexityResult = await runPromptStep({
+          ...sharedOpts,
+          template: 'assess-complexity',
+          filePath: prdPath,
+          contextText: opts.text ?? undefined,
+        })
+        complexity = parseComplexityAssessment(complexityResult.rawOutput)
+        if (complexity) {
+          await writeFile(complexityFilePath, JSON.stringify(complexity, null, 2), 'utf8')
+          console.log(c.green(`  ✓ Complexity assessment saved to ${relPath(complexityFilePath)}\n`))
+        }
+      } catch (err) {
+        console.warn(c.yellow(`  ⚠ Complexity assessment failed: ${err instanceof Error ? err.message : String(err)}`))
+        console.warn(c.dim(`    Falling back to single convoy strategy.\n`))
+      }
     }
   }
 
@@ -589,7 +758,9 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
           ].filter(Boolean).join('\n')
 
           const prdContent = await readFile(prdPath, 'utf8')
-          const contextForSpec = appendTaskComplexity(prdContent, complexity?.task_complexity)
+          const relevantPrd = extractRelevantPrdSections(prdContent, group.phases)
+          const relevantComplexity = filterTaskComplexityByPhases(complexity?.task_complexity, group.phases)
+          const contextForSpec = appendTaskComplexity(relevantPrd, relevantComplexity)
           const groupSpecPath = resolve(convoyDir, `${group.name}.convoy.yml`)
 
           const { specPath: resolvedGroupSpecPath } = await generateAndValidateSpec({
@@ -819,7 +990,14 @@ async function generateAndValidateSpec(params: {
 
     taskPlan = parseTaskPlan(retryResult.rawOutput)
     if (!taskPlan) {
-      console.error('  ✗ Failed to parse task plan JSON after retry')
+      const truncation = detectJsonTruncation(retryResult.rawOutput)
+      if (truncation) {
+        console.error(`  ✗ Task plan JSON was truncated: ${truncation}`)
+        console.error(c.dim(`\n  The AI model ran out of output tokens before finishing the JSON.`))
+        console.error(c.dim(`  Try reducing the PRD size or re-running with a model that supports longer output.`))
+      } else {
+        console.error('  ✗ Failed to parse task plan JSON after retry')
+      }
       console.error(c.dim(retryResult.rawOutput.slice(0, 500)))
       process.exit(1)
     }
