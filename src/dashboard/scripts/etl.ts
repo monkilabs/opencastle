@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, copyFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -128,13 +128,14 @@ export async function runEtl(options: EtlOptions): Promise<EtlResult> {
   }
 }
 
-function parseArgs(): { db?: string; out?: string } {
+function parseArgs(): { db?: string; out?: string; events?: string } {
   const args = process.argv.slice(2)
   const result: Record<string, string> = {}
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a === '--db' && args[i+1]) { result.db = args[++i] }
     else if (a === '--out' && args[i+1]) { result.out = args[++i] }
+    else if (a === '--events' && args[i+1]) { result.events = args[++i] }
   }
   return result
 }
@@ -147,7 +148,18 @@ if (isMain) {
   const parsed = parseArgs()
   const dbPath = parsed.db != null ? resolve(process.cwd(), parsed.db) : resolve(process.cwd(), '.opencastle', 'convoy.db')
   const outputDir = parsed.out != null ? resolve(process.cwd(), parsed.out) : resolve(__dirname, '..', 'public', 'data')
-  runEtl({ dbPath, outputDir }).catch((err: unknown) => {
+  runEtl({ dbPath, outputDir }).then(() => {
+    if (parsed.events) {
+      const eventsPath = resolve(process.cwd(), parsed.events)
+      const dest = resolve(outputDir, 'events.ndjson')
+      if (existsSync(eventsPath)) {
+        copyFileSync(eventsPath, dest)
+        console.log(`Events copied: ${eventsPath} → ${dest}`)
+      } else {
+        console.warn(`⚠ Events file not found: ${eventsPath}`)
+      }
+    }
+  }).catch((err: unknown) => {
     console.error('ETL failed:', (err as Error).message)
     process.exit(1)
   })

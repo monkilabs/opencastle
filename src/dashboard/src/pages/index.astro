@@ -81,6 +81,14 @@ try {
           <span class="overall-kpi__label">Running Now</span>
           <span class="overall-kpi__value">&mdash;</span>
         </div>
+        <div class="overall-kpi" id="overall-total-tasks">
+          <span class="overall-kpi__label">Total Tasks</span>
+          <span class="overall-kpi__value">&mdash;</span>
+        </div>
+        <div class="overall-kpi" id="overall-total-retries">
+          <span class="overall-kpi__label">Total Retries</span>
+          <span class="overall-kpi__value">&mdash;</span>
+        </div>
         <div class="overall-kpi" id="overall-success-rate">
           <span class="overall-kpi__label">Success Rate</span>
           <span class="overall-kpi__value">&mdash;</span>
@@ -95,14 +103,6 @@ try {
         </div>
         <div class="overall-kpi" id="overall-total-cost">
           <span class="overall-kpi__label">Total Cost</span>
-          <span class="overall-kpi__value">&mdash;</span>
-        </div>
-        <div class="overall-kpi" id="overall-total-tasks">
-          <span class="overall-kpi__label">Total Tasks</span>
-          <span class="overall-kpi__value">&mdash;</span>
-        </div>
-        <div class="overall-kpi" id="overall-total-retries">
-          <span class="overall-kpi__label">Total Retries</span>
           <span class="overall-kpi__value">&mdash;</span>
         </div>
       </div>
@@ -201,7 +201,7 @@ try {
       <div class="chart-card__body" id="pipeline-view"></div>
     </section>
 
-    <!-- Charts Row: Agent + Outcomes -->
+    <!-- Sessions by Agent -->
     <div class="charts-row" id="agent-section" data-nav-section>
       <section class="chart-card">
         <div class="chart-card__header">
@@ -210,12 +210,12 @@ try {
         </div>
         <div class="chart-card__body" id="agent-chart"></div>
       </section>
-      <section class="chart-card">
+      <section class="chart-card" id="model-section" data-nav-section>
         <div class="chart-card__header">
-          <h2 class="chart-card__title">Delegation Outcomes</h2>
-          <p class="chart-card__desc">Task outcome distribution</p>
+          <h2 class="chart-card__title">Model Usage</h2>
+          <p class="chart-card__desc">Tasks by model</p>
         </div>
-        <div class="chart-card__body" id="delegation-outcome-chart"></div>
+        <div class="chart-card__body" id="model-chart"></div>
       </section>
     </div>
 
@@ -236,15 +236,6 @@ try {
         <div class="chart-card__body" id="mechanism-chart"></div>
       </section>
     </div>
-
-    <!-- Model Usage -->
-    <section class="chart-card" id="model-section" data-nav-section>
-      <div class="chart-card__header">
-        <h2 class="chart-card__title">Model Usage</h2>
-        <p class="chart-card__desc">Tasks by model</p>
-      </div>
-      <div class="chart-card__body" id="model-chart"></div>
-    </section>
 
     <!-- Quality Section -->
     <section class="chart-card" id="quality-section" data-nav-section>
@@ -920,6 +911,18 @@ try {
         if (sumTokens > 0) {
           setKpiValue('overall-total-tokens', formatTokens(sumTokens));
           setKpiValue('overall-total-cost', '$' + sumCost.toFixed(2));
+        } else {
+          // Final fallback: estimate from task count (~5000 tokens/task at ~$8/1M tokens avg)
+          var taskTotal = (stats.taskTotals && stats.taskTotals.totalTasks) || 0;
+          if (taskTotal > 0) {
+            var estTokens = taskTotal * 5000;
+            var estCost = estTokens * 0.000008;
+            setKpiValue('overall-total-tokens', '~' + formatTokens(estTokens));
+            setKpiValue('overall-total-cost', '~$' + estCost.toFixed(2));
+          } else {
+            setKpiValue('overall-total-tokens', 'N/A (estimated)');
+            setKpiValue('overall-total-cost', 'N/A (estimated)');
+          }
         }
       }
     }
@@ -958,14 +961,14 @@ try {
       return;
     }
     var maxCount = Math.max.apply(null, timeline.map(function(d) { return d.count; }));
-    var html = '<div class="activity-timeline">';
+    var html = '<div class="activity-timeline activity-timeline--vertical">';
     for (var i = 0; i < timeline.length; i++) {
       var d = timeline[i];
       var pct = maxCount > 0 ? Math.round((d.count / maxCount) * 100) : 0;
-      html += '<div class="bar-row">' +
-        '<span class="bar-label">' + formatShortDate(d.date) + '</span>' +
-        '<div class="bar-track"><div class="bar-segment bar--accent" style="width:' + pct + '%"></div></div>' +
-        '<span class="bar-value">' + d.count + '</span>' +
+      html += '<div class="vbar-col">' +
+        '<span class="vbar-value">' + d.count + '</span>' +
+        '<div class="vbar-track"><div class="vbar-fill" style="height:' + pct + '%"></div></div>' +
+        '<span class="vbar-label">' + formatShortDate(d.date) + '</span>' +
         '</div>';
     }
     html += '</div>';
@@ -993,13 +996,22 @@ try {
       for (var i = 0; i < sessions.length; i++) {
         var s = sessions[i];
         var outcomeClass = s.outcome === 'success' ? 'outcome-badge--success' : s.outcome === 'failed' ? 'outcome-badge--failed' : 'outcome-badge--partial';
+        var filesVal = s.files_changed;
+        var filesCell;
+        if (Array.isArray(s.file_partition) && s.file_partition.length > 0) {
+          filesCell = '<span class="tooltip-trigger" data-tooltip="' + escapeHtml(s.file_partition.join('\n')) + '">' + s.file_partition.length + ' file' + (s.file_partition.length !== 1 ? 's' : '') + '</span>';
+        } else if (typeof filesVal === 'number') {
+          filesCell = String(filesVal);
+        } else {
+          filesCell = '0';
+        }
         tbody += '<tr>' +
-          '<td class="td-agent">' + escapeHtml(s.agent || '\u2014') + '</td>' +
-          '<td class="td-task">' + escapeHtml(s.task || '\u2014') + '</td>' +
+          '<td class="td-agent" title="' + escapeHtml(s.agent || '') + '">' + escapeHtml(s.agent || '\u2014') + '</td>' +
+          '<td class="td-task" title="' + escapeHtml(s.task || '') + '">' + escapeHtml(s.task || '\u2014') + '</td>' +
           '<td><span class="outcome-badge ' + outcomeClass + '">' + escapeHtml(s.outcome || '\u2014') + '</span></td>' +
           '<td>' + (s.duration_min != null ? s.duration_min + 'm' : '\u2014') + '</td>' +
           '<td>' + (s.retries || 0) + '</td>' +
-          '<td>' + (s.files_changed || 0) + '</td>' +
+          '<td>' + filesCell + '</td>' +
           '<td>' + (s.timestamp ? formatTime(s.timestamp) : '\u2014') + '</td>' +
           '</tr>';
       }
@@ -1033,7 +1045,6 @@ try {
       if (tasksSection) tasksSection.style.display = '';
       renderDetailPipeline(detail.tasks || []);
       renderDetailAgentChart(detail.tasks || []);
-      renderDetailOutcomeChart(detail.tasks || []);
       renderDetailTierChart(detail.tasks || []);
       renderDetailMechanismChart(detail.events || []);
       renderDetailModelChart(detail.tasks || []);
@@ -1264,8 +1275,7 @@ try {
 
   // ── Convoy Detail: Derive Tier from Model ────────────────
 
-  function deriveTier(model) {
-    if (!model) return 'unknown';
+  function deriveTier(model, agent) {
     var TIER_MAP = {
       'claude-opus-4-6': 'premium',
       'claude-opus-4': 'premium',
@@ -1279,13 +1289,45 @@ try {
       'gemini-3.1-pro': 'standard',
       'gemini-3.0-flash': 'economy',
     };
-    if (TIER_MAP[model]) return TIER_MAP[model];
-    // Fallback heuristics for unknown models
-    var m = model.toLowerCase();
-    if (m.includes('opus')) return 'premium';
-    if (m.includes('sonnet') || m.includes('pro')) return 'standard';
-    if (m.includes('haiku') || m.includes('flash') || m.includes('mini')) return 'economy';
+    if (model && model !== 'copilot' && model !== 'cursor' && model !== 'opencode' && model !== 'claude') {
+      if (TIER_MAP[model]) return TIER_MAP[model];
+      var m = model.toLowerCase();
+      if (m.includes('opus')) return 'premium';
+      if (m.includes('sonnet') || m.includes('pro')) return 'standard';
+      if (m.includes('haiku') || m.includes('flash') || m.includes('mini')) return 'economy';
+    }
+    // Derive from agent name when model is a generic adapter name
+    if (agent) {
+      var a = (typeof agent === 'string' ? agent : '').toLowerCase().replace(/[\s\/]+/g, '-');
+      if (a === 'architect' || a === 'team-lead' || a.includes('team-lead')) return 'premium';
+      if (a === 'reviewer' || a === 'documentation-writer' || a === 'seo-specialist' || a === 'session-guard') return 'economy';
+      if (['developer', 'ui-ux-expert', 'testing-expert', 'security-expert', 'performance-expert', 'devops-expert', 'data-expert', 'api-designer', 'copywriter', 'release-manager', 'content-engineer', 'database-engineer', 'researcher'].includes(a)) return 'standard';
+    }
+    if (!model) return 'unknown';
     return 'utility';
+  }
+
+  function deriveModel(model, agent) {
+    if (model && model !== 'copilot' && model !== 'cursor' && model !== 'opencode' && model !== 'claude') {
+      return model;
+    }
+    if (agent) {
+      var AGENT_MODEL = {
+        'developer': 'claude-sonnet-4-6', 'ui-ux-expert': 'claude-sonnet-4-6',
+        'testing-expert': 'claude-sonnet-4-6', 'security-expert': 'claude-sonnet-4-6',
+        'performance-expert': 'claude-sonnet-4-6', 'devops-expert': 'claude-sonnet-4-6',
+        'data-expert': 'claude-sonnet-4-6', 'api-designer': 'claude-sonnet-4-6',
+        'copywriter': 'claude-sonnet-4-6', 'release-manager': 'claude-sonnet-4-6',
+        'content-engineer': 'claude-sonnet-4-6', 'database-engineer': 'claude-sonnet-4-6',
+        'researcher': 'claude-sonnet-4-6',
+        'architect': 'claude-opus-4-6', 'team-lead': 'claude-opus-4-6',
+        'reviewer': 'claude-haiku-3-5', 'documentation-writer': 'claude-haiku-3-5',
+        'seo-specialist': 'claude-haiku-3-5', 'session-guard': 'claude-haiku-3-5',
+      };
+      var a = agent.toLowerCase().replace(/[\s\/]+/g, '-');
+      return AGENT_MODEL[a] || model || 'unknown';
+    }
+    return model || 'unknown';
   }
 
   // ── Convoy Detail: Pipeline View ─────────────────────────
@@ -1301,26 +1343,34 @@ try {
 
     var phases = {};
     tasks.forEach(function(t) {
-      var p = t.phase != null ? t.phase : 1;
-      if (!phases[p]) phases[p] = 0;
-      phases[p]++;
+      var p = t.phase != null ? t.phase : 0;
+      if (!phases[p]) phases[p] = { count: 0, done: 0, failed: 0, running: 0 };
+      phases[p].count++;
+      if (t.status === 'done') phases[p].done++;
+      else if (['failed', 'gate-failed', 'timed-out', 'hook-failed'].includes(t.status)) phases[p].failed++;
+      else if (t.status === 'running' || t.status === 'assigned') phases[p].running++;
     });
 
-    var stageConfig = [
-      { label: 'Foundation', phase: 1, iconClass: 'pending', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="13" y2="14"/></svg>' },
-      { label: 'Integration', phase: 2, iconClass: 'active', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
-      { label: 'Validation', phase: 3, iconClass: 'review', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
-      { label: 'QA Gate', phase: 4, iconClass: 'done', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' },
+    var phaseNums = Object.keys(phases).map(Number).sort(function(a, b) { return a - b; });
+    var PHASE_LABELS = ['Foundation', 'Integration', 'Validation', 'QA Gate', 'Phase 5', 'Phase 6'];
+    var PHASE_ICONS = [
+      { iconClass: 'pending', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="13" y2="14"/></svg>' },
+      { iconClass: 'active', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>' },
+      { iconClass: 'review', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
+      { iconClass: 'done', icon: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' },
     ];
 
     el.innerHTML =
       '<div class="pipeline">' +
-      stageConfig.map(function(stage, i) {
+      phaseNums.map(function(pn, i) {
+        var label = PHASE_LABELS[pn] !== undefined ? PHASE_LABELS[pn] : ('Phase ' + pn);
+        var iconIdx = Math.min(i, PHASE_ICONS.length - 1);
+        var phaseData = phases[pn];
         return (i > 0 ? '<div class="pipeline-arrow">\u2192</div>' : '') +
           '<div class="pipeline-stage">' +
-          '<div class="pipeline-stage__icon pipeline-stage__icon--' + stage.iconClass + '">' + stage.icon + '</div>' +
-          '<span class="pipeline-stage__count">' + (phases[stage.phase] || 0) + '</span>' +
-          '<span class="pipeline-stage__label">' + stage.label + '</span>' +
+          '<div class="pipeline-stage__icon pipeline-stage__icon--' + PHASE_ICONS[iconIdx].iconClass + '">' + PHASE_ICONS[iconIdx].icon + '</div>' +
+          '<span class="pipeline-stage__count">' + phaseData.count + '</span>' +
+          '<span class="pipeline-stage__label">' + label + '</span>' +
           '</div>';
       }).join('') +
       '</div>';
@@ -1380,7 +1430,7 @@ try {
 
     var tierCounts = {};
     tasks.forEach(function(t) {
-      var tier = deriveTier(t.model);
+      var tier = deriveTier(t.model, t.agent);
       tierCounts[tier] = (tierCounts[tier] || 0) + 1;
     });
 
@@ -1424,7 +1474,7 @@ try {
 
     var mechCounts = {};
     events.forEach(function(e) {
-      if (e.type === 'task_assigned' || e.type === 'task_started') {
+      if (e.type === 'task_assigned' || e.type === 'task_started' || e.type === 'delegation') {
         var mech = (e.data && e.data.mechanism) || 'unknown';
         mechCounts[mech] = (mechCounts[mech] || 0) + 1;
       }
@@ -1461,39 +1511,6 @@ try {
       '<div class="donut-container"><div class="donut-wrap"><svg viewBox="0 0 180 180" class="donut-svg">' + circles.join('') + '</svg><div class="donut-center"><span class="donut-total">' + total + '</span><span class="donut-total-label">total</span></div></div><div class="donut-legend">' + legend + '</div></div>';
   }
 
-  // ── Convoy Detail: Delegation Outcome Chart ──────────────
-
-  function renderDetailOutcomeChart(tasks) {
-    var el = document.getElementById('delegation-outcome-chart');
-    if (!el) return;
-
-    if (!tasks || tasks.length === 0) {
-      el.innerHTML = emptyStateHtml('outcomes', 'No outcome data yet', 'Task outcome distribution will be shown here.');
-      return;
-    }
-
-    var OUTCOME_COLORS = { done: '#22c55e', running: '#3b82f6', pending: '#64748b', assigned: '#64748b', failed: '#ef4444', 'gate-failed': '#f59e0b', 'timed-out': '#a78bfa', 'hook-failed': '#64748b', 'review-blocked': '#f59e0b', skipped: '#94a3b8' };
-
-    var outcomeCounts = {};
-    tasks.forEach(function(t) {
-      var outcome = t.status || 'unknown';
-      outcomeCounts[outcome] = (outcomeCounts[outcome] || 0) + 1;
-    });
-
-    var outcomes = Object.entries(outcomeCounts).sort(function(a, b) { return b[1] - a[1]; });
-    var maxCount = Math.max.apply(null, outcomes.map(function(o) { return o[1]; }));
-
-    el.innerHTML = outcomes.map(function(entry) {
-      var name = entry[0];
-      var count = entry[1];
-      return '<div class="bar-row">' +
-        '<span class="bar-label">' + escapeHtml(name) + '</span>' +
-        '<div class="bar-track"><div class="bar-segment" style="width: ' + ((count / maxCount) * 100).toFixed(1) + '%; background: ' + (OUTCOME_COLORS[name] || '#64748b') + '"></div></div>' +
-        '<span class="bar-value">' + count + '</span>' +
-        '</div>';
-    }).join('');
-  }
-
   // ── Convoy Detail: Model Chart ───────────────────────────
 
   function renderDetailModelChart(tasks) {
@@ -1507,7 +1524,8 @@ try {
 
     var modelCounts = {};
     tasks.forEach(function(t) {
-      if (t.model) modelCounts[t.model] = (modelCounts[t.model] || 0) + 1;
+      var model = deriveModel(t.model, t.agent);
+      if (model) modelCounts[model] = (modelCounts[model] || 0) + 1;
     });
 
     var models = Object.entries(modelCounts).sort(function(a, b) { return b[1] - a[1]; });
@@ -1831,10 +1849,13 @@ try {
     section.style.display = '';
 
     var d = detail.drift || {};
-    var maxScore = d.max_drift_score != null ? Math.round(d.max_drift_score * 100) : 0;
+    // drift_score represents on-plan confidence (0.95 = 95% on-plan). Invert to deviation.
+    var maxScoreRaw = d.max_drift_score;
+    var deviationPct = maxScoreRaw != null ? Math.round((1 - maxScoreRaw) * 100) : 0;
+    var tasksWithDrift = d.tasks_with_drift != null ? d.tasks_with_drift : 0;
     var driftCards = [
-      { label: 'Tasks With Drift', value: d.tasks_with_drift != null ? d.tasks_with_drift : 0, tooltip: 'Tasks where the agent deviated from the original plan or instructions.', mod: 'waiting' },
-      { label: 'Max Drift Score', value: maxScore + '%', tooltip: 'The highest drift score recorded. 0% = on-track, 100% = fully off-plan.', mod: 'errors' },
+      { label: 'Tasks With Drift', value: tasksWithDrift, tooltip: 'Tasks where the agent was checked for plan deviation.', mod: tasksWithDrift > 0 ? 'waiting' : 'done' },
+      { label: 'Max Deviation', value: deviationPct + '%', tooltip: 'Highest deviation from the original plan. 0% = perfectly on-track, 100% = completely off-plan.', mod: deviationPct > 30 ? 'errors' : deviationPct > 10 ? 'waiting' : 'done' },
       { label: 'Drift Retried', value: d.drift_retried_tasks != null ? d.drift_retried_tasks : 0, tooltip: 'Tasks that were retried because drift exceeded the allowed threshold.', mod: 'running' },
     ];
 
@@ -1879,44 +1900,70 @@ try {
     var artifacts = detail.artifacts || [];
     var artifactCount = artifacts.length;
 
+    // Fallback: count unique files touched across all tasks
+    var fileSet = {};
+    var tasks = detail.tasks || [];
+    tasks.forEach(function(t) {
+      if (t.files && Array.isArray(t.files)) {
+        t.files.forEach(function(f) { fileSet[f] = true; });
+      }
+    });
+    var fileCount = Object.keys(fileSet).length;
+    var displayCount = artifactCount > 0 ? artifactCount : fileCount;
+    var countLabel = artifactCount > 0 ? 'Artifacts' : 'Files Touched';
+    var countTooltip = artifactCount > 0 ? 'Structured outputs produced by tasks.' : 'Files created or modified by tasks in this convoy.';
+
     var cardsEl = document.getElementById('outputs-cards');
     if (cardsEl) {
       cardsEl.innerHTML =
         '<div class="task-summary-card task-summary-card--done">' +
-        '<span class="task-summary-card__label">Outputs Produced ' +
-        '<span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: Files, data, and summaries produced by this convoy." data-tooltip="Files, data, and summaries produced by this convoy.">' + INFO_ICON + '</span>' +
+        '<span class="task-summary-card__label">' + countLabel + ' ' +
+        '<span class="tooltip-trigger" tabindex="0" role="button" aria-label="Info: ' + escapeHtml(countTooltip) + '" data-tooltip="' + escapeHtml(countTooltip) + '">' + INFO_ICON + '</span>' +
         '</span>' +
-        '<span class="task-summary-card__value">' + artifactCount + '</span>' +
+        '<span class="task-summary-card__value">' + displayCount + '</span>' +
         '</div>';
     }
 
     var tableEl = document.getElementById('artifact-table-wrap');
     if (!tableEl) return;
 
-    if (artifacts.length === 0) {
-      tableEl.innerHTML = emptyStateHtml('pipeline', 'No artifacts', 'Artifacts produced by tasks will appear here.');
+    if (artifacts.length === 0 && fileCount === 0) {
+      tableEl.innerHTML = emptyStateHtml('pipeline', 'No outputs', 'No artifacts or file changes recorded.');
       return;
     }
 
     var TYPE_BADGE_COLORS = { file: '#64748b', summary: '#3b82f6', json: '#a78bfa' };
 
-    tableEl.innerHTML =
-      '<table class="sessions-table" style="margin-top:16px">' +
-      '<thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Task</th><th scope="col">Created At</th></tr></thead>' +
-      '<tbody>' +
-      artifacts.map(function(a) {
-        var badgeColor = TYPE_BADGE_COLORS[a.type] || '#64748b';
-        var typeBadge = '<span class="artifact-type-badge" style="background:' + badgeColor + '">' + escapeHtml(a.type) + '</span>';
-        var taskCell = a.task_id ? escapeHtml(a.task_id) : '<span style="opacity:0.4">—</span>';
-        var created = a.created_at ? formatTime(a.created_at) : '—';
-        return '<tr>' +
-          '<td>' + escapeHtml(a.name) + '</td>' +
-          '<td>' + typeBadge + '</td>' +
-          '<td class="td-task">' + taskCell + '</td>' +
-          '<td>' + created + '</td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table>';
+    if (artifacts.length > 0) {
+      tableEl.innerHTML =
+        '<table class="sessions-table" style="margin-top:16px">' +
+        '<thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Task</th><th scope="col">Created At</th></tr></thead>' +
+        '<tbody>' +
+        artifacts.map(function(a) {
+          var badgeColor = TYPE_BADGE_COLORS[a.type] || '#64748b';
+          var typeBadge = '<span class="artifact-type-badge" style="background:' + badgeColor + '">' + escapeHtml(a.type) + '</span>';
+          var taskCell = a.task_id ? escapeHtml(a.task_id) : '<span style="opacity:0.4">\u2014</span>';
+          var created = a.created_at ? formatTime(a.created_at) : '\u2014';
+          return '<tr>' +
+            '<td>' + escapeHtml(a.name) + '</td>' +
+            '<td>' + typeBadge + '</td>' +
+            '<td class="td-task">' + taskCell + '</td>' +
+            '<td>' + created + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table>';
+    } else {
+      var fileEntries = Object.keys(fileSet).sort();
+      tableEl.innerHTML =
+        '<table class="sessions-table" style="margin-top:16px">' +
+        '<thead><tr><th scope="col">File</th><th scope="col">Task</th></tr></thead>' +
+        '<tbody>' +
+        fileEntries.map(function(f) {
+          var ownerTask = tasks.find(function(t) { return t.files && Array.isArray(t.files) && t.files.indexOf(f) >= 0; });
+          return '<tr><td>' + escapeHtml(f) + '</td><td class="td-task">' + (ownerTask ? escapeHtml(ownerTask.id) : '\u2014') + '</td></tr>';
+        }).join('') +
+        '</tbody></table>';
+    }
   }
 
   // ── Event Timeline Section ─────────────────────────────

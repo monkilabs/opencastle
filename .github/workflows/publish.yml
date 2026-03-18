@@ -84,6 +84,8 @@ jobs:
         if: steps.bump.outputs.type != 'none'
         run: |
           npm run cli:build
+          npm run dashboard:generate-demo-db
+          npm run dashboard:etl
           npm run dashboard:build
 
       - name: Publish

@@ -2,6 +2,7 @@ import { resolve, dirname } from 'node:path'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createConvoyStore } from '../../cli/convoy/store.js'
+import { calculateCost } from '../../cli/convoy/pricing.js'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -17,6 +18,13 @@ function getMechanism(phase: number, agent: string): string {
   if (phase === 1) return 'sub-agent'
   if (phase >= 3) return 'sub-agent'
   return 'background'
+}
+
+/** Estimate cost using canonical pricing. Demo data only has total tokens, so assume 80/20 input:output split. */
+function calcCost(tokens: number, model: string): number {
+  const input = Math.round(tokens * 0.8)
+  const output = tokens - input
+  return calculateCost(model, input, output) ?? 0
 }
 
 // ---------------------------------------------------------------------------
@@ -48,13 +56,13 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   // ── Convoy 1: Auth Revamp – DONE ─────────────────────────────────────
   const C1 = dayTs(2, 9)
   store.insertConvoy({ id: 'demo-auth-revamp', name: 'Auth System Revamp', spec_hash: 'h1', status: 'done', branch: 'feat/auth-v2', created_at: C1, spec_yaml: 'name: auth-revamp', pipeline_id: 'demo-pipeline-1' })
-  store.updateConvoyStatus('demo-auth-revamp', 'done', { started_at: C1, finished_at: iso(C1, min(47)), total_tokens: 42850, total_cost_usd: 4.28 })
+  store.updateConvoyStatus('demo-auth-revamp', 'done', { started_at: C1, finished_at: iso(C1, min(47)), total_tokens: 42850, total_cost_usd: 0.5696 })
   const authTasks = [
-    { id: 'auth-t1', phase: 1, prompt: 'Design OAuth2 token refresh architecture', agent: 'Architect', status: 'done' as const, retries: 0, tokens: 8400, cost: 0.84, start: iso(C1, sec(5)), end: iso(C1, min(9)) },
-    { id: 'auth-t2', phase: 2, prompt: 'Implement JWT middleware with refresh rotation', agent: 'Developer', status: 'done' as const, retries: 1, tokens: 12600, cost: 1.26, start: iso(C1, min(10)), end: iso(C1, min(24)) },
-    { id: 'auth-t3', phase: 2, prompt: 'Add RLS policies for session tokens', agent: 'Security Expert', status: 'done' as const, retries: 0, tokens: 9200, cost: 0.92, start: iso(C1, min(10)), end: iso(C1, min(20)) },
-    { id: 'auth-t4', phase: 3, prompt: 'Write auth integration tests', agent: 'Testing Expert', status: 'done' as const, retries: 0, tokens: 8900, cost: 0.89, start: iso(C1, min(25)), end: iso(C1, min(37)) },
-    { id: 'auth-t5', phase: 4, prompt: 'QA gate – security review', agent: 'Reviewer', status: 'done' as const, retries: 0, tokens: 3750, cost: 0.37, start: iso(C1, min(38)), end: iso(C1, min(46)) },
+    { id: 'auth-t1', phase: 1, prompt: 'Design OAuth2 token refresh architecture', agent: 'Architect', status: 'done' as const, retries: 0, tokens: 8400, cost: calcCost(8400, 'claude-opus-4-6'), start: iso(C1, sec(5)), end: iso(C1, min(9)) },
+    { id: 'auth-t2', phase: 2, prompt: 'Implement JWT middleware with refresh rotation', agent: 'Developer', status: 'done' as const, retries: 1, tokens: 12600, cost: calcCost(12600, 'claude-sonnet-4-6'), start: iso(C1, min(10)), end: iso(C1, min(24)) },
+    { id: 'auth-t3', phase: 2, prompt: 'Add RLS policies for session tokens', agent: 'Security Expert', status: 'done' as const, retries: 0, tokens: 9200, cost: calcCost(9200, 'claude-sonnet-4-6'), start: iso(C1, min(10)), end: iso(C1, min(20)) },
+    { id: 'auth-t4', phase: 3, prompt: 'Write auth integration tests', agent: 'Testing Expert', status: 'done' as const, retries: 0, tokens: 8900, cost: calcCost(8900, 'claude-sonnet-4-6'), start: iso(C1, min(25)), end: iso(C1, min(37)) },
+    { id: 'auth-t5', phase: 4, prompt: 'QA gate – security review', agent: 'Reviewer', status: 'done' as const, retries: 0, tokens: 3750, cost: calcCost(3750, 'claude-sonnet-4-6'), start: iso(C1, min(38)), end: iso(C1, min(46)) },
   ]
   for (const t of authTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-auth-revamp', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: t.agent === 'Architect' ? 'claude-opus-4-6' : 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
@@ -66,15 +74,15 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   // ── Convoy 2: Dashboard UI – DONE ────────────────────────────────────
   const C2 = dayTs(6, 14)
   store.insertConvoy({ id: 'demo-dashboard-ui', name: 'Observability Dashboard UI', spec_hash: 'h2', status: 'done', branch: 'feat/dashboard-v2', created_at: C2, spec_yaml: 'name: dashboard-ui', pipeline_id: 'demo-pipeline-1' })
-  store.updateConvoyStatus('demo-dashboard-ui', 'done', { started_at: C2, finished_at: iso(C2, min(98)), total_tokens: 78400, total_cost_usd: 7.84 })
+  store.updateConvoyStatus('demo-dashboard-ui', 'done', { started_at: C2, finished_at: iso(C2, min(98)), total_tokens: 78400, total_cost_usd: 1.4993 })
   const uiTasks = [
-    { id: 'ui-t1', phase: 1, prompt: 'Design dark-theme component system', agent: 'UI/UX Expert', status: 'done' as const, retries: 0, tokens: 14200, cost: 1.42, start: iso(C2, sec(5)), end: iso(C2, min(19)) },
-    { id: 'ui-t2', phase: 1, prompt: 'Implement KPI card components', agent: 'Developer', status: 'done' as const, retries: 0, tokens: 11800, cost: 1.18, start: iso(C2, sec(5)), end: iso(C2, min(16)) },
-    { id: 'ui-t3', phase: 2, prompt: 'Build SVG donut charts and bar charts', agent: 'Developer', status: 'done' as const, retries: 1, tokens: 13500, cost: 1.35, start: iso(C2, min(20)), end: iso(C2, min(44)) },
-    { id: 'ui-t4', phase: 2, prompt: 'Write dashboard CSS animations', agent: 'UI/UX Expert', status: 'done' as const, retries: 0, tokens: 9400, cost: 0.94, start: iso(C2, min(20)), end: iso(C2, min(38)) },
-    { id: 'ui-t5', phase: 3, prompt: 'Accessibility audit and ARIA labels', agent: 'UI/UX Expert', status: 'done' as const, retries: 0, tokens: 8700, cost: 0.87, start: iso(C2, min(45)), end: iso(C2, min(58)) },
-    { id: 'ui-t6', phase: 3, prompt: 'Cross-browser visual regression tests', agent: 'Testing Expert', status: 'done' as const, retries: 0, tokens: 11200, cost: 1.12, start: iso(C2, min(45)), end: iso(C2, min(62)) },
-    { id: 'ui-t7', phase: 4, prompt: 'QA panel – design review', agent: 'Reviewer', status: 'done' as const, retries: 0, tokens: 9600, cost: 0.96, start: iso(C2, min(63)), end: iso(C2, min(97)) },
+    { id: 'ui-t1', phase: 1, prompt: 'Design dark-theme component system', agent: 'UI/UX Expert', status: 'done' as const, retries: 0, tokens: 14200, cost: calcCost(14200, 'claude-opus-4-6'), start: iso(C2, sec(5)), end: iso(C2, min(19)) },
+    { id: 'ui-t2', phase: 1, prompt: 'Implement KPI card components', agent: 'Developer', status: 'done' as const, retries: 0, tokens: 11800, cost: calcCost(11800, 'claude-sonnet-4-6'), start: iso(C2, sec(5)), end: iso(C2, min(16)) },
+    { id: 'ui-t3', phase: 2, prompt: 'Build SVG donut charts and bar charts', agent: 'Developer', status: 'done' as const, retries: 1, tokens: 13500, cost: calcCost(13500, 'claude-sonnet-4-6'), start: iso(C2, min(20)), end: iso(C2, min(44)) },
+    { id: 'ui-t4', phase: 2, prompt: 'Write dashboard CSS animations', agent: 'UI/UX Expert', status: 'done' as const, retries: 0, tokens: 9400, cost: calcCost(9400, 'claude-opus-4-6'), start: iso(C2, min(20)), end: iso(C2, min(38)) },
+    { id: 'ui-t5', phase: 3, prompt: 'Accessibility audit and ARIA labels', agent: 'UI/UX Expert', status: 'done' as const, retries: 0, tokens: 8700, cost: calcCost(8700, 'claude-opus-4-6'), start: iso(C2, min(45)), end: iso(C2, min(58)) },
+    { id: 'ui-t6', phase: 3, prompt: 'Cross-browser visual regression tests', agent: 'Testing Expert', status: 'done' as const, retries: 0, tokens: 11200, cost: calcCost(11200, 'claude-sonnet-4-6'), start: iso(C2, min(45)), end: iso(C2, min(62)) },
+    { id: 'ui-t7', phase: 4, prompt: 'QA panel – design review', agent: 'Reviewer', status: 'done' as const, retries: 0, tokens: 9600, cost: calcCost(9600, 'claude-sonnet-4-6'), start: iso(C2, min(63)), end: iso(C2, min(97)) },
   ]
   for (const t of uiTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-dashboard-ui', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: t.agent === 'UI/UX Expert' ? 'claude-opus-4-6' : 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
@@ -86,11 +94,11 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   // ── Convoy 3: API v2 – GATE_FAILED ──────────────────────────────────
   const C3 = dayTs(11, 16)
   store.insertConvoy({ id: 'demo-api-v2', name: 'REST API v2 Migration', spec_hash: 'h3', status: 'gate_failed', branch: 'feat/api-v2', created_at: C3, spec_yaml: 'name: api-v2' })
-  store.updateConvoyStatus('demo-api-v2', 'gate_failed', { started_at: C3, finished_at: iso(C3, min(28)), total_tokens: 24600, total_cost_usd: 2.46 })
+  store.updateConvoyStatus('demo-api-v2', 'gate_failed', { started_at: C3, finished_at: iso(C3, min(28)), total_tokens: 24600, total_cost_usd: 0.1968 })
   const apiTasks = [
-    { id: 'api-t1', phase: 1, prompt: 'Design RESTful v2 route contracts', agent: 'API Designer', status: 'done' as const, eventType: 'task_done', retries: 0, tokens: 7200, cost: 0.72, start: iso(C3, sec(5)), end: iso(C3, min(11)) },
-    { id: 'api-t2', phase: 2, prompt: 'Implement rate limiting middleware', agent: 'Developer', status: 'done' as const, eventType: 'task_done', retries: 2, tokens: 11400, cost: 1.14, start: iso(C3, min(12)), end: iso(C3, min(23)) },
-    { id: 'api-t3', phase: 3, prompt: 'Security gate – injection vulnerability scan', agent: 'Security Expert', status: 'gate_failed' as const, eventType: 'task_gate_failed', retries: 0, tokens: 6000, cost: 0.60, start: iso(C3, min(24)), end: iso(C3, min(27)) },
+    { id: 'api-t1', phase: 1, prompt: 'Design RESTful v2 route contracts', agent: 'API Designer', status: 'done' as const, eventType: 'task_done', retries: 0, tokens: 7200, cost: calcCost(7200, 'claude-sonnet-4-6'), start: iso(C3, sec(5)), end: iso(C3, min(11)) },
+    { id: 'api-t2', phase: 2, prompt: 'Implement rate limiting middleware', agent: 'Developer', status: 'done' as const, eventType: 'task_done', retries: 2, tokens: 11400, cost: calcCost(11400, 'claude-sonnet-4-6'), start: iso(C3, min(12)), end: iso(C3, min(23)) },
+    { id: 'api-t3', phase: 3, prompt: 'Security gate – injection vulnerability scan', agent: 'Security Expert', status: 'gate_failed' as const, eventType: 'task_gate_failed', retries: 0, tokens: 6000, cost: calcCost(6000, 'claude-sonnet-4-6'), start: iso(C3, min(24)), end: iso(C3, min(27)) },
   ]
   for (const t of apiTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-api-v2', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: t.status === 'gate_failed' ? JSON.stringify({ gate_failure: 'SQL injection risk detected in query builder' }) : JSON.stringify({ result: 'done' }), inputs: null })
@@ -102,12 +110,12 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   // ── Convoy 4: Performance Optimization – DONE ────────────────────────
   const C4 = dayTs(16, 10)
   store.insertConvoy({ id: 'demo-perf-opt', name: 'Frontend Performance Boost', spec_hash: 'h4', status: 'done', branch: 'perf/core-web-vitals', created_at: C4, spec_yaml: 'name: perf-opt' })
-  store.updateConvoyStatus('demo-perf-opt', 'done', { started_at: C4, finished_at: iso(C4, min(62)), total_tokens: 37200, total_cost_usd: 3.72 })
+  store.updateConvoyStatus('demo-perf-opt', 'done', { started_at: C4, finished_at: iso(C4, min(62)), total_tokens: 37200, total_cost_usd: 0.2976 })
   const perfTasks = [
-    { id: 'perf-t1', phase: 1, prompt: 'Profile bundle and identify bottlenecks', agent: 'Performance Expert', status: 'done' as const, retries: 0, tokens: 8900, cost: 0.89, start: iso(C4, sec(5)), end: iso(C4, min(13)) },
-    { id: 'perf-t2', phase: 2, prompt: 'Code-split heavy chart library', agent: 'Developer', status: 'done' as const, retries: 0, tokens: 11200, cost: 1.12, start: iso(C4, min(14)), end: iso(C4, min(30)) },
-    { id: 'perf-t3', phase: 2, prompt: 'Implement image lazy-loading and AVIF conversion', agent: 'Developer', status: 'done' as const, retries: 0, tokens: 9600, cost: 0.96, start: iso(C4, min(14)), end: iso(C4, min(27)) },
-    { id: 'perf-t4', phase: 3, prompt: 'Validate Core Web Vitals improvements', agent: 'Performance Expert', status: 'done' as const, retries: 0, tokens: 7500, cost: 0.75, start: iso(C4, min(31)), end: iso(C4, min(44)) },
+    { id: 'perf-t1', phase: 1, prompt: 'Profile bundle and identify bottlenecks', agent: 'Performance Expert', status: 'done' as const, retries: 0, tokens: 8900, cost: calcCost(8900, 'claude-sonnet-4-6'), start: iso(C4, sec(5)), end: iso(C4, min(13)) },
+    { id: 'perf-t2', phase: 2, prompt: 'Code-split heavy chart library', agent: 'Developer', status: 'done' as const, retries: 0, tokens: 11200, cost: calcCost(11200, 'claude-sonnet-4-6'), start: iso(C4, min(14)), end: iso(C4, min(30)) },
+    { id: 'perf-t3', phase: 2, prompt: 'Implement image lazy-loading and AVIF conversion', agent: 'Developer', status: 'done' as const, retries: 0, tokens: 9600, cost: calcCost(9600, 'claude-sonnet-4-6'), start: iso(C4, min(14)), end: iso(C4, min(27)) },
+    { id: 'perf-t4', phase: 3, prompt: 'Validate Core Web Vitals improvements', agent: 'Performance Expert', status: 'done' as const, retries: 0, tokens: 7500, cost: calcCost(7500, 'claude-sonnet-4-6'), start: iso(C4, min(31)), end: iso(C4, min(44)) },
   ]
   for (const t of perfTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-perf-opt', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
@@ -119,11 +127,11 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   // ── Convoy 5: Data Pipeline – DONE ────────────────────────────────────
   const C5 = dayTs(21, 13)
   store.insertConvoy({ id: 'demo-data-pipeline', name: 'Analytics ETL Pipeline', spec_hash: 'h5', status: 'done', branch: 'feat/etl-v2', created_at: C5, spec_yaml: 'name: data-pipeline' })
-  store.updateConvoyStatus('demo-data-pipeline', 'done', { started_at: C5, finished_at: iso(C5, min(38)), total_tokens: 28900, total_cost_usd: 2.89 })
+  store.updateConvoyStatus('demo-data-pipeline', 'done', { started_at: C5, finished_at: iso(C5, min(38)), total_tokens: 28900, total_cost_usd: 0.2312 })
   const etlTasks = [
-    { id: 'etl-t1', phase: 1, prompt: 'Design ndjson processing schema', agent: 'Data Expert', status: 'done' as const, retries: 0, tokens: 7800, cost: 0.78, start: iso(C5, sec(5)), end: iso(C5, min(11)) },
-    { id: 'etl-t2', phase: 2, prompt: 'Implement incremental ETL with deduplication', agent: 'Data Expert', status: 'done' as const, retries: 1, tokens: 12400, cost: 1.24, start: iso(C5, min(12)), end: iso(C5, min(30)) },
-    { id: 'etl-t3', phase: 3, prompt: 'Write ETL test suite', agent: 'Testing Expert', status: 'done' as const, retries: 0, tokens: 8700, cost: 0.87, start: iso(C5, min(31)), end: iso(C5, min(37)) },
+    { id: 'etl-t1', phase: 1, prompt: 'Design ndjson processing schema', agent: 'Data Expert', status: 'done' as const, retries: 0, tokens: 7800, cost: calcCost(7800, 'claude-sonnet-4-6'), start: iso(C5, sec(5)), end: iso(C5, min(11)) },
+    { id: 'etl-t2', phase: 2, prompt: 'Implement incremental ETL with deduplication', agent: 'Data Expert', status: 'done' as const, retries: 1, tokens: 12400, cost: calcCost(12400, 'claude-sonnet-4-6'), start: iso(C5, min(12)), end: iso(C5, min(30)) },
+    { id: 'etl-t3', phase: 3, prompt: 'Write ETL test suite', agent: 'Testing Expert', status: 'done' as const, retries: 0, tokens: 8700, cost: calcCost(8700, 'claude-sonnet-4-6'), start: iso(C5, min(31)), end: iso(C5, min(37)) },
   ]
   for (const t of etlTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-data-pipeline', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-sonnet-4-6', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
@@ -137,7 +145,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   store.insertConvoy({ id: 'demo-deploy-ci', name: 'CI/CD Pipeline Setup', spec_hash: 'h6', status: 'running', branch: 'feat/ci-cd', created_at: C6, spec_yaml: 'name: deploy-ci' })
   store.updateConvoyStatus('demo-deploy-ci', 'running', { started_at: C6 })
   const ciTasks = [
-    { id: 'ci-t1', phase: 1, prompt: 'Design GitHub Actions workflow matrix', agent: 'DevOps Expert', status: 'done' as const, running: false, retries: 0, tokens: 6400, cost: 0.64, start: iso(C6, sec(5)), end: iso(C6, min(14)) },
+    { id: 'ci-t1', phase: 1, prompt: 'Design GitHub Actions workflow matrix', agent: 'DevOps Expert', status: 'done' as const, running: false, retries: 0, tokens: 6400, cost: calcCost(6400, 'claude-sonnet-4-6'), start: iso(C6, sec(5)), end: iso(C6, min(14)) },
     { id: 'ci-t2', phase: 2, prompt: 'Configure nx affected build caching', agent: 'DevOps Expert', status: 'running' as const, running: true, retries: 0, tokens: 0, cost: 0, start: iso(C6, min(15)), end: '' },
     { id: 'ci-t3', phase: 2, prompt: 'Set up staging environment deployment', agent: 'DevOps Expert', status: 'pending' as const, running: false, retries: 0, tokens: 0, cost: 0, start: '', end: '' },
   ]
@@ -156,10 +164,10 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   // ── Convoy 7: Docs Update – DONE ────────────────────────────────────
   const C7 = dayTs(27, 15)
   store.insertConvoy({ id: 'demo-docs-update', name: 'Documentation Refresh', spec_hash: 'h7', status: 'done', branch: 'docs/update-march', created_at: C7, spec_yaml: 'name: docs-update' })
-  store.updateConvoyStatus('demo-docs-update', 'done', { started_at: C7, finished_at: iso(C7, min(22)), total_tokens: 14800, total_cost_usd: 1.48 })
+  store.updateConvoyStatus('demo-docs-update', 'done', { started_at: C7, finished_at: iso(C7, min(22)), total_tokens: 14800, total_cost_usd: 0.0296 })
   const docTasks = [
-    { id: 'docs-t1', phase: 1, prompt: 'Update README and ARCHITECTURE docs', agent: 'Documentation Writer', status: 'done' as const, retries: 0, tokens: 8200, cost: 0.82, start: iso(C7, sec(5)), end: iso(C7, min(14)) },
-    { id: 'docs-t2', phase: 2, prompt: 'Generate API reference from source', agent: 'Documentation Writer', status: 'done' as const, retries: 0, tokens: 6600, cost: 0.66, start: iso(C7, min(15)), end: iso(C7, min(21)) },
+    { id: 'docs-t1', phase: 1, prompt: 'Update README and ARCHITECTURE docs', agent: 'Documentation Writer', status: 'done' as const, retries: 0, tokens: 8200, cost: calcCost(8200, 'claude-haiku-3-5'), start: iso(C7, sec(5)), end: iso(C7, min(14)) },
+    { id: 'docs-t2', phase: 2, prompt: 'Generate API reference from source', agent: 'Documentation Writer', status: 'done' as const, retries: 0, tokens: 6600, cost: calcCost(6600, 'claude-haiku-3-5'), start: iso(C7, min(15)), end: iso(C7, min(21)) },
   ]
   for (const t of docTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-docs-update', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-haiku-3-5', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
@@ -186,21 +194,21 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   })
   // Perf Opt: add reviewer task + fast review pass
   store.insertTask({ id: 'perf-t5', convoy_id: 'demo-perf-opt', phase: 4, prompt: 'Fast review – performance changes', agent: 'Reviewer', adapter: 'vscode', model: 'claude-haiku-3-5', timeout_ms: 60000, status: 'done', retries: 0, max_retries: 3, files: null, depends_on: null, gates: null })
-  store.updateTaskStatus('perf-t5', 'demo-perf-opt', 'done', { started_at: iso(C4, min(45)), finished_at: iso(C4, min(52)), total_tokens: 1200, cost_usd: 0.12 })
+  store.updateTaskStatus('perf-t5', 'demo-perf-opt', 'done', { started_at: iso(C4, min(45)), finished_at: iso(C4, min(52)), total_tokens: 1200, cost_usd: calcCost(1200, 'claude-haiku-3-5') })
   store.updateTaskReview('perf-t5', 'demo-perf-opt', {
     review_level: 'fast', review_verdict: 'pass',
     review_tokens: 1200, review_model: 'claude-haiku-3-5', panel_attempts: 0,
   })
   // Data Pipeline: add reviewer task + fast review pass
   store.insertTask({ id: 'etl-t4', convoy_id: 'demo-data-pipeline', phase: 4, prompt: 'Fast review – ETL pipeline', agent: 'Reviewer', adapter: 'vscode', model: 'claude-haiku-3-5', timeout_ms: 60000, status: 'done', retries: 0, max_retries: 3, files: null, depends_on: null, gates: null })
-  store.updateTaskStatus('etl-t4', 'demo-data-pipeline', 'done', { started_at: iso(C5, min(32)), finished_at: iso(C5, min(37)), total_tokens: 900, cost_usd: 0.09 })
+  store.updateTaskStatus('etl-t4', 'demo-data-pipeline', 'done', { started_at: iso(C5, min(32)), finished_at: iso(C5, min(37)), total_tokens: 900, cost_usd: calcCost(900, 'claude-haiku-3-5') })
   store.updateTaskReview('etl-t4', 'demo-data-pipeline', {
     review_level: 'fast', review_verdict: 'pass',
     review_tokens: 900, review_model: 'claude-haiku-3-5', panel_attempts: 0,
   })
   // Docs Update: add reviewer task + fast review pass
   store.insertTask({ id: 'docs-t3', convoy_id: 'demo-docs-update', phase: 3, prompt: 'Fast review – documentation changes', agent: 'Reviewer', adapter: 'vscode', model: 'claude-haiku-3-5', timeout_ms: 60000, status: 'done', retries: 0, max_retries: 3, files: null, depends_on: null, gates: null })
-  store.updateTaskStatus('docs-t3', 'demo-docs-update', 'done', { started_at: iso(C7, min(17)), finished_at: iso(C7, min(21)), total_tokens: 800, cost_usd: 0.08 })
+  store.updateTaskStatus('docs-t3', 'demo-docs-update', 'done', { started_at: iso(C7, min(17)), finished_at: iso(C7, min(21)), total_tokens: 800, cost_usd: calcCost(800, 'claude-haiku-3-5') })
   store.updateTaskReview('docs-t3', 'demo-docs-update', {
     review_level: 'fast', review_verdict: 'pass',
     review_tokens: 800, review_model: 'claude-haiku-3-5', panel_attempts: 0,

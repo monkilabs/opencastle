@@ -44,6 +44,29 @@ import { calculateCost } from './pricing.js'
 
 const execFile = promisify(execFileCb)
 
+/** Map agent names to their default model. Used when adapters don't report model. */
+const AGENT_MODEL_MAP: Record<string, string> = {
+  'developer': 'claude-sonnet-4-6',
+  'ui-ux-expert': 'claude-sonnet-4-6',
+  'testing-expert': 'claude-sonnet-4-6',
+  'security-expert': 'claude-sonnet-4-6',
+  'performance-expert': 'claude-sonnet-4-6',
+  'devops-expert': 'claude-sonnet-4-6',
+  'data-expert': 'claude-sonnet-4-6',
+  'api-designer': 'claude-sonnet-4-6',
+  'copywriter': 'claude-sonnet-4-6',
+  'content-engineer': 'claude-sonnet-4-6',
+  'database-engineer': 'claude-sonnet-4-6',
+  'researcher': 'claude-sonnet-4-6',
+  'release-manager': 'claude-sonnet-4-6',
+  'architect': 'claude-opus-4-6',
+  'team-lead': 'claude-opus-4-6',
+  'reviewer': 'claude-haiku-3-5',
+  'documentation-writer': 'claude-haiku-3-5',
+  'seo-specialist': 'claude-haiku-3-5',
+  'session-guard': 'claude-haiku-3-5',
+}
+
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 export interface ConvoyEngineOptions {
@@ -1228,7 +1251,7 @@ async function runConvoy(
     process.stdout.write(`  ${c.cyan('▶')} ${c.bold(`[${taskRecord.id}]`)} ${taskRecord.agent}${worktreePath ? c.dim(' (worktree)') : ''}\n`)
     events.emit(
       'task_started',
-      { worker_id: workerId },
+      { worker_id: workerId, mechanism: worktreePath ? 'background' : 'sub-agent' },
       { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
     )
 
@@ -1434,10 +1457,20 @@ async function runConvoy(
         store.updateWorkerStatus(workerId, 'killed', { finished_at: finishedAt })
         process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} timed out, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`)
       } else {
+        // Estimate tokens even for timed-out tasks — you still paid for them
+        const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
+        const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
+        const timeoutModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+        const timeoutCost = calculateCost(timeoutModel, estimatedPrompt, estimatedCompletion)
         store.withTransaction(() => {
           store.updateTaskStatus(taskRecord.id, convoyId, 'timed-out', {
             finished_at: finishedAt,
             output: result.output,
+            prompt_tokens: estimatedPrompt,
+            completion_tokens: estimatedCompletion,
+            total_tokens: estimatedPrompt + estimatedCompletion,
+            model: timeoutModel,
+            cost_usd: timeoutCost,
           })
           store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
         })
@@ -2325,8 +2358,16 @@ async function runConvoy(
         if (result.usage.prompt_tokens != null) usageExtra.prompt_tokens = result.usage.prompt_tokens
         if (result.usage.completion_tokens != null) usageExtra.completion_tokens = result.usage.completion_tokens
         if (result.usage.total_tokens != null) usageExtra.total_tokens = result.usage.total_tokens
-      } else if (verbose) {
-        process.stdout.write(`    ${c.dim('ℹ')} No token usage data returned by adapter ${taskAdapter.name}\n`)
+      } else {
+        // Estimate tokens from prompt/output text length (~4 chars per token)
+        const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
+        const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
+        usageExtra.prompt_tokens = estimatedPrompt
+        usageExtra.completion_tokens = estimatedCompletion
+        usageExtra.total_tokens = estimatedPrompt + estimatedCompletion
+        if (verbose) {
+          process.stdout.write(`    ${c.dim('ℹ')} Estimated ${usageExtra.total_tokens} tokens (adapter ${taskAdapter.name} returned no usage data)\n`)
+        }
       }
 
       // ── Context compaction check (Phase 44) ─────────────────────────────
@@ -2445,6 +2486,29 @@ async function runConvoy(
         process.stderr.write(`[artifacts] Warning: extraction failed for task ${taskRecord.id}: ${(err as Error).message}\n`)
       }
 
+      // ── Create file artifacts from task file list ────────────────────────
+      if (taskRecord.files && !taskRecord.outputs) {
+        try {
+          const fileList: string[] = JSON.parse(taskRecord.files)
+          for (const filePath of fileList.slice(0, 20)) {
+            try {
+              store.insertArtifact({
+                id: `artifact-${taskRecord.id}-file-${filePath.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}`,
+                convoy_id: convoyId,
+                task_id: taskRecord.id,
+                name: filePath,
+                type: 'file',
+                content: '',
+                created_at: new Date().toISOString(),
+              })
+            } catch (err) {
+              if (err instanceof ConvoyArtifactLimitError) break
+              // Other errors are non-critical
+            }
+          }
+        } catch { /* files not parseable */ }
+      }
+
       // ── Output contract validation ────────────────────────────────────────
       const contractResult = validateOutput(taskRecord.agent, result.output)
       if (!contractResult.valid) {
@@ -2508,7 +2572,7 @@ async function runConvoy(
         } catch { /* non-critical */ }
       }
 
-      const taskModel = taskRecord.model ?? taskAdapter.name
+      const taskModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
       const taskCost = calculateCost(taskModel, usageExtra.prompt_tokens, usageExtra.completion_tokens)
 
       store.withTransaction(() => {
@@ -2592,11 +2656,21 @@ async function runConvoy(
       store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
       process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`)
     } else {
+      // Estimate tokens even for failed tasks — you still paid for them
+      const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
+      const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
+      const failModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+      const failCost = calculateCost(failModel, estimatedPrompt, estimatedCompletion)
       store.withTransaction(() => {
         store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
           finished_at: finishedAt,
           output: result.output,
           exit_code: result.exitCode,
+          prompt_tokens: estimatedPrompt,
+          completion_tokens: estimatedCompletion,
+          total_tokens: estimatedPrompt + estimatedCompletion,
+          model: failModel,
+          cost_usd: failCost,
         })
         store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
       })
