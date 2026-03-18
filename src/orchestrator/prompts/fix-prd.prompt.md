@@ -33,20 +33,15 @@ You are the Team Lead. The PRD below failed validation. Fix **every reported iss
 - Add the missing section with concrete, specific content — not placeholder text
 - If the section needs real data you cannot infer, write a reasonable default and mark with `<!-- TODO: verify -->`
 
-**Vague acceptance criteria**
-- Replace subjective language ("looks good", "feels responsive") with measurable conditions ("renders within 200ms", "meets WCAG 2.2 AA contrast ratio")
-- Replace modal verbs ("should", "might", "could") with definitive language ("must", "will")
-
-**Broad implementation scope**
-- Replace broad paths (`src/`, `the frontend`) with specific file names or subdirectory names
-- Remove glob patterns (`*`, `**`) from scope tables — use actual directory or file names
+**Conflicting requirements**
+- Resolve contradictions between sections — pick the intent that best matches the feature goals
 
 **File partition conflicts**
 - If two parallel workstreams claim the same file, move one to a later phase with explicit dependency
 - Or split the file's responsibilities across the two workstreams so each touches distinct files
 
-**Missing dependency declarations**
-- Add `depends on: Phase N` to phases that require output from earlier phases
+**Broad implementation scope**
+- Replace excessively broad paths (`src/`, `the frontend`) with specific subdirectories or file names
 
 **Placeholder text**
 - Replace template filler ("2–3 sentences about…", "Description here") with real content derived from the feature description

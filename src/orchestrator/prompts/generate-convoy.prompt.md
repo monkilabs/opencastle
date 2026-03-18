@@ -205,6 +205,7 @@ When chain mode is detected:
 - **Only** generate tasks for the phases listed in the group scope. Do not include tasks from other phases.
 - Derive the convoy `name` from the group name (e.g. "Database Setup").
 - Derive the `branch` from the PRD's feature name (it will be overridden by the pipeline anyway).
+- **Keep prompts concise** — write prompts that are complete and self-contained but avoid unnecessary verbosity. Focus on: what to do, which files to create/modify, key constraints, and acceptance criteria.
 - Keep all other conventions the same as for single-spec generation.
 
 ---

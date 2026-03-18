@@ -199,9 +199,47 @@ export function applyPatches(plan: TaskPlan, patches: TaskPatch[]): TaskPlan {
 }
 
 /**
+ * Detects whether a JSON string appears to be truncated (output cut off mid-generation).
+ * Returns a descriptive reason string, or null if the JSON looks complete.
+ */
+export function detectJsonTruncation(jsonText: string): string | null {
+  const trimmed = jsonText.trim()
+  if (!trimmed) return 'empty output'
+
+  // Count open/close braces and brackets
+  let braces = 0
+  let brackets = 0
+  let inString = false
+  let prevChar = ''
+  for (const ch of trimmed) {
+    if (ch === '"' && prevChar !== '\\') {
+      inString = !inString
+    } else if (!inString) {
+      if (ch === '{') braces++
+      else if (ch === '}') braces--
+      else if (ch === '[') brackets++
+      else if (ch === ']') brackets--
+    }
+    prevChar = ch
+  }
+
+  if (braces > 0 || brackets > 0) {
+    return `output truncated (${braces} unclosed braces, ${brackets} unclosed brackets) — the LLM likely hit its output token limit`
+  }
+
+  return null
+}
+
+/**
  * Parses a JSON string into a TaskPlan. Returns null if parsing fails or required fields are missing.
  */
 export function parseTaskPlan(jsonText: string): TaskPlan | null {
+  const truncation = detectJsonTruncation(jsonText)
+  if (truncation) {
+    console.warn(`  ⚠ parseTaskPlan: ${truncation}`)
+    return null
+  }
+
   try {
     const parsed = JSON.parse(jsonText.trim()) as Record<string, unknown>
     if (!parsed || typeof parsed.name !== 'string') return null

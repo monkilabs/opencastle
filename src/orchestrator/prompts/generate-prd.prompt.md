@@ -10,6 +10,8 @@ output: prd
 
 You are the Team Lead. Convert the feature request below into a structured Product Requirements Document (PRD). The PRD will be consumed by the `generate-convoy` step to produce an automated agent task spec, so every section must be **concrete**, **specific**, and **implementation-ready**.
 
+> **⚠ QUALITY GATE:** This PRD goes through automated validation. Getting it right on the first attempt is critical — every fix cycle costs a full LLM round-trip. Follow ALL rules below precisely. The self-validation checklist at the end is mandatory.
+
 ## Feature Request
 
 {{goal}}
@@ -145,3 +147,30 @@ Measurable, binary checks that confirm the feature is shippable:
 - **[Open question]**: [What needs to be decided before implementation can start]
 
 If there are no risks or open questions, write "None identified."
+
+---
+
+## Self-Validation Checklist (MANDATORY)
+
+Before outputting the PRD, verify **every item** below. The downstream validator will reject your PRD if any of the blocking checks fail — fix them now to avoid expensive retry cycles.
+
+### Structural Integrity
+
+- [ ] **No conflicting requirements**: Technical Requirements, Non-Goals, Risks & Open Questions, and User Stories must not contradict each other.
+- [ ] **No duplicate open questions**: If a question is already answered elsewhere, do not re-open it in Risks & Open Questions.
+- [ ] **No circular dependencies**: Phase dependency graph is acyclic.
+- [ ] **No placeholder text**: Every section has real content, not template filler ("2–3 sentences about…", "Description here").
+
+### Implementation Coherence
+
+- [ ] **File completeness**: Every file mentioned in User Story acceptance criteria or Technical Requirements appears in the Implementation Scope table AND in the Task Breakdown file lists.
+- [ ] **No file partition conflicts**: No two parallel workstreams (same phase) claim the same file.
+- [ ] **Every workstream lists files**: Including verification-only workstreams — add "Files: none — verification only" if no artifacts are produced.
+- [ ] **No orphan files**: Every file in the Implementation Scope table is assigned to exactly one workstream in Task Breakdown.
+- [ ] **Scope specificity**: Implementation Scope uses specific subdirectory or file paths — not just `src/` or `the frontend`.
+
+### Language Quality
+
+- [ ] **Testable acceptance criteria**: Every criterion is evaluable as deterministic pass/fail — no subjective language ("looks good", "feels responsive").
+- [ ] **No optional modals in criteria**: Acceptance criteria do not use "should", "might", "could", "may" — use "must" or "will".
+- [ ] **Domain acronyms expanded**: Non-standard acronyms are expanded on first use (standard ones like API, CLI, JSON, REST, etc. are fine).

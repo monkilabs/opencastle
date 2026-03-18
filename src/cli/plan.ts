@@ -152,8 +152,8 @@ function parseFrontmatter(text: string): Record<string, string> {
 
 /** Extract YAML content from a fenced ```yaml ... ``` block. */
 function extractYamlBlock(text: string): string | null {
-  // 1. Prefer explicit yaml/yml fence
-  const yamlFence = text.match(/```ya?ml\s*\n([\s\S]*?)```/)
+  // 1. Prefer explicit yaml/yml fence — greedy to skip backticks inside content
+  const yamlFence = text.match(/```ya?ml\s*\n([\s\S]*)```/)
   if (yamlFence) return yamlFence[1].trim()
 
   // 2. Fallback: any code fence whose content looks like a convoy spec
@@ -382,7 +382,9 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
 
   if (outputType === 'json') {
     // Extract JSON from a ```json fenced block — fail fast if missing
-    const jsonFenceMatch = rawOutput.match(/```json\s*\n([\s\S]*?)```/)
+    // Use greedy match (.*) to capture up to the LAST closing fence,
+    // since task prompts may contain triple backticks in code examples
+    const jsonFenceMatch = rawOutput.match(/```json\s*\n([\s\S]*)```/)
     if (!jsonFenceMatch) {
       const preview = rawOutput.slice(0, 300)
       throw new Error(
