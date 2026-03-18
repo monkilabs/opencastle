@@ -1,6 +1,6 @@
 {
   "name": "opencastle",
-  "version": "0.32.7",
+  "version": "0.32.8",
   "type": "module",
   "description": "Multi-agent orchestration framework for AI coding assistants",
   "bin": {
