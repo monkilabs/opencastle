@@ -1523,7 +1523,7 @@ describe('cost tracking', () => {
     expect(tasks[0].total_tokens).toBe(150)
   })
 
-  it('leaves cost fields null when adapter returns no usage', async () => {
+  it('estimates token usage when adapter returns no usage', async () => {
     const adapter = makeAdapter()
     // default makeAdapter returns no usage field
 
@@ -1541,9 +1541,9 @@ describe('cost tracking', () => {
     const store = createConvoyStore(dbPath)
     const tasks = store.getTasksByConvoy(result.convoyId)
     store.close()
-    expect(tasks[0].prompt_tokens).toBeNull()
-    expect(tasks[0].completion_tokens).toBeNull()
-    expect(tasks[0].total_tokens).toBeNull()
+    expect(tasks[0].prompt_tokens).toBeGreaterThan(0)
+    expect(tasks[0].completion_tokens).toBeGreaterThanOrEqual(0)
+    expect(tasks[0].total_tokens).toBeGreaterThan(0)
   })
 
   it('aggregates total_tokens from multiple tasks to convoy record', async () => {
@@ -1596,7 +1596,7 @@ describe('cost tracking', () => {
     expect(result.cost).toEqual({ total_tokens: 75 })
   })
 
-  it('omits cost from ConvoyResult when no usage data is available', async () => {
+  it('includes estimated cost in ConvoyResult when adapter returns no usage data', async () => {
     const adapter = makeAdapter()
     // default makeAdapter returns no usage
 
@@ -1611,7 +1611,8 @@ describe('cost tracking', () => {
 
     const result = await engine.run()
 
-    expect(result.cost).toBeUndefined()
+    expect(result.cost).toBeDefined()
+    expect(result.cost!.total_tokens).toBeGreaterThan(0)
   })
 
   it('partial usage fields are persisted correctly (only total_tokens set)', async () => {
@@ -1642,7 +1643,7 @@ describe('cost tracking', () => {
     expect(tasks[0].completion_tokens).toBeNull()
   })
 
-  it('convoy total_tokens is null when no task has usage', async () => {
+  it('convoy total_tokens uses estimated values when no task has usage', async () => {
     const adapter = makeAdapter()
     // default adapter returns no usage
 
@@ -1663,8 +1664,9 @@ describe('cost tracking', () => {
     const store = createConvoyStore(dbPath)
     const convoy = store.getConvoy(result.convoyId)
     store.close()
-    expect(convoy!.total_tokens).toBeNull()
-    expect(result.cost).toBeUndefined()
+    expect(convoy!.total_tokens).toBeGreaterThan(0)
+    expect(result.cost).toBeDefined()
+    expect(result.cost!.total_tokens).toBeGreaterThan(0)
   })
 })
 
