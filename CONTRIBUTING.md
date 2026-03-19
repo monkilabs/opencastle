@@ -8,7 +8,7 @@ By participating in this project you agree to treat everyone with respect and fo
 
 ## Reporting Bugs
 
-Found a bug? Please [open an issue](https://github.com/etylsarin/opencastle/issues/new) with:
+Found a bug? Please [open an issue](https://github.com/monkilabs/opencastle/issues/new) with:
 
 - A clear, descriptive title
 - Steps to reproduce the problem
@@ -18,7 +18,7 @@ Found a bug? Please [open an issue](https://github.com/etylsarin/opencastle/issu
 
 ## Suggesting Features
 
-Have an idea? [Open a feature request](https://github.com/etylsarin/opencastle/issues/new) and describe:
+Have an idea? [Open a feature request](https://github.com/monkilabs/opencastle/issues/new) and describe:
 
 - The problem you're trying to solve
 - Your proposed solution
@@ -95,7 +95,7 @@ Create a branch from `main` using this convention:
 
 ## Getting Help
 
-- **Questions?** Start a thread in [GitHub Discussions](https://github.com/etylsarin/opencastle/discussions).
+- **Questions?** Start a thread in [GitHub Discussions](https://github.com/monkilabs/opencastle/discussions).
 - **Stuck on a PR?** Leave a comment — we're happy to help.
 
 ---

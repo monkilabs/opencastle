@@ -25,10 +25,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/etylsarin/opencastle.git"
+    "url": "git+https://github.com/monkilabs/opencastle.git"
   },
   "bugs": {
-    "url": "https://github.com/etylsarin/opencastle/issues"
+    "url": "https://github.com/monkilabs/opencastle/issues"
   },
   "homepage": "https://www.opencastle.dev/",
   "license": "BUSL-1.1",

@@ -9,9 +9,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/etylsarin/opencastle/stargazers"><img src="https://img.shields.io/github/stars/etylsarin/opencastle?style=flat" alt="GitHub stars" /></a>
+  <a href="https://github.com/monkilabs/opencastle/stargazers"><img src="https://img.shields.io/github/stars/monkilabs/opencastle?style=flat" alt="GitHub stars" /></a>
   <a href="https://www.npmjs.com/package/opencastle"><img src="https://img.shields.io/npm/v/opencastle.svg?v=1" alt="npm version" /></a>
-  <a href="https://github.com/etylsarin/opencastle/actions/workflows/ci.yml"><img src="https://github.com/etylsarin/opencastle/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/monkilabs/opencastle/actions/workflows/ci.yml"><img src="https://github.com/monkilabs/opencastle/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://www.npmjs.com/package/opencastle"><img src="https://img.shields.io/npm/dm/opencastle.svg?v=1" alt="downloads" /></a>
 </p>
 
@@ -217,7 +217,7 @@ See **[ARCHITECTURE.md](ARCHITECTURE.md)** for the full diagram, workflow templa
 3. Make changes and ensure `npm run build:cli` passes
 4. Open a PR
 
-For large changes, [open an issue](https://github.com/etylsarin/opencastle/issues) first.
+For large changes, [open an issue](https://github.com/monkilabs/opencastle/issues) first.
 
 <br>
 
@@ -229,7 +229,7 @@ OpenCastle is free and open-source.
   <a href="https://ko-fi.com/A0A61V4992" target="_blank"><img height="36" style="border:0px;height:36px;" src="https://storage.ko-fi.com/cdn/kofi4.png?v=6" border="0" alt="Buy Me a Coffee at ko-fi.com" /></a>
 </p>
 
-For corporate sponsorship inquiries, open a [GitHub Discussion](https://github.com/etylsarin/opencastle/discussions).
+For corporate sponsorship inquiries, open a [GitHub Discussion](https://github.com/monkilabs/opencastle/discussions).
 
 <br>
 
