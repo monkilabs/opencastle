@@ -8,6 +8,7 @@ const __dirname = dirname(__filename)
 export interface EtlOptions {
   dbPath: string
   outputDir: string
+  verbose?: boolean
 }
 
 export interface EtlResult {
@@ -120,7 +121,9 @@ export async function runEtl(options: EtlOptions): Promise<EtlResult> {
       'utf8',
     )
 
-    console.log(`ETL complete: ${allConvoys.length} convoys summarized, ${detailCount} detail files generated.`)
+    if (options.verbose) {
+      console.log(`ETL complete: ${allConvoys.length} convoys summarized, ${detailCount} detail files generated.`)
+    }
 
     return { convoyCount: allConvoys.length }
   } finally {
@@ -128,16 +131,17 @@ export async function runEtl(options: EtlOptions): Promise<EtlResult> {
   }
 }
 
-function parseArgs(): { db?: string; out?: string; events?: string } {
+function parseArgs(): { db?: string; out?: string; events?: string; verbose?: boolean } {
   const args = process.argv.slice(2)
-  const result: Record<string, string> = {}
+  const result: Record<string, string | boolean> = {}
   for (let i = 0; i < args.length; i++) {
     const a = args[i]
     if (a === '--db' && args[i+1]) { result.db = args[++i] }
     else if (a === '--out' && args[i+1]) { result.out = args[++i] }
     else if (a === '--events' && args[i+1]) { result.events = args[++i] }
+    else if (a === '--verbose') { result.verbose = true }
   }
-  return result
+  return result as { db?: string; out?: string; events?: string; verbose?: boolean }
 }
 
 const isMain =
@@ -148,7 +152,7 @@ if (isMain) {
   const parsed = parseArgs()
   const dbPath = parsed.db != null ? resolve(process.cwd(), parsed.db) : resolve(process.cwd(), '.opencastle', 'convoy.db')
   const outputDir = parsed.out != null ? resolve(process.cwd(), parsed.out) : resolve(__dirname, '..', 'public', 'data')
-  runEtl({ dbPath, outputDir }).then(() => {
+  runEtl({ dbPath, outputDir, verbose: parsed.verbose }).then(() => {
     if (parsed.events) {
       const eventsPath = resolve(process.cwd(), parsed.events)
       const dest = resolve(outputDir, 'events.ndjson')
