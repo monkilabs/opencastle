@@ -173,25 +173,7 @@ Each task `prompt` must be a **complete, standalone instruction**. Include:
 >
 > **Weak page prompt:** "Build the About page with a bio and skills section." — No foundation references, agent will create its own styles.
 
-### 6. Validate Before Outputting
-
-- [ ] Every task has a unique `id`
-- [ ] Every `depends_on` reference points to a valid `id` defined earlier in the list
-- [ ] No dependency cycles exist
-- [ ] No two parallel tasks share the same `files` entries — group tasks by phase and check each phase for overlaps; resolve with specific file paths or `depends_on` (see Step 2, rule 4)
-- [ ] No `files` entry contains `*`, `?`, or `**` — use plain file paths or directory paths only
-- [ ] Prompts are self-contained — an agent with zero context can execute them
-- [ ] Timeouts are reasonable for the scope of each task
-- [ ] **Dependency completeness**: For every task prompt, scan for imports, references, or usage of files/types/components produced by other tasks. Each such cross-reference MUST have a `depends_on` edge to the producing task.
-- [ ] **Agent domain matching**: Verify each task's `agent` matches the domain — `developer` for code, `testing-expert` for tests, `documentation-writer` for docs, `copywriter` for marketing copy, `ui-ux-expert` for UI components, `database-engineer` for migrations, `security-expert` for auth/security, `data-expert` for ETL/scraping. A `content-engineer` should NOT be assigned to pure TypeScript code tasks.
-- [ ] **File list completeness**: Every file mentioned in a task's prompt that the agent will create or modify MUST appear in that task's `files` list. Don't omit utility files, sub-components, or config files if the prompt instructs the agent to create them.
-- [ ] **Prompt instruction accuracy**: Don't include instructions that contradict the dependency graph. If a task depends on another task (via `depends_on`), the depended task's outputs will exist when this task runs — don't add `@ts-expect-error` comments, stub files, or "if not found" fallbacks for files produced by dependencies.
-- [ ] **Content research rule compliance**: If a prompt concerns real people, places, or organisations, it includes a research instruction telling the agent to search the internet first.
-- [ ] **Foundation phase present**: If the plan involves 2+ pages or UI sections, a `foundation-setup` task exists with no dependencies, and all page tasks depend on it
-- [ ] **Foundation references in page prompts**: Every page-building task prompt includes the 5 mandatory Foundation References (design tokens path, layout path, UI component path, aesthetic direction, content tone)
-- [ ] **No token duplication**: Page task prompts do NOT instruct agents to create new design tokens, layout components, or shared UI primitives — only to import and use existing ones from the foundation
-
-### 7. Output
+### 6. Output
 
 Your response must contain **ONLY** a single ` ```json ` fenced code block — no text before it, no text after it, no explanations, no summaries, no DAG diagrams.
 
@@ -233,6 +215,38 @@ When chain mode is detected:
   "gate_retries": 1
 }
 ````
+
+## Self-Validation Checklist (MANDATORY)
+
+Before outputting the JSON, verify **every item** below. The downstream validator will reject your plan if any blocking checks fail — fix them now to avoid expensive retry cycles.
+
+### Structural Integrity
+
+- [ ] Every task has a unique `id` (lowercase, kebab-case)
+- [ ] Every `depends_on` reference points to a valid `id` defined in the task list
+- [ ] No dependency cycles exist (DAG is acyclic)
+- [ ] No `files` entry contains `*`, `?`, or `**` — plain paths only
+- [ ] Top-level `name` and `tasks` fields are present; `tasks` is non-empty
+- [ ] Every task has both `id` and `prompt` fields (both non-empty strings)
+
+### Partition & Dependency Coherence
+
+- [ ] No two parallel tasks (same phase / no `depends_on` edge) share any `files` entry — resolve with specific file paths or sequencing
+- [ ] **Dependency completeness**: For every task prompt, scan for imports or references to files/types/components produced by other tasks. Each cross-reference MUST have a `depends_on` edge to the producing task.
+- [ ] **File list completeness**: Every file mentioned in a task's prompt that the agent will create or modify appears in that task's `files` list. Don't omit utility files, sub-components, or config files.
+- [ ] **Prompt-dependency coherence**: Prompts do not include workarounds (stub files, `@ts-expect-error`, conditional imports) for outputs of tasks listed in `depends_on`, since those outputs are guaranteed to exist.
+
+### Prompt Quality
+
+- [ ] **Self-contained**: An agent with zero context can execute the prompt without external clarification.
+- [ ] **File-specific**: Names the exact files to create or modify — no vague references ("the frontend", "the codebase").
+- [ ] **Substantive**: At least 2 meaningful sentences; no stubs (`...`), no placeholders.
+- [ ] **Verifiable**: Contains acceptance criteria or explicit verification steps.
+- [ ] **Agent domain matching**: Each task's `agent` matches the domain — `developer` for code, `testing-expert` for tests, `documentation-writer` for docs, `copywriter` for marketing copy, `ui-ux-expert` for UI, `database-engineer` for migrations, `security-expert` for auth/security, `data-expert` for ETL/scraping.
+- [ ] **Content research compliance**: If a prompt concerns real people, places, or organisations, it includes a research instruction.
+- [ ] **Foundation phase present** (multi-page only): If 2+ pages/UI sections, a `foundation-setup` task exists and all page tasks depend on it with the 5 mandatory Foundation References.
+
+---
 
 ## Historical Performance Context
 
