@@ -881,7 +881,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       console.log(`  ${c.dim('Dashboard:')} ${pipelineDashboardResult.url}`)
       console.log(`\n  Press Ctrl+C to stop`)
       if (pipelineResult.status !== 'done') {
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file} --resume`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
       }
       const exitCode = pipelineResult.status !== 'done' ? 1 : 0
       process.on('SIGINT', () => {
@@ -891,7 +891,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       })
     } else {
       if (pipelineResult.status !== 'done') {
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file} --resume`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
       }
       process.exit(pipelineResult.status !== 'done' ? 1 : 0)
     }
@@ -1023,7 +1023,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       console.log(`  ${c.dim('Dashboard:')} ${dashboardResult.url}`)
       console.log(`\n  Press Ctrl+C to stop`)
       if (result.status !== 'done') {
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file} --resume`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
       }
       const exitCode = result.status !== 'done' ? 1 : 0
       process.on('SIGINT', () => {
@@ -1033,7 +1033,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       })
     } else {
       if (result.status !== 'done') {
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file} --resume`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
       }
       process.exit(result.status !== 'done' ? 1 : 0)
     }

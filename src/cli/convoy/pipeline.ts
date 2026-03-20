@@ -327,8 +327,8 @@ export function createPipelineOrchestrator(
 
         let convoyResult: ConvoyResult
 
-        if (existing && existing.status === 'running') {
-          // Resume the in-progress convoy
+        if (existing && (existing.status === 'running' || existing.status === 'failed')) {
+          // Resume the in-progress or failed convoy
           const absPath = resolveSpecPath(specPath)
           const convoyYaml = await readFile(absPath, 'utf8')
           const convoySpec = parseTaskSpecText(convoyYaml)
@@ -344,6 +344,11 @@ export function createPipelineOrchestrator(
             verbose,
             pipelineId,
           })
+
+          if (existing.status === 'failed') {
+            await resumeEngine.retryFailed(existing.id)
+          }
+
           convoyResult = await resumeEngine.resume(existing.id)
           existingIdx++
         } else {

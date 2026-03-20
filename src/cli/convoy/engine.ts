@@ -3218,6 +3218,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
 
       for (const task of tasksToRetry) {
         store.updateTaskStatus(task.id, convoyId, 'pending', {
+          retries: 0,
           worker_id: null,
           worktree: null,
           started_at: null,
