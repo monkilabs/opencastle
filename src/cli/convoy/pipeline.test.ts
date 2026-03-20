@@ -674,6 +674,55 @@ describe('pipeline resume', () => {
     expect(mockEngine.run).not.toHaveBeenCalled()
     expect(result.convoyResults[0].convoyId).toBe(runningConvoyId)
   })
+
+  it('resumes a failed convoy via retryFailed + resume instead of running fresh', async () => {
+    const pipelineId = 'pipeline-resume-failed-convoy'
+    const failedConvoyId = 'convoy-failed-456'
+
+    const store = createConvoyStore(dbPath)
+    store.insertPipeline({
+      id: pipelineId,
+      name: 'Failed Resume Test',
+      status: 'running',
+      branch: 'main',
+      spec_yaml: 'name: resume-failed',
+      convoy_specs: JSON.stringify(['./a.yaml']),
+      created_at: new Date(Date.now() - 1000).toISOString(),
+    })
+    store.insertConvoy({
+      id: failedConvoyId,
+      name: 'Convoy A',
+      spec_hash: 'abc123',
+      status: 'failed',
+      branch: 'main',
+      created_at: new Date().toISOString(),
+      spec_yaml: CONVOY_YAML,
+      pipeline_id: pipelineId,
+    })
+    store.close()
+
+    const resumedResult = makeConvoyResult({ convoyId: failedConvoyId }, 'done')
+    const mockEngine: ConvoyEngine = {
+      run: vi.fn().mockResolvedValue(makeConvoyResult()),
+      resume: vi.fn().mockResolvedValue(resumedResult),
+      retryFailed: vi.fn(),
+      injectTask: vi.fn(),
+    }
+    const factory = vi.fn().mockReturnValue(mockEngine)
+
+    const result = await createPipelineOrchestrator({
+      spec: makePipelineSpec({ depends_on_convoy: ['./a.yaml'] }),
+      specYaml: 'name: pipeline',
+      adapter: makeAdapter(),
+      dbPath,
+      _createConvoyEngine: factory,
+    }).resume(pipelineId)
+
+    expect(mockEngine.retryFailed).toHaveBeenCalledWith(failedConvoyId)
+    expect(mockEngine.resume).toHaveBeenCalledWith(failedConvoyId)
+    expect(mockEngine.run).not.toHaveBeenCalled()
+    expect(result.convoyResults[0].convoyId).toBe(failedConvoyId)
+  })
 })
 
 // ── 12. getCurrentBranch fallback ─────────────────────────────────────────────

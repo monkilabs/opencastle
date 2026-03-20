@@ -1961,6 +1961,8 @@ body {
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   text-transform: none;
+  font-family: inherit;
+  font-weight: 400;
 }
 .tooltip-trigger:focus {
   opacity: 1;
@@ -1991,6 +1993,8 @@ body {
   pointer-events: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   text-transform: none;
+  font-family: inherit;
+  font-weight: 400;
 }
 
 /* ── Additional Status Badges ── */

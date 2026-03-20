@@ -339,6 +339,15 @@ try {
       <div class="chart-card__body" id="panel-chart"></div>
     </section>
 
+    <!-- Recent Sessions (live during active convoy) -->
+    <section class="chart-card" id="detail-sessions-section" data-nav-section>
+      <div class="chart-card__header">
+        <h2 class="chart-card__title">Recent Sessions</h2>
+        <p class="chart-card__desc">Latest agent sessions from observability log</p>
+      </div>
+      <div class="chart-card__body chart-card__body--table" id="detail-sessions-table"></div>
+    </section>
+
     </div><!-- .view-convoy-detail -->
 
 
@@ -693,6 +702,8 @@ try {
     const url = new URL(window.location);
     url.searchParams.delete('convoy');
     history.pushState({}, '', url);
+    const chainNav = document.getElementById('pipeline-chain-nav');
+    if (chainNav) chainNav.remove();
   }
 
   function showConvoyDetailView(convoyId, convoyName) {
@@ -977,7 +988,8 @@ try {
 
   async function renderRecentSessions() {
     var el = document.getElementById('sessions-table');
-    if (!el) return;
+    var detailEl = document.getElementById('detail-sessions-table');
+    if (!el && !detailEl) return;
     try {
       var allEvents = await loadNdjson(base + 'data/events.ndjson');
       var sessions = allEvents.filter(function(e) { return e.type === 'session'; });
@@ -986,7 +998,9 @@ try {
       });
       sessions = sessions.slice(0, 15);
       if (sessions.length === 0) {
-        el.innerHTML = emptyStateHtml('sessions', 'No sessions recorded yet', 'Agent session data will appear here when sessions are logged via opencastle log.');
+        var emptyHtml = emptyStateHtml('sessions', 'No sessions recorded yet', 'Agent session data will appear here when sessions are logged via opencastle log.');
+        if (el) el.innerHTML = emptyHtml;
+        if (detailEl) detailEl.innerHTML = emptyHtml;
         return;
       }
       var thead = '<thead><tr>' +
@@ -1016,9 +1030,13 @@ try {
           '</tr>';
       }
       tbody += '</tbody>';
-      el.innerHTML = '<table class="sessions-table">' + thead + tbody + '</table>';
+      var tableHtml = '<table class="sessions-table">' + thead + tbody + '</table>';
+      if (el) el.innerHTML = tableHtml;
+      if (detailEl) detailEl.innerHTML = tableHtml;
     } catch (e) {
-      el.innerHTML = emptyStateHtml('sessions', 'No sessions recorded yet', 'Agent session data will appear here when sessions are logged.');
+      var errHtml = emptyStateHtml('sessions', 'No sessions recorded yet', 'Agent session data will appear here when sessions are logged.');
+      if (el) el.innerHTML = errHtml;
+      if (detailEl) detailEl.innerHTML = errHtml;
     }
   }
 
@@ -1056,6 +1074,18 @@ try {
       renderEventTimeline(detail);
       renderDetailPanelChart(detail.tasks || []);
       renderDetailReviewsTable(detail.tasks || []);
+      // Show pipeline chain if this convoy is part of a pipeline
+      const convoyListForChain = window.__DASHBOARD_DATA__?.convoyList ?? [];
+      const currentConvoyEntry = convoyListForChain.find(c => c.id === convoyId);
+      if (currentConvoyEntry && currentConvoyEntry.pipeline_id) {
+        const chainConvoys = convoyListForChain
+          .filter(c => c.pipeline_id === currentConvoyEntry.pipeline_id)
+          .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+        if (chainConvoys.length > 1) {
+          renderPipelineChain(chainConvoys, convoyId);
+        }
+      }
+      await renderRecentSessions();
     } catch (e) {
       console.error('Failed to load convoy detail:', e);
       renderConvoyDetailHeader(null);
@@ -1165,6 +1195,7 @@ try {
       return;
     }
     const cols = [
+      { key: 'id', label: 'Task ID' },
       { key: 'phase', label: 'Phase' },
       { key: 'agent', label: 'Agent' },
       { key: 'status', label: 'Status' },
@@ -1209,6 +1240,7 @@ try {
         : '<span style="opacity:0.4">\u2014</span>';
       const tokens = t.total_tokens != null ? formatTokens(t.total_tokens) : '\u2014';
       return '<tr>' +
+        '<td class="td-task">' + escapeHtml(t.id || '\u2014') + '</td>' +
         '<td>' + (t.phase != null ? t.phase : '\u2014') + '</td>' +
         '<td class="td-agent">' + escapeHtml(t.agent || '\u2014') + '</td>' +
         '<td>' + statusBadge + '</td>' +
