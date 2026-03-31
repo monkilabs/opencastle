@@ -1,13 +1,15 @@
 ---
 name: agent-memory
-description: "Agent expertise tracking and cross-session knowledge graph. Use when delegating tasks to track agent strengths/weaknesses, or when building context about file relationships and patterns."
+description: "Agent expertise tracking and cross-session knowledge graph. Use when delegating tasks to match agents to their strengths, when reviewing task failures to update weakness records, or when building context about file dependencies and codebase patterns across sessions."
 ---
 
 # Agent Memory Protocol
 
-## Expertise File
+## Workflow
 
-**Location:** `.opencastle/AGENT-EXPERTISE.md`
+### Step 1 — Initialize Expertise Registry
+
+Create `.opencastle/AGENT-EXPERTISE.md` if it does not exist. Use the following structure for each agent:
 
 ```markdown
 # Agent Expertise Registry
@@ -27,7 +29,9 @@ description: "Agent expertise tracking and cross-session knowledge graph. Use wh
 - `apps/web-app/places/` — 3 tasks
 ```
 
-## Update Triggers
+### Step 2 — Update on Task Completion
+
+After each delegation completes, update the expertise registry based on these triggers:
 
 | Trigger | Action |
 |---------|--------|
@@ -37,9 +41,11 @@ description: "Agent expertise tracking and cross-session knowledge graph. Use wh
 | DLQ failure | Add Weak Area with ref |
 | >3 months stale | Mark as "stale" |
 
-## Retrieval & Delegation
+**Validation checkpoint:** Confirm the expertise entry includes evidence (tracker ID or task reference) and a current date — entries without evidence are not actionable.
 
-Check `.opencastle/AGENT-EXPERTISE.md` before delegating. Add to prompt:
+### Step 3 — Query Before Delegation
+
+Check `.opencastle/AGENT-EXPERTISE.md` before delegating. Inject agent context into the delegation prompt:
 
 ```
 ### Agent Context
@@ -48,9 +54,11 @@ Check `.opencastle/AGENT-EXPERTISE.md` before delegating. Add to prompt:
 - Familiar: libs/queries/src/lib/search/ (2 tasks)  → "You've worked on [file] in TAS-XX."
 ```
 
-## Pruning
+### Step 4 — Prune Periodically
 
-- Remove entries >6 months old; consolidate repetitive entries; remove familiarity for deleted files
+- Remove entries >6 months old
+- Consolidate repetitive entries
+- Remove familiarity for deleted files
 - Prune at start of major feature work
 
 ## Knowledge Graph
@@ -95,3 +103,12 @@ Follow `depends-on` for related reads, `expert-in` to confirm agent, `related-to
 
 - Add as discovered; prune between sessions
 - Max ~100 active relationships; archive quarterly
+
+## Anti-Patterns
+
+| Anti-pattern | Fix |
+|-------------|-----|
+| Delegating without checking expertise | Always query the registry before assigning tasks |
+| Entries without evidence or dates | Every entry must reference a tracker ID and date |
+| Letting the registry grow unbounded | Prune at the start of each major feature |
+| Recording only strengths | Weaknesses are equally valuable for routing decisions |

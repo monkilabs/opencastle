@@ -1,6 +1,6 @@
 ---
 name: project-consistency
-description: "Enforce cross-agent consistency in multi-page/multi-component projects. Covers visual design, code patterns, content style, and structural conventions. Essential for convoy parallel execution where multiple agents build different parts of the same app."
+description: "Enforce cross-agent consistency in multi-page/multi-component projects. Use when planning a convoy with parallel page-building tasks, when multiple agents will create UI components, or when reviewing multi-agent output for visual/code/content drift. Covers visual design, code patterns, content style, and structural conventions."
 ---
 
 # Project Consistency
@@ -58,6 +58,24 @@ Every page agent in a multi-agent convoy MUST follow all rules below.
 | **Structural** | Every page uses shared Layout — no exceptions. Follow page structure from brief. Nav labels match brief exactly. Breakpoints from tokens only. |
 
 ---
+
+## Workflow
+
+### Step 1 — Create Foundation Artifacts
+
+Before any parallel work begins, a single foundation task creates all shared artifacts (see Foundation Phase Artifacts above). This task must complete before Phase 2 starts.
+
+**Validation checkpoint:** Verify all four artifacts exist — design tokens file, shared layout component, UI component library, and style guide brief — before launching parallel page agents.
+
+### Step 2 — Launch Parallel Page Tasks
+
+Each page task receives the 5 mandatory references (below) in its delegation prompt. Agents import from shared artifacts — no new values, no recreated components.
+
+### Step 3 — Verify Consistency
+
+After all page agents complete, review output across all pages for drift in colors, fonts, spacing, component APIs, and content tone. Flag any hardcoded values or locally recreated components.
+
+**Validation checkpoint:** Confirm zero hardcoded hex/px values, all pages use the shared Layout, and terminology matches the style guide glossary.
 
 ## Convoy Integration
 

@@ -1,6 +1,6 @@
 ---
 name: memory-merger
-description: "Protocol for graduating mature lessons from LESSONS-LEARNED.md into permanent instruction and skill files. Closes the self-improvement loop by codifying validated knowledge at the source level."
+description: "Protocol for graduating mature lessons from LESSONS-LEARNED.md into permanent instruction and skill files. Use when the lessons-learned file exceeds 50 entries, individual lessons have been cited 3+ times, or lesson clusters of 5+ appear in the same category. Closes the self-improvement loop by codifying validated knowledge at the source level."
 ---
 
 # Memory Merger
@@ -17,9 +17,11 @@ Promotes validated lessons from `.opencastle/LESSONS-LEARNED.md` into instructio
 | Category cluster | 5+ lessons in same category |
 | Discretionary | Lessons file feels stale |
 
-## Merge Protocol
+## Workflow
 
-### 1 — Scan Candidates
+### Step 1 — Scan Candidates
+
+Evaluate each lesson in `LESSONS-LEARNED.md` against the promotion criteria:
 
 | Criterion | Signal |
 |-----------|--------|
@@ -29,7 +31,11 @@ Promotes validated lessons from `.opencastle/LESSONS-LEARNED.md` into instructio
 | Concentration | 5+ in same category → extract pattern |
 | Tool-specific | MCP tool, codebase-tool command, or framework pattern |
 
-### 2 — Map to Target File
+**Validation checkpoint:** Confirm at least one candidate meets the threshold before proceeding.
+
+### Step 2 — Map to Target File
+
+Determine the correct destination for each candidate lesson:
 
 | Category | Target |
 |----------|--------|
@@ -45,7 +51,11 @@ Promotes validated lessons from `.opencastle/LESSONS-LEARNED.md` into instructio
 | `ui` / `framework` | `framework` slot or `react-development` skill |
 | Cross-cutting | `.github/instructions/general.instructions.md` |
 
-### 3 — Draft Edit
+**Validation checkpoint:** Verify the target file exists and the target section is appropriate before drafting.
+
+### Step 3 — Draft Edit
+
+Prepare a structured edit proposal for each lesson:
 
 ```
 Lesson: LES-XXX — [title]
@@ -53,13 +63,20 @@ Target: [file path]
 Section: [section name]
 Edit: [exact text]
 ```
+
 Strategies: add rule, add anti-pattern, add code example, expand existing rule, add table row.
 
-### 4 — Apply & Attribute
+### Step 4 — Apply & Attribute
 
 Edit target file; add `<!-- Merged from LES-XXX -->` attribution inline.
 
-### 5 — Archive
+**Example:**
+```markdown
+<!-- Merged from LES-042 -->
+- **Always validate CMS response shape** — Contentful can return partial entries when links are unresolved.
+```
+
+### Step 5 — Archive
 
 Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.md`:
 
@@ -69,9 +86,11 @@ Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.
 
 **Never delete lessons** — archive for traceability.
 
-### 6 — Update Index
+### Step 6 — Update Index
 
 Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
+
+**Validation checkpoint:** Confirm all merged lessons are archived, all target files are updated, and the index reflects the changes.
 
 ## Quality Gates
 
@@ -82,7 +101,9 @@ Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
 ## Anti-Patterns
 
-- Merge too eagerly — must meet 3+ citations or 60+ day threshold
-- Copy verbatim — rewrite as rules/guidelines, not incident reports
-- Merge conflicting lessons — resolve conflict first
-- Create new files for merged content — merge INTO existing files only
+| Anti-pattern | Fix |
+|-------------|-----|
+| Merge too eagerly | Must meet 3+ citations or 60+ day threshold before promoting |
+| Copy verbatim | Rewrite as rules/guidelines, not incident reports |
+| Merge conflicting lessons | Resolve conflict first, then merge the winner |
+| Create new files for merged content | Merge INTO existing files only — never create new targets |

@@ -1,7 +1,6 @@
-````skill
 ---
 name: fast-review
-description: "Mandatory single-reviewer gate that runs after every agent delegation. Provides automatic retry with feedback and escalation to panel review after repeated failures. Essential for overnight/long-running autonomous sessions."
+description: "Mandatory single-reviewer gate that runs after every agent delegation. Use when an agent completes a delegated task and needs automated quality verification before proceeding. Provides automatic retry with feedback and escalation to panel review after repeated failures. Essential for overnight/long-running autonomous sessions."
 ---
 
 # Skill: Fast Review
@@ -97,5 +96,3 @@ CONFIDENCE: low | medium | high
 - **Ignoring minor issues** — track; 3+ recurrences → ticket.
 - **Force-accepting FAIL** — retry or escalate.
 - **Skipping deterministic checks** — does NOT replace lint/test/build.
-
-````

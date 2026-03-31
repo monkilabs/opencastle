@@ -1,6 +1,6 @@
 ---
 name: session-checkpoints
-description: "Protocol for saving and restoring session state across agent sessions. Enables replay, fork, and resume of interrupted work — inspired by Sandcastle Run Time Machine."
+description: "Protocol for saving and restoring session state across agent sessions. Use when starting a multi-phase delegation, before risky operations like DB migrations, when context is running low, or when resuming interrupted work. Enables replay, fork, and resume of interrupted work."
 ---
 
 # Skill: Session Checkpoints
@@ -15,7 +15,11 @@ description: "Protocol for saving and restoring session state across agent sessi
 | Session end | Any session with incomplete work |
 | Context running low | Checkpoint immediately |
 
-## Checkpoint Format (`.opencastle/SESSION-CHECKPOINT.md`)
+## Workflow
+
+### Step 1 — Create Checkpoint File
+
+Write `.opencastle/SESSION-CHECKPOINT.md` using the format below. Include all metadata fields — omitting fields causes resume failures.
 
 ```markdown
 # Session Checkpoint
@@ -26,6 +30,7 @@ description: "Protocol for saving and restoring session state across agent sessi
 **Tracker Issues:** TAS-XX, TAS-YY
 
 ## Current Phase
+[Phase name and number]
 
 ## Completed Work
 
@@ -66,10 +71,8 @@ Remove row once answered (VS Code chat reply also counts as resolved).
 
 ## File Partitions
 
-```
 Agent A: dir1/, dir2/
 Agent B: dir3/
-```
 
 ## Resume Instructions
 
@@ -78,14 +81,42 @@ Agent B: dir3/
 3. Start Phase N+1: [specific instructions]
 ```
 
-## Resuming
+**Validation checkpoint:** Verify the checkpoint file contains all required sections and that the branch name matches the current git branch.
 
-Read checkpoint → `git status` → check tracker → follow resume instructions → update progress.
+### Step 2 — Update on Progress
 
-## Cleanup & Team Lead
+After each delegation completes or each parallel batch finishes, move tasks between the In Progress, Completed, and Remaining tables. Update the Current Phase field.
 
-When all issues Done: archive to tracker, delete `.opencastle/SESSION-CHECKPOINT.md`.
+### Step 3 — Resume from Checkpoint
+
+When starting a new session with incomplete work:
+
+1. Read `.opencastle/SESSION-CHECKPOINT.md`
+2. Run `git status` to confirm branch and working tree state
+3. Check tracker for any updates made outside the agent session
+4. Follow the Resume Instructions section
+5. Update the checkpoint with current progress
+
+**Validation checkpoint:** Confirm the branch exists, all referenced files are present, and the tracker state matches the checkpoint before continuing work.
+
+### Step 4 — Cleanup
+
+When all issues are Done:
+
+1. Archive the checkpoint content to the tracker
+2. Delete `.opencastle/SESSION-CHECKPOINT.md`
+
+## Integration Points
 
 - Checkpoint after decomposition (Step 2 of Decomposition Flow)
 - Update after each verification pass
 - Reference checkpoint in delegation prompts
+
+## Anti-Patterns
+
+| Anti-pattern | Fix |
+|-------------|-----|
+| Skipping checkpoint before risky work | Always checkpoint before DB migrations, security changes, or large refactors |
+| Stale checkpoint with outdated file partitions | Update partitions whenever agents are reassigned or files move |
+| Resuming without checking git status | Always verify branch and working tree state match the checkpoint |
+| Leaving checkpoint after feature completion | Delete the file once all tracker issues are Done |
