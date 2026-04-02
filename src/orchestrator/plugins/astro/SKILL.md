@@ -1,6 +1,6 @@
 ---
 name: astro-framework
-description: "Astro framework best practices for content-driven sites, islands architecture, routing, integrations, and project structure. Use when creating or modifying Astro pages, layouts, components, or content collections."
+description: "Creates pages/layouts, defines content collections, configures hydration directives, and wires integrations. Use when adding or modifying Astro pages, layouts, components, or content collections. Trigger terms: Astro, content collection, client:load, client:visible, astro:content"
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
@@ -21,23 +21,22 @@ src/
 └── assets/      # processed images
 ```
 
-## Component Model
+## Implement Components
 
-**Default: Zero JS** — `.astro` components render to HTML with no client-side JavaScript.
+**Default: Zero JS** — author `.astro` components that render HTML with no client-side JavaScript where possible.
 
-**Islands Architecture** — Interactive components use `client:*` directives to hydrate only where needed.
+**Islands Architecture** — hydrate interactivity only where needed using `client:*` directives.
 
-### Astro Component Example
+### Component Example (concise)
 
 ```astro
 ---
 interface Props { title: string; description?: string; }
 const { title, description = 'Default description' } = Astro.props;
-const data = await fetch('https://api.example.com/data').then(r => r.json());
 ---
 <section>
   <h2>{title}</h2>
-  {data.items.map((item: { name: string }) => <li>{item.name}</li>)}
+  <p>{description}</p>
 </section>
 <style>
   section { max-width: 800px; margin: 0 auto; }
@@ -46,18 +45,22 @@ const data = await fetch('https://api.example.com/data').then(r => r.json());
 
 ### Client Directives (Islands)
 
-| Directive | When It Hydrates | Use Case |
-|-----------|-----------------|----------|
-| `client:load` | Immediately on page load | Critical interactive UI |
-| `client:idle` | After page is idle | Non-critical UI (analytics widgets) |
-| `client:visible` | When element enters viewport | Below-the-fold components |
-| `client:media="(max-width: 768px)"` | When media query matches | Mobile-only interactivity |
-| `client:only="react"` | Client-only, no SSR | Components that can't server-render |
+Use only the hydration directive required by the interaction to minimize shipped JS. Typical mappings:
 
-## Content Collections
+- `client:load` — immediate hydration for critical interactive widgets
+- `client:idle` — non-critical behavior after page idle
+- `client:visible` — hydrate when visible (lazy)
+- `client:media` — hydrate on media match
+- `client:only` — last resort for non-SSR-able components
 
-Define in `src/content.config.ts` (Astro v5+) using the Content Layer API:
+## Content Collections — Quick Workflow: add a new collection
+1. Add collection schema in `src/content.config.ts` using `defineCollection` and Zod validators.
+2. Create the folder under `src/content/<collection>` and add one sample `.md` or `.mdx` content file with frontmatter.
+3. Run `pnpm build` and `pnpm dev` → run `node scripts/validate-content.js` (or your project's validation script) to verify typed collection imports.
+4. Add a smoke query in a page that imports the collection (e.g., `const posts = await getCollection('blog')`) and confirm build-time typing.
+5. Validation: ensure `pnpm build` exits zero and TypeScript reports no errors for collection types.
 
+Define collections in `src/content.config.ts` (Astro v5+) using `astro:content` and export typed collections.
 ```ts
 import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
@@ -117,16 +120,6 @@ Use `astro add` for react, tailwind, mdx, sitemap, node, vercel, netlify, cloudf
 - **API routes**: Export `GET`/`POST` handlers from `src/pages/api/*.ts` returning `new Response(...)`.
 - **Actions**: Use `defineAction` in `src/actions/index.ts` for type-safe server mutations with Zod validation.
 
-## Anti-Patterns
+## Anti-Patterns (moved to REFERENCE.md)
 
-| Anti-Pattern | Why It's Wrong | Do This Instead |
-|-------------|---------------|-----------------|
-| `client:load` on every component | Defeats zero-JS benefit, bloats bundle | Use `client:idle` or `client:visible` for non-critical UI |
-| Importing large JS libraries in `.astro` | Runs at build but bundles nothing useful | Import in framework components with `client:*` |
-| Skipping content collections for blog/docs | Manual file handling is error-prone | Use content collections with typed schemas |
-| Hardcoding data in pages | Not maintainable, no type safety | Use content collections or fetch from APIs |
-| Using `client:only` when SSR works | Loses SEO benefits and fast first paint | Use `client:load` or `client:visible` instead |
-| Giant monolithic pages | Hard to maintain and test | Split into layouts + reusable components |
-| Ignoring `astro add` for integrations | Manual config is error-prone | Use `astro add` for official integrations |
-| Missing `alt` on images | Accessibility violation | Always provide descriptive `alt` text |
-| Not using `astro:assets` for images | Missing optimization | Use `<Image>` from `astro:assets` |
+Extracted anti-patterns and SSR configuration details are available in `REFERENCE.md` in this directory to keep this skill focused and concise.

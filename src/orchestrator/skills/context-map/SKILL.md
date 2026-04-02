@@ -1,6 +1,6 @@
 ---
 name: context-map
-description: "Generate a structured file impact map before making changes. Identifies all files that will be affected, their relationships, and cascade effects — improving file partitioning for parallel work and reducing unexpected side effects."
+description: "Maps file dependencies, flags shared imports, and groups files for safe parallel editing before code changes. Use when planning a refactoring, analyzing change impact, or understanding which files a modification will affect."
 ---
 
 # Skill: Context Map
@@ -22,71 +22,44 @@ Generate a **file impact map** before code changes to identify affected files, r
 Identify files that MUST change from the task description.
 
 ### 2 — Trace Outward (dependents)
-Use `grep_search` / `list_code_usages`: imports, type consumers, route references, query consumers, test files.
+Find consumers of entry-point exports:
+```
+grep_search("import.*from.*places", isRegexp=true)   # find importers
+vscode_listCodeUsages("PlaceCard")                     # find component consumers
+grep_search("places.*route|/places", isRegexp=true)    # find route references
+```
 
 ### 3 — Trace Inward (sources)
-CMS schemas, `libs/` utilities, config files.
+Find what entry points depend on:
+```
+grep_search("from.*libs/", includePattern="src/places/**")  # shared lib deps
+grep_search("from.*config", includePattern="src/places/**")  # config deps
+```
+
 ### 4 — Build the Map
 
+Produce a compact Context Map for the Team Lead and downstream agents. Example minimal map (inline):
+
 ```markdown
-## Context Map: [Task Name]
+Context Map — Feature: Add priceRange
 
-### Entry Points (MUST change)
-| File | Reason | Owner |
-|------|--------|-------|
-| `libs/queries/src/lib/places.ts` | Add query field | Content Engineer |
-| `libs/ui-kit/.../PlaceCard/` | Display new field | UI/UX Expert |
+- Entry points:
+	- src/lib/place/schema.ts
+	- src/components/PriceRangeFilter/PriceRangeFilter.tsx
 
-### Cascade Effects (WILL change)
-| File | Triggered By | Reason | Owner |
-|------|-------------|--------|-------|
-| `apps/web-app/places/page.tsx` | PlaceCard | Update props | Frontend Dev |
-| `libs/queries/src/lib/__tests__/places.test.ts` | Query | Update test | Testing Expert |
+- Dependents (trace outward):
+	- src/pages/places/page.tsx
+	- src/components/PlacesList/PlaceCard.tsx
 
-### Shared Boundaries (WATCH)
-| File | Risk | Mitigation |
-|------|------|------------|
-| `libs/ui-kit/src/lib/index.ts` | Barrel export conflict | Merge sequentially |
+- Sources (trace inward):
+	- src/lib/filters.ts
+	- src/shared/types/place.ts
 
-### Unaffected
-| Area | Why |
-|------|-----|
-| `db/migrations/` | No DB changes |
-| `libs/auth/` | No auth changes |
+- Unaffected (optional):
+	- src/components/Account/**
 ```
 
-### 5 — Derive File Partitions
-
-Assign ownership — no file in two partitions; shared boundaries to one agent (merged first); test files to Testing Expert unless tightly coupled.
-
-```
-Agent A: libs/queries/src/lib/places.ts
-Agent B: libs/ui-kit/.../PlaceCard/
-Agent C: apps/web-app/places/, apps/admin-panel/places/
-Agent D: **/*test*, **/*spec*
-```
-
-## Depth Levels
-
-| Complexity | Files | Depth |
-|------------|-------|-------|
-| Small | 1–3 | Entry points + direct imports |
-| Medium | 4–8 | Entry + 1-hop cascade |
-| Large | 9+ | Full dependency graph |
-
-## Team Lead Integration
-
-Produced in **Phase 1**; consumed by:
-- **Decomposition** — informs file partitions
-- **Delegation prompts** — agents receive their map section
-- **QA Gate** — compare actual changes against map to detect scope creep
-
-Delegation prompt snippet:
-```markdown
-## Your File Partition
-Modify only: `libs/queries/src/lib/places.ts`, `libs/queries/src/lib/__tests__/places.test.ts`
-Do NOT modify: `libs/ui-kit/` (UI/UX Expert), `apps/` (Developer)
-```
+Validation checkpoint: run `grep_search` and `vscode_listCodeUsages` results into the map and confirm all listed files open without errors (CI: `pnpm typecheck`). For full template and Team Lead integration snippets see REFERENCE.md in this directory.
 
 ## Anti-Patterns
 

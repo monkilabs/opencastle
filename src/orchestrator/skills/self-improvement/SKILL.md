@@ -1,6 +1,6 @@
 ---
 name: self-improvement
-description: "Protocol for reading and updating the lessons-learned knowledge base. MUST be followed by ALL agents — read lessons before work, write lessons after retries. This makes the agent team self-improving across sessions."
+description: "Appends new entries to LESSONS-LEARNED.md via the opencastle lesson CLI, searches past lessons for matching errors, and proposes skill updates when retry patterns exceed thresholds. Use when consulting or updating LESSONS-LEARNED.md, after task failures, when capturing retrospective insights, or when a retry succeeds."
 ---
 
 # Self-Improvement Protocol
@@ -23,30 +23,24 @@ Required: `--title`, `--category`, `--severity`, `--problem` · Optional: `--wro
 
 After writing: if the lesson reveals a gap in a skill/instruction file, update that file too (prevents the pitfall at source).
 
-## Categories
+## Workflow
 
-| Category | Covers |
-|----------|--------|
-| `task-management` | Task tracker tools, issue management, workflow states |
-| `jira` | Jira MCP tools (Atlassian Rovo) |
-| `mcp-tools` | MCP server tool quirks (deferred loading, parameters) |
-| `codebase-tool` | Task runner CLI commands, caching, build tools |
-| `terminal` | Shell commands, port/process management |
-| `framework` | App framework, build, dev server, SSR |
-| `cms` | CMS content queries, schema deployment |
-| `database` | Database auth, migrations, RLS, SQL |
-| `git` | Git operations, branching, merge conflicts |
-| `deployment` | Deployment, environment variables, edge config |
-| `browser-testing` | E2E testing, screenshots, browser automation |
-| `general` | Anything else |
+1. Search LESSONS-LEARNED.md for matching entries or similar errors.
+2. Attempt the task with conservative flags/options informed by lessons.
+3. On failure: retry with modified approach (up to threshold), capture error details and context.
+4. On success: run `opencastle lesson` to record the working approach.
+5. Verify: `tail -1 .opencastle/LESSONS-LEARNED.md` — confirm entry has title, category, and severity. If malformed → re-run with corrected flags.
+6. If the lesson indicates a needed skill/instruction update: draft that change and propose a PR.
 
-## Severity
+Quick search example:
 
-| Level | Impact |
-|-------|--------|
-| `high` | Blocks work — agent cannot proceed without the workaround |
-| `medium` | Wastes 5+ minutes |
-| `low` | Minor friction |
+```bash
+rg "missing CRON_SECRET" .opencastle/LESSONS-LEARNED.md || true
+```
+
+## Categories & Severity
+
+Category and severity tables moved to [LESSON-CATEGORIES.md](LESSON-CATEGORIES.md). Use that file when tagging lessons.
 
 ## Quality Rules
 

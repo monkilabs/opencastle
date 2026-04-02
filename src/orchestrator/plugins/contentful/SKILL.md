@@ -1,45 +1,85 @@
 ---
 name: contentful-cms
-description: "Contentful CMS development patterns, GraphQL/REST API usage, content modeling, and migration best practices. Use when working with Contentful content types, entries, assets, or the Management API."
+description: "Creates Contentful content types, queries entries via GraphQL/REST, runs CLI migrations, and manages assets and locales. Use when building or modifying Contentful content models, writing queries, or migrating content."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Contentful CMS
 
-Generic Contentful CMS development methodology. For project-specific configuration, content types, and API keys, see [cms-config.md](../../.opencastle/stack/cms-config.md).
-
-## Critical Development Rules
-
-1. **Always use Content Types** — define structured content types before creating entries
-2. **Prefer GraphQL API** — use the GraphQL Content API for typed, efficient queries
-3. **Handle localization** — Contentful fields can be localized; always specify locale in queries
-4. **Use environments** — develop in sandbox environments, promote to master via migrations
-5. **Migration scripts** — use the Contentful CLI migration tool for schema changes, never modify content types manually in production
-6. **Rich Text rendering** — use `@contentful/rich-text-react-renderer` for React apps
-7. **Asset handling** — use Contentful's Image API for responsive images with transformations
-8. **Webhook-driven** — use webhooks for cache invalidation and rebuild triggers
-9. **Rate limiting** — respect API rate limits (Content Delivery: 78 req/s, Management: 10 req/s)
-10. **Keep queries in shared library** — queries belong in a shared queries library, never inline in components
+For project-specific configuration, content types, and API keys, see [cms-config.md](../../.opencastle/stack/cms-config.md).
 
 ## Query Patterns
 
 ### GraphQL Content API
-- Use typed GraphQL queries with code generation
 - Leverage `sys.publishedAt` for cache invalidation
 - Use `include` parameter to control link resolution depth
-- Filter with `where` clauses for efficient data fetching
 
-### REST Content Delivery API
-- Use `content_type` parameter to filter by type
-- Use `select` to limit returned fields
-- Use `links_to_entry` for reverse lookups
-- Handle pagination with `skip` and `limit`
+```typescript
+// Example: Typed GraphQL query
+const BLOG_POSTS_QUERY = `
+  query BlogPosts($limit: Int!, $locale: String!) {
+    blogPostCollection(limit: $limit, locale: $locale) {
+      items {
+        sys { id publishedAt }
+        title
+        slug
+        body { json }
+        featuredImage { url width height }
+      }
+    }
+  }
+`;
+```
 
 ## Content Modeling
 
-- Use **references** for relationships between content types
-- Prefer **short text** over **long text** for searchable fields
-- Use **JSON fields** sparingly — prefer structured content types
-- Design for **reusability** — create component content types for shared UI patterns
-- Use **validation rules** on fields to enforce data quality
+```javascript
+// Reference field with validation
+blogPost.createField('author')
+  .type('Link').linkType('Entry')
+  .validations([{ linkContentType: ['person'] }]);
+```
+
+Prefer typed content types over JSON fields; add validation rules to all required fields.
+
+## Migration Workflow
+
+1. Create a sandbox environment using the Contentful web UI or API.
+2. Write a migration script using the Contentful migration library (example below).
+3. Run the migration against the sandbox:
+
+```bash
+contentful space migration --space-id <SPACE_ID> --environment-id sandbox migration.js
+```
+
+4. Validate changes:
+  - Run a small validation script that queries a sample of affected entries and ensures required fields exist.
+   - If validation fails: roll back by deleting the sandbox and recreate from `master` (safe rollback), or write a reverse migration and run it.
+5. When sandbox validation passes, promote the environment or run the migration against `master` during a maintenance window.
+
+```javascript
+// Example: Migration script (migration.js)
+module.exports = function (migration) {
+  const blogPost = migration.createContentType('blogPost')
+    .name('Blog Post')
+    .displayField('title');
+  blogPost.createField('title').type('Symbol').required(true);
+  blogPost.createField('slug').type('Symbol').required(true).validations([{ unique: true }]);
+  blogPost.createField('body').type('RichText');
+};
+```
+
+Validation script example (node):
+
+```js
+// validate.js — exits non-zero on missing fields
+const res = await fetch(`https://cdn.contentful.com/spaces/${SPACE}/environments/sandbox/entries?content_type=blogPost`, {
+  headers: { Authorization: `Bearer ${TOKEN}` },
+});
+const { items } = await res.json();
+for (const item of items) {
+  if (!item.fields.slug) throw new Error(`Missing slug on ${item.sys.id}`);
+}
+console.log('OK —', items.length, 'entries validated');
+```
+
+For longer migration patterns and rollback options see [REFERENCE.md](REFERENCE.md).

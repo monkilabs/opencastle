@@ -1,36 +1,19 @@
 ---
 name: data-engineering
-description: "Data pipeline ETL workflows, web scraping, NDJSON processing, and CMS data import. Use when building scrapers, processing data, running CLI tools, or importing to a CMS."
+description: "Transforms, validates, and loads data in ETL pipelines. Use when building scrapers, validating NDJSON feeds, or importing data into CMS/DB targets."
 ---
 
 # Data Engineering
 
-Generic pipeline patterns. For project-specific sources, CLI commands, and data status see [data-pipeline-config.md](../../.opencastle/stack/data-pipeline-config.md).
+Generic pipeline patterns. For project-specific sources and full schema references see [REFERENCE.md](./REFERENCE.md).
 
 ## Scraper Architecture
 
-```typescript
-interface ScraperConfig {
-  source: string; query: string; maxPages: number; concurrency: number;
-  delay: { min: number; max: number }; outputPath: string; headless: boolean;
-}
-abstract class BaseScraper {
-  abstract scrape(config: ScraperConfig): Promise<void>;
-  abstract extractVenue(page: Page): Promise<RawVenue>;
-  abstract getNextPage(page: Page): Promise<string | null>;
-}
-```
-
 Launch a headless browser cluster (Puppeteer Cluster / Playwright) with `retryLimit: 3`, `retryDelay: 5000`, `timeout: 30000`, `args: ['--no-sandbox', '--disable-setuid-sandbox']`.
-
-**Anti-detection:** rotate user-agents; random 2–5 s delays; randomize viewport; block images/fonts/CSS; use stealth plugin.
-
-**Error recovery:** exponential backoff (3 retries); log failed URLs; save partial results; checkpoint/resume for long runs.
 
 ## NDJSON Output
 
-One record per line: `{"name":"…","lat":50.0755,"lng":14.4378,"source":"google-maps","sourceId":"ChIJ…","category":"bar","address":"…","rating":4.5,"reviewCount":120}`
-
+One record per line. Schema:
 | Field | Type | Notes |
 |-------|------|-------|
 | `name` | Required | Preserve original encoding |
@@ -41,17 +24,40 @@ One record per line: `{"name":"…","lat":50.0755,"lng":14.4378,"source":"google
 | `category` | Required | Domain category |
 | `rating`, `reviewCount`, `phone`, `website`, `openingHours`, `photos`, `priceLevel` | Optional | — |
 
-## Design Principles
+## Recommended Workflow (numbered, with validation)
 
-| Principle | Detail |
-|-----------|--------|
-| Composable stages | Single-responsibility pipeline steps |
-| Streams | Use for large files to minimize memory |
-| Idempotent imports | `createOrReplace` + deterministic `_id` |
-| Dry-run mode | Required for all destructive operations |
-| Normalized names | Strip diacritics for search |
-| Structured addresses | `{ street, city, postalCode, country, countryCode }` |
-| Data lineage | Record source and transformation history |
-| Error handling | Skip bad records; don't halt pipeline |
-| Backup | Before all bulk operations |
-| Rate limiting | Respect `robots.txt`; attribute sources |
+1. Scrape: run scraper in `--dry-run` to collect a sample (50–200 records).
+   - Checkpoint: sample contains expected fields and geo data.
+   - Recovery: fix extractor selectors, re-run sample.
+2. Validate NDJSON: run line-by-line JSON parse + schema validator (see `validate-ndjson.js` example).
+   - Checkpoint: 0 parse errors, required fields present.
+   - Recovery: run `ndjson-filter` to isolate failing records and inspect source HTML.
+3. Dry-run import: import into staging with `createOrReplace` disabled; check counts and duplicates.
+   - Checkpoint: counts match expectation ±5% and no duplicates inserted.
+   - Recovery: revert staging and adjust dedupe key.
+4. Backup: snapshot current target (DB export) and store with timestamp.
+5. Import: run import with idempotent keys and monitor logs; on failure revert to backup.
+
+## Quick executable pipeline (copy & adapt)
+
+```bash
+node ./scripts/scrape-to-ndjson.js --out=data.ndjson --pages=100
+node ./scripts/validate-ndjson.js data.ndjson
+node ./scripts/dry-import.js data.ndjson --target=staging
+node ./scripts/import.js data.ndjson --target=production
+```
+
+## Inline: minimal NDJSON validator
+
+```js
+const fs = require('fs'), rl = require('readline'), { z } = require('zod');
+const schema = z.object({ name: z.string(), source: z.string(), sourceId: z.string() });
+const iface = rl.createInterface({ input: fs.createReadStream(process.argv[2]) });
+let line = 0, errors = 0;
+for await (const l of iface) { line++; try { schema.parse(JSON.parse(l)); } catch(e) { console.error(`Line ${line}:`, e.message); errors++; } }
+if (errors) { console.error(`${errors} errors`); process.exit(2); }
+console.log('OK');
+```
+
+Full scraper and extended validator: see [REFERENCE.md](./REFERENCE.md).
+

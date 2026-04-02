@@ -1,6 +1,6 @@
 ---
 name: security-hardening
-description: "Security architecture including authentication, authorization, RLS policies, security headers, CSP, input validation, API security, and OAuth patterns. Use when implementing auth flows, writing RLS policies, configuring security headers, validating inputs, or auditing security."
+description: "Security architecture including authentication, authorization, RLS policies, CSP, input validation, and API security. Use when implementing auth flows, writing RLS policies, configuring CSP/headers, validating inputs, or auditing security. Trigger terms: RLS, CSP, Server Actions, Zod, auth flow"
 ---
 
 # Security Hardening
@@ -43,6 +43,39 @@ Principle of least privilege. External domains are project-specific (see deploym
 
 **Note:** `'unsafe-inline'`/`'unsafe-eval'` may be required in dev mode — use nonces/hashes in production.
 
+**Examples** — Next.js `next.config.js` headers and middleware pattern:
+
+```js
+// next.config.js
+module.exports = {
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            // minimal example; restrict further per app needs
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://api.example.com;",
+          },
+        ],
+      },
+    ];
+  },
+};
+```
+
+```js
+// middleware.js (Next.js Edge middleware example)
+import { NextResponse } from 'next/server';
+
+export function middleware(request) {
+  const res = NextResponse.next();
+  res.headers.set('Content-Security-Policy', "default-src 'self'; img-src 'self' data:;");
+  return res;
+}
+```
+
 ## RLS
 
 > **SQL examples and role system:** See the **database** skill (authoritative source for RLS).
@@ -50,6 +83,51 @@ Principle of least privilege. External domains are project-specific (see deploym
 - `ALTER TABLE x ENABLE ROW LEVEL SECURITY;` on all tables
 - Use `auth.uid()` for auth checks; EXISTS subqueries for role checks
 - Never rely solely on client-side authorization; never disable RLS in production
+
+**RLS verification & test pattern**
+
+1. Confirm RLS is enabled for a table (Postgres):
+
+```sql
+-- run in psql
+SELECT relname, relrowsecurity
+FROM pg_class
+WHERE relname = 'your_table_name';
+```
+
+`relrowsecurity = true` indicates RLS enabled.
+
+2. Test pattern: verify a user without privileges cannot read rows.
+
+```sql
+-- As owner (create test row)
+INSERT INTO your_table_name (id, owner_id, data) VALUES (1, 'owner-uid', 'secret');
+
+-- As another_role (should return zero rows if RLS correct)
+SET ROLE other_role;
+SELECT * FROM your_table_name WHERE id = 1;
+-- expected: 0 rows
+```
+
+Automate this check in CI: run the enabling query and a simple positive/negative test as part of the security gate.
+
+## Server Action Zod example
+
+```ts
+'use server';
+import { z } from 'zod';
+import { revalidatePath } from 'next/cache';
+
+const schema = z.object({ name: z.string().min(1), price: z.number().positive() });
+
+export async function createItem(formData: FormData) {
+  const parsed = schema.safeParse(Object.fromEntries(formData.entries()));
+  if (!parsed.success) return { error: 'Validation failed', details: parsed.error.format() };
+  // insert into DB ...
+  revalidatePath('/items');
+  return { success: true };
+}
+```
 
 ## API Security
 
@@ -74,3 +152,12 @@ Input: Zod schemas in all Server Actions and route handlers; React Hook Form cli
 5. Sanitize user content (escape HTML).
 6. Parameterized queries (DB client handles automatically).
 7. Rotate secrets quarterly.
+
+## Implementation checklist
+1. Enable RLS on tables and add an automated enablement check in CI (example: `SELECT relrowsecurity FROM pg_class WHERE relname = 'your_table'`).
+2. Configure authentication and session middleware; verify via an integration smoke test against a protected endpoint (e.g., `/api/me`).
+3. Add CSP and security headers in `next.config.js` or middleware; validate headers with `curl -I` against a preview URL.
+4. Add Zod validation to all Server Actions and route handlers (see Zod example above).
+5. Run a security audit (RLS positive/negative tests, header validation, and input fuzzing) and block merges on failing gates.
+
+Cross-reference: see [api-patterns/SKILL.md](../api-patterns/SKILL.md#architecture) for Server Action patterns and [session-checkpoints/SKILL.md](../session-checkpoints/SKILL.md) for checkpointing security-sensitive work.

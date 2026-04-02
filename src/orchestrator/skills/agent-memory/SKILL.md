@@ -1,97 +1,60 @@
 ---
 name: agent-memory
-description: "Agent expertise tracking and cross-session knowledge graph. Use when delegating tasks to track agent strengths/weaknesses, or when building context about file relationships and patterns."
+description: "Creates and queries agent expertise profiles in AGENT-EXPERTISE.md, increments file-familiarity counters after each task, and ranks candidate agents by recency and task-area match. Use when deciding which agent should handle a file, checking who last worked on a module, recording task outcomes, or assigning work based on past performance."
 ---
 
 # Agent Memory Protocol
 
 ## Expertise File
 
-**Location:** `.opencastle/AGENT-EXPERTISE.md`
+**Location:** `.opencastle/AGENT-EXPERTISE.md` — one section per agent with Strong Areas, Weak Areas, and File Familiarity tables.
 
-```markdown
-# Agent Expertise Registry
-
-## Developer
-### Strong Areas
-| Area | Evidence | Last Updated |
-|------|----------|-------------|
-| Feature implementation | Built 5 pages (TAS-XX, TAS-YY) | YYYY-MM-DD |
-
-### Weak Areas
-| Area | Evidence | Last Updated |
-|------|----------|-------------|
-| Styling | 2 retries on TAS-AA | YYYY-MM-DD |
-
-### File Familiarity
-- `apps/web-app/places/` — 3 tasks
-```
+Entry format: `Area | Evidence | Last Updated` — e.g. `Server Components | Built TAS-42 | 2026-03-15`. File familiarity: `- src/lib/search/ — 3 tasks`.
 
 ## Update Triggers
 
 | Trigger | Action |
 |---------|--------|
-| First-attempt success | Add/update Strong Area |
-| 2+ retries | Add/update Weak Area |
-| File modified | Increment File Familiarity |
-| DLQ failure | Add Weak Area with ref |
+| First-attempt success | Update Strong |
+| 2+ retries | Update Weak |
+| File modified | Increment familiarity |
+| DLQ failure | Add Weak with ref |
 | >3 months stale | Mark as "stale" |
 
 ## Retrieval & Delegation
 
-Check `.opencastle/AGENT-EXPERTISE.md` before delegating. Add to prompt:
+Query before delegating, then include a concise context block in the prompt:
 
+```sh
+grep -A5 "## Developer" .opencastle/AGENT-EXPERTISE.md
 ```
-### Agent Context
-- Strong: Server Components, CMS queries (3 tasks)  → "Prior experience from TAS-XX."
-- Weak: Component styling (retry TAS-AA)            → add context or reassign
-- Familiar: libs/queries/src/lib/search/ (2 tasks)  → "You've worked on [file] in TAS-XX."
+
+Example prompt block: `Agent Context: Strong — Server Components (3 tasks); Weak — Component styling (2 retries); Familiar — src/lib/search/ (2 tasks)`
+
+**Update after task completion:**
+
+```bash
+# Append a Strong Area entry
+printf '| %s | %s | %s |\n' "Server Components" "Built TAS-42" "$(date +%Y-%m-%d)" >> .opencastle/AGENT-EXPERTISE.md
+
+# Increment file familiarity
+awk '/src\/lib\/search\// { if (match($0, /[0-9]+/)) { n = substr($0, RSTART, RLENGTH) + 1; sub(/[0-9]+[[:space:]]*tasks?/, n " tasks") } found=1 } {print} END { if(!found) print "- `src/lib/search/` — 1 task" }' \
+  .opencastle/AGENT-EXPERTISE.md > tmp && mv tmp .opencastle/AGENT-EXPERTISE.md
 ```
+
+## Workflow
+
+1. **Before delegating:** Read `.opencastle/AGENT-EXPERTISE.md`, check Strong/Weak areas, add concise `Agent Context` to the prompt.
+  - Validate: the selected agent has a Strong area matching the task or no conflicting Weak entries.
+2. **After task completes:** Update expertise (success → Strong, 2+ retries → Weak, files → Familiarity) and append file relationships to `.opencastle/KNOWLEDGE-GRAPH.md`.
+  - Validate: the expertise file contains the new entry and the timestamp is today's date.
+3. **On DLQ failure:** Add Weak Area with reference to the failure ID and link to logs.
+  - Validate: failure ID and link appear in the Weak Area entry.
 
 ## Pruning
 
-- Remove entries >6 months old; consolidate repetitive entries; remove familiarity for deleted files
-- Prune at start of major feature work
-
+Prune entries older than 6 months, remove familiarity for deleted paths, and consolidate duplicates.
+ - Validate: run `rg "— [0-9]+ tasks" .opencastle/AGENT-EXPERTISE.md` after pruning to confirm no stale paths remain.
 ## Knowledge Graph
 
-**Location:** `.opencastle/KNOWLEDGE-GRAPH.md` (append-only)
-
-### Entities & Relationships
-
-| Entity | Notation | Relationships |
-|--------|----------|--------------|
-| File | `F:path` | `depends-on`, `blocks` |
-| Agent | `A:name` | `expert-in` |
-| Pattern/Decision | `P:name` / `D:name` | `related-to`, `obsoletes` |
-| Bug/Lesson | `B:id` / `L:id` | `caused-by`, `related-to` |
-
-### Graph Template
-
-```markdown
-# Knowledge Graph
-## Relationships
-| Source | Relationship | Target | Added | Context |
-|--------|-------------|--------|-------|---------|
-| A:Content Engineer | expert-in | P:CMS-queries | 2026-02-23 | 3 tasks |
-| F:searchModule.ts | depends-on | F:cms-client.ts | 2026-02-23 | |
-```
-
-### Add Relationships When
-
-| Trigger | Record |
-|---------|--------|
-| Task touches multiple files | `depends-on` |
-| Lesson relates to a pattern | `related-to` |
-| Agent demonstrates expertise | `expert-in` |
-| Decision causes known issue | `caused-by` |
-| Pattern supersedes old approach | `obsoletes` |
-
-### Pre-Delegation Queries
-
-Follow `depends-on` for related reads, `expert-in` to confirm agent, `related-to` for patterns, `blocks` for known issues.
-
-### Maintenance
-
-- Add as discovered; prune between sessions
-- Max ~100 active relationships; archive quarterly
+File dependency graph and cross-agent relationships. See [KNOWLEDGE-GRAPH.md](./KNOWLEDGE-GRAPH.md) for entity types, templates, triggers, and queries.

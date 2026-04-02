@@ -27,9 +27,9 @@
 
 Works with **[GitHub Copilot](https://github.com/features/copilot)**, **[Cursor](https://www.cursor.com/)**, **[Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview)**, **[OpenCode](https://opencode.ai/)**, **[Windsurf](https://windsurf.com/)**, **[Codex CLI](https://github.com/openai/codex)**, and **[Antigravity](https://developers.google.com/)**.
 
-One command sets up specialized agents that decompose tasks, work in parallel, and verify each other's output.
+One command sets up specialized agents that decompose tasks, work in parallel, and verify each other's output — interactively through IDE chat or automated via the Convoy Engine.
 
-One command. Any repo. Any IDE.
+Use it live in your IDE. Run it overnight with the CLI.
 
 <br>
 
@@ -109,7 +109,7 @@ Add `--dry-run` to any command to preview what it would change without writing f
 
 **Specialist Agents.** Developer, UI/UX, Database, Security, Testing, Reviewer, and more.
 
-**On-Demand Skills.** Loaded on demand to keep context windows lean. Auto-selected during init based on your stack.
+**On-Demand Skills.** Loaded on demand to keep context windows lean. Auto-selected during init based on your stack. All 51 skills and plugins scored 100% on the [tessl Skill Evaluator](https://tessl.io/registry/skills/submit).
 
 **Workflow Templates.** Features, bug fixes, data pipelines, security audits — reproducible execution templates.
 
@@ -118,6 +118,8 @@ Add `--dry-run` to any command to preview what it would change without writing f
 **Cost-aware routing.** Picks the right model tier (Premium → Quality → Standard → Fast → Economy) based on task complexity.
 
 **Self-improving.** Agents capture lessons and graduate them into permanent instructions.
+
+**Hybrid by design.** Use OpenCastle interactively through IDE chat for hands-on development, or run automated batch jobs overnight via the Convoy Engine.
 
 <br>
 

@@ -1,71 +1,79 @@
 ---
 name: react-development
-description: "React development standards for functional components, hooks, TypeScript integration, state management, styling, and testing patterns. Use when creating or modifying React components, custom hooks, or component tests."
+description: "Enforces naming conventions, prop typing patterns, file structure, and test coverage standards. Use when creating or modifying React components, custom hooks, or component tests. Trigger terms: React app, .tsx files, testing library, custom hooks, functional components"
 ---
 
 # React Development Standards
 
-Modern React patterns — https://react.dev.
+<!-- Concrete actions moved into description and workflows; trigger terms are in frontmatter -->
 
-## Architecture & Components
+## New Component Workflow
 
-- Functional components + hooks; composition over inheritance.
-- Feature/domain folders; separate presentational and container components.
-- PascalCase names; single responsibility; destructure props; never mutate props/state.
-- `<>...</>` to avoid extra DOM nodes; props validated via TypeScript.
+1. **Create file** — `ComponentName.tsx` in the feature folder; co-locate `ComponentName.module.scss` and `ComponentName.test.tsx`
+2. **Define interface** — export `ComponentNameProps` with TypeScript; destructure in function signature
+3. **Implement** — functional component with hooks; use CSS Modules for styling
+4. **Test** — RTL behavioral tests; cover render, interaction, edge cases, accessibility
+5. **Verify** — lint + type-check + test pass; visually confirm in browser if UI
+
+## Architecture & Components (concise)
+
+- Functional components with hooks. Follow domain/feature folder structure and co-locate tests/styles with components.
+- PascalCase names; destructure props; use TypeScript interfaces for props.
+
+```tsx
+interface UserCardProps { name: string; role: string }
+export function UserCard({ name, role }: UserCardProps) {
+  return (
+    <div data-testid="user-card">
+      <h3>{name}</h3>
+      <span>{role}</span>
+    </div>
+  );
+}
+```
 
 ## TypeScript
 
-- Interfaces for props, state, event handlers, refs, and API responses.
-- Generic components where appropriate; union types for variants.
-- Built-ins: `React.FC`, `React.ComponentProps`, etc.
-- Strict mode in `tsconfig.json`; shared types in `interfaces/`.
-
-## State & Hooks
-
-| Concern | Tool |
-|---------|------|
-| Local state | `useState` |
-| Complex state | `useReducer` |
-| Cross-tree state | `useContext` |
-| Server state | React Query |
-| DOM / mutable ref | `useRef` |
-| Perf optimization | `useMemo` / `useCallback` |
-
-- `useEffect`: proper deps, cleanup to prevent leaks.
-- Hooks only at top level; extract reusable logic to custom hooks.
+- Use interfaces for props and shared types; keep strict mode enabled in `tsconfig.json`. See [REFERENCE.md](REFERENCE.md) for detailed TypeScript patterns.
 
 ## Styling
 
 - **CSS Modules** (`.module.scss`) co-located with components.
 - Sass for advanced features; variables/mixins from shared libraries.
-- Mobile-first responsive; CSS custom properties for theming.
+- CSS custom properties for theming.
 
-## Performance
-
-- Stable `key` props; `React.memo` where warranted.
-- Code-split with `React.lazy` + `Suspense`; dynamic imports.
-- Avoid anonymous functions in render; virtual scrolling for large lists.
-- `ErrorBoundary` for graceful degradation.
-
-## Data Fetching
-
-- Libraries: React Query, SWR, or Apollo Client.
-- Always handle loading/error/success; cancel on unmount; optimistic updates.
-
-## Forms
-
-- Controlled components; React Hook Form + Zod for validation.
-- Accessibility: labels, ARIA attributes; debounced validation.
+<!-- Performance guidance trimmed; follow project-specific conventions and benchmark when needed. -->
 
 ## Testing
 
 - React Testing Library (behavior, not implementation); Jest runner.
-- Co-locate tests in `__tests__`; mock external deps and API calls.
-- Test accessibility and keyboard navigation.
-- **CRITICAL**: Never mix static imports and `require()` for lazy-loaded libs in tests — use `jest.requireMock()` / `jest.requireActual()`.
+- Co-locate tests next to components; mock external deps and API calls.
+- Test accessibility and keyboard navigation; verify component public surface via unit tests.
+
+```tsx
+import { render, screen } from '@testing-library/react';
+import { UserCard } from './UserCard';
+
+test('renders user info', () => {
+  render(<UserCard name="Alice" role="Admin" />);
+  expect(screen.getByText('Alice')).toBeInTheDocument();
+  expect(screen.getByTestId('user-card')).toBeInTheDocument();
+});
+```
+
+## Verification commands + error recovery
+
+Run these as part of your PR validation pipeline or locally:
+
+```bash
+pnpm lint        # fixable issues: pnpm lint --fix
+pnpm typecheck   # run `pnpm tsc --noEmit` if alias not present
+pnpm test        # rerun failing tests with `pnpm test -- -t <name>`
+pnpm build       # ensure production build succeeds
+```
+
+If `lint` fails: run `pnpm lint --fix` and re-run. If `typecheck` fails: inspect reported files; add missing types. If tests fail: run with `--runInBand` to collect stack traces and reproduce locally.
 
 ## Security
 
-- Sanitize inputs (XSS); validate/escape before rendering.
-- HTTPS for external APIs; no sensitive data in localStorage/sessionStorage; CSP headers.
+- Follow project conventions for input sanitization, secret handling, and CSP. See **api-patterns** for validation patterns.

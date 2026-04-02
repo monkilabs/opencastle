@@ -1,6 +1,6 @@
 ---
 name: observability-logging
-description: "Session logging, delegation records, review/panel/dispute NDJSON logging, pre-response checklists. Load before responding to verify all logs are written."
+description: "Writes session logs, records delegation decisions, and tracks review/dispute outcomes in NDJSON format. Use when logging session activity, recording audit trails, or running pre-response verification checklists."
 ---
 
 # Observability Logging
@@ -62,21 +62,14 @@ Verify any append: `tail -1 .opencastle/logs/events.ndjson`
 **⛔ STOP.** Verify before responding — fix any missing log NOW.
 
 - [ ] **Lessons read** — `.opencastle/LESSONS-LEARNED.md` read at session start
-- [ ] **Lessons captured** — new lesson added via **self-improvement** if any retry occurred
-- [ ] **Discovered issues tracked** — pre-existing bugs added to `KNOWN-ISSUES.md` or tracker
-- [ ] **Lint/type/test pass** — no new errors after code changes
 - [ ] **Session logged** — `events.ndjson` has a `session` record (ALWAYS)
-- [ ] **Delegations logged** — `delegation` record per delegation (Team Lead)
-- [ ] **Reviews logged** — `review` record per fast review (if any)
-- [ ] **Panels logged** — `panel` record per panel vote (if any)
-- [ ] **Disputes logged** — `dispute` record per dispute (if any)
+- [ ] **Delegations logged** — `delegation` record per delegation (Team Lead) (if applicable)
+- [ ] **Reviews logged** — `review` record per fast review (if applicable)
 
 ## Universal Agent Rules
 
-1. **Never delegate** — complete own work; document cross-domain needs in output contract.
-2. **Follow Discovered Issues Policy** — See [discovered-issues-policy](../../snippets/discovered-issues-policy.md).
-3. **Read and update lessons** — Read `.opencastle/LESSONS-LEARNED.md` before starting; add lessons after retries via **self-improvement** skill.
-4. **Log every session** — See [logging-mandatory](../../snippets/logging-mandatory.md).
+1. **Read and update lessons** — Read `.opencastle/LESSONS-LEARNED.md` before starting; add lessons after retries via **self-improvement** skill.
+2. **Log every session** — See [logging-mandatory](../../snippets/logging-mandatory.md).  
 
 ## Base Output Contract
 

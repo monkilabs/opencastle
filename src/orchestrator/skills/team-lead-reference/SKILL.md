@@ -1,21 +1,31 @@
 ---
 name: team-lead-reference
-description: "Reference data for Team Lead orchestration — model routing, pre-delegation checks, cost tracking template, and DLQ format. Load when starting a delegation session."
+description: "Provides model routing rules, validates delegation prerequisites, supplies cost tracking templates, and defines dead-letter queue formats for Team Lead orchestration. Load when assigning tasks to agents, choosing model tiers, starting a delegation session, running a multi-agent workflow, delegating work, choosing which model to use, or assigning tasks."
 ---
 
 # Team Lead Reference
+
+## Delegation Sequence
+
+1. **Score** task complexity (table below) → determines tier
+2. **Route** to model tier via Cost-Aware Routing
+3. **Deepen** plan if 3+ subtasks (Deepen-Plan Protocol)
+4. **Check** pre-delegation policy (5-point checklist below)
+5. **Delegate** using Compact Delegation Envelope
+6. **Handle** output per Status Handling table
+7. **Log** via **observability-logging** skill
 
 For the specialist agent registry and model assignments, see [agent-registry.md](../../.opencastle/agents/agent-registry.md).
 
 ## Cost-Aware Model Routing
 
-| Tier | Cost | Use For |
-|------|------|---------|
-| **Premium** | $$$$ | Team Lead orchestration, highest-stakes decisions |
-| **Quality** | $$$ | Feature implementation, UI/frontend, security, architecture, complex reasoning |
-| **Standard** | $$ | Large-scale analysis, schema design, cost-efficient coding, repo exploration |
-| **Fast** | $$ | Terminal-heavy tasks, E2E tests, data pipelines, agentic workflows |
-| **Economy** | $ | Docs, simple config, formatting, boilerplate |
+| Tier | Use For |
+|------|---------|
+| **Premium** | Team Lead orchestration, highest-stakes decisions |
+| **Quality** | Feature implementation, UI/frontend, security, architecture, complex reasoning |
+| **Standard** | Large-scale analysis, schema design, cost-efficient coding, repo exploration |
+| **Fast** | Terminal-heavy tasks, E2E tests, data pipelines, agentic workflows |
+| **Economy** | Docs, simple config, formatting, boilerplate |
 
 **Selection:** Default to agent's assigned tier. Downgrade pure docs/config → Economy. Upgrade security/architecture ambiguity → Quality/Premium. Never Premium/Quality for boilerplate. 3+ parallel agents → prefer Economy/Fast/Standard.
 
@@ -61,16 +71,21 @@ For the specialist agent registry and model assignments, see [agent-registry.md]
 
 | Status | Action |
 |--------|--------|
-| Complete | All AC addressed → fast review |
-| Complete with concerns | Resolve correctness/scope before review |
-| Needs context | Provide info, re-dispatch same agent |
-| Blocked | Provide context/upgrade model/escalate; never re-dispatch unchanged |
+| Complete | Fast review |
+| Complete with concerns | Resolve before review |
+| Needs context | Provide info; re-dispatch |
+| Blocked | Upgrade model/escalate; never re-dispatch unchanged |
 
 ## Pre-Delegation Policy Checks
 
-See Team Lead agent § Pre-Delegation Checks for the mandatory 5-point checklist.
-- **Feature work** adds: (6) Known issues reviewed, (7) Architecture docs read, (8) Existing code searched.
-- **High-risk work** adds: (9) Panel review planned, (10) Rollback path identified.
+1. Tracker issue exists for this task
+2. File partition is clean (no overlap with parallel agents)
+3. All dependency tasks are Done
+4. Delegation prompt has file paths + acceptance criteria
+5. Self-improvement reminder included (`Read LESSONS-LEARNED.md first`)
+
+**Feature work** adds: (6) Known issues reviewed, (7) Architecture docs read, (8) Existing code searched.
+**High-risk work** adds: (9) Panel review planned, (10) Rollback path identified.
 
 ## Compact Delegation Envelope
 
@@ -104,22 +119,14 @@ For common failure modes and recovery procedures, load the **orchestration-proto
 
 ## Dispute Protocol
 
-| Scenario | Action |
-|----------|--------|
-| Tool error / timeout / MCP failure | DLQ entry |
-| Scope creep | DLQ entry + redirect |
-| Agent fails 2+ times (simple) | DLQ entry |
-| Panel 3x BLOCK / agent-reviewer disagreement / criteria contradictions / no convergence / needs human | Dispute record |
+Triggers: Panel 3× BLOCK, agent-reviewer disagreement, criteria contradictions, no convergence, needs human input.
 
-Create in `.opencastle/DISPUTES.md` (inspired by [Steroids CLI](https://github.com/UnlikeOtherAI/steroids-cli)):
+Create in `.opencastle/DISPUTES.md`:
+1. Number (`DSP-XXX`), set priority, document both perspectives with file references
+2. Build attempt history; present ≥2 options with rationale/risk
+3. Link panel reports, DLQ entries, changed files
+4. Log with **observability-logging** dispute command
 
-1. Number (`DSP-XXX`) and set priority (critical/high/medium/low)
-2. Document both perspectives with file/code references
-3. Build attempt history with one-line verdict summaries
-4. Present ≥2 options with rationale/risk; note recommended action
-5. Link panel reports, review logs, changed files, DLQ entries
-6. Log with **observability-logging** dispute command; add ID to tracker and Index
-
-**After human resolution:** Set `Status` → `resolved`/`deferred`. Record chosen option. Resolved → re-delegate with decision as explicit constraint. Deferred → create follow-up issue. Log in `events.ndjson`.
+**After resolution:** `resolved` → re-delegate with decision as constraint. `deferred` → follow-up issue.
 
 

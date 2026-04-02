@@ -1,11 +1,13 @@
 ---
 name: performance-optimization
-description: "Frontend and backend performance optimization patterns including rendering, asset optimization, JavaScript performance, caching, profiling, and code review checklist. Use when optimizing components, reviewing code for performance, or analyzing bundle size and Core Web Vitals."
+description: "Profiles and reduces frontend/backend costs: split bundles, optimize assets, apply caching, and fix Core Web Vitals regressions. Use when profiling Lighthouse/CI regressions, reducing bundle size, or fixing high CLS/LCP/TTI metrics."
 ---
 
 # Performance Optimization
 
 **Rule:** Measure first (`Chrome DevTools`, `Lighthouse`, `Datadog`), optimize second. Set budgets (load time, memory, API latency). Automate in CI/CD.
+
+Domain-specific patterns (rendering, JS, Node optimizations) are referenced in REFERENCE.md to keep this skill concise.
 
 ## Patterns by Domain
 
@@ -24,6 +26,44 @@ input.addEventListener('input', (e) => fetch(`/search?q=${e.target.value}`));
 // GOOD: debounced 300 ms
 let t; input.addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => fetch(`/search?q=${e.target.value}`), 300); });
 ```
+
+## Executable Examples
+
+### Dynamic import splitting (example)
+
+```js
+// Lazy-load a heavy chart only on client
+import dynamic from 'next/dynamic';
+const Chart = dynamic(() => import('../components/Chart'), { ssr: false, loading: () => <div>Loading chart…</div> });
+export default function Page(){ return <Chart />; }
+```
+
+### React.memo + profiler pattern
+
+```jsx
+import React, { Profiler } from 'react';
+const Item = React.memo(function Item({data}){ return <div>{data.title}</div>; });
+function onRender(id, phase, actualDuration){ console.log(id, phase, actualDuration); }
+export default function List({items}){
+	return (
+		<Profiler id="List" onRender={onRender}>
+			{items.map(i=> <Item key={i.id} data={i} />)}
+		</Profiler>
+	);
+}
+```
+
+## Profiling Workflow (step-by-step)
+
+1. Run Lighthouse (or CI perf job) and record baseline.
+	 - Checkpoint: failing metric(s) identified (LCP/CLS/FID/TTI).
+	 - Recovery: if noisy, reproduce locally with `--emulated-form-factor=mobile`.
+2. Profile with DevTools Profiler / React profiler or Node `clinic` for backend.
+	 - Checkpoint: hotspot call stacks / long tasks located.
+3. Apply minimal fix (code-split, memoize, reduce payloads, defer non-critical work).
+	 - Checkpoint: targeted change reduces measured hotspot time in profiler.
+4. Re-run Lighthouse/CI perf job and compare; set threshold (e.g., 10% improvement or within budget).
+5. If regression persists, iterate and create a rollback plan; note fixes in changelog.
 
 ## Review Checklist
 

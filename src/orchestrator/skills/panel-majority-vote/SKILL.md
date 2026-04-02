@@ -1,19 +1,9 @@
 ---
 name: panel-majority-vote
-description: "Run 3 isolated reviewer sub-agents against the same question and decide PASS/BLOCK by majority vote (2/3 wins). Use when deterministic verification is insufficient."
+description: "Runs 3 isolated reviewer sub-agents and consolidates a PASS/BLOCK verdict by majority. Use when the user requests an independent review of code changes, pull requests, design documents, or release notes."
 ---
 
 # Skill: Panel majority vote
-
-## Contract
-
-| Rule | Detail |
-|------|--------|
-| Scope | One run root, one panel key |
-| Artifacts | Reviewers use only declared in-scope artifacts |
-| Runners | Exactly 3 isolated reviewer runs |
-| Verdict | Majority (2/3 wins) |
-| On BLOCK | Consolidated report must include retry summary |
 
 ## Inputs / Outputs
 
@@ -25,84 +15,49 @@ description: "Run 3 isolated reviewer sub-agents against the same question and d
 | Raw reviewer outputs | `<panelDir>/<panelKey>-reviewer-outputs.md` |
 | Consolidated report | `<panelDir>/<panelKey>.md` |
 
+
 ## Procedure
 
-1. **Validate scope** — every artifact path is under `<runRoot>`; list is sufficient to answer the question.
-2. **Spawn 3 reviewers in parallel** — identical prompt to 3 isolated subagents. Optionally write payload to `<panelDir>/<panelKey>-panel-prompt.md`. Required output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
-3. **Persist outputs** — write `<panelDir>/<panelKey>-reviewer-outputs.md` with header (run root, panel key, question, artifacts) and each reviewer output verbatim, separated.
-4. **Consolidate** — count PASS/BLOCK; overall PASS if ≥ 2. Deduplicate MUST-FIX/SHOULD-FIX with reviewer counts. Record disagreements. Include determinize-next recs. If BLOCK, add retry summary.
-5. **Write report** — create `<panelDir>/<panelKey>.md` using `panel-report.template.md`.
+1. **Validate scope** — every artifact path is under `<runRoot>` and the list is sufficient to answer the question.
+
+2. **Spawn 3 reviewers in parallel** — start three isolated subagents with identical prompts. Spawn 3 reviewers using `runSubagent` with identical prompts; each reviewer receives the same question, artifact list, and constraints but runs in isolation. Required reviewer output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
+
+3. **Persist outputs** — write `<panelDir>/<panelKey>-reviewer-outputs.md` with a header (run root, panel key, question, artifacts) and each reviewer output verbatim, separated.
+
+4. **Consolidate** — parse each reviewer output for its `VERDICT:` line and count PASS votes. Overall verdict = PASS if pass_count ≥ 2; otherwise BLOCK. Deduplicate `MUST-FIX:` and `SHOULD-FIX:` items and annotate each item with `(N/3 reviewers)`.
+
+```bash
+# count PASS/BLOCK from combined outputs
+pass_count=$(grep -o "VERDICT: PASS" panel/run123-reviewer-outputs.md | wc -l)
+block_count=$(grep -o "VERDICT: BLOCK" panel/run123-reviewer-outputs.md | wc -l)
+verdict=$([ "$pass_count" -ge 2 ] && echo PASS || echo BLOCK)
+
+# emit a minimal JSON summary using jq (install jq if needed)
+jq -n --arg panel_key "run123-panel" --arg verdict "$verdict" --argjson pass_count $pass_count --argjson block_count $block_count '{panel_key:$panel_key, verdict:$verdict, pass_count:$pass_count, block_count:$block_count}' > panel/run123-summary.json
+```
+
+5. **Write report** — create `<panelDir>/<panelKey>.md` with the minimal structure below and reference the generated summary.
+
+- Title: Panel `<panelKey>` — Verdict: `PASS | BLOCK` (pass_count/block_count)
+- Highlights: top deduplicated `MUST-FIX` and `SHOULD-FIX` items
+- Evidence: paths to reviewer outputs and `panel/run123-summary.json`
+
 6. **Print summary** — overall verdict + vote tally + report path.
-7. **Log (⛔ hard gate)** — use **observability-logging** skill panel command. Fields: `panel_key`, `verdict`, `pass_count`, `block_count`, `must_fix`, `should_fix`, `reviewer_model`, `weighted`, `attempt`, `tracker_issue`, `artifacts_count`, `report_path`. Link report as verification evidence.
+
+7. **Log (⛔ hard gate)** — call the **observability-logging** skill with `panel_key`, `verdict`, `pass_count`, `block_count`, `must_fix`, `should_fix`, `reviewer_model`, `weighted`, `attempt`, `tracker_issue`, `artifacts_count`, `report_path` for verification.
 
 ## Notes
 
 - On BLOCK: change the underlying work and re-run; do not re-word the question.
 - After 3 consecutive BLOCKs on the same panel key: create a dispute record per **team-lead-reference** § Dispute Protocol.
+- Model selection: use the same model for all 3 reviewers. See **team-lead-reference** for model routing.
 
-## Model Selection
+## Related Resources
 
-| Domain | Model |
-|--------|-------|
-| Security, architecture, complex logic | Quality (Claude Sonnet 4.6) × 3 |
-| Feature implementation, UI, queries | Standard (Gemini 3.1 Pro) × 3 |
-| Mixed-domain | Quality × 1, Standard × 2 |
-
-Use same model for all 3 reviewers.
-
-## Weighted Consensus Variant
-
-For subjective decisions where domain expertise should weight more than head-count.
-
-### When to Use
-
-| Decision Type | Mode |
-|--------------|------|
-| Security vulnerability, code correctness | Simple majority |
-| UI/UX, architecture tradeoffs, data model, naming | Weighted |
-
-### Weight Assignment
-
-Base weight: 1. Add bonuses:
-
-| Factor | Bonus |
-|--------|-------|
-| Domain expertise (relevant to review) | +2 |
-| Confidence high / med / low | +1 / 0 / -1 |
-| Prior success rate >80% (AGENT-PERFORMANCE.md) | +1 |
-
-Example: Security Expert + high = **4**; Architect + med = **2**.
-
-### Voting Protocol
-
-1. Assign weights before spawning.
-2. Spawn with same prompt; collect PASS/BLOCK + confidence.
-3. Score: sum weights by verdict; PASS if PASS score > BLOCK score.
-4. Tie: highest individual weight breaks tie; if equal, default BLOCK.
-
-### Conflict Resolution
-
-| Scenario | Outcome |
+| Resource | Purpose |
 |----------|---------|
-| Low-weight BLOCKs, high-weight PASSes | PASS; move BLOCK's MUST-FIX → SHOULD-FIX |
-| Domain expert BLOCKs, generalists PASS | BLOCK |
-| All equal weight | Simple majority (2/3 wins) |
-
-### Report Extension
-
-```markdown
-### Weighting
-| Reviewer | Role | Domain | Confidence | Prior Success | Final Weight |
-|----------|------|--------|------------|---------------|-------------|
-| 1 | [Agent] | +X | +X | +X | X |
-
-### Weighted Score
-- PASS: X (reviewers: 1, 3)
-- BLOCK: X (reviewer: 2)
-- **Overall: PASS/BLOCK** (weighted)
-```
-
-### Integration
-
-Same steps 1–7 as standard panel. Differences: assign weights in step 2; use weighted calculation in step 4; add weighting table to report. Team Lead decides simple vs. weighted; include rationale in delegation prompt.
+| `panel-report.template.md` | Report template for step 5 |
+| `REFERENCE.md` | Weighted consensus variant and weighting details |
+| **observability-logging** skill | Panel logging command (step 7) |
+| **team-lead-reference** skill | Model routing and dispute protocol |
 

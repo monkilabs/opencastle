@@ -1,13 +1,13 @@
 ---
 name: vitest-testing
-description: "Vitest unit and integration testing patterns, configuration, mocking, and coverage. Use when writing unit tests, configuring Vitest, or setting up test coverage."
+description: "Vitest unit and integration testing patterns, commands, mocking (vi.mock), and coverage. Use when writing .test.ts files, configuring the test runner, or adding coverage thresholds."
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Vitest Testing
 
-Vitest-specific unit and integration testing patterns. For project-specific test configuration, see [testing-config.md](../../.opencastle/stack/testing-config.md).
+For project-specific test configuration, see [testing-config.md](../../.opencastle/stack/testing-config.md).
 
 ## Commands
 
@@ -152,15 +152,11 @@ export default defineConfig({
 });
 ```
 
-## Best Practices
+## Workflow
 
-- Co-locate test files next to source files (`foo.test.ts` next to `foo.ts`)
-- Use `describe` blocks to group related tests
-- Each test should be independent — no shared mutable state between tests
-- Clean up mocks with `vi.restoreAllMocks()` in `afterEach`
-- Mock dependencies before imports — `vi.mock()` calls are hoisted automatically but declare them at the top for clarity
-- Prefer `toEqual` for objects, `toBe` for primitives
-- Use `test.each` for parameterized tests
-- Set coverage thresholds to prevent regression
-- Use `vi.useFakeTimers()` for time-dependent code — never `setTimeout` in tests
-- Aim for 3-5 focused tests per file for maintainability — split large test suites
+1. Create `*.test.ts` adjacent to the source file.
+2. Write focused unit tests (happy path + edge cases). Use `vi.mock()` before imports; restore in `afterEach` with `vi.restoreAllMocks()`.
+3. Run `npx vitest run <file>` — fix failures.
+4. If tests fail: run `npx vitest run <file> --reporter=verbose` to inspect, fix, re-run.
+5. Coverage validation: run `npx vitest run --coverage --reporter=json` (CI) or `npx vitest run --coverage --reporter=text` (local) to generate coverage reports. Inspect `coverage`/`coverage-final.json` or the human-readable summary to find uncovered files/branches. If coverage is below thresholds, add targeted tests for uncovered branches, then re-run `npx vitest run --coverage` until thresholds pass.
+6. Commit tests alongside source changes.

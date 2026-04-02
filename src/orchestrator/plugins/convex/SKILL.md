@@ -7,7 +7,7 @@ description: "Convex reactive database patterns, schema design, real-time querie
 
 # Convex Database
 
-Generic Convex development methodology. For project-specific schema, functions, and deployment details, see [database-config.md](../../.opencastle/stack/database-config.md).
+For project-specific schema, functions, and deployment details, see [database-config.md](../../.opencastle/stack/database-config.md).
 
 ## Critical Development Rules
 
@@ -106,3 +106,15 @@ export const create = mutation({
 - Use `npx convex dev` for local development with hot reload
 - Schema changes are automatically migrated
 - Use `npx convex import` / `npx convex export` for data management
+
+## Quick Workflow: Implement a schema change and deploy
+1. Add or modify schema in `convex/schema.ts` and run `npx convex dev` locally; confirm the dev server starts and responds (checkpoint: `http://localhost:8888` or the configured port). Run a small validation script or sample queries to verify schema changes (validation checkpoint).
+2. Write queries/mutations with `returns` validators and unit test against the dev server.
+3. Run `npx convex deploy` to push the change to production.
+4. Verify real-time queries in the app, run a small data migration if required (`convex import/export`), and run a quick smoke check against your app (example):
+
+```bash
+curl -fsS https://<APP_URL>/health || (echo "health check failed" && exit 1)
+```
+
+If an issue occurs: roll back via `npx convex import` of the last good export, fix locally, and re-deploy. After a rollback, re-run the same smoke check to confirm services are restored.

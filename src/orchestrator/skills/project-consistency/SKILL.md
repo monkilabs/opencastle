@@ -1,119 +1,83 @@
 ---
 name: project-consistency
-description: "Enforce cross-agent consistency in multi-page/multi-component projects. Covers visual design, code patterns, content style, and structural conventions. Essential for convoy parallel execution where multiple agents build different parts of the same app."
+description: "Generates shared CSS variables, validates component naming conventions, and creates layout pattern templates. Use when coordinating a design system, theme, consistent styling, CSS variables, or a component library across parallel agents."
 ---
 
 # Project Consistency
 
-Multiple agents building in parallel make independent decisions about colors, fonts, APIs, and tone. **Consistency must be engineered as shared inputs before parallel work begins — not hoped for afterward.**
+Ensure consistency by producing shared artifacts and automated checks before parallel work begins.
 
 ## Foundation-First Principle
 
-```
-❌ Wrong:  [A] ─┐                    → inconsistent output
-           [B] ─┤→ build in parallel → inconsistent output
-           [C] ─┘                    → inconsistent output
+Phase 1 (sequential): create shared artifacts (tokens, Layout, UI components). Phase 2 (parallel): every page imports from Phase 1; no new tokens or duplicated components.
 
-✅ Right:  [foundation] → artifacts → [A] ─┐
-                                      [B] ─┤→ consistent output
-                                      [C] ─┘
-```
+### Foundation Artifacts & Page Rules
 
-**Phase 1 (sequential):** One task creates all shared artifacts.  
-**Phase 2 (parallel):** Every page task imports from Phase 1. No new values, no recreated components.
+| Artifact | Path | Page Agent Rules |
+|----------|------|------------------|
+| **Design tokens** | `src/styles/tokens.css` | Import only. Never introduce new color/font/spacing values. |
+| **Shared layout** | `src/components/Layout.tsx` / `Layout.astro` | Wrap every page. Never recreate. |
+| **UI components** | `src/components/ui/` | Import from library. PascalCase components, camelCase props. |
+| **Style guide brief** | Inline in prompts | Match tone + terminology exactly. Follow heading hierarchy. |
 
-### The 4 Consistency Dimensions
-
-| Dimension | What drifts | Artifact |
-|-----------|-------------|----------|
-| **Visual** | Color palettes, font choices, spacing units | Design tokens file |
-| **Code** | Component APIs, naming conventions, import paths | UI component library |
-| **Content** | Tone, terminology, heading hierarchy | Style guide brief |
-| **Structural** | Page layout, navigation, responsive breakpoints | Shared layout component |
-
----
-
-## Foundation Phase Artifacts
-
-A foundation task must produce four artifacts. All phase-2 tasks depend on its completion.
-
-| Artifact | Path | Contents |
-|----------|------|----------|
-| **Design tokens** | `src/styles/tokens.css` | CSS custom properties: palette, typography, spacing, motion, shadows, radius, breakpoints. **Rule:** no value outside this file. |
-| **Shared layout** | `src/components/Layout.tsx` (React) · `src/layouts/Layout.astro` (Astro) | Wraps every page: responsive container, header, nav, footer, document head. Import — never recreate. |
-| **UI component library** | `src/components/ui/` | `Button`, `Card`, `Heading`, `Text`, `Link`, `Section`, `Container`, `Grid` — tokens only. API: camelCase props, `variant`/`size`/`className`, no inline `style`. |
-| **Style guide brief** | Inline in foundation prompt (quoted verbatim in page prompts) | Aesthetic direction · typography pairing · content tone · nav labels · page structure pattern · terminology glossary |
-
----
-
-## Consistency Rules for Page Agents
-
-Every page agent in a multi-agent convoy MUST follow all rules below.
-
-| Area | Rules |
-|------|-------|
-| **Visual** | Import tokens only. Never introduce new color, font-size, or spacing values. Flag missing tokens — don't invent inline values. CSS custom properties exclusively; no raw hex or raw `px`. |
-| **Code** | Import `Layout` from shared path — no page-local wrappers. Import UI components from library — don't recreate. PascalCase components, camelCase props, kebab-case CSS classes. Co-locate component files. |
-| **Content** | Match tone from style guide exactly. Use terminology glossary verbatim. Follow heading hierarchy pattern. |
-| **Structural** | Every page uses shared Layout — no exceptions. Follow page structure from brief. Nav labels match brief exactly. Breakpoints from tokens only. |
+**Validation checkpoints:**
+1. Foundation complete: `tokens.css` has all palette/type/spacing vars, Layout renders, UI components compile.
+2. Per-page: `grep -r 'style={{' src/pages/` returns 0 hits (no inline styles). All imports resolve.
 
 ---
 
 ## Convoy Integration
 
-```
-Phase 1: foundation-setup  (1 task, blocks Phase 2)
-├── Agent:  UI-UX Expert or Developer
-├── Creates: tokens.css, Layout, UI component library
-├── Defines: style guide brief (aesthetic, tone, nav labels, terminology)
-└── Output:  all paths documented for Phase 2 prompts
-
-Phase 2: page-building  (N tasks, all parallel)
-├── home-page · about-page · projects-page · contact-page · ...
-└── [every prompt contains the 5 mandatory references below]
-```
-
-### 5 Mandatory References in Every Page Task Prompt
+Phase 1 (sequential): foundation-setup creates tokens, Layout, UI library, and style guide brief. Phase 2 (parallel): every page task imports from Phase 1. Include these 5 references in every page prompt:
 
 ```
-1. Design tokens:  `[path/tokens.css]` — use ONLY these tokens. No new values.
-2. Layout:         `[path/Layout]` — wrap all page content in this component.
-3. UI components:  `[path/src/components/ui/]` — import; do not recreate.
-4. Aesthetic:      [2-3 word direction from foundation]
-5. Content tone:   [tone description from foundation]
+1. Design tokens path   2. Layout path   3. UI components path
+4. Aesthetic direction   5. Content tone
 ```
+
+Prompt templates: see [TEMPLATES.md](./TEMPLATES.md).
 
 ---
 
-## Prompt Template: Foundation Task
+## Executable Examples
 
-````markdown
-## Foundation Setup — [project description]
+### Example: `src/styles/tokens.css`
 
-**Aesthetic:** [2-3 word direction] — [one sentence]
+```css
+:root {
+	/* Palette */
+	--color-bg: #ffffff;
+	--color-foreground: #0f172a;
+	--color-primary: #0ea5e9;
+	--color-primary-600: #0284c7;
 
-Create `[path]/tokens.css`: palette (intent-named), fluid typography (clamp()), spacing (4px base), motion, shadows, radius, breakpoints.  
-Create `[path]/Layout.[tsx|astro|vue]`: responsive container, site header (nav: [labels]), footer, document head.  
-Create `[path]/ui/`: Button, Card, Heading, Text, Link, Section, Container, Grid — tokens only, zero hardcoded values; `variant`/`size`/`className` API.
+	/* Typography */
+	--font-base: 'Inter, system-ui, -apple-system, sans-serif';
+	--text-sm: 0.875rem;
+	--text-base: 1rem;
 
-**Style Guide:** Tone: [formal/casual]. Terminology: [key terms]. Page structure: [hero → ... → CTA].
+	/* Spacing */
+	--space-1: 4px;
+	--space-2: 8px;
+	--space-3: 16px;
 
-**Acceptance Criteria:** Zero hardcoded hex/px · Layout responsive at 320/768/1280px · Fluid typography via clamp() · Fonts loaded efficiently
-````
+	/* Radius */
+	--radius-sm: 6px;
+	--radius-md: 12px;
+}
+```
 
----
+### Minimal Button component example (React)
 
-## Prompt Template: Page Task
-
-````markdown
-## Build [Page Name] Page — [purpose, audience, primary action]
-
-**MANDATORY refs:** tokens: `[path]/tokens.css` (no new values) · Layout: `[path]/Layout.[ext]` (wrap all content) · UI: `[path]/ui/` (import, don't recreate) · Aesthetic: [2-3 words] · Tone: [tone] · Terms: [glossary]
-
-**Content:** [sections, copy direction, media]  **Structure:** [hero → ... → CTA]
-
-**Acceptance Criteria:** Shared Layout used · Zero hardcoded values · UI components imported · Tone/terminology match · Responsive 320/768/1280px · [page-specific]
-````
+```tsx
+import './tokens.css';
+type ButtonProps = { children: React.ReactNode; variant?: 'primary' | 'ghost'; className?: string };
+export function Button({ children, variant = 'primary', className = '' }: ButtonProps) {
+	const base = 'px-4 py-2 rounded';
+	const variantCls = variant === 'primary' ? 'bg-[var(--color-primary)] text-white' : 'bg-transparent';
+	return <button className={`${base} ${variantCls} ${className}`}>{children}</button>;
+}
+```
 
 ---
 
@@ -122,10 +86,7 @@ Create `[path]/ui/`: Button, Card, Heading, Text, Link, Section, Container, Grid
 | Anti-pattern | Fix |
 |-------------|-----|
 | Agents pick their own fonts/colors | Foundation creates tokens first |
-| Page-local `styles/global.css` | One shared tokens file, imported once |
 | Copy-pasting `Button` between pages | Import from shared library |
 | Inline `style={{ color: '#...' }}` | CSS class with token variable |
-| Skipping foundation "for a simple site" | Foundation takes 1 task, saves N fixes |
-| Different terminology per page | Terminology glossary in style guide brief |
 | Foundation and page tasks run in parallel | Foundation phase must fully complete first |
 

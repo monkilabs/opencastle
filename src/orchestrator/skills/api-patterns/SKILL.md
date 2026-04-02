@@ -1,6 +1,6 @@
 ---
 name: api-patterns
-description: "API design patterns for route handlers, Server Actions, Zod validation, and external API integration. Use when creating API routes, Server Actions, or integrating external services."
+description: "Creates API route handlers, implements Server Actions with Zod schema validation, and integrates external REST APIs with error handling. Use when adding endpoints, building request handlers, or wiring external services (endpoint, REST API, request handling, fetch, .ts route files)."
 ---
 
 # API Patterns
@@ -30,6 +30,23 @@ export async function GET(request: NextRequest) {
   if (!result.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
   return NextResponse.json(data);
 }
+
+```
+
+### Fetching external APIs — example with retry and error handling
+
+```ts
+import fetch from 'node-fetch';
+async function fetchWithRetry(url:string, opts={}, retries=2){
+  for(let i=0;i<=retries;i++){
+    try{ const res = await fetch(url, opts); if(!res.ok) throw new Error(`HTTP ${res.status}`); return await res.json(); }
+    catch(e){ if(i===retries) throw e; await new Promise(r=>setTimeout(r, 500*(i+1))); }
+  }
+}
+
+// usage
+const data = await fetchWithRetry('https://api.example.com/data');
+```
 ```
 
 ### Server Action
@@ -45,6 +62,17 @@ export async function submitAction(formData: FormData) {
   revalidatePath('/places');
   return { success: true };
 }
+```
+
+## Quick Workflow
+1. Create route file: `app/api/<name>/route.ts` or `app/<segment>/route.ts`
+2. Add a Zod schema and validate input at the top of the handler
+3. Implement handler logic with explicit error/response shapes
+4. Add unit/integration tests for validation and happy/error paths
+5. Verification: run a quick smoke test (example):
+
+```bash
+curl -fsS "http://localhost:3000/api/<name>?query=test" || (echo "route failed" && exit 1)
 ```
 
 ## Design Rules

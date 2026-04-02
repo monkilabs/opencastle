@@ -1,11 +1,12 @@
 ---
 name: documentation-standards
-description: "Documentation templates, structure, and standards for project docs, roadmaps, ADRs, and known issues. Use when writing or updating documentation files."
+description: "Scaffolds issue docs, ADRs, README outlines, changelog entries, roadmap updates, and Mermaid architecture diagrams using project templates. Use when drafting an ADR, writing a changelog, updating the roadmap after a feature ships, creating a README for a new library, or diagramming a system flow."
 ---
 
 # Documentation Standards
 
-Generic documentation templates and writing standards. For project-specific directory structure and practices, see [docs-structure.md](../../.opencastle/project/docs-structure.md).
+For project-specific directory structure and practices, see [docs-structure.md](../../.opencastle/project/docs-structure.md).
+
 
 ## Issue Documentation Template
 
@@ -33,10 +34,14 @@ Generic documentation templates and writing standards. For project-specific dire
 
 ## Roadmap Update Template
 
-When a feature is completed:
-1. Change status to `COMPLETE` and add completion date
-2. List modified files and update the summary table
-3. Move to completed section if applicable
+When a feature is completed: add `COMPLETE` row with date and owner, list files changed with rationale, add validation command + exit status, move to `Completed` section with one-line release note.
+
+```markdown
+- Feature: Add priceRange filter
+  Completed: 2026-03-30 | Owner: @developer
+  Files: src/components/PriceRangeFilter.tsx, src/lib/filters.ts
+  Validation: `pnpm build` (exit 0)
+```
 
 ## Architecture Decision Record Template
 
@@ -68,13 +73,7 @@ High-level overview. Include a Mermaid diagram for non-trivial systems.
 
 ## Mermaid Diagrams
 
-Keep diagrams focused — one concern per diagram.
-
-| Type | Use For | Directive |
-|------|---------|-----------|
-| Flowchart | Decision logic, pipelines | `flowchart TD` (top-down) / `flowchart LR` (left-right) |
-| Sequence | API flows, multi-service interactions | `sequenceDiagram` |
-| ER | Data models, relationships | `erDiagram` |
+Keep diagrams focused — one concern per diagram, max 10–12 nodes.
 
 ```mermaid
 flowchart TD
@@ -83,8 +82,8 @@ flowchart TD
   B -- No --> D[Return 401]
 ```
 
+- `flowchart TD` for pipelines, `LR` for request flows, `sequenceDiagram` for API flows, `erDiagram` for data models
 - Add `%% Title: ...` on complex diagrams; use verb labels on arrows
-- Limit to 10–12 nodes per diagram; `flowchart TD` for pipelines, `LR` for request flows
 
 ## Changelog Entry Template
 
@@ -101,39 +100,21 @@ Group entries by Conventional Commits type under a version heading:
 ```
 
 - One line per change; reference the PR or issue number
-- Imperative mood: "Add", "Fix", "Remove" — not "Added", "Fixed"
-- Groups: `Added`, `Fixed`, `Changed`, `Removed`, `Deprecated`, `Security`; most recent version first
+- Imperative mood; most recent version first
 
-## Writing & Formatting
+## Documentation workflow
 
-- Clear, concise prose; avoid jargon; use relative paths for links; tables for structured data; include "Last Updated" dates
-- Archive outdated docs rather than deleting; cross-reference between documents; Mermaid for architecture
-- **Headings:** H2 for sections, H3 for subsections; no H1 (auto-generated from title), no H4+
-- **Lists:** `-` for bullets, `1.` for numbered; 2-space nested indent
-- **Code Blocks:** Fenced with language tag for syntax highlighting
-- **Links:** `[text](URL)` with descriptive text and valid URLs
-- **Images:** `![alt](url)` with brief alt text
-- **Whitespace:** Blank lines between sections; no excessive whitespace
-- **Front Matter:** YAML required for instruction/skill files — `title`/`name`, `description`, `applyTo` (instructions: glob of applicable files)
+1. **Draft** — create doc using templates above.
+2. **Validate** — run checks:
+   ```bash
+   npx markdown-link-check docs/**/*.md && pnpm prettier --check "docs/**/*.md"
+   ```
+   - Fail → fix broken paths/formatting → re-run step 2.
+3. **Review** — peer review via PR; address comments.
+4. **Publish** — merge; update roadmap/changelog.
+5. **Pre-Merge Checklist** — accuracy ✓, links resolve ✓, front matter valid ✓, no TODO placeholders ✓, formatting consistent ✓.
 
-## Pre-Merge Checklist
 
-- [ ] **Accuracy** — all code snippets, file paths, and commands are correct and tested
-- [ ] **Completeness** — no TODO placeholders or empty sections remain
-- [ ] **Links** — all internal and external links resolve (no 404s)
-- [ ] **Front matter** — YAML front matter is present and valid
-- [ ] **Formatting** — consistent heading levels, list style, whitespace, and Mermaid renders
-- [ ] **Cross-references** — related docs link to each other; "Last Updated" is current
+## Writing, Formatting & Anti-Patterns
 
-## Anti-Patterns
-
-| Anti-Pattern | Why It's Bad | Do This Instead |
-|-------------|-------------|-----------------|
-| Wall of text with no headings | Unnavigable; readers skip it | Break into sections with H2/H3 |
-| Duplicating content across files | Copies drift; causes confusion | Link to a single source of truth |
-| Screenshots without alt text | Inaccessible; breaks when UI changes | Use Mermaid diagrams or describe the UI |
-| Documenting implementation details | Becomes stale as code changes | Document intent and contracts |
-| Using absolute file paths | Breaks on other machines | Use relative paths from doc location |
-| Huge monolithic README | Low signal-to-noise | Split into focused docs, link from README |
-| Undated documents | No way to judge currency | Always include "Last Updated" date |
-| Using H1 inside document body | Conflicts with auto-generated title | Start body headings at H2 |
+See [WRITING-GUIDE.md](WRITING-GUIDE.md) for writing guidelines, formatting rules, and anti-patterns.

@@ -1,7 +1,6 @@
-````skill
 ---
 name: fast-review
-description: "Mandatory single-reviewer gate that runs after every agent delegation. Provides automatic retry with feedback and escalation to panel review after repeated failures. Essential for overnight/long-running autonomous sessions."
+description: "Mandatory post-delegation gate that checks output completeness, verifies acceptance criteria compliance, flags regressions, and produces a PASS/FAIL verdict. Use when checking delegated work against acceptance criteria, running the post-delegation gate, validating agent output before acceptance, verifying a sub-agent completed its assignment, or running a post-delegation QA check."
 ---
 
 # Skill: Fast Review
@@ -14,7 +13,7 @@ description: "Mandatory single-reviewer gate that runs after every agent delegat
 | Reviewer | Single sub-agent; Economy tier (Standard for premium/security work) |
 | Verdict | PASS or FAIL with structured feedback |
 | Retry | ≤2 retries on FAIL; 3rd FAIL → panel review |
-| Budget | ~2–5 min |
+ 
 
 ## Procedure
 
@@ -25,6 +24,10 @@ Issue + acceptance criteria, file diff, file partition, deterministic results (l
 ### 2 — Spawn Reviewer
 
 Single `runSubagent`. Context = acceptance criteria, diff, partition, deterministic results **only** — no session history, no delegation prompt.
+
+```js
+runSubagent({ agentName: 'Reviewer', prompt: `Review against ACs:\n${criteria}\nDiff:\n${diff}\nGates: lint ✅ test ✅ build ✅` });
+```
 
 ### 3 — Parse Verdict
 
@@ -54,36 +57,15 @@ CONFIDENCE: low | medium | high
 
 ## Reviewer Prompt Template
 
-```markdown
-You are a code reviewer. Be concise and specific.
-
-## Task: [ID] — [Title]
-Acceptance Criteria: [list]
-
-## File Partition: [allowed dirs/files]
-## Changed Files: [path + key diff]
-## Deterministic: Lint: [P/F] | Tests: [P/F] | Build: [P/F]
-
-## Checklist
-1. Acceptance criteria met?
-2. Partition respected?
-3. No regressions?
-4. Errors surfaced (no swallowed exceptions)?
-5. Type safety (no `as any`)?
-6. No secrets/injection vectors?
-7. Edge cases handled?
-
-## Prior Feedback (retry only): [previous FAIL]
-
-VERDICT: PASS | FAIL
-ISSUES: - [severity:critical|major|minor] Description
-FEEDBACK: [Actionable feedback.]
-CONFIDENCE: low | medium | high
-```
+See [REFERENCE.md](REFERENCE.md) for the full reviewer prompt template.
 
 ## Logging
 
-> **⛔ HARD GATE — Log the review before proceeding.** Use **observability-logging** skill's review record command.
+> **⛔ HARD GATE — Log the review before proceeding.**
+
+```sh
+npx opencastle log review --skill <name> --outcome pass|fail --reviewer "Reviewer" --mechanism sub-agent
+```
 
 ## Integration & Overnight Mode
 
@@ -97,5 +79,3 @@ CONFIDENCE: low | medium | high
 - **Ignoring minor issues** — track; 3+ recurrences → ticket.
 - **Force-accepting FAIL** — retry or escalate.
 - **Skipping deterministic checks** — does NOT replace lint/test/build.
-
-````

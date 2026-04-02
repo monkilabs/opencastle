@@ -1,6 +1,6 @@
 ---
 name: code-commenting
-description: "Guidelines for writing self-explanatory code with minimal comments. Covers when to comment (WHY not WHAT), anti-patterns to avoid, annotation tags, and public API documentation. Use when writing or reviewing code comments."
+description: "Guidelines for writing self-explanatory code with minimal comments. Covers when to comment (WHY not WHAT), anti-patterns to avoid, annotation tags, and public API documentation. Use when writing or reviewing code comments, docstrings, TODO/FIXME tags, code readability, or inline comments."
 ---
 
 # Code Commenting

@@ -1,6 +1,6 @@
 ---
 name: turborepo-monorepo
-description: "Turborepo monorepo commands, pipeline configuration, caching strategies, and task orchestration. Use when running builds, tests, linting, or any development commands in a Turborepo monorepo."
+description: "Configure pipelines, set up local/remote caching, and run scoped tasks in a Turborepo monorepo. Use when you say: 'enable remote caching', 'optimize pipeline inputs/outputs', or 'filter builds to affected packages'."
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
@@ -95,6 +95,16 @@ turbo run build --remote-only      # Force remote cache usage
 - Vercel Remote Cache or self-hosted (Ducktape, TurboCache)
 - Set `TURBO_TOKEN` and `TURBO_TEAM` in CI environment
 
+## Quick Workflow: Setup remote caching in CI
+1. Add `TURBO_TOKEN` and `TURBO_TEAM` to your CI secrets.  
+2. Locally run `turbo login` and `turbo link` to verify the project is linked.  
+3. Add `turbo run build --remote` to the CI pipeline and watch for cache hit/miss logs.  
+4. If cache misses persist: verify `inputs`/`outputs` in `turbo.json`, stable env vars, then re-run.  
+
+**Validation (recommended):** run `turbo run build --dry-run` locally or in CI to preview the task graph and catch misconfigured inputs/outputs before executing.
+
+See REFERENCE.md for CI snippets and advanced cache tuning.
+
 ## Package Workspace Structure
 
 ```
@@ -119,3 +129,5 @@ monorepo/
 - Use `--dry-run` to debug pipeline configuration
 - Add `TURBO_TOKEN` and `TURBO_TEAM` to CI for remote caching
 - Never commit `.turbo/` or `node_modules/.cache/turbo`
+
+Further reading: see REFERENCE.md in this directory for CI snippets and advanced cache tuning.

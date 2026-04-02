@@ -1,11 +1,11 @@
 ---
 name: orchestration-protocols
-description: "Runtime orchestration patterns for the Team Lead: parallel research spawning, agent health monitoring, active steering, background agent management, Context Compaction, Agent Circuit Breaker, and escalation paths."
+description: "Coordinates multiple agents with parallel task spawning, health monitoring, circuit breakers, and escalation paths. Use when managing parallel agents, handling agent timeouts, orchestrate agents, run tasks in parallel, concurrent agent execution, or fan-out tasks. Use when coordinating multi-agent task delegation."
 ---
 
 # Orchestration Protocols
 
-Runtime patterns for managing delegated agents. **Load at:** Execution phase (Step 4+), when monitoring active agents or spawning parallel work.
+Runtime patterns for managing delegated agents.
 
 ## Active Steering
 
@@ -13,11 +13,11 @@ Intervene early when you spot:
 
 | Signal | Action |
 |--------|--------|
-| Failing tests/builds | Can't resolve dependency or breaks existing code |
-| Unexpected file changes | Files outside partition in diff |
-| Scope creep | Refactors code not in scope |
-| Circular behavior | Same failing approach retried without change |
-| Intent misunderstanding | Session log shows wrong prompt interpretation |
+| Failing tests/builds | Check dependency resolution; revert if builds break |
+| Unexpected file changes | Revert; enforce partition |
+| Scope creep | Redirect to scoped files only |
+| Circular behavior | Halt; switch approach |
+| Intent misunderstanding | Clarify prompt; re-delegate |
 
 When redirecting, explain *why* and *how*:
 
@@ -35,7 +35,7 @@ Run autonomously in isolated Git worktrees. Reserve for well-scoped tasks >5 min
 
 ## Parallel Research Protocol
 
-Spawn multiple research sub-agents in parallel when 3+ independent questions must be answered before implementation. **Use when:** 3+ independent research questions, broad codebase exploration, or multi-area analysis (frontend/backend/CMS). **Skip when:** single-file investigation, answer in one known location, sequential results, or fewer than 3 questions.
+Spawn multiple research sub-agents in parallel when 3+ independent questions must be answered before implementation. **Spawn if:** ≥3 independent questions AND answers span multiple codebase areas — otherwise handle sequentially.
 
 ### Spawn Strategy
 
@@ -56,9 +56,11 @@ Return: key findings, relevant file paths (with line numbers), patterns, unanswe
 ### Result Merge Protocol
 
 1. Collect all results into single context
-2. Deduplicate (same file/pattern counts once)
-3. Resolve conflicts — specific evidence beats general observations
-4. Synthesize into concise context block for implementation prompts
+2. **Checkpoint:** verify every researcher returned a result (no timeout or error); re-run any that failed before proceeding.
+3. Deduplicate (same file/pattern counts once)
+4. Resolve conflicts — specific evidence beats general observations
+5. Synthesize into concise context block for implementation prompts
+6. **Checkpoint:** confirm synthesized block covers every original question; mark any unanswered questions as blockers.
 
 ## Batch Reviews
 
@@ -80,43 +82,54 @@ Summarize prior phase output before passing to the next agent. **Extract:** file
 - Blockers: [none | list]
 ```
 
-## Agent Health Monitoring
+**Concrete example:**
+```
+### Prior Phase Output
+**Phase 2 — Researcher A — Find usages of `calculateTotal()`**
+- Files changed: none (read-only research)
+- Decisions: `calculateTotal` lives in `libs/cart/src/lib/total.ts`; new logic should live in `libs/cart/src/lib/discounts.ts`
+- Verification: lint ✅ | types ✅ | unit smoke test (cart total) ✅
+- Blockers: design question on rounding behavior (see `docs/rounding.md`)
+```
 
-### Health Signals
+## Health & Recovery Reference
 
-| Signal | Threshold | Recovery |
-|--------|-----------|----------|
-| **Stuck** — no output/changes | Sub: 5 min / BG: 15 min | Nudge; if frozen, abort + re-delegate with simpler scope |
-| **Looping** — same error repeated | 3 consecutive failures | Abort; add context; re-delegate with explicit fix path |
-| **Scope creep** — files outside partition | Any | Redirect: "Only modify files in [partition]. Revert [file]." |
-| **Context exhaustion** — confused/repetitive | Visible instruction amnesia | Checkpoint, end session, resume in fresh context |
-| **Permission loop** — waiting for input | 2+ prompts without progress | Auto-approve if safe; abort + re-delegate |
+Detailed Agent Health Monitoring, Error Recovery Playbook, and Agent Circuit Breaker tables have been moved to REFERENCE.md to keep this skill concise. See REFERENCE.md in this directory for thresholds, recovery steps, and escalation flows.
 
-**Cadence:** Sub-agents — continuous (real-time). Background agents — check at 10 min, then every 10 min. Always review full diff before accepting.
 
-### Escalation Path
+### CLI examples (spawn & monitor)
 
-1. **Failure 1:** Re-delegate with more specific prompt + error context
-2. **Failure 2:** Downscope (split into smaller pieces), re-delegate
-3. **Failure 3:** Log to `.opencastle/AGENT-FAILURES.md`; if 3× panel BLOCK or conflict, create dispute in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol)
+These use the OpenCastle CLI (`npx opencastle` or `bin/cli.mjs`):
 
-## Error Recovery Playbook
+```bash
+opencastle run --file convoy.yml --dry-run
+opencastle run --file convoy.yml --verbose
+opencastle run --resume
+opencastle run --status
+opencastle run --retry-failed
+```
 
-| Failure | Symptom | Recovery |
-|---------|---------|----------|
-| **Retry loop** | Same command fails 3+ times | Abort; identify root cause; re-delegate with explicit fix; log lesson |
-| **MCP unavailable** | Tool connection/timeout errors | Check server; retry once; fall back to CLI; log to DLQ if critical |
-| **Broken BG output** | Lint/type/test errors on return | Fix inline if small; discard + re-delegate if fundamental; DLQ after 2 fails |
-| **Parallel merge conflict** | Two agents modified overlapping files | Accept complex side first; re-delegate simple side to adapt; log lesson |
-| **Context exhausted** | Confused/repetitive responses | Checkpoint; end session; resume with checkpoint; reduce parallel work |
-| **Post-merge test failure** | Tests pass alone but fail merged | Run affected tests; check import/state conflicts; delegate fix to likely cause |
+**Post-run verification (copy-paste checks):**
 
-## Agent Circuit Breaker
+```bash
+if [ $? -ne 0 ]; then
+  echo "opencastle run failed — inspect .opencastle/convoy.log" \
+	 && tail -n 200 .opencastle/convoy.log && exit 1
+fi
 
-| Threshold | Action |
-|-----------|--------|
-| **2 failures** | Investigate: same error class? Model healthy? Prompt pattern? |
-| **3 failures** | Open circuit — stop delegating; reassign or escalate to user |
-| **Next session** | Half-open — resets; re-open + add lesson if fails again |
+npx opencastle run --status
 
-Judgment-based, not a hard gate. 3 similar failures with the same error is more concerning than 3 unrelated failures.
+grep -i "error\|failed" .opencastle/convoy.log || echo "no obvious errors in logs"
+```
+
+## Validation & Verification Checkpoints
+
+| Phase | Check | Command / Action |
+|-------|-------|-----------------|
+| Pre-spawn | Inputs present (task, scope, ACs) | `test -s convoy.yml \|\| exit 1` |
+| During-run | Tail for fatal errors | `tail -F .opencastle/convoy.log \| grep -i "fatal\|error"` |
+| Pre-merge | All agents exited 0 | `jq -e '.agents[] \| .exit_code == 0' .opencastle/results.json` |
+| Output schema | Required fields present | `jq -e '.agents[] \| (.findings and .file_paths)' .opencastle/results.json` |
+| Post-merge | Lint + smoke tests pass | `npm run lint && npm test -- -t "smoke"` |
+| Blocker | Any failure | Block merge; reopen to original researcher(s) |
+
