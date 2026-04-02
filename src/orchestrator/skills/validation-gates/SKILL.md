@@ -1,6 +1,6 @@
 ---
 name: validation-gates
-description: "Shared validation gates for all orchestration workflows — secret scanning, deterministic checks, blast radius analysis, dependency auditing, browser testing, cache management, regression checks, and final smoke tests. Referenced by prompt templates to maintain single source of truth."
+description: "Defines 10 sequential validation gates: secret scanning, lint/test/build checks, blast radius analysis, dependency auditing, browser testing, cache management, regression checks, and smoke tests. Use when running pre-deploy validation or CI checks, CI/CD pipelines, deployment pipeline validation, pre-merge checks, continuous integration, or pull request validation."
 ---
 
 # Validation Gates
@@ -24,9 +24,17 @@ description: "Shared validation gates for all orchestration workflows — secret
 
 Scan every diff **before** any other gate.
 
+Example tool: `gitleaks detect --source . --verbosity warn` (or CI equivalent) — fail on findings matching secrets rules.
+
 ## Gate 2: Deterministic Checks
 
 Run for every affected project (resolve exact commands via the **codebase-tool** skill): lint (with auto-fix), test, build. All must pass with zero errors.
+
+Example (project with npm scripts):
+
+```bash
+npm run lint && npm test --silent && npm run build
+```
 
 ## Gate 3: Blast Radius Check
 
@@ -36,66 +44,62 @@ Run for every affected project (resolve exact commands via the **codebase-tool**
 | Files changed | ≤5 | 6–10 | >10 |
 | Projects affected | ≤1 | 2 | >2 |
 
-- **Normal** — proceed to Gate 4
-- **Warning** — log in delegation record; investigate partition drift if unexpected
-- **Escalate** — STOP. Verify partition; split or revert; mandatory fast review (no auto-PASS)
+- **Normal** — proceed
+- **Warning** — log; investigate partition drift
+- **Escalate** — STOP; verify partition; split or revert; no auto-PASS
 
-**Sensitive files** (always Warning regardless of line count): auth/middleware (`middleware.ts`, `auth.ts`, `**/auth/**`), DB migrations/RLS, security headers/CSP (`next.config.*`, `vercel.json`), env schemas (`.env.example`, `env.ts`), CI/CD (`.github/workflows/**`), package configs (`package.json`, lockfiles) — also triggers Gate 4.
+**Sensitive files** (always Warning): `**/auth/**`, DB migrations, `next.config.*`, `.env*`, `.github/workflows/**`, lockfiles — also triggers Gate 4.
 
 ## Gate 4: Dependency Audit
 
 > Runs only when `package.json`, `yarn.lock`, `package-lock.json`, `pnpm-lock.yaml`, or similar lockfiles are modified.
 
-| Check | Tool | Pass Criteria | On Failure |
-|-------|------|---------------|------------|
-| Vulnerability | `npm audit` | No new high/critical | BLOCK — use patched version or alternative |
-| License | — | MIT, Apache-2.0, BSD-*, ISC | Flag for human review (non-blocking) |
-| Bundle size | — | Frontend pkgs ≤50KB gzipped | SHOULD-FIX; blocking if >200KB |
-| Duplicates | — | No overlap with existing deps | SHOULD-FIX |
-| Maintenance | — | Updated <2yr, ≥100 weekly DLs | Flag |
+| Check | Tool / Example Command | Pass Criteria | On Failure |
+|-------|-------------------------|---------------|------------|
+| Vulnerability | `npm audit --audit-level=moderate` | No new high/critical | BLOCK — use patched version or alternative |
+| Bundle size | `npx source-map-explorer dist/*.js` or `npx bundlesize` | Frontend pkgs ≤50KB gzipped (project policy) | SHOULD-FIX; blocking if >200KB |
+
+See [REFERENCE.md](REFERENCE.md) for the full dependency-audit checklist (license, duplicates, maintenance, and additional checks).
 
 ## Gate 5: Fast Review
 
-> **HARD GATE.** Every delegation must pass. Spawn a reviewer sub-agent; PASS → proceed; FAIL → re-delegate (up to 2 retries); 3× FAIL → Gate 9 panel. Load **fast-review** skill.
-
-**Auto-PASS** (skip reviewer): pure research with no code changes; only `.md` files modified; all deterministic gates passed AND ≤10 lines across ≤2 files AND no sensitive files touched.
-
-> **Sensitive file override:** Sensitive files (Gate 3 list) never get auto-PASS, even for 1-line changes.
+Spawn reviewer sub-agent (load **fast-review** skill). PASS → proceed; FAIL → re-delegate (max 2); 3× FAIL → Gate 9. Auto-PASS rules: see **fast-review** skill.
 
 ## Gate 6: Cache Clearing
 
-Clear framework and task runner caches before starting the dev server. See **codebase-tool** skill.
-
+```bash
+rm -rf node_modules/.cache .next/cache .astro/ dist/
+```
 ## Gate 7: Browser Testing
 
-> **HARD GATE:** UI changes are NOT done without screenshots in Chrome proving the feature works.
+UI changes require Chrome screenshots. Start dev server → verify ACs → responsive breakpoints → capture screenshots. Load **browser-testing** skill.
 
-1. Start dev server (see **codebase-tool** skill)
-2. Verify all acceptance-criteria items render and behave correctly
-3. Test responsive breakpoints; verify empty, error, and loading states
-4. Capture screenshots of key states (REQUIRED)
+```json
+{ "tool": "browser-testing/capture_screenshot", "url": "http://localhost:3000", "viewports": ["mobile", "desktop"] }
+```
 
-Load the **browser-testing** skill for Chrome MCP commands, breakpoints, and reporting format.
+Additional options: see [REFERENCE.md](REFERENCE.md).
 
 ## Gate 8: Regression Testing
 
-1. Run full test suite for all affected projects
-2. Browser-test adjacent pages; verify navigation, routing, and back-button
-3. Check shared components in all consuming apps if a shared library changed
+1. `npm test -- --runInBand` for all affected projects
+2. Browser-test adjacent pages (navigation, routing, back-button). Identify adjacent pages by searching for route imports or links to the changed path (e.g., `rg "href=\"/changed-path|import .*from '@/components/changed'"`).
+3. Check consuming apps / packages that import the changed files: search the repo for the component or package name (e.g., `rg "from '@/components/PriceRange'|@my-org/ui-package"`) and run their tests or quick smoke builds.
 
 ## Gate 9: Panel Review
 
-Use the **panel-majority-vote** skill for: security-sensitive changes, DB migrations, architecture decisions/large refactors, complex business logic without comprehensive tests.
+Load **panel-majority-vote** skill — spawns 3 isolated reviewers, majority (2/3) wins. Use for: security-sensitive changes, DB migrations, architecture decisions.
 
-On BLOCK: extract MUST-FIX items, re-delegate, re-run panel. Max 3 attempts, then escalate to Architect.
+```js
+runSubagent({ agentName: 'Reviewer', prompt: `Panel review 1/3: ${criteria}` });
+```
 
 ## Gate 10: Final Smoke Test
 
 > Runs once after ALL tasks are Done.
 
-1. Full build + full test suite from clean state
-2. End-to-end browser walkthrough (loading, empty, populated, error states, transitions)
-3. Cross-task integration check
-4. Final responsive sweep (if UI)
+```bash
+npm run build && npm test && npx playwright test
+```
 
-**Skip for:** non-UI with comprehensive tests, or single-task features (Gate 8 covers those). On failure: re-delegate the specific failing integration only.
+Full build + test from clean state → E2E browser walkthrough → cross-task integration check → responsive sweep (if UI). On failure: re-delegate the specific failing integration only.

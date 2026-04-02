@@ -1,27 +1,14 @@
 ---
 name: browser-testing
-description: "Chrome DevTools MCP automation patterns for validating UI changes in real browsers. Use when performing E2E browser testing, validating visual changes, testing user interactions, or debugging UI issues with Chrome DevTools."
+description: "Drive real browsers via Chrome DevTools MCP: navigate pages, capture snapshots, run responsive checks, and collect console/perf traces. Use when the user mentions: 'validate UI change in Chrome', 'capture a screenshot', 'run responsive checks', or 'collect console logs'. Trigger terms: browser testing, DevTools, console logs, screenshot, responsive testing"
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Browser Testing with Chrome DevTools MCP
 
-Generic browser testing methodology using Chrome DevTools MCP. For project-specific test app, selectors, suites, and breakpoint config, see [testing-config.md](../../.opencastle/stack/testing-config.md).
+For project-specific test app, selectors, suites, and breakpoint config, see [testing-config.md](../../.opencastle/stack/testing-config.md).
 
-## Purpose
-
-After any UI change, validate in a real browser:
-1. Start dev server if not running.
-2. Navigate to affected pages.
-3. Interact with UI elements (click, fill, filter).
-4. Validate behavior and appearance.
-5. Test edge cases (empty states, errors, boundaries).
-6. Document findings with screenshots and pass/fail.
-
-## Pre-Test Build Verification
-
-**CRITICAL: Always build before browser testing.** Testing stale code wastes time. See [testing-config.md](../../.opencastle/stack/testing-config.md) for the specific build and serve commands.
 
 ## Chrome MCP Tools Reference
 
@@ -85,30 +72,27 @@ mcp_chrome-devtoo_performance_analyze_insight({ insightSetId: 'set_id', insightN
 
 ### 1. Setup
 
-Start the dev server (see [testing-config.md](../../.opencastle/stack/testing-config.md) for app and port).
+Start the dev server.
 
 ### 2. Initial State
 
 ```javascript
 mcp_chrome-devtoo_navigate_page({ type: 'url', url: 'http://localhost:<port>/places' })
 mcp_chrome-devtoo_wait_for({ text: 'places' })
+// If wait_for times out: verify dev server is running and URL is correct
 mcp_chrome-devtoo_evaluate_script({
   function: '() => ({ url: window.location.href, title: document.title })'
 })
 ```
 
-### 3. Test Interactions
+### 3–4. Test Interactions & Edge Cases
 
 ```javascript
 mcp_chrome-devtoo_click({ uid: 'filter_uid' })
 mcp_chrome-devtoo_evaluate_script({
   function: '() => document.querySelectorAll(".place-card").length'
 })
-```
 
-### 4. Test Edge Cases
-
-```javascript
 mcp_chrome-devtoo_navigate_page({
   type: 'url', url: 'http://localhost:<port>/places?q=nonexistent-venue-xyz'
 })
@@ -121,11 +105,12 @@ mcp_chrome-devtoo_evaluate_script({
 
 ```javascript
 mcp_chrome-devtoo_list_console_messages()
+// If errors found: fix source, rebuild, reload page, and re-run from step 2
 ```
 
-### 6. Responsive Breakpoint Testing (MANDATORY)
+### 6. Responsive Breakpoint Testing
 
-**Every UI change MUST be tested at all responsive breakpoints.** Do not test at desktop only — most layout bugs surface at smaller viewports. Define your breakpoints in your project's testing config (e.g., `testing-config.md`).
+Test every UI change at all responsive breakpoints — most layout bugs surface at smaller viewports. Define breakpoints in your project's testing config.
 
 #### How to Resize
 
@@ -138,24 +123,8 @@ mcp_chrome-devtoo_resize_page({ width: 1440, height: 900 })  // Desktop
 
 #### Per-Breakpoint Verification
 
-#### Per-Breakpoint Verification
-
-At **each** breakpoint, check:
-
-- [ ] Layout adapts correctly — no horizontal overflow
-- [ ] Text truncates or wraps cleanly — no overlap
-- [ ] Interactive elements have adequate spacing and touch targets
-- [ ] Navigation and panels collapse/expand as expected
-- [ ] Images and cards resize proportionally
-
-#### Responsive Testing Anti-Patterns
-
-| Anti-Pattern | Correct Approach |
-|---|---|
-| Testing only at desktop width | Test at all project-defined breakpoints |
-| Skipping resize because "it uses Tailwind" | Tailwind classes can be wrong — always verify visually |
-| Only checking layout, not interactions | Test filter drawers, dropdowns, and modals at each size |
-| Taking 3 screenshots (one per breakpoint) | Use `evaluate_script()` to check layout; save screenshots for failures |
+- Verify interactions at each size (not layout only)
+- Prefer `evaluate_script()` assertions over screenshots; reserve screenshots for failures
 
 ## Regression Re-Test Workflow
 
@@ -169,20 +138,6 @@ When re-testing after a fix:
 
 If any test still fails: analyze, fix, repeat. Do NOT stop.
 
-## Validation Checklist
-
-- [ ] Page loads without errors (check console)
-- [ ] Changed component renders correctly
-- [ ] Interactive elements respond to clicks/input
-- [ ] Filters/sorting produce correct results
-- [ ] URL parameters sync with UI state
-- [ ] Empty states display when appropriate
-- [ ] Error states handle gracefully
-- [ ] Loading states appear during async operations
-- [ ] Keyboard navigation works, focus is visible
-- [ ] **Responsive: Tested at Mobile, Tablet, and Desktop breakpoints**
-- [ ] **Responsive: No horizontal overflow at any breakpoint**
-- [ ] **Responsive: Interactions work at every breakpoint (drawers, dropdowns, modals)**
 
 ## Context Management
 

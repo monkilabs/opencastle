@@ -1,6 +1,6 @@
 ---
 name: session-checkpoints
-description: "Protocol for saving and restoring session state across agent sessions. Enables replay, fork, and resume of interrupted work — inspired by Sandcastle Run Time Machine."
+description: "Saves and restores session state including task progress, file changes, and delegation history. Use when saving progress, resuming interrupted work, picking up where you left off, or checkpointing current work."
 ---
 
 # Skill: Session Checkpoints
@@ -15,77 +15,53 @@ description: "Protocol for saving and restoring session state across agent sessi
 | Session end | Any session with incomplete work |
 | Context running low | Checkpoint immediately |
 
-## Checkpoint Format (`.opencastle/SESSION-CHECKPOINT.md`)
+## Checkpoint Template
+
+The full checkpoint template has been moved to `CHECKPOINT-TEMPLATE.md` in this directory for progressive disclosure. Use that file as the canonical, copy-pasteable checkpoint document.
+
+See the Decomposition Flow in the `decomposition` skill for when to create checkpoints: [decomposition](../../skills/decomposition/SKILL.md).
+## Checkpoint creation (quick)
+
+1. Create `.opencastle/SESSION-CHECKPOINT.md` from the example below.
+2. Commit checkpoint or save to workspace and attach to the tracker issue.
+3. Verify: `cat .opencastle/SESSION-CHECKPOINT.md` and confirm listed files exist.
 
 ```markdown
-# Session Checkpoint
+# Session Checkpoint — 2026-04-01
 
-**Last Updated:** YYYY-MM-DD HH:MM
-**Feature:** Short feature name
-**Branch:** git branch name
-**Tracker Issues:** TAS-XX, TAS-YY
+## Summary
+Implementing search filters — unit tests passing, E2E pending.
 
-## Current Phase
+## Files Touched
+- src/components/SearchFilter.tsx (new)
+- src/hooks/useFilters.ts (modified)
 
-## Completed Work
-
-| Task | Tracker | Agent | Status | Files |
-|------|---------|-------|--------|-------|
-| Description | TAS-XX | Agent | ✅ Done | file1.ts |
-
-## In Progress
-
-| Task | Tracker | Agent | Status | Notes |
-|------|---------|-------|--------|-------|
-| Description | TAS-ZZ | Agent | 🔄 In Progress | what's done |
-
-## Remaining Work
-
-| Task | Tracker | Agent | Dependencies | Files |
-|------|---------|-------|-------------|-------|
-| Description | TAS-AA | Agent | TAS-ZZ | file4.ts |
-
-## Pending Approvals
-
-| Provider | Channel | Thread ID | Question | Posted At |
-|----------|---------|-----------|----------|-----------|
-| slack | C0AHAQFJ7C1 | 1772393542.345149 | Run migration on production? | 2026-03-01 14:30 |
-
-Remove row once answered (VS Code chat reply also counts as resolved).
-
-## Decisions & Blockers
-
-- Decision: rationale
-- Blocker: what's needed to unblock
-
-## Delegation Cost Log
-
-| # | Agent | Tracker | Model Tier | Est. Tokens | Duration | Status |
-|---|-------|---------|------------|-------------|----------|--------|
-| 1 | Content Engineer | TAS-XX | Standard | ~20K | 8 min | ✅ Done |
-
-## File Partitions
-
-```
-Agent A: dir1/, dir2/
-Agent B: dir3/
-```
+## Task Status
+| Task | Status |
+|------|--------|
+| TASK-12 Search filter component | Done |
+| TASK-13 E2E filter tests | In Progress |
 
 ## Resume Instructions
-
-1. Check out branch `feat/xxx`
-2. Read tracker issues TAS-XX for context
-3. Start Phase N+1: [specific instructions]
+1. Run `git checkout feat/search-filters`
+2. Start dev server: `pnpm dev`
+3. Continue TASK-13: write E2E tests for filter interactions
 ```
+
+For the complete copy-pasteable template, see [CHECKPOINT-TEMPLATE.md](./CHECKPOINT-TEMPLATE.md).
 
 ## Resuming
 
-Read checkpoint → `git status` → check tracker → follow resume instructions → update progress.
+1. Read `.opencastle/SESSION-CHECKPOINT.md`
+2. Run `git status` and `git branch` — confirm you are on the correct branch
+3. Check In Progress tasks — if stale (>1 session old), verify files match expected state
+4. Check Pending Approvals — remove rows for questions answered via VS Code chat
+5. Read tracker issues for any tasks marked In Progress or Todo
+6. Follow the Resume Instructions section in the checkpoint
+7. Update checkpoint progress after each completed task
+
+**If checkpoint is missing or corrupt:** Rebuild from `git log --oneline -20` and tracker state.
 
 ## Cleanup & Team Lead
 
 When all issues Done: archive to tracker, delete `.opencastle/SESSION-CHECKPOINT.md`.
-
-- Checkpoint after decomposition (Step 2 of Decomposition Flow)
-- Update after each verification pass
-- Reference checkpoint in delegation prompts

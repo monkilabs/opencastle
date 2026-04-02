@@ -5,8 +5,7 @@ import { PLATFORM_CONFIGS } from '../src/cli/package-config.js'
 const pkgRoot = new URL('../', import.meta.url).pathname.replace(/\/$/, '')
 const outputBase = process.argv[2] ?? 'dist/plugins'
 
-console.log('Building OpenCastle plugins into ' + outputBase + '...
-')
+console.log('Building OpenCastle plugins into ' + outputBase + '...')
 
 const results: Array<{ platform: string; skillCount: number; agentCount: number; outputDir: string }> = []
 const errors: Array<{ platform: string; error: string }> = []

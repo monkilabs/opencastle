@@ -1,13 +1,13 @@
 ---
 name: playwright-testing
-description: "Playwright E2E testing patterns, cross-browser configuration, page objects, and CI setup. Use when writing E2E tests, visual regression tests, or configuring Playwright in CI pipelines."
+description: "Playwright E2E testing patterns, cross-browser configuration, page objects, and CI setup. Use when creating E2E specs, visual regression suites, or configuring Playwright in CI. Trigger terms: playwright, e2e, trace, page object, cross-browser"
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Playwright Testing
 
-Playwright-specific E2E testing patterns. For project-specific test configuration and breakpoints, see [testing-config.md](../../.opencastle/stack/testing-config.md).
+For project-specific test configuration and breakpoints, see [testing-config.md](../../.opencastle/stack/testing-config.md).
 
 ## Commands
 
@@ -24,83 +24,27 @@ npx playwright show-report                # View HTML test report
 npx playwright install                    # Install browsers
 ```
 
-## Test Structure
+## File Conventions
 
-```
-tests/
-├── e2e/
-│   ├── auth/
-│   │   ├── login.spec.ts
-│   │   └── signup.spec.ts
-│   └── dashboard/
-│       └── overview.spec.ts
-├── fixtures/
-│   └── auth.fixture.ts      # Custom test fixtures
-└── pages/
-    ├── login.page.ts         # Page object
-    └── dashboard.page.ts
-```
+Tests: `tests/e2e/{feature}/`, page objects: `tests/pages/`, fixtures: `tests/fixtures/`.
 
 ## Writing Tests
 
 ### Basic Test Pattern
 
-```typescript
+```ts
 import { test, expect } from '@playwright/test';
+import { LoginPage } from '../pages/login-page';
 
 test.describe('Login', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
-  });
-
-  test('should log in with valid credentials', async ({ page }) => {
-    await page.getByTestId('email-input').fill('user@example.com');
-    await page.getByTestId('password-input').fill('password123');
-    await page.getByTestId('login-button').click();
-
-    await expect(page).toHaveURL(/.*dashboard/);
-    await expect(page.getByTestId('user-menu')).toBeVisible();
-  });
-
-  test('should show error for invalid credentials', async ({ page }) => {
-    await page.getByTestId('email-input').fill('wrong@example.com');
-    await page.getByTestId('password-input').fill('wrong');
-    await page.getByTestId('login-button').click();
-
-    await expect(page.getByTestId('error-message')).toContainText('Invalid credentials');
+  test('submits valid credentials', async ({ page }) => {
+    const login = new LoginPage(page);
+    await login.goto();
+    await login.fill('user@example.com', 'password123');
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await expect(page.getByTestId('dashboard')).toBeVisible();
   });
 });
-```
-
-### Page Object Model
-
-```typescript
-// tests/pages/login.page.ts
-import { type Page, type Locator } from '@playwright/test';
-
-export class LoginPage {
-  readonly emailInput: Locator;
-  readonly passwordInput: Locator;
-  readonly submitButton: Locator;
-  readonly errorMessage: Locator;
-
-  constructor(private readonly page: Page) {
-    this.emailInput = page.getByTestId('email-input');
-    this.passwordInput = page.getByTestId('password-input');
-    this.submitButton = page.getByTestId('login-button');
-    this.errorMessage = page.getByTestId('error-message');
-  }
-
-  async goto() {
-    await this.page.goto('/login');
-  }
-
-  async login(email: string, password: string) {
-    await this.emailInput.fill(email);
-    await this.passwordInput.fill(password);
-    await this.submitButton.click();
-  }
-}
 ```
 
 ## API Mocking
@@ -114,13 +58,22 @@ await page.route('/api/login', (route) => {
 
 ## Locator Strategy
 
-Use Playwright's built-in locators in priority order:
+Prefer semantic locators; avoid brittle CSS selectors:
 
-1. `page.getByTestId()` — most resilient
-2. `page.getByRole()` — accessible, meaningful
-3. `page.getByLabel()` — for form elements
-4. `page.getByText()` — for unique visible text
-5. `page.locator()` with CSS — last resort
+```ts
+page.getByRole('button', { name: 'Sign in' })   // preferred: ARIA role + accessible name
+page.getByLabel('Email address')                  // form inputs by label
+page.getByTestId('login-form')                    // test-id for complex containers
+page.getByText('Welcome back')                    // visible text
+page.locator('[data-state="open"]')               // CSS only when no semantic alternative
+```
+
+## Quick Workflow: Write → Run → Debug → Verify
+1. Write a focused spec using page objects and `test.describe`.
+2. Run locally with `npx playwright test --ui` to iterate interactively.
+3. On failure: collect a trace (`trace: 'on-first-retry'`), save an HTML report, and inspect via `npx playwright show-report`.
+4. Validation checkpoint: confirm `npx playwright show-report` shows 0 failures and that saved traces contain the failing trace id.
+5. Fix the test or app; re-run the spec and verify the HTML report is green.
 
 ## Configuration (playwright.config.ts)
 
@@ -153,27 +106,9 @@ export default defineConfig({
 });
 ```
 
-## MCP Tools
+See REFERENCE.md for MCP tools and advanced config (moved to a referenced file).
+## Best Practices (non-obvious)
 
-The Playwright MCP server enables AI agents to interact with browsers directly:
-
-| Tool | Purpose |
-|------|---------|
-| `playwright/navigate` | Navigate to a URL |
-| `playwright/screenshot` | Take page screenshots |
-| `playwright/click` | Click elements |
-| `playwright/fill` | Fill form inputs |
-| `playwright/evaluate` | Execute JavaScript in browser |
-| `playwright/expect` | Assert page state |
-
-## Best Practices
-
-- Use `test.describe` to group related tests
-- Use `test.beforeEach` for common setup — keep tests independent
-- Prefer `getByTestId` and `getByRole` over CSS selectors
-- Use `expect(locator).toBeVisible()` before interacting
-- Use `page.waitForURL()` or `page.waitForResponse()` instead of arbitrary waits
-- Run tests in parallel (`fullyParallel: true`) for speed
-- Use `trace: 'on-first-retry'` to debug flaky tests
-- Use `codegen` to bootstrap tests, then refactor into page objects
-- Use `page.route()` to mock API responses — create isolated, deterministic tests without backend dependencies
+- Use `trace: 'on-first-retry'` selectively for flaky suites; attach trace IDs to failure tickets
+- Favor page-object reuse across specs but avoid global singletons that leak state between parallel workers
+- For CI visual diffs, snapshot only stable regions and mask dynamic content before comparison

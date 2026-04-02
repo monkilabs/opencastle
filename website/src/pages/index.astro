@@ -45,7 +45,7 @@ const features = [
     icon: 'skills',
     title: 'On-Demand Skills',
     description:
-      'Modular knowledge files loaded per task. Keeps context windows lean while enabling deep domain expertise. Stack-specific skills are auto-selected during init.',
+      'Modular knowledge files loaded per task. Keeps context windows lean while enabling deep domain expertise. Stack-specific skills are auto-selected during init. All 51 skills scored 100% on the tessl Skill Evaluator.',
   },
   {
     icon: 'workflows',
@@ -265,9 +265,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           Everything you need to orchestrate AI agents at scale.
         </h2>
         <p class="section__subtitle">
-          A complete framework of instructions, skills, agent definitions,
-          workflow templates, and quality gates — battle-tested on a production
-          codebase.
+          A hybrid framework for interactive IDE chat and automated batch
+          execution — with instructions, skills, agent definitions, workflow
+          templates, and quality gates battle-tested on a production codebase.
         </p>
         <div class="features-grid">
           {features.map((f) => (
@@ -895,6 +895,12 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           <div class="stat">
             <div class="stat__value">7</div>
             <div class="stat__label">IDE Adapters</div>
+          </div>
+          <div class="stat">
+            <a href="https://tessl.io/registry/skills/submit" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
+              <div class="stat__value">100%</div>
+              <div class="stat__label">tessl Skill Score</div>
+            </a>
           </div>
         </div>
       </div>

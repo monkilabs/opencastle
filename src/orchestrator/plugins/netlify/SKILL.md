@@ -1,9 +1,7 @@
 ---
 name: netlify-deployment
-description: "Netlify deployment workflows, serverless functions, edge functions, environment management, and build configuration. Use when deploying to Netlify, writing serverless/edge functions, or troubleshooting builds."
+description: "Deploy sites, configure serverless and edge functions, and verify builds on Netlify. Use when the user mentions: 'deploy preview', 'configure netlify.toml', or 'debug a failed deploy'. Trigger terms: build error, Netlify Functions, deploy logs, deploy preview"
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Netlify Deployment
 
@@ -11,18 +9,18 @@ Netlify-specific deployment patterns and conventions. For project-specific deplo
 
 ## Deployment Model
 
-Netlify uses Git-based continuous deployment:
+| Branch | Environment |
+|--------|-------------|
+| `main` | Production (auto) |
+| `feature/*`, `fix/*` | Deploy preview (auto, unique URL) |
 
-```
-main branch    → Production deployment (auto)
-feature/*      → Deploy preview (auto, unique URL)
-fix/*          → Deploy preview (auto, unique URL)
-```
+## Deployment Workflow
 
-- Every push triggers a build — no manual deploys needed
-- Deploy previews get unique URLs for PR-based testing
-- Instant rollback to any previous deploy from the dashboard
-- Branch deploys can be configured for specific branches beyond `main`
+1. Configure `netlify.toml` (build command, publish dir, env vars).
+2. Build locally: `netlify build --debug` — fix any errors before pushing.
+3. Push branch — Netlify auto-deploys a preview.
+4. Verify preview: `curl -fsS -o /dev/null -w '%{http_code}' https://<DEPLOY_URL>/` — expect 200.
+5. Merge to `main` — production auto-deploys.
 
 ## Build Configuration (netlify.toml)
 
@@ -39,39 +37,17 @@ fix/*          → Deploy preview (auto, unique URL)
   to = "/index.html"
   status = 200
   conditions = {Role = ["admin"]}
-
-[[headers]]
-  for = "/*"
-  [headers.values]
-    X-Frame-Options = "DENY"
-    X-Content-Type-Options = "nosniff"
-    Referrer-Policy = "strict-origin-when-cross-origin"
 ```
+
+For security headers config, see [REFERENCE.md](REFERENCE.md).
 
 ## Serverless Functions
 
-Place functions in `netlify/functions/`:
+Place functions in `netlify/functions/`. For full examples and CI-ready function patterns see [REFERENCE.md](REFERENCE.md).
 
-```typescript
-// netlify/functions/hello.ts
-import type { Context, Config } from "@netlify/functions";
-
-export default async (req: Request, context: Context) => {
-  return new Response(JSON.stringify({ message: "Hello from Netlify Functions" }), {
-    headers: { "Content-Type": "application/json" },
-  });
-};
-
-export const config: Config = {
-  path: "/hello",
-};
-```
-
-Functions use web standard Request/Response. The `Config` export defines routing (path) instead of the default `/.netlify/functions/<name>` path.
-
-- Supports TypeScript out of the box
-- Default timeout: 10s (extendable to 26s on Pro)
-- Use background functions for long-running tasks (up to 15 min)
+- Functions use web standard Request/Response. The `Config` export defines routing (path) instead of the default `/.netlify/functions/<name>` path.
+- Supports TypeScript out of the box; default timeout: 10s (extendable to 26s on Pro).
+- Use background functions for long-running tasks (up to 15 min).
 
 ## Edge Functions
 
@@ -89,26 +65,12 @@ export default async (request: Request, context: Context) => {
 export const config = { path: '/geo' };
 ```
 
-- Run at the CDN edge, sub-millisecond cold starts
 - Use for personalization, A/B testing, geo-routing
 - Deno runtime (not Node.js)
 
 ## Environment Variables
 
-### Scoping
-
-| Scope | When Applied | Use For |
-|-------|-------------|---------|
-| **Production** | `main` deploys | Live secrets, production API keys |
-| **Deploy previews** | All PR/branch builds | Staging/test API keys |
-| **Branch deploy** | Specific branch deploys | Branch-specific overrides |
-| **Local** | `netlify dev` | Local development |
-
-### Best Practices
-
-- Set secrets via Netlify UI or CLI (`netlify env:set`) — never commit them
-- Use `netlify dev` to run locally with injected env vars
-- Validate required vars at build time in `netlify.toml`
+See [REFERENCE.md](REFERENCE.md) for environment variable scoping and security header examples.
 
 ## Scheduled Functions (Cron)
 
@@ -128,11 +90,19 @@ export const config: Config = {
 
 ## Build Troubleshooting
 
-1. **Check build logs** — Netlify UI → Deploys → click failed deploy
-2. **Common causes:**
-   - Missing environment variables
-   - Node.js version mismatch (set in `netlify.toml` or `.node-version`)
-   - Build command or publish directory mismatch
-   - Dependency install failures (check lockfile)
-3. **Local debugging** — run `netlify build` locally to reproduce
-4. **Clear cache** — Netlify UI → Deploys → Trigger deploy → Clear cache and deploy
+```bash
+netlify build --debug          # reproduce locally with verbose output
+netlify env:list               # verify env vars are set
+netlify status                 # check linked site and deploy state
+```
+
+Common fixes: set `NODE_VERSION` in `netlify.toml`, sync lockfile, verify `publish` directory matches build output.
+
+## Post-Deploy Verification
+
+```bash
+curl -fsS -o /dev/null -w '%{http_code}' https://<DEPLOY_URL>/          # expect 200
+curl -fsS -o /dev/null -w '%{http_code}' https://<DEPLOY_URL>/api/health # expect 200
+```
+
+If any route fails: inspect deploy logs in Netlify UI, fix, and re-deploy. See [REFERENCE.md](REFERENCE.md) for extended verification scripts.

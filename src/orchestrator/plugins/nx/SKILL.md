@@ -1,6 +1,6 @@
 ---
 name: nx-workspace
-description: "NX monorepo commands, conventions, code generation, and task running patterns. Use when running builds, tests, linting, code generation, or any development commands."
+description: "Run and generate NX targets, configure project.json, and visualize dependency graphs. Use when you say: 'run affected tests', 'nx generate a library', 'configure project.json', or 'show dependency graph'."
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
@@ -43,8 +43,11 @@ yarn nx run <project-name>:dev
 ### Code Generation
 
 ```bash
-yarn nx generate <generator-name> --no-interactive
-yarn nx g <generator-name> --no-interactive
+# Generate a library
+yarn nx generate @nrwl/js:library ui --no-interactive
+# Run affected builds/tests
+yarn nx affected -t build
+yarn nx affected -t test
 ```
 
 ### Formatting
@@ -71,10 +74,8 @@ jest --coverage | eslint --fix
 
 ## Best Practices
 
-1. Always use `yarn nx run <project-name>:<target>` format.
+1. Use `yarn nx run <project-name>:<target>` for explicit runs.
 2. Use `yarn nx affected -t <target>` for multi-project changes.
-3. Use exact project names from `project.json` files.
-4. NX automatically handles task caching and parallel execution.
 
 ## NX MCP Server
 
@@ -96,13 +97,12 @@ The NX MCP server provides tools for understanding and working with the workspac
 
 ## Code Generation Workflow
 
-Always prefer generators over manual file creation when a generator exists.
+See [REFERENCE.md](REFERENCE.md) for generator schemas and `project.json` examples.
 
 ### Phase 1: Discover
-
-1. List available generators using `nx_generators` MCP tool (plugin + local workspace generators)
-2. Prefer local generators over plugin generators — they're customized for this repo
-3. If no generator fits, check `nx_available_plugins`; only fall back to manual creation after exhausting all generator options
+1. List available generators using the `nx_generators` MCP tool (plugin + local workspace generators).
+2. Prefer local generators over plugin generators — they're customized for this repo.
+3. If no generator fits, check `nx_available_plugins`; only fall back to manual creation after exhausting all generator options.
 
 ### Phase 2: Understand
 
@@ -121,7 +121,7 @@ yarn nx generate <generator-name> <options> --no-interactive
 
 **CRITICAL**: Verify cwd before running — generators may use it to determine file placement.
 
-On failure: read the error, adjust options, and retry. Use the **self-improvement** skill for non-obvious fixes.
+On failure: read the error, adjust options, and retry. Use the [self-improvement skill](../../skills/self-improvement/SKILL.md) for non-obvious fixes.
 
 ### Phase 4: Post-Generation
 

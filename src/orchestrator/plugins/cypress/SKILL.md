@@ -1,9 +1,7 @@
 ---
 name: cypress-testing
-description: "Cypress E2E and component testing patterns, commands, selectors, and CI configuration. Use when writing E2E tests, component tests, or configuring Cypress in CI pipelines."
+description: "Writes Cypress E2E/component tests, configures `cy.intercept()` and `cy.session()`, authors custom commands, and wires CI artifacts. Use when creating E2E specs, component tests, or CI test pipelines. Trigger terms: cypress, e2e, component test, cy.intercept, cy.session"
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Cypress Testing
 
@@ -12,60 +10,42 @@ Cypress-specific E2E and component testing patterns. For project-specific test c
 ## Commands
 
 ```bash
-npx cypress open                   # Open interactive test runner
-npx cypress run                    # Run tests headlessly (CI)
-npx cypress run --spec "cypress/e2e/auth/**"  # Run specific specs
-npx cypress run --browser chrome   # Specify browser
-npx cypress run --headed           # Run with visible browser
-npx cypress run --component        # Run component tests only
-npx cypress run --record           # Record to Cypress Cloud
+# Interactive runner
+npx cypress open
+
+# Headless run (CI) — target a specific spec with --spec when needed
+npx cypress run
 ```
+
+## Workflow (install → add data-testid → write → run → CI)
+
+1. Install and verify: `npm install --save-dev cypress` then `npx cypress verify`.
+2. Add `data-testid` attributes to key elements. Write custom commands in `cypress/support/commands.ts`, configure `cy.intercept()` stubs, and author fixtures under `cypress/fixtures/`.
+3. Write focused tests under `cypress/e2e/` using `data-testid` selectors. After authoring a spec, validate the setup by running a single spec: `npx cypress run --spec "cypress/e2e/auth/login.cy.ts" --headed` (quick smoke check).
+4. Run locally: `npx cypress open` (interactive) or `npx cypress run` (headless). If a spec fails, re-run the failing spec directly and inspect `cypress/screenshots/` and `cypress/videos/` for evidence.
+5. CI: `npx cypress run` — assert exit code 0; upload videos/screenshots on failures.
+
 
 ## Test Structure
 
-```
-cypress/
-├── e2e/                     # E2E test specs
-│   ├── auth/
-│   │   ├── login.cy.ts
-│   │   └── signup.cy.ts
-│   └── dashboard/
-│       └── overview.cy.ts
-├── fixtures/                # Test data (JSON)
-│   └── users.json
-├── support/
-│   ├── commands.ts          # Custom commands
-│   ├── e2e.ts               # E2E support file
-│   └── component.ts         # Component test support
-└── downloads/               # Downloaded files during tests
-```
+Tests: `cypress/e2e/`  •  Fixtures: `cypress/fixtures/`  •  Commands: `cypress/support/commands.ts`
 
 ## Writing Tests
 
-### E2E Test Pattern
+### E2E Test Pattern (single focused spec)
 
 ```typescript
 // cypress/e2e/auth/login.cy.ts
 describe('Login', () => {
-  beforeEach(() => {
-    cy.visit('/login');
-  });
+  beforeEach(() => cy.visit('/login'));
 
-  it('should log in with valid credentials', () => {
+  it('logs in with valid credentials and lands on dashboard', () => {
     cy.get('[data-testid="email-input"]').type('user@example.com');
     cy.get('[data-testid="password-input"]').type('password123');
     cy.get('[data-testid="login-button"]').click();
 
     cy.url().should('include', '/dashboard');
     cy.get('[data-testid="user-menu"]').should('be.visible');
-  });
-
-  it('should show error for invalid credentials', () => {
-    cy.get('[data-testid="email-input"]').type('wrong@example.com');
-    cy.get('[data-testid="password-input"]').type('wrong');
-    cy.get('[data-testid="login-button"]').click();
-
-    cy.get('[data-testid="error-message"]').should('contain', 'Invalid credentials');
   });
 });
 ```
@@ -87,59 +67,15 @@ Cypress.Commands.add('login', (email: string, password: string) => {
 
 ## Selector Strategy
 
-Priority order for selecting elements:
+Priority: prefer `data-testid`, then `aria-*` attributes or `role`. Avoid fragile selectors (auto-generated classes, deep CSS paths). See [REFERENCE.md](REFERENCE.md) for CI selector consistency rules.
 
-1. `data-testid` attributes — most resilient to UI changes
-2. `aria-label` or `role` — accessible and meaningful
-3. Dedicated CSS classes — avoid styling classes
-4. **Never** use tag names, auto-generated classes, or fragile CSS paths
+## Best Practices (Cypress-specific and non-obvious)
 
-## Best Practices
+- Prefer `cy.intercept()` with deterministic fixture payloads over test-time seeding for flaky network scenarios
+- Use `cy.session()` with serialized auth state to speed repeatable suites; persist and reuse tokens across related specs
+- Use route alias scoping (unique `@alias` names per spec) to avoid cross-test waits when running in parallel
 
-- Use `cy.intercept()` to stub/spy on API calls — don't depend on backend state
-- Use `cy.session()` for authentication — avoid logging in before every test
-- Avoid `cy.wait(ms)` — use `cy.intercept()` with aliases instead
-- Assert on visible elements — Cypress auto-retries, so assertions are resilient
-- Keep tests independent — each test should set up its own state
-- Use fixtures for test data — avoid hardcoding values in tests
-- Add `data-testid` attributes to components during development, not retroactively
 
-## CI Configuration
+For CI pipeline examples and `cypress.config.ts` snippets, see [REFERENCE.md](REFERENCE.md).
 
-```yaml
-# GitHub Actions example
-cypress:
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4
-    - uses: cypress-io/github-action@v6
-      with:
-        build: npm run build
-        start: npm run start
-        wait-on: 'http://localhost:3000'
-        browser: chrome
-```
-
-## Configuration (cypress.config.ts)
-
-```typescript
-import { defineConfig } from 'cypress';
-
-export default defineConfig({
-  e2e: {
-    baseUrl: 'http://localhost:3000',
-    viewportWidth: 1280,
-    viewportHeight: 720,
-    video: false,
-    screenshotOnRunFailure: true,
-    defaultCommandTimeout: 10000,
-    retries: { runMode: 2, openMode: 0 },
-  },
-  component: {
-    devServer: {
-      framework: 'next',
-      bundler: 'webpack',
-    },
-  },
-});
-```
+For advanced configuration examples and CI optimizations, see [REFERENCE.md](REFERENCE.md).

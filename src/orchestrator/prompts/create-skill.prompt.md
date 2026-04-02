@@ -55,36 +55,48 @@ Determine the type:
 Use this template:
 
 ```markdown
-````skill
 ---
 name: <skill-name>
-description: "<One-line description of what the skill covers. Include key topics and when to use it.>"
+description: "<Verb1> X, <verb2> Y, and <verb3> Z. Use when <scenario1>, <scenario2>, or <scenario3>."
 ---
 
 # <Display Name>
 
-<1-2 sentence overview of the skill's purpose and scope.>
+## Workflow
 
-## Core Principles
+1. **<Step>** — <Action>
+   - Checkpoint: <what to verify before proceeding>
+   - Recovery: <what to do on failure>
+2. **<Step>** — <Action>
+   - Checkpoint: <validation>
+3. **<Step>** — <Action>
+   - Fail → fix → re-run from step N.
 
-1. **<Principle>** — <Explanation>
-2. **<Principle>** — <Explanation>
-3. **<Principle>** — <Explanation>
-
-## <Domain Section 1>
+## <Domain Section>
 
 <Content organized by topic. Use tables, code blocks, and checklists.>
 
-## <Domain Section 2>
+## <Executable Example>
 
-<More domain content.>
+```<lang>
+// Concrete, copy-paste-ready code (5-15 lines)
+```
 
 ## Anti-Patterns
 
-- **<Bad pattern>** — <Why it's bad and what to do instead>
-- **<Bad pattern>** — <Why it's bad and what to do instead>
-````
+| Anti-pattern | Fix |
+|-------------|-----|
+| <Bad pattern> | <What to do instead> |
+
+## References
+
+| Resource | Purpose |
+|----------|--------|
+| [REFERENCE.md](./REFERENCE.md) | <Extended examples, schemas, large tables> |
+| **<related-skill>** skill | <What it contributes> |
 ```
+
+If the skill has large code examples (>30 lines), schema tables, or verbose reference material, create a companion `REFERENCE.md` in the same directory and link to it from SKILL.md. Keep SKILL.md as the lean operational overview. Companion files must start with a backlink: `> Parent: [SKILL.md](./SKILL.md)`.
 
 ### Step 4: Register the Skill
 
@@ -111,12 +123,42 @@ Registration differs by type:
 - [ ] Skill matrix updated (`directSkills` array or capability slot binding)
 - [ ] For process skills: at least one agent's `directSkills` array includes it in skill-matrix.json
 - [ ] For plugin skills: `config.ts` `skillName` matches the `name` in frontmatter
+- [ ] Run `npx tessl skill review <path>` — target 100% score (see Scoring Criteria below)
+
+## Scoring Criteria
+
+Skills are evaluated by `npx tessl skill review` across 8 criteria (3 pts each = 24 total). Target 100%.
+
+### Description (frontmatter `description` field)
+
+| Criterion | 3/3 Pattern | Common Pitfall |
+|-----------|------------|----------------|
+| **Specificity** | List 3+ concrete actions as verbs: "Creates X, validates Y, and manages Z" | Vague "covers" or "handles" without listing what |
+| **Trigger terms** | Natural phrases a user would say — broad synonyms and variations | Too specialized; missing common phrasings |
+| **Completeness** | Explicit `Use when...` clause with 3+ trigger scenarios | Missing when-to-use guidance |
+| **Distinctiveness** | Unique niche; terms unlikely to collide with other skills | Generic terms that overlap with adjacent skills |
+
+**Formula:** `"<Verb1> X, <verb2> Y, and <verb3> Z. Use when <scenario1>, <scenario2>, or <scenario3>."`
+
+### Content (SKILL.md body)
+
+| Criterion | 3/3 Pattern | Common Pitfall |
+|-----------|------------|----------------|
+| **Conciseness** | Every line earns its place. No info Claude already knows. Tables over prose. | Explaining obvious concepts, redundant sections, verbose anti-patterns with "Why" columns |
+| **Actionability** | ≥1 executable code example (copy-paste ready), concrete CLI commands, specific thresholds | Deferring to other skills without fallback, abstract guidance without examples |
+| **Workflow clarity** | Numbered steps with validation checkpoints, explicit error recovery, feedback loops (fail → fix → re-run) | Implied sequence without numbers, no checkpoints between steps, missing recovery path |
+| **Progressive disclosure** | SKILL.md = lean overview. Bulky content (>30-line examples, large tables, schemas) in REFERENCE.md. External refs organized in a References section. | Everything inline making the file too heavy, or too much deferred leaving SKILL.md hollow |
 
 ## Quality Guidelines
 
-- **Be prescriptive** — Skills should give clear instructions, not vague advice. "Use `fetchPlaces()` from `libs/queries`" beats "use the query library"
-- **Include examples** — Code snippets, file path examples, and table references
-- **Keep it scannable** — Use headings, tables, bullets, and code blocks. Agents need to find information fast
-- **Avoid duplication** — If a rule already exists in `.github/instructions/`, reference it instead of repeating it
-- **Stay stack-agnostic in process skills** — Never hardcode technology names; use capability slot references (e.g., "the **database** skill" not "Supabase")
-- **Size target** — 100-300 lines. Under 100 is probably too thin; over 300 should be split into multiple skills
+- **Be prescriptive** — "Use `fetchPlaces()` from `libs/queries`" beats "use the query library"
+- **Include executable examples** — At least one copy-paste-ready code block (5-15 lines). CLI commands with real flags, not placeholders
+- **Keep it scannable** — Tables over prose. Headings, bullets, code blocks. Agents parse structure, not paragraphs
+- **Number your workflows** — Every multi-step process needs numbered steps, checkpoints ("Gate: X passes"), and recovery ("Fail → fix → re-run step N")
+- **Don't explain what Claude knows** — Skip "what is X" explanations, obvious anti-pattern justifications, and concept definitions. Jump straight to the rules
+- **Avoid duplication** — If a rule exists in another skill or instruction file, reference it: "Load **security-hardening** skill for CSP configuration"
+- **Use REFERENCE.md for bulk** — Large code examples, schema tables, worked examples, and template libraries go in a companion `REFERENCE.md`. Link once from SKILL.md
+- **Stay stack-agnostic in process skills** — Use capability slot references ("the **database** skill" not "Supabase")
+- **Size target** — 80-200 lines in SKILL.md. Under 80 is too thin; over 200 should split content to REFERENCE.md. Over 300 should be split into multiple skills
+- **No standalone trigger-term sections** — Weave trigger terms naturally into the description's `Use when...` clause
+- **Third-person voice in descriptions** — "Creates X" not "Create X" or "This skill creates X"

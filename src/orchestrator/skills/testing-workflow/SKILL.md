@@ -1,9 +1,17 @@
 ---
 name: testing-workflow
-description: "Comprehensive testing workflow including test planning, unit/integration/E2E testing patterns, coverage requirements, and common testing mistakes. Use when writing tests, planning test strategies, or validating feature completeness."
+description: "Generates test plans, writes unit/integration/E2E test files, identifies coverage gaps, and flags common testing anti-patterns. Use when writing tests, creating test suites, planning test strategies, mocking dependencies, measuring code coverage, or test planning."
 ---
 
 # Testing Workflow
+
+## Workflow
+
+1. **Plan** — Write a test plan using the Pre-Implementation categories below.
+2. **Implement** — Write unit/integration tests; run and verify passing.
+3. **E2E** — Run E2E tests in browser via the **e2e-testing** capability slot.
+4. **Validate** — Run the Post-Implementation Checklist.
+5. **Fix loop** — If any step fails → fix → re-run from step 2.
 
 ## Core Rules
 
@@ -63,4 +71,49 @@ Suite files: see `.opencastle/project.instructions.md`.
 
 ## Commands
 
-Resolve exact commands via the **codebase-tool** skill (run tests, run with coverage, update snapshots, run affected only).
+```sh
+# Unit / integration
+npx vitest run --coverage          # all tests + coverage
+npx vitest run src/utils.test.ts   # single file
+
+# E2E (Playwright)
+npx playwright test                # all E2E suites
+npx playwright test --ui           # interactive mode
+```
+
+```ts
+// Unit test with mock
+import { describe, it, expect, vi } from 'vitest';
+import { fetchItems } from './api';
+
+describe('fetchItems', () => {
+  it('returns filtered results', async () => {
+    vi.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([{ id: 1, name: 'test' }]))
+    );
+    const items = await fetchItems({ category: 'active' });
+    expect(items).toHaveLength(1);
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('category=active'));
+  });
+});
+```
+
+```ts
+// E2E test (Playwright)
+import { test, expect } from '@playwright/test';
+
+test('filter updates results and URL', async ({ page }) => {
+  await page.goto('/items');
+  await page.getByRole('combobox', { name: 'Category' }).selectOption('active');
+  await expect(page).toHaveURL(/category=active/);
+  await expect(page.getByRole('listitem')).not.toHaveCount(0);
+});
+```
+
+## References
+
+| Resource | Purpose |
+|----------|--------|
+| **browser-testing** skill | Chrome DevTools automation for E2E |
+| **validation-gates** Gate 3 | Responsive breakpoint checks |
+| `project.instructions.md` | Suite files, project-specific test config |

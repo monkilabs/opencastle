@@ -21,11 +21,14 @@ Plain language; consistent landmarks and nav order across pages; minimal distrac
 - No `tabindex` on static elements; `tabindex="-1"` only for elements receiving programmatic focus.
 - Hidden elements must not be focusable.
 
-**Composite components** (grids, listboxes, menus, tabs, toolbars): tab stop on container; arrow keys navigate children via roving tabindex or `aria-activedescendant`; on focus restore last/first child.
+**Composite components** and detailed complex patterns have been moved to REFERENCE.md to keep this skill focused. See REFERENCE.md for roving tabindex, `aria-activedescendant`, and composite widget examples.
 
-**Roving tabindex:** First child `tabindex="0"`, rest `-1`; on arrow key set prev to `-1`, new to `0`, call `.focus()`.
+### Validation checkpoints (run-fix-repeat)
 
-**`aria-activedescendant`:** Container `tabindex="0"` + `aria-activedescendant="IDREF"`; CSS draws outline on referenced element; arrow keys update attribute.
+- Run an automated audit: `npx axe-core` or integrate `axe-core`/`axe-playwright` in CI — fix high/critical findings.
+- Verify keyboard tab order manually: `Tab` through the page, ensure logical order and visible focus.
+- Confirm contrast ratios (spot-check key pages): use `axe`, `pa11y`, or `contrast` tools and ensure ≥4.5:1 for body text.
+- Fix, re-run audits, and repeat until no high/critical a11y issues remain.
 
 **Skip link** (first focusable element):
 

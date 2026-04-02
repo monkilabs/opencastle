@@ -1,11 +1,10 @@
 ---
 name: decomposition
-description: "Task decomposition patterns for the Team Lead: dependency resolution, phase assignment, delegation spec templates, prompt quality examples, and orchestration patterns."
+description: "Resolves task dependencies, generates machine-actionable delegation specs, and structures phased subtask plans for multi-agent work. Use when writing delegation specs, resolving task dependencies, building phased subtask plans for multi-agent work, assigning work to sub-agents, or partitioning a feature into parallelizable phases."
 ---
 
 # Task Decomposition
 
-Load at: Decompose & Partition phase (Step 2) or when writing delegation prompts (Step 3).
 
 ## Dependency Resolution
 
@@ -22,36 +21,20 @@ D → B        Phase 2: C, D (parallel)
 F → C, D     Phase 3: E, F (parallel)
 ```
 
-## Delegation Spec (Score 5+)
+## Delegation Spec
 
-For score 1-3, objective + files + criteria is sufficient.
+| Field | Content |
+|-------|---------|
+| Tracker | TAS-XX — Title |
+| Complexity | [score]/13 → [tier] |
+| Agent | Agent Name |
+| Objective | 1-3 sentences: what to build/change and why |
+| Context | Key files, related patterns, prior phase output, relevant lessons |
+| Constraints | File partition, explicit exclusions, phase dependencies |
+| Acceptance Criteria | `[ ]` checklist |
+| Expected Output | Files changed · Verification · AC status · Discovered issues |
 
-```
-## Delegation Spec: [Task Title]
-**Tracker Issue:** TAS-XX — [Title]
-**Complexity:** [score]/13 → [tier] tier
-**Agent:** [Agent Name]
-
-### Objective
-1-3 sentences: what to build/change and why.
-
-### Context
-- Key files: [list]
-- Related patterns: [file:line references]
-- Prior phase output: [compacted summary if applicable]
-- Relevant lessons: [LES-XXX from LESSONS-LEARNED.md]
-
-### Constraints
-- File partition: Only modify files under [paths]
-- Do NOT modify: [explicit exclusions]
-- Dependencies: Requires [TAS-XX] Done first
-
-### Acceptance Criteria
-- [ ] Criterion 1
-
-### Expected Output
-Files changed · Verification (lint/test/build) · AC status (✅/❌) · Discovered issues · Lessons applied
-```
+For score 1-3, objective + files + criteria is sufficient. See `REFERENCE.md` for the full delegation spec template.
 
 Read `.opencastle/LESSONS-LEARNED.md` before starting. Add a lesson if you retry any approach.
 
@@ -106,5 +89,7 @@ Phase 2+: page tasks (parallel)
 - No page task may list a foundation-owned path in its `files[]`
 
 **Common mistake:** Decomposing pages as independent Phase 1 tasks → each agent invents its own design.
+
+**Distinctive note (AI delegation):** This skill focuses on decomposition that produces machine-actionable delegation prompts: file partitions, explicit acceptance criteria, and machine-friendly constraints (exact paths, line ranges, forbidden files). The output should be ready to paste into a sub-agent prompt without additional human translation.
 
 > Load the **project-consistency** skill for the full Foundation Phase pattern, prompt templates, and anti-patterns.

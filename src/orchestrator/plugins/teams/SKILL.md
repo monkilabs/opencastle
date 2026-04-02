@@ -7,115 +7,65 @@ description: "Microsoft Teams MCP integration for agent-to-human notifications a
 
 # Teams Notifications
 
-Agent communication patterns via the Microsoft Teams MCP server (Microsoft Agent 365). Enables agents to post progress updates, request human approvals, and read responses — all through Teams channels and chats.
-
 ## MCP Server
 
-| Field | Value |
-|-------|-------|
-| **URL** | `https://mcp.microsoft365.com/mcp` |
-| **Type** | Remote MCP server (HTTP) |
-| **Auth** | Microsoft Graph API — OAuth 2.0 with `McpServers.Teams.All` scope |
-| **Platform** | Microsoft Agent 365 (Frontier preview) |
-| **Status** | Preview — requires Microsoft Agent 365 Frontier preview access |
+URL: `https://mcp.microsoft365.com/mcp`. Auth: OAuth 2.0 (Azure AD, scopes: `Chat.ReadWrite`, `ChannelMessage.Send`).
 
-### Prerequisites
+## MCP Tools
 
-1. **Microsoft Agent 365 Frontier preview** enrollment
-2. **App registration** in Microsoft Entra ID (Azure AD)
-3. **Graph API permissions:** `McpServers.Teams.All` (delegated or application)
-4. **Admin consent** for the registered app
+Covers chats, messages, channels, members, and settings.
 
-## Available MCP Tools
+### Example MCP calls
 
-Tool names follow `teams_<resource>_<action>`. Covers: chats, messages, channels, members, and team settings. Use tool discovery to list available tools at runtime.
+Post a progress update:
 
-## Agent Notification Patterns
-
-### Progress Updates
-
+```json
+// tool: teams_messages_create
+{ "channel_id": "channel-xyz", "body": "🔄 TAS-42 — In progress — implementing unit tests\nFiles: 3 (PriceFilter.tsx, test, index)" }
 ```
-Channel: Agent Updates (or project-specific channel)
-Format:
-  🔄 **Task:** TAS-42 — Add price filter component
-  **Status:** In progress — implementing unit tests
-  **Files changed:** 3 (PriceFilter.tsx, PriceFilter.test.tsx, index.ts)
-  **ETA:** ~5 minutes
+
+Read replies in thread:
+
+```json
+// tool: teams_messages_list_replies
+{ "channel_id": "channel-xyz", "thread_id": "thread-abc", "limit": 50 }
 ```
 
 ## Human-in-the-Loop Approval
 
-1. **Post approval request** to the channel:
-   ```
-   ⏳ **Approval Required**
-   Task: TAS-42 — Database migration adds `price_range` column
-   Action: Run migration on production database
+1. **Post approval request** — verify the response confirms message_id:
 
-   Reply with:
-   ✅ Approve — to proceed
-   ❌ Reject — to stop
-   Or reply with questions/comments
-   ```
-2. **Poll for response** — Read replies to determine the decision.
-3. **Acknowledge** — Post confirmation of the action taken.
+```json
+// tool: teams_messages_create
+{ "channel_id": "channel-xyz", "body": "⏳ Approval Required\nTask: TAS-42 — Run migration on production\nReply: Approve or Reject", "threading": { "start_thread": true } }
+// → { "message_id": "msg-123", "thread_id": "thread-abc" }
+```
 
-### Parsing Conventions
+   If post fails: retry once; if still failing, fall back to asking in chat only.
 
-| Signal | Meaning |
-|--------|---------|
-| `✅` or "approve"/"yes" reply | Approved — proceed |
-| `❌` or "reject"/"no" reply | Rejected — stop and report |
-| `👀` reaction or "looking" reply | Acknowledged — user is reviewing |
-| Detailed reply | Instructions or questions for the agent |
-| `@mention` of agent | Direct command or question |
+2. **Poll for response** (5s interval, 5 min timeout):
+
+```js
+const replies = await teams_messages_list_replies({ channel_id: channelId, thread_id: threadId, limit: 50 });
+for (const r of replies || []) {
+  if (/\b(approve|yes)\b/i.test(r.body)) return 'approved';
+  if (/\b(reject|no)\b/i.test(r.body)) return 'rejected';
+}
+// Retry after 5s; timeout after 5 min → post escalation message
+```
+
+3. **Acknowledge** — Post confirmation of the action taken and close the thread.
+
+
 
 ## Channel & Chat Conventions
 
 ### Threading Rules
 
-- **Always reply in threads** — use message replies, not top-level posts for follow-ups
-- **One thread per task** — keep all updates for a single task in one conversation thread
-- **Include task ID** — every message references the tracker issue ID
-- **Mark important messages** — use importance flags for approval requests
+- Always reply in threads; one thread per task; include tracker issue ID in every message.
 
 ## Message Formatting
 
-### Adaptive Cards
+### Adaptive Cards and advanced payloads
 
-For richer formatting, use Adaptive Cards (JSON-based):
-
-```json
-{
-  "type": "AdaptiveCard",
-  "body": [
-    { "type": "TextBlock", "text": "Approval Required", "weight": "Bolder", "size": "Medium" },
-    { "type": "TextBlock", "text": "Task: TAS-42 — Database migration", "wrap": true }
-  ],
-  "actions": [
-    { "type": "Action.Submit", "title": "Approve", "data": { "action": "approve" } },
-    { "type": "Action.Submit", "title": "Reject", "data": { "action": "reject" } }
-  ],
-  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-  "version": "1.4"
-}
-```
-
-Use Adaptive Cards for approval workflows when available — they provide structured input.
-
-## Rate Limits
-
-Microsoft Graph API: 50 messages/second per app per tenant; 10,000 individual API calls per 10 minutes.
-
-**Best practices:**
-- Batch updates into single messages rather than posting many small messages
-- Cache team/channel/user IDs — don't look them up repeatedly
-
-## Security Considerations
-
-- **OAuth tokens** are managed by the MCP server — agents never see raw tokens
-- **Scope minimization** — request only the Graph API permissions agents actually need
-- **No secrets in messages** — never post tokens, passwords, or credentials in Teams messages
-
-## Preview Limitations
-
-The Teams MCP server is in Frontier preview — availability and tool surface may change without notice. Check [Microsoft Agent 365 documentation](https://learn.microsoft.com/en-us/microsoft-365-copilot/extensibility/) for the latest status.
+For large Adaptive Card JSON, rate limits, and security considerations see [REFERENCE.md](REFERENCE.md). Use Adaptive Cards when structured inputs or buttons are required; otherwise post a simple threaded message.

@@ -1,49 +1,34 @@
 ---
 name: memory-merger
-description: "Protocol for graduating mature lessons from LESSONS-LEARNED.md into permanent instruction and skill files. Closes the self-improvement loop by codifying validated knowledge at the source level."
+description: "Reviews mature LESSONS-LEARNED.md entries, rewrites them as permanent rules in skill/instruction files, and archives graduated lessons. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded LESSONS-LEARNED.md."
 ---
 
 # Memory Merger
 
-Promotes validated lessons from `.opencastle/LESSONS-LEARNED.md` into instruction/skill files where they have permanent impact.
 
-## When to Run
+## Run Criteria
 
-| Trigger | Threshold |
-|---------|-----------|
-| File size | >50 entries |
-| Citation count | Cited 3+ times |
-| Age | >60 days old |
+Combined signals to identify merge candidates.
+
+| Criterion | Signal / Threshold |
+|-----------|--------------------|
+| File size | LESSONS-LEARNED.md > 50 entries |
+| Citation count | Cited 3+ times across sessions |
+| Age | >60 days and still relevant |
 | Category cluster | 5+ lessons in same category |
-| Discretionary | Lessons file feels stale |
+| Severity | Marked `high` or blocking |
+| Discretionary | Curator / maintainer judgement (stale file) |
+
+## Workflow (numbered)
+
+1. Scan LESSONS-LEARNED.md for candidate entries (frequency, severity, age).
+2. Map each candidate to a target file and section.
+3. Draft the exact edit (concise rule or example).
+4. Apply the edit with an attribution comment.
+5. Archive the migrated lesson in LESSONS-LEARNED.md with a merge note.
+6. Update the index and run validation checks.
 
 ## Merge Protocol
-
-### 1 — Scan Candidates
-
-| Criterion | Signal |
-|-----------|--------|
-| Frequency | Cited/re-discovered 3+ times |
-| Severity | Marked `high` |
-| Age | >60 days, still relevant |
-| Concentration | 5+ in same category → extract pattern |
-| Tool-specific | MCP tool, codebase-tool command, or framework pattern |
-
-### 2 — Map to Target File
-
-| Category | Target |
-|----------|--------|
-| `task-management` | skill-matrix `task-management` slot |
-| `mcp-tools` | agent/skill that uses the tool |
-| `codebase-tool` | skill-matrix `codebase-tool` slot |
-| `cms` / `database` | respective skill-matrix slots |
-| `browser-testing` | skill-matrix `e2e-testing` slot |
-| `git-workflow` | `.github/skills/git-workflow/SKILL.md` |
-| `deployment` | `.github/skills/deployment-infrastructure/SKILL.md` |
-| `delegation` | `.github/agents/team-lead.agent.md` or `team-lead-reference` skill |
-| `testing` | `.github/skills/testing-workflow/SKILL.md` |
-| `ui` / `framework` | `framework` slot or `react-development` skill |
-| Cross-cutting | `.github/instructions/general.instructions.md` |
 
 ### 3 — Draft Edit
 
@@ -73,12 +58,18 @@ Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.
 
 Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
-## Quality Gates
+### Worked Example
+
+See [REFERENCE.md](./REFERENCE.md) for a full worked merge example (LES-042: MCP tool timeout).
+
+## Quality Gates (validation checkpoints)
 
 - [ ] Merged content reads naturally (not copy-pasted)
-- [ ] No duplicate rules created
-- [ ] Archived lesson references target file
+- [ ] No duplicate rules created in target files or other skills
+- [ ] Archived lesson references target file and date
 - [ ] Core insight preserved — no loss of nuance
+- [ ] Target file still passes lint/markdown checks (if applicable)
+- [ ] A quick smoke verification (search for relevant keyword) confirms merge applied
 
 ## Anti-Patterns
 

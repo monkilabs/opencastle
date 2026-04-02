@@ -1,29 +1,17 @@
 ---
 name: deployment-infrastructure
-description: "Deployment architecture, environment variables, cron jobs, security headers, and caching patterns. Use when configuring deployments, managing environment variables, setting up cron jobs, or troubleshooting build/deployment issues."
+description: "Configures deployment pipelines, manages environment variables, schedules cron jobs, applies security headers, and implements caching strategies. Use when working with Docker, Vercel, AWS, Dockerfile, nginx.conf, or platform deployment configs."
 ---
 
 # Deployment Infrastructure
 
-All deployment configuration is project-specific. See [deployment-config.md](../../.opencastle/stack/deployment-config.md) for the full architecture, environment variables, cron jobs, caching headers, and key files.
-
-## Generic Deployment Principles
-
-- Use platform-native Git integration for CI/CD (push to `main` = production, push to branch = preview)
-- Store all secrets as environment variables — never in code, commits, or logs
-- Use `Bearer` token auth for cron job endpoints
-- Apply security headers via framework config (HSTS, CSP, X-Frame-Options, Permissions-Policy)
-- Cache static assets with `max-age=31536000, immutable`; use `max-age=86400` for favicon/manifest
-- Load the **security-hardening** skill for full header inventory and CSP configuration
+See [deployment-config.md](../../.opencastle/stack/deployment-config.md) for full architecture, env vars, cron jobs, and caching headers.
 
 ## Environment Variables
 
 ### Layering & Precedence
 
-1. `.env` — shared defaults; committed, no secrets
-2. `.env.local` — developer overrides; git-ignored
-3. `.env.production` / `.env.preview` — environment-specific values
-4. Platform-injected — set in hosting dashboard (highest priority)
+`.env` (defaults, committed) → `.env.local` (git-ignored) → `.env.production` / `.env.preview` → Platform-injected (highest).
 
 ### Startup Validation
 
@@ -43,8 +31,7 @@ export const env = envSchema.parse(process.env);
 
 ### Naming
 
-- Prefix: `PUBLIC_*`/`NEXT_PUBLIC_*` (browser-safe), `SECRET_*`/`*_SECRET` (server-only), `CRON_SECRET` (cron)
-- `SCREAMING_SNAKE_CASE`; gitignore `.env.local`, `.env.*.local`, `.env.production`
+Prefix: `PUBLIC_*`/`NEXT_PUBLIC_*` (browser-safe), `SECRET_*`/`*_SECRET` (server-only). `SCREAMING_SNAKE_CASE`. Gitignore `.env.local`, `.env.*.local`.
 
 ## CI/CD Pipeline
 
@@ -65,65 +52,44 @@ export async function GET(request: Request) {
 
 ## Caching Strategy
 
-| Asset Type | `Cache-Control` Header | Rationale |
-|---|---|---|
-| Hashed static assets (JS, CSS) | `public, max-age=31536000, immutable` | Content-addressed; safe to cache forever |
-| Images / fonts | `public, max-age=31536000, immutable` | Typically fingerprinted |
-| Favicon / manifest | `public, max-age=86400` | Refreshes within a day |
-| HTML pages (SSG) | `public, max-age=0, must-revalidate` | Serve stale while revalidating |
-| API responses | `private, no-cache` | User-specific or frequently changing |
-| Prerendered pages (ISR) | `public, s-maxage=3600, stale-while-revalidate=86400` | CDN: 1h cache, 1d stale |
+| Asset Type | `Cache-Control` Header |
+|---|---|
+| Hashed static assets (JS, CSS) | `public, max-age=31536000, immutable` |
+| Images / fonts | `public, max-age=31536000, immutable` |
+| Favicon / manifest | `public, max-age=86400` |
+| HTML pages (SSG) | `public, max-age=0, must-revalidate` |
+| API responses | `private, no-cache` |
+| Prerendered pages (ISR) | `public, s-maxage=3600, stale-while-revalidate=86400` |
 
 Apply via framework `headers()` config or CDN rules.
 
 ## Security Headers
 
-Apply globally via framework config or middleware. See **security-hardening** skill for full CSP configuration.
-
-```javascript
-const securityHeaders = [
-  { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains; preload' },
-  { key: 'X-Content-Type-Options', value: 'nosniff' },
-  { key: 'X-Frame-Options', value: 'DENY' },
-  { key: 'X-XSS-Protection', value: '1; mode=block' },
-  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-  { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
-  { key: 'Content-Security-Policy', value: "default-src 'self'; script-src 'self' 'unsafe-inline';" },
-];
-```
-
-- HSTS `max-age` ≥ 31536000 for preload eligibility
-- `X-Frame-Options: DENY` prevents clickjacking; use `SAMEORIGIN` only for self-embeds
-- Keep CSP as restrictive as possible; document each exception
-- Disable unused browser features via `Permissions-Policy`
+Load **security-hardening** skill for full CSP inventory and header configuration.
 
 ## Release Process
 
-1. **Pre-Release Audit** — lint, test, build all affected projects; check `git diff` since last tag; verify no draft PRs
-2. **Regression Check** — spot-check adjacent features; run full test suites; verify critical user flows
-3. **Changelog** — generate from commits/PR titles; categorize (Features, Bug Fixes, Performance, Breaking Changes); include migration notes
-4. **Version** — semver (MAJOR/MINOR/PATCH); tag in git; update version references
-5. **Verify** — smoke-test production URLs; monitor error rates; document rollback steps
+1. **Audit** — lint, test, build; `git diff` since last tag; verify no draft PRs
+   - Gate: all commands exit 0
+2. **Changelog** — generate from commits; categorize (Features, Fixes, Breaking); include migration notes
+3. **Tag** — semver tag; update version references
+4. **Verify** — `curl -sI https://example.com | grep -E 'HTTP|Strict'` — smoke-test production URLs; monitor error rates
+   - Gate: homepage returns 200; headers correct
+   - Fail → rollback immediately
 
-## Rollback Procedures
+## Rollback
 
-1. **Platform rollback** — promote last known-good deployment from hosting dashboard
-2. **Git revert** — `git revert -m 1 HEAD && git push origin main`
+Prefer platform rollback (promote last good deploy). Fallback: `git revert -m 1 HEAD && git push`.
 
-- [ ] Confirm issue is deployment-related (not data or third-party)
-- [ ] Roll back via platform or git revert — never force-push `main`
-- [ ] Smoke-test the rollback deployment
-- [ ] Notify team; create post-mortem ticket
+1. Roll back → 2. Smoke-test (`curl -sI`) → 3. Confirm 200 + correct behavior → 4. If still broken, escalate
+5. Notify team; create post-mortem ticket
 
 ## Anti-Patterns
 
-| Anti-Pattern | Why | Fix |
-|---|---|---|
-| Hardcoding secrets | Leak via git, logs, bundles | Env vars + Zod startup validation |
-| Skipping preview deployments | Bugs reach production unreviewed | Deploy every branch to preview |
-| `Cache-Control: no-store` everywhere | Every request hits origin | Per-asset cache durations (see table) |
-| Force-push `main` to fix a deploy | Destroys history; breaks teammates | `git revert` to undo cleanly |
-| Disabling security headers "temporarily" | Temporary becomes permanent | Keep strict; document exceptions |
-| Builds without `--frozen-lockfile` | Non-deterministic installs | Always use `--frozen-lockfile` in CI |
-| `.env.local` in repository | Developer secrets leak | Gitignore; share via secure vault |
-| No startup env validation | Cryptic late-failure errors | Validate all vars at boot (fail fast) |
+| Anti-Pattern | Fix |
+|---|---|
+| Hardcoding secrets | Env vars + Zod startup validation |
+| Skipping preview deployments | Deploy every branch to preview |
+| `Cache-Control: no-store` everywhere | Per-asset cache durations (see table) |
+| Disabling security headers "temporarily" | Keep strict; document exceptions |
+| Builds without `--frozen-lockfile` | Always use `--frozen-lockfile` in CI |
