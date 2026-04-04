@@ -22,7 +22,18 @@ description: "Defines branch naming conventions, PR template requirements, commi
 1. Branch `<type>/<ticket-id>-<slug>` from `main`
 2. Atomic commits referencing issue ID
 3. Push branch to origin
-4. Open PR (do NOT merge): `GH_PAGER=cat gh pr create --base main --title "TAS-XX: …" --body "Resolves TAS-XX"`
+4. Open PR (do NOT merge) — write the body to a temp file first, then use `--body-file`:
+   ```sh
+   # Write PR body to a temp file to avoid shell escaping issues
+   cat > /tmp/pr-body.md << 'EOF'
+   Resolves TAS-XX
+   
+   ## Changes
+   - ...
+   EOF
+   GH_PAGER=cat gh pr create --base main --title "TAS-XX: Short description" --body-file /tmp/pr-body.md
+   ```
+   **Never use inline `--body` with markdown/backticks/special chars** — it breaks in zsh heredocs and quoted strings.
 5. Update issue with PR URL
 
 ## Discovered Issues Policy

@@ -75,6 +75,12 @@ Example prompt suffix to include when content research is needed:
 
 ---
 
+### Scaffolding Rule
+
+New project from scratch? You MUST load the **backbone-scaffolding** skill and follow it.
+
+---
+
 ## Workflow
 
 ### 1. Analyse the Goal

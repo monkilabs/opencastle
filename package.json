@@ -31,7 +31,7 @@
     "url": "https://github.com/monkilabs/opencastle/issues"
   },
   "homepage": "https://www.opencastle.dev/",
-  "license": "BUSL-1.1",
+  "license": "MIT",
   "author": "Filip Mares",
   "scripts": {
     "build": "npm run cli:build && npm run dashboard:build",

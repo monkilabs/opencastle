@@ -109,7 +109,7 @@ Add `--dry-run` to any command to preview what it would change without writing f
 
 **Specialist Agents.** Developer, UI/UX, Database, Security, Testing, Reviewer, and more.
 
-**On-Demand Skills.** Loaded on demand to keep context windows lean. Auto-selected during init based on your stack. All 51 skills and plugins scored 100% on the [tessl Skill Evaluator](https://tessl.io/registry/skills/submit).
+**On-Demand Skills.** Loaded on demand to keep context windows lean. Auto-selected during init based on your stack. All 51 skills and plugins scored 100% on the [tessl Skill Evaluator](https://tessl.io/registry?q=opencastle).
 
 **Workflow Templates.** Features, bug fixes, data pipelines, security audits — reproducible execution templates.
 
