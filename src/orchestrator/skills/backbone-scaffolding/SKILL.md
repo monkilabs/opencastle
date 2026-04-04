@@ -1,0 +1,99 @@
+---
+name: backbone-scaffolding
+description: "Scaffolds production-ready monorepo projects using the backbone CLI: configures workspace packages, wires build tooling, sets up CI pipelines, and initializes framework/backend/CMS integrations. Use when creating, bootstrapping, or initializing a new application, project, starter template, or monorepo from scratch. Trigger terms: scaffold, bootstrap, init, new repo, new app, boilerplate, starter, greenfield."
+---
+
+# backbone-scaffolding Skill
+
+## Requirements
+
+- Node.js **>= 22.5.0** must be available in the environment
+- Run backbone with `npx @monkilabs/backbone <project-name>`
+
+## How to Use the CLI
+
+Backbone is **interactive** — it uses `@clack/prompts` to ask a series of questions. Agents must run the command and respond to each prompt in sequence.
+
+### Prompt Sequence
+
+1. **Monorepo tool** — `nx` or `turborepo`
+2. **Framework** — `nextjs` or `astro`
+3. **Backend** — `convex`, `supabase`, `prisma`, or `none`
+4. **CMS** — `sanity`, `contentful`, `strapi`, or `none`
+5. **E2E Testing** — `playwright` or `cypress`
+6. **Deployment** — `vercel`, `netlify`, or `none`
+7. **Mobile** — `ionic` or `none` *(only shown for non-Astro frameworks)*
+8. **Packages** — multi-select: `uiLib`, `emailLib`, `llmLib`
+
+## CLI Options & Constraints
+
+| Category    | Choices                                   | Notes                                    |
+|-------------|-------------------------------------------|------------------------------------------|
+| Monorepo    | `nx`, `turborepo`                         | Required                                 |
+| Framework   | `nextjs`, `astro`                         | Required                                 |
+| Backend     | `convex`, `supabase`, `prisma`            | ⛔ `convex` incompatible with `astro`    |
+| CMS         | `sanity`, `contentful`, `strapi`, `none`  | Optional                                 |
+| E2E Testing | `playwright`, `cypress`                   | Required                                 |
+| Deployment  | `vercel`, `netlify`, `none`               | Optional                                 |
+| Mobile      | `ionic`, `none`                           | ⛔ `ionic` incompatible with `astro`     |
+| Packages    | `uiLib`, `emailLib`, `llmLib`             | Multi-select; ⛔ `uiLib` incompatible with `astro` |
+
+**Astro constraint:** `astro` requires React-free options — never combine with `convex`, `ionic`, or `uiLib`.
+
+## OpenCastle TechTool → Backbone Mapping
+
+Most TechTool names map 1:1 to backbone prompt choices (e.g. `nextjs` → select Next.js, `supabase` → select Supabase). Exceptions:
+
+| TechTool | Backbone mapping | Notes |
+|----------|-----------------|-------|
+| `resend` | Select `emailLib` in Packages prompt | Only non-obvious mapping |
+| `vitest` | — | Always included automatically |
+| `figma`, `chrome-devtools` | — | Not handled by backbone; configure separately |
+
+## Generated Project Structure
+
+After backbone runs, the output directory contains:
+
+```
+<project-name>/
+  apps/
+    web/          # Next.js or Astro application
+    mobile/       # (if ionic selected)
+  packages/
+    ui/           # (if uiLib selected) shared React component library
+    email/        # (if emailLib selected) Resend/React Email package
+    llm/          # (if llmLib selected) LLM integration package
+  backend/
+    convex/       # (if convex selected)
+    supabase/     # (if supabase selected)
+  e2e/            # Playwright or Cypress tests
+  .github/
+    workflows/    # GitHub Actions CI pipelines (always included)
+  vitest.config.ts          # Always included
+  tsconfig.base.json        # Always included
+  package.json              # Monorepo root package.json
+  turbo.json / nx.json      # Monorepo tool config
+```
+
+**Always included regardless of options:** Vitest configuration, GitHub Actions CI workflows, root `tsconfig.base.json`, ESLint, Prettier.
+
+Agents working on post-scaffolding tasks must **not recreate** any of these files — they already exist. Build on top of the generated structure.
+
+## Post-Scaffolding Steps
+
+After `npx @monkilabs/backbone <project-name>` completes:
+
+1. `cd <project-name>` into the generated directory
+2. Run `npm install` to install all dependencies
+3. Verify the project builds: run the monorepo build command (e.g. `npx turbo build` or `npx nx build`)
+4. All subsequent agent tasks should **import and extend** the generated boilerplate — never overwrite it
+
+**If something fails:**
+- `npm install` errors → verify Node.js >= 22.5.0 (`node -v`)
+- Build errors → check that no incompatible options were selected (see Astro constraint above); re-run backbone with corrected choices if needed
+- Wrong option selected → delete the generated directory and re-run `npx @monkilabs/backbone` with the correct selections
+
+## Example Convoy Task
+
+See [EXAMPLES.md](EXAMPLES.md) for a complete scaffolding task JSON.
+

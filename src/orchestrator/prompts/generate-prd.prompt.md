@@ -31,6 +31,10 @@ If the feature request involves a specific person, place, organization, topic, o
    > ℹ️ Content based on training data — verify before launch.
 3. **Never fabricate or hallucinate content.** If you genuinely have no knowledge about a real-world subject and cannot search, state what is unknown and use placeholder text. This applies to all content: bios, descriptions, histories, statistics, quotes, and any factual claims.
 
+## Scaffolding Awareness
+
+New project from scratch? You MUST load the **backbone-scaffolding** skill and follow it.
+
 ## Output Rules
 
 **CRITICAL:** Return the PRD as your text response. Do NOT create any files. Do NOT use file-writing tools. Simply output the full PRD document as text. Do not wrap it in a code fence — start directly with the `#` heading. Do not summarize — output the complete document.
