@@ -123,11 +123,11 @@ Registration differs by type:
 - [ ] Skill matrix updated (`directSkills` array or capability slot binding)
 - [ ] For process skills: at least one agent's `directSkills` array includes it in skill-matrix.json
 - [ ] For plugin skills: `config.ts` `skillName` matches the `name` in frontmatter
-- [ ] Run `npx tessl skill review <path>` — target 100% score (see Scoring Criteria below)
+- [ ] Run `npx tessl skill review <path>` — target 100 score (see Scoring Criteria below)
 
 ## Scoring Criteria
 
-Skills are evaluated by `npx tessl skill review` across 8 criteria (3 pts each = 24 total). Target 100%.
+Skills are evaluated by `npx tessl skill review` across 8 criteria (3 pts each = 24 total). Target 100.
 
 ### Description (frontmatter `description` field)
 
