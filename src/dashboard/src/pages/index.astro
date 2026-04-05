@@ -447,6 +447,7 @@ try {
   // ── Active Convoy Polling ──────────────────────────────────
   let _activePollingTimer = null;
   let _activePollingConvoyId = null;
+  let _lastPolledConvoyStatus = null;
 
   function startActiveConvoyPolling() {
     if (_activePollingTimer) return; // already polling
@@ -476,6 +477,7 @@ try {
       // If we haven't navigated to any convoy yet, navigate now
       if (!_activePollingConvoyId) {
         _activePollingConvoyId = convoy.id;
+        _lastPolledConvoyStatus = null;
         // Refresh ETL data so convoy detail JSON exists
         await fetch(base + 'data/refresh');
         // Re-fetch the convoy list and stats
@@ -487,36 +489,32 @@ try {
       // If we're on a convoy and a new one started (pipeline chain), follow it
       if (_activePollingConvoyId !== convoy.id && isRunningOrPending) {
         _activePollingConvoyId = convoy.id;
+        _lastPolledConvoyStatus = null;
         await fetch(base + 'data/refresh');
         await refreshDashboardData();
         showConvoyDetailView(convoy.id, convoy.name || convoy.id);
       }
 
-      // If we're viewing the active convoy, refresh its detail data
+      // If we're viewing the active convoy, refresh when it's running or just transitioned
       if (_activePollingConvoyId === convoy.id) {
-        await fetch(base + 'data/refresh');
-        await refreshDashboardData();
-        // Reload convoy detail to show latest task progress
-        await loadConvoyDetail(convoy.id);
+        const statusChanged = _lastPolledConvoyStatus !== null && _lastPolledConvoyStatus !== convoy.status;
+        _lastPolledConvoyStatus = convoy.status;
 
-        // Update pipeline chain breadcrumb if applicable
-        if (data.pipeline && data.pipeline.length > 1) {
-          renderPipelineChain(data.pipeline, convoy.id);
-        }
-      }
+        if (isRunningOrPending || statusChanged) {
+          await fetch(base + 'data/refresh');
+          await refreshDashboardData();
+          // Reload convoy detail to show latest task progress
+          await loadConvoyDetail(convoy.id);
 
-      // Stop polling when the convoy (and any pipeline) is finished
-      if (!isRunningOrPending) {
-        // In pipeline mode, check if all convoys in the chain are done
-        if (data.pipeline) {
-          const anyActive = data.pipeline.some(c => c.status === 'running' || c.status === 'pending');
-          if (!anyActive) {
-            stopActiveConvoyPolling();
+          // Update pipeline chain breadcrumb if applicable
+          if (data.pipeline && data.pipeline.length > 1) {
+            renderPipelineChain(data.pipeline, convoy.id);
           }
-        } else {
-          stopActiveConvoyPolling();
         }
       }
+
+      // NOTE: In 'active' mode we intentionally keep polling even after a convoy finishes,
+      // so that subsequent convoys are detected when they start.
     } catch {
       // Polling errors are non-fatal — just retry next interval
     }
@@ -2167,11 +2165,9 @@ try {
       const target = running || latest;
       if (target) {
         _activePollingConvoyId = target.id;
+        _lastPolledConvoyStatus = null;
         showConvoyDetailView(target.id, target.name || target.id);
-        // If still running, start polling for live updates
-        if (target.status === 'running' || target.status === 'pending') {
-          startActiveConvoyPolling();
-        }
+        startActiveConvoyPolling();
       } else {
         // No convoy exists yet — show waiting state and poll
         showWaitingBanner();
