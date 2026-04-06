@@ -2,6 +2,7 @@ import { appendFileSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync
 import { dirname, join } from 'node:path'
 import type { ConvoyStore } from './store.js'
 import { KNOWN_EVENT_TYPES } from './types.js'
+import type { ConvoyEventType } from './types.js'
 import { validateEventData } from './event-schemas.js'
 
 const RESERVED_KEYS = new Set(['_event_id', 'convoy_id', 'task_id', 'worker_id', 'timestamp', 'type'])
@@ -16,11 +17,13 @@ export function ndjsonPathForConvoy(convoyId: string, basePath?: string): string
   return join(base, '.opencastle', 'logs', 'convoys', `${convoyId}.ndjson`)
 }
 
+type ConvoyEmitIds = { convoy_id?: string; task_id?: string; worker_id?: string }
+
 export interface ConvoyEventEmitter {
-  emit(
-    type: string,
-    data?: Record<string, unknown>,
-    ids?: { convoy_id?: string; task_id?: string; worker_id?: string },
+  emit<T extends ConvoyEventType>(
+    type: T['type'],
+    data?: T extends { data?: infer D } ? D : never,
+    ids?: ConvoyEmitIds,
   ): void
   close(): void
 }

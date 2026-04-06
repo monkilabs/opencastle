@@ -364,6 +364,9 @@ export type ConvoyEventType =
   | { type: 'tdd_check_passed'; data?: { task_id?: string; new_source_files?: number; existing_test_files?: number } }
   | { type: 'tdd_check_failed'; data?: { task_id?: string; missing_test_files?: string[]; new_source_files?: number } }
   | { type: 'tdd_check_skipped'; data?: { task_id?: string; reason?: string; agent?: string } }
+  | { type: 'convoy_resumed'; data?: { original_created_at?: string } }
+  | { type: 'artifacts_extracted'; data?: { task_id?: string; count?: number; artifacts?: Array<{ filename: string; summary?: string }> } }
+  | { type: 'file_partition_conflict'; data?: { conflicts?: Array<{ phase: number; taskA: string; taskB: string; overlapping: string[] }> } }
 
 /** All canonical convoy event type strings. Used for runtime validation. */
 export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
@@ -414,4 +417,7 @@ export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
   'tdd_check_passed',
   'tdd_check_failed',
   'tdd_check_skipped',
+  'convoy_resumed',
+  'artifacts_extracted',
+  'file_partition_conflict',
 ])
