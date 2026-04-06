@@ -49,6 +49,10 @@ export async function execute(task: Task, options: ExecuteOptions = {}): Promise
     wroteJson = true
   }
 
+  if (options.mcp_approve_all) {
+    args.push('--approve-mcps')
+  }
+
   try {
   return await new Promise<ExecuteResult>((resolve) => {
     const proc = spawn('opencode', args, {

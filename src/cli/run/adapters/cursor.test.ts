@@ -81,6 +81,22 @@ describe('cursor adapter — MCP support', () => {
     })
   })
 
+  it('passes --mcp-config flag pointing to mcp.json path', async () => {
+    const capturedArgs: string[] = []
+    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      capturedArgs.push(...args)
+      return makeMockProc(0, '{}')
+    })
+    const { execute } = await import('./cursor.js')
+    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
+    await execute(makeTask(), { mcpServers, cwd: tmpDir })
+
+    const idx = capturedArgs.indexOf('--mcp-config')
+    expect(idx).toBeGreaterThanOrEqual(0)
+    expect(capturedArgs[idx + 1]).toBe(join(tmpDir, 'mcp.json'))
+  })
+
   it('passes --approve-mcps when mcp_approve_all is true', async () => {
     const capturedArgs: string[] = []
     mockSpawn.mockImplementation((cmd: string, args: string[]) => {
