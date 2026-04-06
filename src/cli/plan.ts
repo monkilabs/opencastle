@@ -97,6 +97,7 @@ function printAdapterError(detectionFailed: boolean, adapterName: string): void 
         `    • claude     — npm install -g @anthropic-ai/claude-code\n` +
         `    • cursor     — https://cursor.com (Cursor > Install CLI)\n` +
         `    • opencode   — https://opencode.ai\n` +
+        `    • codex      — npm install -g @openai/codex\n` +
         `\n` +
         `    Or specify an adapter explicitly: opencastle plan --adapter <name>`
     )
@@ -116,6 +117,9 @@ function printAdapterError(detectionFailed: boolean, adapterName: string): void 
       opencode:
         '    Install OpenCode from https://opencode.ai\n' +
         '    Ensure the "opencode" command is on your PATH.',
+      codex:
+        '    Install: npm install -g @openai/codex\n' +
+        '    Docs:    https://developers.openai.com/codex',
     }
     const cliName = adapterName === 'cursor' ? 'agent' : adapterName
     const hint = hints[adapterName] ?? ''
