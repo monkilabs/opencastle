@@ -125,6 +125,7 @@ describe('single convoy pipeline', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     })
 
     const result = await pipeline.run()
@@ -147,6 +148,7 @@ describe('single convoy pipeline', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     })
 
     const result = await pipeline.run()
@@ -177,6 +179,7 @@ describe('two-convoy pipeline', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('done')
@@ -195,6 +198,7 @@ describe('two-convoy pipeline', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(vi.mocked(readFile)).toHaveBeenNthCalledWith(
@@ -227,6 +231,7 @@ describe('on_failure: stop', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')
@@ -251,6 +256,7 @@ describe('on_failure: stop', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')
@@ -277,6 +283,7 @@ describe('on_failure: continue', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')
@@ -305,6 +312,7 @@ describe('hybrid pipeline (chained + own tasks)', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('done')
@@ -327,6 +335,7 @@ describe('hybrid pipeline (chained + own tasks)', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.summary.totalConvoys).toBe(1)
@@ -349,6 +358,7 @@ describe('token aggregation', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.cost?.total_tokens).toBe(350)
@@ -363,6 +373,7 @@ describe('token aggregation', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.cost).toBeUndefined()
@@ -379,6 +390,7 @@ describe('token aggregation', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     const store = createConvoyStore(dbPath)
@@ -404,6 +416,7 @@ describe('shared branch', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     const calls = factory.mock.calls as [ConvoyEngineOptions][]
@@ -424,6 +437,7 @@ describe('pipeline convoy linking', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     const calls = factory.mock.calls as [ConvoyEngineOptions][]
@@ -455,6 +469,7 @@ describe('pipeline record persistence', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(statusDuringRun).toBe('running')
@@ -477,6 +492,7 @@ describe('pipeline record persistence', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     const store = createConvoyStore(dbPath)
@@ -528,6 +544,7 @@ describe('pipeline resume', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: resumeFactory,
+      _ensureBranch: async () => {},
     }).resume(pipelineId)
 
     expect(resumeResult.convoyResults).toHaveLength(2)
@@ -571,6 +588,7 @@ describe('pipeline resume', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: resumeFactory,
+      _ensureBranch: async () => {},
     }).resume(pipelineId)
 
     expect(result.cost?.total_tokens).toBe(77)
@@ -606,6 +624,7 @@ describe('pipeline resume', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: resumeFactory,
+      _ensureBranch: async () => {},
     }).resume(pipelineId)
 
     expect(result.status).toBe('failed')
@@ -620,6 +639,7 @@ describe('pipeline resume', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: makeEngineFactory([]),
+      _ensureBranch: async () => {},
     })
 
     await expect(pipeline.resume('nonexistent-id')).rejects.toThrow(
@@ -668,6 +688,7 @@ describe('pipeline resume', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).resume(pipelineId)
 
     expect(mockEngine.resume).toHaveBeenCalledWith(runningConvoyId)
@@ -716,6 +737,7 @@ describe('pipeline resume', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).resume(pipelineId)
 
     expect(mockEngine.retryFailed).toHaveBeenCalledWith(failedConvoyId)
@@ -748,6 +770,7 @@ describe('getCurrentBranch fallback', () => {
       basePath: tmpDir, // not a git repo → getCurrentBranch returns 'main'
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('done')
@@ -789,6 +812,7 @@ describe('getCurrentBranch fallback', () => {
       basePath: tmpDir,
       dbPath,
       _createConvoyEngine: resumeFactory,
+      _ensureBranch: async () => {},
     }).resume(pipelineId)
 
     expect(result.status).toBe('done')
@@ -808,6 +832,7 @@ describe('path traversal protection', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')
@@ -833,6 +858,7 @@ describe('path traversal protection', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')
@@ -858,6 +884,7 @@ describe('path traversal protection', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('done')
@@ -886,6 +913,7 @@ describe('missing convoy spec file', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')
@@ -919,6 +947,7 @@ describe('missing convoy spec file', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')
@@ -952,6 +981,7 @@ describe('invalid convoy YAML', () => {
       adapter: makeAdapter(),
       dbPath,
       _createConvoyEngine: factory,
+      _ensureBranch: async () => {},
     }).run()
 
     expect(result.status).toBe('failed')

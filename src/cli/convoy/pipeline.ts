@@ -49,6 +49,8 @@ export interface PipelineOrchestratorOptions {
   verbose?: boolean
   /** Injectable engine factory (used in tests). */
   _createConvoyEngine?: (opts: ConvoyEngineOptions) => ConvoyEngine
+  /** Injectable branch handler (used in tests). */
+  _ensureBranch?: (branchName: string, basePath: string) => Promise<void>
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -85,6 +87,7 @@ export function createPipelineOrchestrator(
   const basePath = resolve(options.basePath ?? process.cwd())
   const dbPath = options.dbPath ?? resolve(basePath, '.opencastle', 'convoy.db')
   const engineFactory = options._createConvoyEngine ?? createConvoyEngine
+  const branchFn = options._ensureBranch ?? ensureBranch
 
   async function getCurrentBranch(): Promise<string> {
     try {
@@ -145,6 +148,12 @@ export function createPipelineOrchestrator(
     const pipelineId = `pipeline-${startTime}`
     const branch = spec.branch ?? (await getCurrentBranch())
     const convoySpecs = spec.depends_on_convoy ?? []
+
+    // Switch branch BEFORE any DB writes — otherwise the convoy.db modification
+    // from insertPipeline() causes ensureBranch's dirty check to fail.
+    if (spec.branch !== undefined) {
+      await branchFn(spec.branch, basePath)
+    }
 
     mkdirSync(dirname(dbPath), { recursive: true })
     const store = createConvoyStore(dbPath)
