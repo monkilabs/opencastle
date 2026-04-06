@@ -8,6 +8,7 @@ const ADAPTERS: Record<string, () => Promise<AgentAdapter>> = {
   copilot: () => import('./copilot.js') as Promise<AgentAdapter>,
   cursor: () => import('./cursor.js') as Promise<AgentAdapter>,
   opencode: () => import('./opencode.js') as Promise<AgentAdapter>,
+  codex: () => import('./codex.js') as Promise<AgentAdapter>,
 }
 
 /**
@@ -29,7 +30,7 @@ export async function getAdapter(name: string): Promise<AgentAdapter> {
  * Detection priority order — checked first-to-last.
  * The first available adapter wins.
  */
-const DETECTION_ORDER = ['copilot', 'claude', 'cursor', 'opencode'] as const
+const DETECTION_ORDER = ['copilot', 'claude', 'cursor', 'opencode', 'codex'] as const
 
 /**
  * Auto-detect which adapter CLI is available on the system.
