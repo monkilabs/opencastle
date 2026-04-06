@@ -512,6 +512,22 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
 
     console.log(`\n  🏰 OpenCastle Convoy (Retry Failed): ${convoy.name}`)
     console.log(`  Convoy ID: ${convoy.id}`)
+
+    const { startDashboardServer } = await import('./dashboard.js')
+    let retryDashboardResult: { server: import('node:http').Server; port: number; url: string } | null = null
+    try {
+      retryDashboardResult = await startDashboardServer({
+        pkgRoot,
+        openBrowser: true,
+        convoyId: 'active',
+      })
+    } catch {
+      // Dashboard failure must not block convoy
+    }
+    if (retryDashboardResult) {
+      console.log(`  ${c.dim('Dashboard:')} ${retryDashboardResult.url}`)
+    }
+
     const { createConvoyEngine } = await import('./convoy/engine.js')
     const retryEngine = createConvoyEngine({
       spec: retrySpec,
@@ -531,7 +547,19 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printConvoyResult(retryResult)
-    process.exit(retryResult.status !== 'done' ? 1 : 0)
+    if (retryDashboardResult) {
+      console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
+      console.log(`  ${c.dim('Dashboard:')} ${retryDashboardResult.url}`)
+      console.log(`\n  Press Ctrl+C to stop`)
+      const exitCode = retryResult.status !== 'done' ? 1 : 0
+      process.on('SIGINT', () => {
+        console.log('\n  Dashboard stopped.\n')
+        retryDashboardResult!.server.close()
+        process.exit(exitCode)
+      })
+    } else {
+      process.exit(retryResult.status !== 'done' ? 1 : 0)
+    }
   }
 
   // ── --resume flag ─────────────────────────────────────────────
@@ -574,6 +602,22 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
 
       console.log(`\n  🏰 OpenCastle Pipeline (Resume): ${latestPipeline.name}`)
       console.log(`  Pipeline ID: ${latestPipeline.id}`)
+
+      const { startDashboardServer } = await import('./dashboard.js')
+      let resumePipelineDashResult: { server: import('node:http').Server; port: number; url: string } | null = null
+      try {
+        resumePipelineDashResult = await startDashboardServer({
+          pkgRoot,
+          openBrowser: true,
+          convoyId: 'active',
+        })
+      } catch {
+        // Dashboard failure must not block pipeline
+      }
+      if (resumePipelineDashResult) {
+        console.log(`  ${c.dim('Dashboard:')} ${resumePipelineDashResult.url}`)
+      }
+
       const { createPipelineOrchestrator } = await import('./convoy/pipeline.js')
       const resumePipelineOrchestrator = createPipelineOrchestrator({
         spec: resumePipelineSpec,
@@ -583,7 +627,19 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       })
       const resumePipelineResult = await resumePipelineOrchestrator.resume(latestPipeline.id)
       printPipelineResult(resumePipelineResult)
-      process.exit(resumePipelineResult.status !== 'done' ? 1 : 0)
+      if (resumePipelineDashResult) {
+        console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
+        console.log(`  ${c.dim('Dashboard:')} ${resumePipelineDashResult.url}`)
+        console.log(`\n  Press Ctrl+C to stop`)
+        const exitCode = resumePipelineResult.status !== 'done' ? 1 : 0
+        process.on('SIGINT', () => {
+          console.log('\n  Dashboard stopped.\n')
+          resumePipelineDashResult!.server.close()
+          process.exit(exitCode)
+        })
+      } else {
+        process.exit(resumePipelineResult.status !== 'done' ? 1 : 0)
+      }
     }
 
     // ── Pipeline done — don't fall through to convoy check ──────
@@ -637,6 +693,22 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
 
     console.log(`\n  \uD83C\uDFF0 OpenCastle Convoy (Resume): ${convoy.name}`)
     console.log(`  Convoy ID: ${convoy.id}`)
+
+    const { startDashboardServer } = await import('./dashboard.js')
+    let resumeDashResult: { server: import('node:http').Server; port: number; url: string } | null = null
+    try {
+      resumeDashResult = await startDashboardServer({
+        pkgRoot,
+        openBrowser: true,
+        convoyId: 'active',
+      })
+    } catch {
+      // Dashboard failure must not block convoy
+    }
+    if (resumeDashResult) {
+      console.log(`  ${c.dim('Dashboard:')} ${resumeDashResult.url}`)
+    }
+
     const { createConvoyEngine } = await import('./convoy/engine.js')
     const resumeEngine = createConvoyEngine({
       spec: resumeSpec,
@@ -655,7 +727,19 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printConvoyResult(resumeResult)
-    process.exit(resumeResult.status !== 'done' ? 1 : 0)
+    if (resumeDashResult) {
+      console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
+      console.log(`  ${c.dim('Dashboard:')} ${resumeDashResult.url}`)
+      console.log(`\n  Press Ctrl+C to stop`)
+      const exitCode = resumeResult.status !== 'done' ? 1 : 0
+      process.on('SIGINT', () => {
+        console.log('\n  Dashboard stopped.\n')
+        resumeDashResult!.server.close()
+        process.exit(exitCode)
+      })
+    } else {
+      process.exit(resumeResult.status !== 'done' ? 1 : 0)
+    }
   }
 
   // ── Formula template resolution / Read and validate spec ─────

@@ -170,7 +170,7 @@ export function createPipelineOrchestrator(
     let pipelineHalted = false
 
     try {
-      for (const [index, specPath] of convoySpecs.entries()) {
+      for (const specPath of convoySpecs) {
         if (pipelineHalted) {
           skippedCount++
           continue
@@ -178,7 +178,10 @@ export function createPipelineOrchestrator(
 
         let convoyResult: ConvoyResult
         try {
-          convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, index > 0)
+          // Always skip dirty check inside pipeline — run.ts pre-flight already
+          // handled the stash prompt, and insertPipeline() writes to convoy.db
+          // before the first convoy runs (which would cause a false dirty-check failure).
+          convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, true)
         } catch (err) {
           process.stderr.write(
             `  ✗ Convoy spec "${specPath}" failed to load: ${(err as Error).message}\n`,
@@ -354,7 +357,7 @@ export function createPipelineOrchestrator(
         } else {
           // Run fresh
           try {
-            convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, convoyIndex > 0)
+            convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, true)
           } catch (err) {
             process.stderr.write(
               `  ✗ Convoy spec "${specPath}" failed to load: ${(err as Error).message}\n`,
