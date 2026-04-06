@@ -237,4 +237,4 @@ For corporate sponsorship inquiries, open a [GitHub Discussion](https://github.c
 
 ## License
 
-[BSL 1.1](LICENSE) — Free for non-commercial use. Commercial use requires a paid license. Each version converts to Apache 2.0 two years after its release.
+[MIT](LICENSE)

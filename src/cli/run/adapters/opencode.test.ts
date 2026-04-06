@@ -132,4 +132,28 @@ describe('opencode adapter — MCP support', () => {
     await execute(makeTask(), { cwd: tmpDir })
     expect(capturedArgs).not.toContain('--mcp-config')
   })
+
+  it('passes --approve-mcps when mcp_approve_all is true', async () => {
+    const capturedArgs: string[] = []
+    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      capturedArgs.push(...args)
+      return makeMockProc(0, '{}')
+    })
+    const { execute } = await import('./opencode.js')
+    await execute(makeTask(), { mcp_approve_all: true, cwd: tmpDir })
+    expect(capturedArgs).toContain('--approve-mcps')
+  })
+
+  it('does NOT add --approve-mcps when mcp_approve_all is not set', async () => {
+    const capturedArgs: string[] = []
+    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      capturedArgs.push(...args)
+      return makeMockProc(0, '{}')
+    })
+    const { execute } = await import('./opencode.js')
+    await execute(makeTask(), { cwd: tmpDir })
+    expect(capturedArgs).not.toContain('--approve-mcps')
+  })
 })

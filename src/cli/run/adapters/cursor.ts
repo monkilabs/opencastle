@@ -51,6 +51,7 @@ export async function execute(task: Task, options: ExecuteOptions = {}): Promise
       mcpJson[server.name] = entry
     }
     writeFileSync(mcpJsonPath, JSON.stringify({ mcpServers: mcpJson }, null, 2), 'utf8')
+    args.push('--mcp-config', mcpJsonPath)
     wroteJson = true
   }
 
