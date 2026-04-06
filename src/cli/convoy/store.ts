@@ -17,7 +17,7 @@ import type {
   TaskStepRecord,
 } from './types.js'
 
-const SCHEMA_VERSION = 11
+const SCHEMA_VERSION = 12
 
 // ── Size limits (bytes) ────────────────────────────────────────────────────────
 const LIMIT_SPEC_YAML = 256 * 1024      // 256 KB
@@ -178,6 +178,7 @@ class ConvoyStoreImpl implements ConvoyStore {
   constructor(dbPath: string) {
     this.dbPath = dbPath
     this.db = new DatabaseSync(dbPath)
+    this.db.exec('PRAGMA foreign_keys = 0')
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
     this.initSchema()
@@ -222,7 +223,7 @@ class ConvoyStoreImpl implements ConvoyStore {
         );
 
         CREATE TABLE IF NOT EXISTS task (
-          id          TEXT PRIMARY KEY,
+          id          TEXT NOT NULL,
           convoy_id   TEXT NOT NULL REFERENCES convoy(id),
           phase       INTEGER NOT NULL,
           prompt      TEXT NOT NULL,
@@ -265,7 +266,8 @@ class ConvoyStoreImpl implements ConvoyStore {
           outputs           TEXT,
           inputs            TEXT,
           discovered_issues TEXT,
-          contract_result   TEXT
+          contract_result   TEXT,
+          PRIMARY KEY (id, convoy_id)
         );
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_task_idempotency ON task(convoy_id, idempotency_key)
@@ -423,6 +425,10 @@ class ConvoyStoreImpl implements ConvoyStore {
     if (version === 10) {
       migrateSchema(this.db, this.dbPath, 10, 11)
       version = 11
+    }
+    if (version === 11) {
+      migrateSchema(this.db, this.dbPath, 11, 12)
+      version = 12
     }
   }
 
@@ -1354,6 +1360,71 @@ export function migrateSchema(db: DatabaseSync, dbPath: string, fromVersion: num
         db.exec(`
           ALTER TABLE task ADD COLUMN contract_result TEXT;
           ALTER TABLE task ADD COLUMN compaction_count INTEGER NOT NULL DEFAULT 0;
+        `)
+      }
+      if (v === 11) {
+        db.exec(`
+          CREATE TABLE task_new (
+            id                TEXT NOT NULL,
+            convoy_id         TEXT NOT NULL REFERENCES convoy(id),
+            phase             INTEGER NOT NULL,
+            prompt            TEXT NOT NULL,
+            agent             TEXT NOT NULL DEFAULT 'developer',
+            adapter           TEXT,
+            model             TEXT,
+            timeout_ms        INTEGER NOT NULL DEFAULT 1800000,
+            status            TEXT NOT NULL DEFAULT 'pending',
+            worker_id         TEXT,
+            worktree          TEXT,
+            output            TEXT,
+            exit_code         INTEGER,
+            started_at        TEXT,
+            finished_at       TEXT,
+            retries           INTEGER NOT NULL DEFAULT 0,
+            max_retries       INTEGER NOT NULL DEFAULT 1,
+            files             TEXT,
+            depends_on        TEXT,
+            prompt_tokens     INTEGER,
+            completion_tokens INTEGER,
+            total_tokens      INTEGER,
+            cost_usd          TEXT,
+            cost_usd_num      REAL,
+            gates             TEXT,
+            on_exhausted      TEXT NOT NULL DEFAULT 'dlq',
+            injected          INTEGER NOT NULL DEFAULT 0,
+            provenance        TEXT,
+            idempotency_key   TEXT,
+            current_step      INTEGER,
+            total_steps       INTEGER,
+            review_level      TEXT,
+            review_verdict    TEXT,
+            review_tokens     INTEGER,
+            review_model      TEXT,
+            panel_attempts    INTEGER NOT NULL DEFAULT 0,
+            dispute_id        TEXT,
+            drift_score       REAL,
+            drift_retried     INTEGER NOT NULL DEFAULT 0,
+            compaction_count  INTEGER NOT NULL DEFAULT 0,
+            outputs           TEXT,
+            inputs            TEXT,
+            discovered_issues TEXT,
+            contract_result   TEXT,
+            PRIMARY KEY (id, convoy_id)
+          );
+          INSERT INTO task_new SELECT
+            id, convoy_id, phase, prompt, agent, adapter, model, timeout_ms,
+            status, worker_id, worktree, output, exit_code, started_at, finished_at,
+            retries, max_retries, files, depends_on, prompt_tokens, completion_tokens,
+            total_tokens, cost_usd, cost_usd_num, gates, on_exhausted, injected,
+            provenance, idempotency_key, current_step, total_steps, review_level,
+            review_verdict, review_tokens, review_model, panel_attempts, dispute_id,
+            drift_score, drift_retried, compaction_count, outputs, inputs,
+            discovered_issues, contract_result
+          FROM task;
+          DROP TABLE task;
+          ALTER TABLE task_new RENAME TO task;
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_task_idempotency ON task(convoy_id, idempotency_key)
+            WHERE idempotency_key IS NOT NULL;
         `)
       }
       db.exec('COMMIT')
