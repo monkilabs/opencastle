@@ -63,7 +63,7 @@ describe('createEventEmitter', () => {
 
   it('stores null data when no data object is provided', () => {
     const emitter = createEventEmitter(store)
-    emitter.emit('heartbeat', undefined, { convoy_id: 'c1' })
+    emitter.emit('convoy_guard', undefined, { convoy_id: 'c1' })
     emitter.close()
     const events = store.getEvents('c1')
     expect(events[0].data).toBeNull()
@@ -92,7 +92,7 @@ describe('createEventEmitter', () => {
 
   it('defaults all ids to null when ids are not provided', () => {
     const emitter = createEventEmitter(store, { ndjsonPath })
-    emitter.emit('generic_event')
+    emitter.emit('convoy_guard')
     emitter.close()
     const events = store.getEvents('c1')
     expect(events).toHaveLength(0)
@@ -106,7 +106,7 @@ describe('createEventEmitter', () => {
 
   it('includes all provided ids in the NDJSON record', () => {
     const emitter = createEventEmitter(store, { ndjsonPath })
-    emitter.emit('worker_spawned', {}, { convoy_id: 'c1', task_id: 't1', worker_id: 'w1' })
+    emitter.emit('task_started', {}, { convoy_id: 'c1', task_id: 't1', worker_id: 'w1' })
     emitter.close()
     const line = JSON.parse(readFileSync(ndjsonPath, 'utf8').trim())
     expect(line.convoy_id).toBe('c1')
@@ -116,7 +116,7 @@ describe('createEventEmitter', () => {
 
   it('SQLite event stores correct ids', () => {
     const emitter = createEventEmitter(store)
-    emitter.emit('worker_done', {}, { convoy_id: 'c1', task_id: 'task-x', worker_id: 'wkr-y' })
+    emitter.emit('task_done', {}, { convoy_id: 'c1', task_id: 'task-x', worker_id: 'wkr-y' })
     emitter.close()
     const events = store.getEvents('c1')
     expect(events[0].task_id).toBe('task-x')
@@ -125,7 +125,7 @@ describe('createEventEmitter', () => {
 
   it('does not throw if NDJSON path is not provided', () => {
     const emitter = createEventEmitter(store)
-    expect(() => emitter.emit('test', {}, { convoy_id: 'c1' })).not.toThrow()
+    expect(() => emitter.emit('convoy_guard', {}, { convoy_id: 'c1' })).not.toThrow()
     emitter.close()
   })
 
@@ -266,7 +266,7 @@ describe('crash resilience', () => {
     const count = 1000
     const emitter = createEventEmitter(store, { ndjsonPath })
     for (let i = 0; i < count; i++) {
-      emitter.emit('bench_event', { index: i }, { convoy_id: 'c1', task_id: `t${i}` })
+      emitter.emit('task_retried', { previous_status: String(i) }, { convoy_id: 'c1', task_id: `t${i}` })
     }
     emitter.close()
 
@@ -280,7 +280,7 @@ describe('crash resilience', () => {
     // Each line is valid JSON with the right type
     for (const line of lines) {
       const parsed = JSON.parse(line)
-      expect(parsed.type).toBe('bench_event')
+      expect(parsed.type).toBe('task_retried')
       expect(parsed.convoy_id).toBe('c1')
     }
 
@@ -453,7 +453,9 @@ describe('emit-time data validation', () => {
 
   it('unknown event type bypasses data validation (only one warning)', () => {
     const emitter = createEventEmitter(store)
-    emitter.emit('unknown_type_xyz', { any: 'data' }, { convoy_id: 'c1' })
+    // Cast needed: TypeScript normally catches unknown types at compile time.
+    // This tests the runtime guard (e.g. JS callers / dynamic values / `as any` paths).
+    emitter.emit('unknown_type_xyz' as Parameters<typeof emitter.emit>[0], { any: 'data' }, { convoy_id: 'c1' })
     emitter.close()
     expect(warnSpy).toHaveBeenCalledTimes(1)
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown event type: "unknown_type_xyz"'))
