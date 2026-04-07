@@ -37,8 +37,10 @@ export function parseArgs(args: string[]): PackageArgs {
       opts.dryRun = true
     } else if ((arg === '--platform' || arg === '-p') && args[i + 1]) {
       opts.platform = args[++i]
+      if (!opts.platform.trim()) { console.error('  ✗ --platform cannot be empty'); process.exit(1) }
     } else if ((arg === '--output' || arg === '-o') && args[i + 1]) {
       opts.output = args[++i]
+      if (!opts.output.trim()) { console.error('  ✗ --output cannot be empty'); process.exit(1) }
     }
   }
   return opts

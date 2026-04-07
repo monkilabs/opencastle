@@ -99,10 +99,12 @@ export default async function log({ args }: CliContext): Promise<void> {
       case '--type':
         if (i + 1 >= args.length) { console.error('  \u2717 --type requires a value'); process.exit(1) }
         type = args[++i]
+        if (!type.trim()) { console.error('  \u2717 --type cannot be empty'); process.exit(1) }
         break
       case '--logs-dir':
         if (i + 1 >= args.length) { console.error('  \u2717 --logs-dir requires a path'); process.exit(1) }
         logsDir = args[++i]
+        if (!logsDir.trim()) { console.error('  \u2717 --logs-dir cannot be empty'); process.exit(1) }
         break
       default:
         if (arg.startsWith('--')) {
@@ -113,7 +115,9 @@ export default async function log({ args }: CliContext): Promise<void> {
           if (next === undefined || next.startsWith('--')) {
             fields[key] = true
           } else {
-            fields[key] = coerceValue(key, args[++i])
+            const raw = args[++i]
+            if (!raw.trim()) { console.error(`  \u2717 --${key} cannot be empty`); process.exit(1) }
+            fields[key] = coerceValue(key, raw)
           }
         }
     }

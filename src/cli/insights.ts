@@ -60,6 +60,7 @@ export default async function insights({ args }: CliContext): Promise<void> {
       sinceDays = parsed
     } else if (arg === '--db') {
       dbOverride = args[++i] ?? null
+      if (dbOverride !== null && !dbOverride.trim()) { console.error('  \u2717 --db cannot be empty'); process.exit(1) }
     }
   }
 

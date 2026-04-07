@@ -247,34 +247,42 @@ export default async function lesson({ args }: CliContext): Promise<void> {
       case '--title':
         if (i + 1 >= args.length) { console.error('  \u2717 --title requires a value'); process.exit(1) }
         title = args[++i]
+        if (!title.trim()) { console.error('  \u2717 --title cannot be empty'); process.exit(1) }
         break
       case '--category':
         if (i + 1 >= args.length) { console.error('  \u2717 --category requires a value'); process.exit(1) }
         category = args[++i]
+        if (!category.trim()) { console.error('  \u2717 --category cannot be empty'); process.exit(1) }
         break
       case '--severity':
         if (i + 1 >= args.length) { console.error('  \u2717 --severity requires a value'); process.exit(1) }
         severity = args[++i]
+        if (!severity.trim()) { console.error('  \u2717 --severity cannot be empty'); process.exit(1) }
         break
       case '--problem':
         if (i + 1 >= args.length) { console.error('  \u2717 --problem requires a value'); process.exit(1) }
         problem = args[++i]
+        if (!problem.trim()) { console.error('  \u2717 --problem cannot be empty'); process.exit(1) }
         break
       case '--wrong':
         if (i + 1 >= args.length) { console.error('  \u2717 --wrong requires a value'); process.exit(1) }
         wrong = args[++i]
+        if (!wrong.trim()) { console.error('  \u2717 --wrong cannot be empty'); process.exit(1) }
         break
       case '--correct':
         if (i + 1 >= args.length) { console.error('  \u2717 --correct requires a value'); process.exit(1) }
         correct = args[++i]
+        if (!correct.trim()) { console.error('  \u2717 --correct cannot be empty'); process.exit(1) }
         break
       case '--why':
         if (i + 1 >= args.length) { console.error('  \u2717 --why requires a value'); process.exit(1) }
         why = args[++i]
+        if (!why.trim()) { console.error('  \u2717 --why cannot be empty'); process.exit(1) }
         break
       case '--customizations-dir':
         if (i + 1 >= args.length) { console.error('  \u2717 --customizations-dir requires a path'); process.exit(1) }
         customizationsDir = args[++i]
+        if (!customizationsDir.trim()) { console.error('  \u2717 --customizations-dir cannot be empty'); process.exit(1) }
         break
     }
   }

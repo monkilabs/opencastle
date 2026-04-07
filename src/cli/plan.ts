@@ -536,33 +536,40 @@ function parseArgs(args: string[]): PlanOptions {
       case '-f':
         if (i + 1 >= args.length) { console.error('  ✗ --file requires a path'); process.exit(1) }
         opts.file = args[++i]
+        if (!opts.file.trim()) { console.error('  ✗ --file cannot be empty'); process.exit(1) }
         break
       case '--text':
       case '-t':
         if (i + 1 >= args.length) { console.error('  ✗ --text requires a value'); process.exit(1) }
         opts.text = args[++i]
+        if (!opts.text.trim()) { console.error('  ✗ --text cannot be empty'); process.exit(1) }
         break
       case '--template':
         if (i + 1 >= args.length) { console.error('  ✗ --template requires a name'); process.exit(1) }
         opts.template = args[++i]
+        if (!opts.template.trim()) { console.error('  ✗ --template cannot be empty'); process.exit(1) }
         break
       case '--context':
         if (i + 1 >= args.length) { console.error('  ✗ --context requires a path'); process.exit(1) }
         opts.context = args[++i]
+        if (!opts.context.trim()) { console.error('  ✗ --context cannot be empty'); process.exit(1) }
         break
       case '--context-text':
         if (i + 1 >= args.length) { console.error('  ✗ --context-text requires a value'); process.exit(1) }
         opts.contextText = args[++i]
+        if (!opts.contextText.trim()) { console.error('  ✗ --context-text cannot be empty'); process.exit(1) }
         break
       case '--output':
       case '-o':
         if (i + 1 >= args.length) { console.error('  ✗ --output requires a path'); process.exit(1) }
         opts.output = args[++i]
+        if (!opts.output.trim()) { console.error('  ✗ --output cannot be empty'); process.exit(1) }
         break
       case '--adapter':
       case '-a':
         if (i + 1 >= args.length) { console.error('  ✗ --adapter requires a name'); process.exit(1) }
         opts.adapter = args[++i]
+        if (!opts.adapter.trim()) { console.error('  ✗ --adapter cannot be empty'); process.exit(1) }
         break
       case '--verbose':
         opts.verbose = true
@@ -572,7 +579,7 @@ function parseArgs(args: string[]): PlanOptions {
         opts.dryRun = true
         break
       default:
-        console.error(`  ✗ Unknown option: ${arg}`)
+        console.error(`  ✗ Unknown option: ${arg}. Run with --help to see available options.`)
         console.log(HELP)
         process.exit(1)
     }

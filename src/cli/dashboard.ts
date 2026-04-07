@@ -78,6 +78,7 @@ function parseArgs(args: string[]): DashboardArgs {
       help = true
     } else if (args[i] === '--port' && args[i + 1]) {
       port = parseInt(args[i + 1], 10)
+      if (isNaN(port)) { console.error('  ✗ --port requires a valid number'); process.exit(1) }
       i++
     } else if (args[i] === '--no-open') {
       openBrowser = false
@@ -85,6 +86,7 @@ function parseArgs(args: string[]): DashboardArgs {
       seed = true
     } else if (args[i] === '--convoy' && args[i + 1]) {
       convoyId = args[i + 1]
+      if (!convoyId.trim()) { console.error('  ✗ --convoy cannot be empty'); process.exit(1) }
       i++
     }
   }
