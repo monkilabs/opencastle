@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
-import { resolve, dirname, relative, isAbsolute, sep } from 'node:path'
+import { resolve, join, dirname, relative, isAbsolute, sep } from 'node:path'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
 import type { TaskSpec, AgentAdapter } from '../types.js'
@@ -8,7 +8,6 @@ import { parseTaskSpecText } from '../run/schema.js'
 import { createConvoyStore } from './store.js'
 import {
   createConvoyEngine,
-  ensureBranch,
   type ConvoyEngine,
   type ConvoyResult,
   type ConvoyEngineOptions,
@@ -51,6 +50,9 @@ export interface PipelineOrchestratorOptions {
   _createConvoyEngine?: (opts: ConvoyEngineOptions) => ConvoyEngine
   /** Injectable branch handler (used in tests). */
   _ensureBranch?: (branchName: string, basePath: string) => Promise<void>
+  /** Pass `null` to skip pipeline-level worktree creation (test mode).
+   *  Also skipped when `_ensureBranch` is provided (backward-compat for tests). */
+  _convoyWorktreeDir?: string | null
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -87,7 +89,6 @@ export function createPipelineOrchestrator(
   const basePath = resolve(options.basePath ?? process.cwd())
   const dbPath = options.dbPath ?? resolve(basePath, '.opencastle', 'convoy.db')
   const engineFactory = options._createConvoyEngine ?? createConvoyEngine
-  const branchFn = options._ensureBranch ?? ensureBranch
 
   async function getCurrentBranch(): Promise<string> {
     try {
@@ -118,7 +119,7 @@ export function createPipelineOrchestrator(
     specPath: string,
     pipelineId: string,
     branch: string,
-    skipDirtyCheck = false,
+    effectiveBase: string = basePath,
   ): Promise<ConvoyResult> {
     const absPath = resolveSpecPath(specPath)
     const convoyYaml = await readFile(absPath, 'utf8')
@@ -129,16 +130,13 @@ export function createPipelineOrchestrator(
       spec: overriddenSpec,
       specYaml: convoyYaml,
       adapter,
-      basePath,
+      basePath: effectiveBase,
       dbPath,
       logsDir: options.logsDir,
       verbose,
       pipelineId,
+      _convoyWorktreeDir: null,
     }
-    if (skipDirtyCheck) {
-      engineOpts._ensureBranch = (b, base) => ensureBranch(b, base, true)
-    }
-
     const engine = engineFactory(engineOpts)
     return engine.run()
   }
@@ -149,10 +147,33 @@ export function createPipelineOrchestrator(
     const branch = spec.branch ?? (await getCurrentBranch())
     const convoySpecs = spec.depends_on_convoy ?? []
 
-    // Switch branch BEFORE any DB writes — otherwise the convoy.db modification
-    // from insertPipeline() causes ensureBranch's dirty check to fail.
+    // Create pipeline-level worktree for branch isolation.
+    // Skipped when _convoyWorktreeDir is null or _ensureBranch is injected (test mode).
+    let effectiveBasePath = basePath
+    let convoyWorktreeDir: string | undefined
     if (spec.branch !== undefined) {
-      await branchFn(spec.branch, basePath)
+      const skipWorktree = options._convoyWorktreeDir === null || options._ensureBranch !== undefined
+      if (!skipWorktree) {
+        if (typeof options._convoyWorktreeDir === 'string') {
+          effectiveBasePath = options._convoyWorktreeDir
+          convoyWorktreeDir = options._convoyWorktreeDir
+        } else {
+          const worktreeId = `convoy-root-${Date.now()}`
+          convoyWorktreeDir = join(basePath, '.opencastle', 'worktrees', worktreeId)
+          mkdirSync(dirname(convoyWorktreeDir), { recursive: true })
+          let branchExists = false
+          try {
+            await execFile('git', ['rev-parse', '--verify', spec.branch], { cwd: basePath })
+            branchExists = true
+          } catch { /* branch doesn't exist */ }
+          if (branchExists) {
+            await execFile('git', ['worktree', 'add', convoyWorktreeDir, spec.branch], { cwd: basePath })
+          } else {
+            await execFile('git', ['worktree', 'add', '-b', spec.branch, convoyWorktreeDir], { cwd: basePath })
+          }
+          effectiveBasePath = convoyWorktreeDir
+        }
+      }
     }
 
     mkdirSync(dirname(dbPath), { recursive: true })
@@ -187,10 +208,7 @@ export function createPipelineOrchestrator(
 
         let convoyResult: ConvoyResult
         try {
-          // Always skip dirty check inside pipeline — run.ts pre-flight already
-          // handled the stash prompt, and insertPipeline() writes to convoy.db
-          // before the first convoy runs (which would cause a false dirty-check failure).
-          convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, true)
+          convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, effectiveBasePath)
         } catch (err) {
           process.stderr.write(
             `  ✗ Convoy spec "${specPath}" failed to load: ${(err as Error).message}\n`,
@@ -218,11 +236,12 @@ export function createPipelineOrchestrator(
           spec: { ...spec, branch },
           specYaml,
           adapter,
-          basePath,
+          basePath: effectiveBasePath,
           dbPath,
           logsDir: options.logsDir,
           verbose,
           pipelineId,
+          _convoyWorktreeDir: null,
         })
         const hybridResult = await hybridEngine.run()
         convoyResults.push(hybridResult)
@@ -238,6 +257,12 @@ export function createPipelineOrchestrator(
         failStore.close()
       }
       throw err
+    } finally {
+      if (convoyWorktreeDir) {
+        try {
+          await execFile('git', ['worktree', 'remove', convoyWorktreeDir, '--force'], { cwd: basePath })
+        } catch { /* ignore cleanup errors */ }
+      }
     }
 
     const totalTokens = aggregateTokens(convoyResults)
@@ -282,6 +307,36 @@ export function createPipelineOrchestrator(
 
     const convoySpecs: string[] = JSON.parse(pipeline.convoy_specs) as string[]
     const branch = pipeline.branch ?? spec.branch ?? (await getCurrentBranch())
+
+    // Create pipeline-level worktree for branch isolation.
+    // Skipped when _convoyWorktreeDir is null or _ensureBranch is injected (test mode).
+    let effectiveBasePath = basePath
+    let convoyWorktreeDir: string | undefined
+    const pipelineBranch = pipeline.branch ?? spec.branch
+    if (pipelineBranch !== undefined) {
+      const skipWorktree = options._convoyWorktreeDir === null || options._ensureBranch !== undefined
+      if (!skipWorktree) {
+        if (typeof options._convoyWorktreeDir === 'string') {
+          effectiveBasePath = options._convoyWorktreeDir
+          convoyWorktreeDir = options._convoyWorktreeDir
+        } else {
+          const worktreeId = `convoy-root-${Date.now()}`
+          convoyWorktreeDir = join(basePath, '.opencastle', 'worktrees', worktreeId)
+          mkdirSync(dirname(convoyWorktreeDir), { recursive: true })
+          let branchExists = false
+          try {
+            await execFile('git', ['rev-parse', '--verify', pipelineBranch], { cwd: basePath })
+            branchExists = true
+          } catch { /* branch doesn't exist */ }
+          if (branchExists) {
+            await execFile('git', ['worktree', 'add', convoyWorktreeDir, pipelineBranch], { cwd: basePath })
+          } else {
+            await execFile('git', ['worktree', 'add', '-b', pipelineBranch, convoyWorktreeDir], { cwd: basePath })
+          }
+          effectiveBasePath = convoyWorktreeDir
+        }
+      }
+    }
 
     // Load all convoys linked to this pipeline, sorted by creation time
     const convoyStore = createConvoyStore(dbPath)
@@ -350,11 +405,12 @@ export function createPipelineOrchestrator(
             spec: overriddenSpec,
             specYaml: convoyYaml,
             adapter,
-            basePath,
+            basePath: effectiveBasePath,
             dbPath,
             logsDir: options.logsDir,
             verbose,
             pipelineId,
+            _convoyWorktreeDir: null,
           })
 
           if (existing.status === 'failed') {
@@ -366,7 +422,7 @@ export function createPipelineOrchestrator(
         } else {
           // Run fresh
           try {
-            convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, true)
+            convoyResult = await runConvoySpecFile(specPath, pipelineId, branch, effectiveBasePath)
           } catch (err) {
             process.stderr.write(
               `  ✗ Convoy spec "${specPath}" failed to load: ${(err as Error).message}\n`,
@@ -399,6 +455,12 @@ export function createPipelineOrchestrator(
         failStore.close()
       }
       throw err
+    } finally {
+      if (convoyWorktreeDir) {
+        try {
+          await execFile('git', ['worktree', 'remove', convoyWorktreeDir, '--force'], { cwd: basePath })
+        } catch { /* ignore cleanup errors */ }
+      }
     }
 
     const totalTokens = aggregateTokens(convoyResults)

@@ -82,6 +82,11 @@ export interface ConvoyEngineOptions {
   _mergeQueue?: MergeQueue
   /** Override for test injection. Pass `ensureBranch` for real behavior, or a mock. */
   _ensureBranch?: (branchName: string, basePath: string) => Promise<void>
+  /** Pass `null` to skip convoy-level worktree creation (test mode).
+   *  Pass a string path to inject a specific worktree directory.
+   *  Omit (undefined) for real worktree creation.
+   *  Also skipped when `_ensureBranch` is provided (backward-compat for tests). */
+  _convoyWorktreeDir?: string | null
   /** Injectable for test injection of the review pipeline. */
   _reviewRunner?: (task: TaskRecord, level: ReviewLevel, reviewerModel: string) => Promise<ReviewResult>
 }
@@ -2981,11 +2986,33 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
     const specHash = createHash('sha256').update(specYaml).digest('hex')
     const baseBranch = spec.branch ?? (await getCurrentBranch())
 
-    // Ensure target branch exists before acquiring any locks.
-    // Uses _ensureBranch injection so callers/tests can override.
+    // Create convoy-level worktree for branch isolation.
+    // Skipped when _convoyWorktreeDir is null or _ensureBranch is injected (test mode).
+    let effectiveBasePath = basePath
+    let convoyWorktreeDir: string | undefined
     if (spec.branch !== undefined) {
-      const branchFn = options._ensureBranch ?? ensureBranch
-      await branchFn(spec.branch, basePath)
+      const skipWorktree = options._convoyWorktreeDir === null || options._ensureBranch !== undefined
+      if (!skipWorktree) {
+        if (typeof options._convoyWorktreeDir === 'string') {
+          effectiveBasePath = options._convoyWorktreeDir
+          convoyWorktreeDir = options._convoyWorktreeDir
+        } else {
+          const worktreeId = `convoy-root-${Date.now()}`
+          convoyWorktreeDir = join(basePath, '.opencastle', 'worktrees', worktreeId)
+          mkdirSync(dirname(convoyWorktreeDir), { recursive: true })
+          let branchExists = false
+          try {
+            await execFile('git', ['rev-parse', '--verify', spec.branch], { cwd: basePath })
+            branchExists = true
+          } catch { /* branch doesn't exist */ }
+          if (branchExists) {
+            await execFile('git', ['worktree', 'add', convoyWorktreeDir, spec.branch], { cwd: basePath })
+          } else {
+            await execFile('git', ['worktree', 'add', '-b', spec.branch, convoyWorktreeDir], { cwd: basePath })
+          }
+          effectiveBasePath = convoyWorktreeDir
+        }
+      }
     }
 
     mkdirSync(dirname(dbPath), { recursive: true })
@@ -3022,10 +3049,10 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
     const store = createConvoyStore(dbPath)
     const ndjsonPath = options.logsDir
       ? join(options.logsDir, 'convoys', `${convoyId}.ndjson`)
-      : ndjsonPathForConvoy(convoyId, basePath)
+      : ndjsonPathForConvoy(convoyId, effectiveBasePath)
     const events = createEventEmitter(store, { ndjsonPath })
-    const wtManager = options._worktreeManager ?? createWorktreeManager(basePath)
-    const mergeQueue = options._mergeQueue ?? createMergeQueue(basePath)
+    const wtManager = options._worktreeManager ?? createWorktreeManager(effectiveBasePath)
+    const mergeQueue = options._mergeQueue ?? createMergeQueue(effectiveBasePath)
 
     let result: ConvoyResult
     try {
@@ -3088,7 +3115,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
 
       result = await runConvoy(
         convoyId, spec, adapter, store, events,
-        wtManager, mergeQueue, basePath, baseBranch, verbose, startTime, ndjsonPath,
+        wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
         options._reviewRunner,
       )
     } finally {
@@ -3096,6 +3123,11 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       store.close()
       lock.release()
       lockDb.close()
+      if (convoyWorktreeDir) {
+        try {
+          await execFile('git', ['worktree', 'remove', convoyWorktreeDir, '--force'], { cwd: basePath })
+        } catch { /* ignore cleanup errors */ }
+      }
     }
     return result
   }
@@ -3135,12 +3167,9 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
     lock.startHeartbeat()
 
     const store = createConvoyStore(dbPath)
-    const ndjsonPath = options.logsDir
-      ? join(options.logsDir, 'convoys', `${convoyId}.ndjson`)
-      : ndjsonPathForConvoy(convoyId, basePath)
-    const events = createEventEmitter(store, { ndjsonPath })
-    const wtManager = options._worktreeManager ?? createWorktreeManager(basePath)
-    const mergeQueue = options._mergeQueue ?? createMergeQueue(basePath)
+    let effectiveBasePath = basePath
+    let convoyWorktreeDir: string | undefined
+    let events: ConvoyEventEmitter | undefined
 
     let result: ConvoyResult
     try {
@@ -3150,6 +3179,40 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       }
 
       const baseBranch = convoy.branch ?? spec.branch ?? (await getCurrentBranch())
+      const convoyBranch = convoy.branch ?? spec.branch
+
+      // Create convoy-level worktree for branch isolation.
+      if (convoyBranch !== undefined) {
+        const skipWorktree = options._convoyWorktreeDir === null || options._ensureBranch !== undefined
+        if (!skipWorktree) {
+          if (typeof options._convoyWorktreeDir === 'string') {
+            effectiveBasePath = options._convoyWorktreeDir
+            convoyWorktreeDir = options._convoyWorktreeDir
+          } else {
+            const worktreeId = `convoy-root-${Date.now()}`
+            convoyWorktreeDir = join(basePath, '.opencastle', 'worktrees', worktreeId)
+            mkdirSync(dirname(convoyWorktreeDir), { recursive: true })
+            let branchExists = false
+            try {
+              await execFile('git', ['rev-parse', '--verify', convoyBranch], { cwd: basePath })
+              branchExists = true
+            } catch { /* branch doesn't exist */ }
+            if (branchExists) {
+              await execFile('git', ['worktree', 'add', convoyWorktreeDir, convoyBranch], { cwd: basePath })
+            } else {
+              await execFile('git', ['worktree', 'add', '-b', convoyBranch, convoyWorktreeDir], { cwd: basePath })
+            }
+            effectiveBasePath = convoyWorktreeDir
+          }
+        }
+      }
+
+      const ndjsonPath = options.logsDir
+        ? join(options.logsDir, 'convoys', `${convoyId}.ndjson`)
+        : ndjsonPathForConvoy(convoyId, effectiveBasePath)
+      events = createEventEmitter(store, { ndjsonPath })
+      const wtManager = options._worktreeManager ?? createWorktreeManager(effectiveBasePath)
+      const mergeQueue = options._mergeQueue ?? createMergeQueue(effectiveBasePath)
 
       // Reset interrupted tasks and mark their workers as killed
       const allTasks = store.getTasksByConvoy(convoyId)
@@ -3187,14 +3250,19 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
 
       result = await runConvoy(
         convoyId, spec, adapter, store, events,
-        wtManager, mergeQueue, basePath, baseBranch, verbose, startTime, ndjsonPath,
+        wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
         options._reviewRunner,
       )
     } finally {
-      events.close()
+      events?.close()
       store.close()
       lock.release()
       lockDb.close()
+      if (convoyWorktreeDir) {
+        try {
+          await execFile('git', ['worktree', 'remove', convoyWorktreeDir, '--force'], { cwd: basePath })
+        } catch { /* ignore cleanup errors */ }
+      }
     }
     return result
   }
