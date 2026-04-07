@@ -135,7 +135,7 @@ function killSdk(task: Task): void {
 
 // --- CLI implementation ---
 async function executeViaCli(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  // CLI supports --output-format json, --max-turns, and respects cwd
+  // CLI supports --output-format json and respects cwd
   let prompt = `You are a ${task.agent}. ${task.prompt}`
   if (task.files && task.files.length > 0) {
     prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
@@ -145,8 +145,6 @@ async function executeViaCli(task: Task, options: ExecuteOptions = {}): Promise<
     prompt,
     '--output-format',
     'json',
-    '--max-turns',
-    '50',
   ]
   const cwd = options?.cwd ?? process.cwd()
   const mcpJsonPath = join(cwd, 'mcp.json')

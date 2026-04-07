@@ -356,6 +356,7 @@ function parseArgs(args: string[]): PipelineOptions {
       case '-t':
         if (i + 1 >= args.length) { console.error('  ✗ --text requires a value'); process.exit(1) }
         opts.text = args[++i]
+        if (!opts.text.trim()) { console.error('  ✗ --text cannot be empty'); process.exit(1) }
         break
       case '--prd':
         if (i + 1 >= args.length) { console.error('  ✗ --prd requires a path'); process.exit(1) }
@@ -389,8 +390,7 @@ function parseArgs(args: string[]): PipelineOptions {
         opts.skipValidation = true
         break
       default:
-        console.error(`  ✗ Unknown option: ${arg}`)
-        console.log(HELP)
+        console.error(`  ✗ Unknown option: ${arg}. Run with --help to see available options.`)
         process.exit(1)
     }
   }

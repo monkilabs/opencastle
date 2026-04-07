@@ -88,6 +88,7 @@ function parseArgs(args: string[]): RunOptions {
       case '-f':
         if (i + 1 >= args.length) { console.error('  \u2717 --file requires a path'); process.exit(1) }
         opts.file = args[++i]
+        if (!opts.file.trim()) { console.error('  ✗ --file cannot be empty'); process.exit(1) }
         break
       case '--dryRun':
       case '--dry-run':
@@ -108,10 +109,12 @@ function parseArgs(args: string[]): RunOptions {
       case '-a':
         if (i + 1 >= args.length) { console.error('  \u2717 --adapter requires a name'); process.exit(1) }
         opts.adapter = args[++i]
+        if (!opts.adapter.trim()) { console.error('  ✗ --adapter cannot be empty'); process.exit(1) }
         break
       case '--report-dir':
         if (i + 1 >= args.length) { console.error('  \u2717 --report-dir requires a path'); process.exit(1) }
         opts.reportDir = args[++i]
+        if (!opts.reportDir.trim()) { console.error('  ✗ --report-dir cannot be empty'); process.exit(1) }
         break
       case '--verbose':
         opts.verbose = true
@@ -142,14 +145,17 @@ function parseArgs(args: string[]): RunOptions {
       case '--resolution':
         if (i + 1 >= args.length) { console.error('  ✗ --resolution requires text'); process.exit(1) }
         opts.dlqResolveText = args[++i]
+        if (!opts.dlqResolveText.trim()) { console.error('  ✗ --resolution cannot be empty'); process.exit(1) }
         break
       case '--convoy':
         if (i + 1 >= args.length) { console.error('  ✗ --convoy requires an ID'); process.exit(1) }
         opts.dlqConvoyFilter = args[++i]
+        if (!opts.dlqConvoyFilter.trim()) { console.error('  ✗ --convoy cannot be empty'); process.exit(1) }
         break
       case '--formula':
         if (i + 1 >= args.length) { console.error('  ✗ --formula requires a path'); process.exit(1) }
         opts.formula = args[++i]
+        if (!opts.formula.trim()) { console.error('  ✗ --formula cannot be empty'); process.exit(1) }
         break
       case '--set': {
         if (i + 1 >= args.length) { console.error('  ✗ --set requires key=value'); process.exit(1) }
@@ -168,12 +174,13 @@ function parseArgs(args: string[]): RunOptions {
       case '--watch-config':
         if (i + 1 >= args.length) { console.error('  ✗ --watch-config requires a path'); process.exit(1) }
         opts.watchConfig = args[++i]
+        if (!opts.watchConfig.trim()) { console.error('  ✗ --watch-config cannot be empty'); process.exit(1) }
         break
       case '--clear-scratchpad':
         opts.clearScratchpad = true
         break
       default:
-        console.error(`  ✗ Unknown option: ${arg}`)
+        console.error(`  ✗ Unknown option: ${arg}. Run with --help to see available options.`)
         console.log(HELP)
         process.exit(1)
     }

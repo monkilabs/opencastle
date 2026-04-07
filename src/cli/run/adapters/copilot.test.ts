@@ -196,6 +196,18 @@ describe('copilot adapter — CLI mode', () => {
     expect(capturedArgs).not.toContain('--approve-mcps')
   })
 
+  it('does NOT pass --max-turns to the copilot process', async () => {
+    const capturedArgs: string[] = []
+    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      capturedArgs.push(...args)
+      return makeMockProc(0, '{}')
+    })
+    const { execute } = await import('./copilot.js')
+    await execute(makeTask(), { cwd: tmpDir })
+    expect(capturedArgs).not.toContain('--max-turns')
+  })
+
   it('maps mcpServers with url and config into mcp.json', async () => {
     let capturedContent: string | null = null
     mockSpawn.mockImplementation((cmd: string) => {

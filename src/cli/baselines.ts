@@ -51,6 +51,7 @@ function parseBaselinesArgs(args: string[]): BaselinesOptions {
           process.exit(1)
         }
         opts.slug = args[++i]
+        if (!opts.slug.trim()) { console.error('  \u2717 --slug cannot be empty'); process.exit(1) }
         break
       case '--from':
         if (i + 1 >= args.length) {
@@ -58,6 +59,7 @@ function parseBaselinesArgs(args: string[]): BaselinesOptions {
           process.exit(1)
         }
         opts.from = args[++i]
+        if (!opts.from.trim()) { console.error('  \u2717 --from cannot be empty'); process.exit(1) }
         break
       case '--dir':
         if (i + 1 >= args.length) {
@@ -65,6 +67,7 @@ function parseBaselinesArgs(args: string[]): BaselinesOptions {
           process.exit(1)
         }
         opts.dir = args[++i]
+        if (!opts.dir.trim()) { console.error('  \u2717 --dir cannot be empty'); process.exit(1) }
         break
       case '--dry-run':
       case '--dryRun':
