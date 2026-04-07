@@ -871,54 +871,6 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     if (spec.branch) console.log(`  Branch: ${spec.branch}`)
     if (spec.gates?.length) console.log(`  Gates: ${spec.gates.length} validation commands`)
 
-    // ── Pre-flight: handle uncommitted changes before branch switch ──
-    let pipelineDidStash = false
-    if (spec.branch) {
-      const { execFile: execFileCb } = await import('node:child_process')
-      const { promisify } = await import('node:util')
-      const execFile = promisify(execFileCb)
-      let statusOut: string
-      try {
-        const result = await execFile('git', ['status', '--porcelain'], {
-          cwd: process.cwd(),
-        })
-        statusOut = result.stdout
-      } catch {
-        console.error(`  ✗ Git repository not found. A git repo is required when using the \`branch\` option.`)
-        console.error(`    Run \`git init\` to initialize a repository.`)
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
-        process.exit(1)
-      }
-      // Untracked files (??) don't block branch checkout — ignore them
-      const trackedChanges = statusOut
-        .split('\n')
-        .filter(line => line.trim() && !line.startsWith('??'))
-        .join('\n')
-      if (trackedChanges) {
-        console.log(`\n  ${c.yellow('⚠')} Uncommitted changes detected.`)
-        const shouldStash = await confirm('Stash changes and continue?', true)
-        if (!shouldStash) {
-          console.log('  Aborted. Commit or stash your changes manually, then retry.')
-          console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
-          closePrompts()
-          process.exit(1)
-        }
-        try {
-          await execFile('git', ['stash', 'push', '-m', 'opencastle: auto-stash before pipeline'], {
-            cwd: process.cwd(),
-          })
-          pipelineDidStash = true
-          console.log(`  ${c.green('✓')} Changes stashed.`)
-        } catch {
-          console.log(`  ${c.yellow('⚠')} Could not stash changes automatically.`)
-          console.log(`  Commit or stash your changes manually, then resume:\n`)
-          console.log(`  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
-          closePrompts()
-          process.exit(1)
-        }
-      }
-    }
-
     const { startDashboardServer } = await import('./dashboard.js')
     let pipelineDashboardResult: { server: import('node:http').Server; port: number; url: string } | null = null
     try {
@@ -953,17 +905,6 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printPipelineResult(pipelineResult)
-    if (pipelineDidStash) {
-      const { execFile: execFileCb } = await import('node:child_process')
-      const { promisify } = await import('node:util')
-      const execFile = promisify(execFileCb)
-      try {
-        await execFile('git', ['stash', 'pop'], { cwd: process.cwd() })
-        console.log(`  ${c.green('✓')} Stashed changes restored.`)
-      } catch {
-        console.log(`  ${c.yellow('⚠')} Could not restore stash automatically. Run \`git stash pop\` manually.`)
-      }
-    }
     if (pipelineDashboardResult) {
       console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
       console.log(`  ${c.dim('Dashboard:')} ${pipelineDashboardResult.url}`)
@@ -995,54 +936,6 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     )
     if (spec.branch) console.log(`  Branch: ${spec.branch}`)
     if (spec.gates?.length) console.log(`  Gates: ${spec.gates.length} validation commands`)
-
-    // ── Pre-flight: handle uncommitted changes before branch switch ──
-    let didStash = false
-    if (spec.branch) {
-      const { execFile: execFileCb } = await import('node:child_process')
-      const { promisify } = await import('node:util')
-      const execFile = promisify(execFileCb)
-      let statusOut: string
-      try {
-        const result = await execFile('git', ['status', '--porcelain'], {
-          cwd: process.cwd(),
-        })
-        statusOut = result.stdout
-      } catch {
-        console.error(`  ✗ Git repository not found. A git repo is required when using the \`branch\` option.`)
-        console.error(`    Run \`git init\` to initialize a repository.`)
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
-        process.exit(1)
-      }
-      // Untracked files (??) don't block branch checkout — ignore them
-      const trackedChanges = statusOut
-        .split('\n')
-        .filter(line => line.trim() && !line.startsWith('??'))
-        .join('\n')
-      if (trackedChanges) {
-        console.log(`\n  ${c.yellow('⚠')} Uncommitted changes detected.`)
-        const shouldStash = await confirm('Stash changes and continue?', true)
-        if (!shouldStash) {
-          console.log('  Aborted. Commit or stash your changes manually, then retry.')
-          console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
-          closePrompts()
-          process.exit(1)
-        }
-        try {
-          await execFile('git', ['stash', 'push', '-m', 'opencastle: auto-stash before convoy'], {
-            cwd: process.cwd(),
-          })
-          didStash = true
-          console.log(`  ${c.green('✓')} Changes stashed.`)
-        } catch {
-          console.log(`  ${c.yellow('⚠')} Could not stash changes automatically.`)
-          console.log(`  Commit or stash your changes manually, then resume:\n`)
-          console.log(`  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
-          closePrompts()
-          process.exit(1)
-        }
-      }
-    }
 
     const { startDashboardServer } = await import('./dashboard.js')
     let dashboardResult: { server: import('node:http').Server; port: number; url: string } | null = null
@@ -1095,17 +988,6 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printConvoyResult(result)
-    if (didStash) {
-      const { execFile: execFileCb } = await import('node:child_process')
-      const { promisify } = await import('node:util')
-      const execFile = promisify(execFileCb)
-      try {
-        await execFile('git', ['stash', 'pop'], { cwd: process.cwd() })
-        console.log(`  ${c.green('✓')} Stashed changes restored.`)
-      } catch {
-        console.log(`  ${c.yellow('⚠')} Could not restore stash automatically. Run \`git stash pop\` manually.`)
-      }
-    }
     if (dashboardResult) {
       console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
       console.log(`  ${c.dim('Dashboard:')} ${dashboardResult.url}`)

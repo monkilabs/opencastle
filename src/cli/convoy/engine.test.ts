@@ -103,6 +103,7 @@ function makeEngine(opts: ConvoyEngineOptions): ReturnType<typeof createConvoyEn
   return createConvoyEngine({
     logsDir: join(tmpDir, 'logs'),  // prevents test data in production logs
     _ensureBranch: vi.fn().mockResolvedValue(undefined),
+    _convoyWorktreeDir: null,
     ...opts,
   })
 }
@@ -3283,11 +3284,10 @@ describe('symlink security scan', () => {
   })
 })
 
-// ── Security: ensureBranch fallback (issue #3) ────────────────────────────────
+// ── Security: convoy-level worktree when branch is set ───────────────────────
 
-describe('ensureBranch fallback when _ensureBranch not provided', () => {
-  it('calls the injected _ensureBranch when branch is set in spec', async () => {
-    const branchFn = vi.fn().mockResolvedValue(undefined)
+describe('convoy-level worktree when branch is set', () => {
+  it('runs successfully when _convoyWorktreeDir is null and branch is set', async () => {
     const adapter = makeAdapter()
     const spec = makeSpec({ branch: 'feature-x' })
     const engine = createConvoyEngine({
@@ -3297,15 +3297,14 @@ describe('ensureBranch fallback when _ensureBranch not provided', () => {
       dbPath,
       _worktreeManager: makeWorktreeManager(),
       _mergeQueue: makeMergeQueue(),
-      _ensureBranch: branchFn,
+      _convoyWorktreeDir: null,
     })
 
-    await engine.run()
-    expect(branchFn).toHaveBeenCalledWith('feature-x', expect.any(String))
+    const result = await engine.run()
+    expect(result.status).toBe('done')
   })
 
-  it('does not call ensureBranch when spec has no branch', async () => {
-    const branchFn = vi.fn().mockResolvedValue(undefined)
+  it('does not attempt worktree creation when spec has no branch', async () => {
     const adapter = makeAdapter()
     const spec = makeSpec({ branch: undefined })
     const engine = makeEngine({
@@ -3315,11 +3314,10 @@ describe('ensureBranch fallback when _ensureBranch not provided', () => {
       dbPath,
       _worktreeManager: makeWorktreeManager(),
       _mergeQueue: makeMergeQueue(),
-      _ensureBranch: branchFn,
     })
 
-    await engine.run()
-    expect(branchFn).not.toHaveBeenCalled()
+    const result = await engine.run()
+    expect(result.status).toBe('done')
   })
 })
 
