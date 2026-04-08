@@ -7,7 +7,7 @@ description: "Creates and names Linear issues, assigns labels and priorities, ma
 
 # Task Management with Linear
 
-For project-specific team ID, workflow state UUIDs, and label UUIDs, see [tracker-config.md](../../.opencastle/project/tracker-config.md).
+For project-specific team ID, workflow state UUIDs, and label UUIDs, see [tracker-config.md](../../.opencastle/project/tracker-config.md). For status transitions, follow the **Status Update Procedure** section below.
 
 ## MCP Tool Examples
 
@@ -16,8 +16,8 @@ For project-specific team ID, workflow state UUIDs, and label UUIDs, see [tracke
 { "teamId": "TEAM_UUID", "title": "[UI] Build PriceRangeFilter", "description": "Objective: ...\nFiles: ...\nAC: ...", "labelIds": ["LABEL_UUID"], "priority": 2 }
 // → { "id": "TAS-42", "url": "https://linear.app/team/TAS-42" }
 
-// Update issue status
-{ "issueId": "TAS-42", "stateId": "IN_PROGRESS_UUID" }
+// Update issue status (see Status Update Procedure)
+{ "issueId": "TAS-42", "stateId": "<UUID from tracker-config.md>" }
 
 // Search issues
 { "query": "is:open assignee:me", "teamId": "TEAM_UUID" }
@@ -76,3 +76,21 @@ Group related issues under a Linear project; issues track individual subtasks.
 6. On completion: verify all issues Done/Cancelled, run build/lint/test.
 
 If creation fails: check team ID and state UUIDs in [tracker-config.md](../../.opencastle/project/tracker-config.md); retry once. If board state is inconsistent on resume: re-read all issue statuses before proceeding.
+
+## Status Update Procedure
+
+> ⚠️ `update_issue` requires a workflow state **UUID** — passing a name like `"In Progress"` always fails with `stateId must be a UUID`.
+
+1. **Read UUIDs from [tracker-config.md](../../.opencastle/project/tracker-config.md)** before any status transition. Names returned by `list_issues`/`get_issue` are display-only, not valid `stateId` values.
+2. **If `tracker-config.md` has no state UUIDs**, skip status updates and log a warning.
+
+```json
+// ✅ UUID from tracker-config.md
+{ "issueId": "TAS-42", "stateId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
+// ❌ FAILS — name, not UUID
+{ "issueId": "TAS-42", "status": "In Progress" }
+```
+
+## One-Time Setup: Discover Workflow State UUIDs
+
+If `tracker-config.md` lacks state UUIDs, ask the user to populate them from Linear Settings → Teams → Workflow (UUID in browser URL per state) or via the GraphQL `workflowStates { nodes { id name } }` query.
