@@ -73,6 +73,7 @@ export interface RepoInfo {
   auth?: string[];
   pm?: string[];
   notifications?: string[];
+  services?: string[];
   mcpConfig?: boolean;
   configFiles?: string[];
 }

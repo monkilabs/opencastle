@@ -232,7 +232,7 @@ export async function rebuildMcpConfig(
     return;
   }
 
-  // Read existing config and strip all plugin-managed servers
+  // Read existing config
   const existing = JSON.parse(await readFile(destPath, 'utf8')) as Record<string, unknown>;
   const containerKey =
     ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers';
@@ -246,21 +246,49 @@ export async function rebuildMcpConfig(
       .map((p) => p.mcpServerKey!)
   );
 
-  // Remove all plugin-managed servers (they'll be re-added by scaffoldMcpConfig)
+  // Get the servers the new stack selection includes
+  const includedServers = getIncludedMcpServers(stack, repoInfo);
+
+  // Only remove plugin-managed servers that are NOT in the new stack selection.
+  // Servers already in the config for the new stack are left untouched so
+  // user customizations (env vars, args) are preserved.
   for (const key of Object.keys(existingServers)) {
-    if (allPluginServerKeys.has(key)) {
+    if (allPluginServerKeys.has(key) && !includedServers.has(key)) {
       delete existingServers[key];
     }
   }
 
-  // Remove plugin-managed inputs (VS Code only)
+  // For VS Code: remove only inputs belonging to removed servers
   if (ide === 'vscode') {
-    delete existing.inputs;
+    const removedServerKeys = new Set(
+      [...allPluginServerKeys].filter((k) => !includedServers.has(k))
+    );
+    const removedInputIds = new Set<string>();
+    for (const plugin of Object.values(PLUGINS)) {
+      if (
+        plugin.mcpServerKey &&
+        removedServerKeys.has(plugin.mcpServerKey) &&
+        plugin.mcpInputs
+      ) {
+        for (const input of plugin.mcpInputs) {
+          removedInputIds.add(input.id);
+        }
+      }
+    }
+    if (removedInputIds.size > 0) {
+      const existingInputs = (existing.inputs as McpInput[]) ?? [];
+      const filteredInputs = existingInputs.filter((i) => !removedInputIds.has(i.id));
+      if (filteredInputs.length > 0) {
+        existing.inputs = filteredInputs;
+      } else {
+        delete existing.inputs;
+      }
+    }
   }
 
   existing[containerKey] = existingServers;
 
-  // Write the cleaned config (preserving manually-added servers)
+  // Write the cleaned config (preserving manually-added servers and unchanged plugin servers)
   await writeFile(destPath, JSON.stringify(existing, null, 2) + '\n');
 
   // Re-scaffold: merges new plugin servers into the cleaned config
