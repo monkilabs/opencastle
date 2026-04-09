@@ -6,7 +6,8 @@ import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
 import { getRequiredMcpEnvVars, getCustomizationsTransform } from './stack-config.js'
-import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
+import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
+import type { PluginConfig } from '../orchestrator/plugins/types.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde } from './detect.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { IDE_LABELS } from './types.js'
@@ -116,30 +117,50 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   ])
   const ides = [selectedIde]
 
-  // ── Tech Tools (multiselect, 0-N) ──────────────────────────────
+  // ── Stack (category-by-category) ─────────────────────────────
   // Pre-select tools already detected in the repo
   const detectedTools = buildDetectedToolsSet(repoInfo)
 
-  console.log(`  ${c.bold('── Tech Tools ────────────────────────────────')}`)
-  const techTools = await multiselect('Which tools does your project use?',
-    TECH_PLUGINS.map((p) => ({
-      label: p.label,
-      hint: p.hint,
-      value: p.id,
-      ...((p.preselected || detectedTools.has(p.id)) && { selected: true }),
-    }))
-  )
+  console.log(`  ${c.bold('── Stack ─────────────────────────────────────')}`)
 
-  // ── Team Tools (multiselect, 0-N) ──────────────────────────────
-  console.log(`  ${c.bold('── Team Tools ────────────────────────────────')}`)
-  const teamTools = await multiselect('Which team tools do you use?',
-    TEAM_PLUGINS.map((p) => ({
-      label: p.label,
-      hint: p.hint,
-      value: p.id,
-      ...(p.preselected && { selected: true }),
-    }))
-  )
+  const categorySteps: Array<{ title: string; subCategories: string[]; target: 'tech' | 'team' }> = [
+    { title: 'Frameworks', subCategories: ['framework'], target: 'tech' },
+    { title: 'Databases', subCategories: ['database'], target: 'tech' },
+    { title: 'CMS', subCategories: ['cms'], target: 'tech' },
+    { title: 'Deployment', subCategories: ['deployment'], target: 'tech' },
+    { title: 'Testing', subCategories: ['testing', 'e2e-testing'], target: 'tech' },
+    { title: 'Build Tools', subCategories: ['codebase-tool'], target: 'tech' },
+    { title: 'More Tools', subCategories: ['design', 'email', 'payments', 'observability', 'knowledge-management'], target: 'tech' },
+  ]
+
+  const teamSteps: Array<{ title: string; subCategories: string[]; target: 'team' }> = [
+    { title: 'Project Management', subCategories: ['task-management'], target: 'team' },
+    { title: 'Notifications', subCategories: ['notifications'], target: 'team' },
+  ]
+
+  const techTools: string[] = []
+  const teamTools: string[] = []
+
+  for (const step of [...categorySteps, ...teamSteps]) {
+    const plugins = step.subCategories.flatMap((sc) => getPluginsBySubCategory(sc as PluginConfig['subCategory']))
+    if (plugins.length === 0) continue
+    if (step === teamSteps[0]) {
+      console.log(`  ${c.bold('── Team ──────────────────────────────────────')}`)
+    }
+    const selected = await multiselect(step.title,
+      plugins.map((p) => ({
+        label: p.label,
+        hint: p.hint,
+        value: p.id,
+        ...((p.preselected || detectedTools.has(p.id)) && { selected: true }),
+      }))
+    )
+    for (const id of selected) {
+      const plugin = plugins.find((p) => p.id === id)
+      if (plugin?.category === 'team') teamTools.push(id)
+      else techTools.push(id)
+    }
+  }
 
   const stack: StackConfig = {
     ides: ides as IdeChoice[],

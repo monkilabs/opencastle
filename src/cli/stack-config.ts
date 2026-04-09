@@ -253,6 +253,11 @@ const SUBCATEGORY_TO_SLOT: Record<string, string> = {
   'knowledge-management': 'knowledge-management',
   testing: 'testing',
   'e2e-testing': 'e2e-testing',
+  design: 'design',
+  email: 'email',
+  payments: 'payments',
+  observability: 'observability',
+  notifications: 'notifications',
 };
 
 /**

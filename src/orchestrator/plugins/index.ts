@@ -21,8 +21,14 @@ import { config as playwright } from './playwright/config.js';
 import { config as vitest } from './vitest/config.js';
 import { config as figma } from './figma/config.js';
 import { config as resend } from './resend/config.js';
+import { config as stripe } from './stripe/config.js';
 import { config as nextjs } from './nextjs/config.js';
 import { config as astro } from './astro/config.js';
+import { config as sentry } from './sentry/config.js';
+import { config as drizzle } from './drizzle/config.js';
+import { config as cloudflare } from './cloudflare/config.js';
+import { config as coolify } from './coolify/config.js';
+import { config as expo } from './expo/config.js';
 
 export type { PluginConfig, McpServerConfig, McpInput, EnvVarRequirement } from './types.js';
 
@@ -44,8 +50,14 @@ export const PLUGINS: Record<string, PluginConfig> = {
   vitest,
   figma,
   resend,
+  stripe,
   nextjs,
   astro,
+  sentry,
+  drizzle,
+  cloudflare,
+  coolify,
+  expo,
   linear,
   jira,
   trello,

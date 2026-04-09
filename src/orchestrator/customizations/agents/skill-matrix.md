@@ -77,6 +77,11 @@ When resolving, load **all** skills listed in the slot's entries.
 | `e2e-testing` | Browser automation | UI/UX Expert, Testing Expert |
 | `task-management` | Issue tracking, workflow states | Team Lead |
 | `knowledge-management` | Knowledge base, research, ADRs, specs | Team Lead, Researcher, Documentation Writer, Architect |
+| `design` | Design tokens, component inspection, asset export | UI/UX Expert |
+| `email` | Transactional email, templates, delivery | Developer |
+| `payments` | Payment processing, subscriptions, webhooks | Developer |
+| `observability` | Error tracking, performance monitoring, tracing | DevOps Expert, Performance Expert |
+| `notifications` | Team messaging, alerts, bot integrations | Developer |
 
 ### Example: Add a second plugin
 
