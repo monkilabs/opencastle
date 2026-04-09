@@ -18,27 +18,31 @@ Backbone is **interactive** — it uses `@clack/prompts` to ask a series of ques
 
 1. **Monorepo tool** — `nx` or `turborepo`
 2. **Framework** — `nextjs` or `astro`
-3. **Backend** — `convex`, `supabase`, `prisma`, or `none`
+3. **Backend** — `convex`, `supabase`, `prisma`, or `drizzle`
 4. **CMS** — `sanity`, `contentful`, `strapi`, or `none`
 5. **E2E Testing** — `playwright` or `cypress`
-6. **Deployment** — `vercel`, `netlify`, or `none`
-7. **Mobile** — `ionic` or `none` *(only shown for non-Astro frameworks)*
+6. **Deployment** — `vercel`, `netlify`, `cloudflare`, `coolify`, or `none`
+7. **Mobile** — `ionic`, `expo`, or `none` *(only shown for non-Astro frameworks)*
 8. **Packages** — multi-select: `uiLib`, `emailLib`, `llmLib`
+9. **Payments** — `stripe` or `none`
+10. **Observability** — `sentry` or `none`
 
 ## CLI Options & Constraints
 
-| Category    | Choices                                   | Notes                                    |
-|-------------|-------------------------------------------|------------------------------------------|
-| Monorepo    | `nx`, `turborepo`                         | Required                                 |
-| Framework   | `nextjs`, `astro`                         | Required                                 |
-| Backend     | `convex`, `supabase`, `prisma`            | ⛔ `convex` incompatible with `astro`    |
-| CMS         | `sanity`, `contentful`, `strapi`, `none`  | Optional                                 |
-| E2E Testing | `playwright`, `cypress`                   | Required                                 |
-| Deployment  | `vercel`, `netlify`, `none`               | Optional                                 |
-| Mobile      | `ionic`, `none`                           | ⛔ `ionic` incompatible with `astro`     |
-| Packages    | `uiLib`, `emailLib`, `llmLib`             | Multi-select; ⛔ `uiLib` incompatible with `astro` |
+| Category      | Choices                                          | Notes                                    |
+|---------------|--------------------------------------------------|------------------------------------------|
+| Monorepo      | `nx`, `turborepo`                                | Required                                 |
+| Framework     | `nextjs`, `astro`                                | Required                                 |
+| Backend       | `convex`, `supabase`, `prisma`, `drizzle`        | ⛔ `convex` incompatible with `astro`    |
+| CMS           | `sanity`, `contentful`, `strapi`, `none`         | Optional                                 |
+| E2E Testing   | `playwright`, `cypress`                          | Required                                 |
+| Deployment    | `vercel`, `netlify`, `cloudflare`, `coolify`, `none` | Optional                             |
+| Mobile        | `ionic`, `expo`, `none`                          | ⛔ `ionic` and `expo` incompatible with `astro` |
+| Packages      | `uiLib`, `emailLib`, `llmLib`                    | Multi-select; ⛔ `uiLib` incompatible with `astro` |
+| Payments      | `stripe`, `none`                                 | Optional                                 |
+| Observability | `sentry`, `none`                                 | Optional                                 |
 
-**Astro constraint:** `astro` requires React-free options — never combine with `convex`, `ionic`, or `uiLib`.
+**Astro constraint:** `astro` requires React-free options — never combine with `convex`, `ionic`, `expo`, or `uiLib`.
 
 ## OpenCastle TechTool → Backbone Mapping
 
@@ -47,6 +51,12 @@ Most TechTool names map 1:1 to backbone prompt choices (e.g. `nextjs` → select
 | TechTool | Backbone mapping | Notes |
 |----------|-----------------|-------|
 | `resend` | Select `emailLib` in Packages prompt | Only non-obvious mapping |
+| `drizzle` | Select `drizzle` in Backend prompt | Direct 1:1 mapping |
+| `cloudflare` | Select `cloudflare` in Deployment prompt | Direct 1:1 mapping |
+| `coolify` | Select `coolify` in Deployment prompt | Direct 1:1 mapping |
+| `expo` | Select `expo` in Mobile prompt | Direct 1:1 mapping; incompatible with `astro` |
+| `stripe` | Select `stripe` in Payments prompt | Direct 1:1 mapping |
+| `sentry` | Select `sentry` in Observability prompt | Direct 1:1 mapping |
 | `vitest` | — | Always included automatically |
 | `figma`, `chrome-devtools` | — | Not handled by backbone; configure separately |
 
@@ -58,14 +68,17 @@ After backbone runs, the output directory contains:
 <project-name>/
   apps/
     web/          # Next.js or Astro application
-    mobile/       # (if ionic selected)
+    mobile/       # (if ionic or expo selected)
   packages/
     ui/           # (if uiLib selected) shared React component library
     email/        # (if emailLib selected) Resend/React Email package
     llm/          # (if llmLib selected) LLM integration package
+    stripe/       # (if stripe selected) Stripe client + webhook handler
   backend/
     convex/       # (if convex selected)
     supabase/     # (if supabase selected)
+    prisma/       # (if prisma selected)
+    drizzle/      # (if drizzle selected) schema, config, migrations
   e2e/            # Playwright or Cypress tests
   .github/
     workflows/    # GitHub Actions CI pipelines (always included)
@@ -73,6 +86,9 @@ After backbone runs, the output directory contains:
   tsconfig.base.json        # Always included
   package.json              # Monorepo root package.json
   turbo.json / nx.json      # Monorepo tool config
+  wrangler.toml             # (if cloudflare selected)
+  Dockerfile                # (if coolify selected)
+  sentry.*.config.ts        # (if sentry selected) in apps/web/
 ```
 
 **Always included regardless of options:** Vitest configuration, GitHub Actions CI workflows, root `tsconfig.base.json`, ESLint, Prettier.
