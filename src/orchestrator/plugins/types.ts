@@ -13,7 +13,7 @@ export interface PluginConfig {
   category: 'tech' | 'team';
 
   /** Sub-category for grouping */
-  subCategory: 'cms' | 'database' | 'deployment' | 'framework' | 'codebase-tool' | 'task-management' | 'knowledge-management' | 'notifications' | 'testing' | 'e2e-testing' | 'design' | 'email';
+  subCategory: 'cms' | 'database' | 'deployment' | 'framework' | 'codebase-tool' | 'task-management' | 'knowledge-management' | 'notifications' | 'testing' | 'e2e-testing' | 'design' | 'email' | 'payments' | 'observability';
 
   /** Label shown in the `npx opencastle init` multiselect */
   label: string;

@@ -47,11 +47,31 @@
     "knowledge-management": {
       "entries": [],
       "description": "Workspace knowledge base, research capture, ADRs, specs, page hierarchy"
+    },
+    "design": {
+      "entries": [],
+      "description": "Design tokens, component inspection, asset export, design-to-code"
+    },
+    "email": {
+      "entries": [],
+      "description": "Transactional email, templates, domain config, delivery"
+    },
+    "payments": {
+      "entries": [],
+      "description": "Payment processing, subscriptions, invoicing, webhooks"
+    },
+    "observability": {
+      "entries": [],
+      "description": "Error tracking, performance monitoring, alerts, tracing"
+    },
+    "notifications": {
+      "entries": [],
+      "description": "Team messaging, alerts, bot integrations, channel management"
     }
   },
   "agents": {
     "Developer": {
-      "slots": ["framework"],
+      "slots": ["framework", "email", "payments", "notifications"],
       "directSkills": ["validation-gates", "code-commenting", "react-development", "api-patterns"]
     },
     "Database Engineer": {
@@ -59,7 +79,7 @@
       "directSkills": ["validation-gates", "security-hardening"]
     },
     "UI/UX Expert": {
-      "slots": ["e2e-testing"],
+      "slots": ["e2e-testing", "design"],
       "directSkills": ["validation-gates", "frontend-design", "accessibility-standards", "react-development"]
     },
     "Content Engineer": {
@@ -79,11 +99,11 @@
       "directSkills": ["validation-gates", "data-engineering"]
     },
     "DevOps Expert": {
-      "slots": ["deployment"],
+      "slots": ["deployment", "observability"],
       "directSkills": ["validation-gates", "documentation-standards"]
     },
     "Performance Expert": {
-      "slots": [],
+      "slots": ["observability"],
       "directSkills": ["validation-gates", "performance-optimization"]
     },
     "Architect": {
