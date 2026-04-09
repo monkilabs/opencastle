@@ -61,6 +61,7 @@ const FRAMEWORKS: DetectionRule[] = [
   { label: 'vite', files: ['vite.config.js', 'vite.config.ts', 'vite.config.mjs'] },
   { label: 'angular', files: ['angular.json'] },
   { label: 'gatsby', files: ['gatsby-config.js', 'gatsby-config.ts'] },
+  { label: 'expo', files: ['app.config.js', 'app.config.ts', 'expo-env.d.ts'] },
   { label: 'express', files: [] }, // detected via package.json
 ];
 
@@ -83,6 +84,7 @@ const CMS_PLATFORMS: DetectionRule[] = [
 const DEPLOYMENT: DetectionRule[] = [
   { label: 'vercel', files: ['vercel.json'] },
   { label: 'netlify', files: ['netlify.toml'] },
+  { label: 'cloudflare', files: ['wrangler.toml', 'wrangler.json', 'wrangler.jsonc'] },
   { label: 'docker', files: ['Dockerfile', 'docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml'] },
   { label: 'railway', files: ['railway.json', 'railway.toml'] },
   { label: 'fly', files: ['fly.toml'] },
@@ -97,6 +99,10 @@ const TESTING: DetectionRule[] = [
   { label: 'vitest', files: ['vitest.config.ts', 'vitest.config.js', 'vitest.config.mjs'] },
   { label: 'playwright', files: ['playwright.config.ts', 'playwright.config.js'] },
   { label: 'cypress', files: ['cypress.config.ts', 'cypress.config.js'], dirs: ['cypress/'] },
+];
+
+const SERVICES: DetectionRule[] = [
+  { label: 'sentry', files: ['sentry.client.config.ts', 'sentry.client.config.js', 'sentry.server.config.ts', 'sentry.server.config.js', 'sentry.properties', '.sentryclirc'] },
 ];
 
 const CICD: DetectionRule[] = [
@@ -161,6 +167,23 @@ const PACKAGE_DETECTIONS: Record<string, { category: string; label: string }> = 
   'vitest': { category: 'testing', label: 'vitest' },
   '@playwright/test': { category: 'testing', label: 'playwright' },
   'cypress': { category: 'testing', label: 'cypress' },
+  // Deployment
+  'wrangler': { category: 'deployment', label: 'cloudflare' },
+  '@cloudflare/workers-types': { category: 'deployment', label: 'cloudflare' },
+  // Frameworks
+  'expo': { category: 'frameworks', label: 'expo' },
+  // Services (email, payments, observability)
+  'resend': { category: 'services', label: 'resend' },
+  'stripe': { category: 'services', label: 'stripe' },
+  '@sentry/nextjs': { category: 'services', label: 'sentry' },
+  '@sentry/node': { category: 'services', label: 'sentry' },
+  '@sentry/react': { category: 'services', label: 'sentry' },
+  '@sentry/browser': { category: 'services', label: 'sentry' },
+  '@notionhq/client': { category: 'services', label: 'notion' },
+  // Team tools (PM, notifications)
+  '@linear/sdk': { category: 'pm', label: 'linear' },
+  '@slack/web-api': { category: 'notifications', label: 'slack' },
+  '@slack/bolt': { category: 'notifications', label: 'slack' },
 };
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -203,6 +226,9 @@ interface RepoInfoInternal {
   cicd: string[];
   styling: string[];
   auth: string[];
+  services: string[];
+  pm: string[];
+  notifications: string[];
   mcpConfig?: boolean;
   configFiles: string[];
 }
@@ -222,6 +248,9 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
     cicd: [],
     styling: [],
     auth: [],
+    services: [],
+    pm: [],
+    notifications: [],
     configFiles: [],
   };
 
@@ -255,6 +284,7 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
     detectCategory(projectRoot, CICD, info, 'cicd'),
     detectCategory(projectRoot, STYLING, info, 'styling'),
     detectCategory(projectRoot, AUTH, info, 'auth'),
+    detectCategory(projectRoot, SERVICES, info, 'services'),
   ]);
 
   // ── 4. Detect from package.json deps ────────────────────────
@@ -311,7 +341,7 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
   info.configFiles = [...new Set(info.configFiles)];
 
   // Sort arrays for stable output
-  for (const key of ['frameworks', 'databases', 'cms', 'deployment', 'testing', 'cicd', 'styling', 'auth', 'configFiles'] as const) {
+  for (const key of ['frameworks', 'databases', 'cms', 'deployment', 'testing', 'cicd', 'styling', 'auth', 'services', 'pm', 'notifications', 'configFiles'] as const) {
     info[key].sort();
   }
 
@@ -331,7 +361,7 @@ async function checkFiles(root: string, files: string[]): Promise<string[]> {
   return found;
 }
 
-type CategoryKey = 'frameworks' | 'databases' | 'cms' | 'deployment' | 'testing' | 'cicd' | 'styling' | 'auth';
+type CategoryKey = 'frameworks' | 'databases' | 'cms' | 'deployment' | 'testing' | 'cicd' | 'styling' | 'auth' | 'services' | 'pm' | 'notifications';
 
 async function detectCategory(
   root: string,
@@ -449,6 +479,7 @@ async function scanWorkspacePackages(projectRoot: string, info: RepoInfoInternal
       detectCategory(pkgDir, CICD, info, 'cicd'),
       detectCategory(pkgDir, STYLING, info, 'styling'),
       detectCategory(pkgDir, AUTH, info, 'auth'),
+      detectCategory(pkgDir, SERVICES, info, 'services'),
     ]);
   }
 }
@@ -567,6 +598,9 @@ export function buildDetectedToolsSet(repoInfo: RepoInfo): Set<string> {
     ...(repoInfo.testing ?? []),
     ...(repoInfo.monorepo ? [repoInfo.monorepo] : []),
     ...((repoInfo.frameworks ?? []).map(f => f === 'next' ? 'nextjs' : f)),
+    ...(repoInfo.services ?? []),
+    ...(repoInfo.pm ?? []),
+    ...(repoInfo.notifications ?? []),
   ]);
 }
 
@@ -588,6 +622,9 @@ function cleanEmpty(info: RepoInfoInternal): RepoInfo {
   if (info.cicd.length > 0) result.cicd = info.cicd;
   if (info.styling.length > 0) result.styling = info.styling;
   if (info.auth.length > 0) result.auth = info.auth;
+  if (info.services.length > 0) result.services = info.services;
+  if (info.pm.length > 0) result.pm = info.pm;
+  if (info.notifications.length > 0) result.notifications = info.notifications;
   if (info.configFiles.length > 0) result.configFiles = info.configFiles;
 
   return result;
@@ -610,11 +647,13 @@ export function mergeStackIntoRepoInfo(info: RepoInfo, stack: StackConfig): Repo
       merged.deployment = addUniqueToArray(merged.deployment, tool);
     } else if (tool === 'nx') {
       merged.monorepo = merged.monorepo ?? 'nx';
+    } else if (['resend', 'stripe', 'sentry', 'figma', 'notion'].includes(tool)) {
+      merged.services = addUniqueToArray(merged.services, tool);
     }
   }
 
   for (const tool of stack.teamTools) {
-    if (['linear', 'jira'].includes(tool)) {
+    if (['linear', 'jira', 'trello'].includes(tool)) {
       merged.pm = addUniqueToArray(merged.pm, tool);
     } else if (['slack', 'teams'].includes(tool)) {
       merged.notifications = addUniqueToArray(merged.notifications, tool);
@@ -643,6 +682,7 @@ export function formatRepoInfo(info: RepoInfo): string {
   if (info.databases?.length) lines.push(`Databases: ${info.databases.join(', ')}`);
   if (info.cms?.length) lines.push(`CMS: ${info.cms.join(', ')}`);
   if (info.auth?.length) lines.push(`Auth: ${info.auth.join(', ')}`);
+  if (info.services?.length) lines.push(`Services: ${info.services.join(', ')}`);
   if (info.pm?.length) lines.push(`Project management: ${info.pm.join(', ')}`);
   if (info.notifications?.length) lines.push(`Notifications: ${info.notifications.join(', ')}`);
   if (info.deployment?.length) lines.push(`Deployment: ${info.deployment.join(', ')}`);
