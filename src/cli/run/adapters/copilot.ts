@@ -187,10 +187,17 @@ async function executeViaCli(task: Task, options: ExecuteOptions = {}): Promise<
       }
     })
     proc.on('close', (code) => {
-      const output = [stdout, stderr].filter(Boolean).join('\n')
+      let textOutput = [stdout, stderr].filter(Boolean).join('\n')
       let usage: TokenUsage | undefined
       try {
         const parsedJson = JSON.parse(stdout) as Record<string, unknown>
+
+        // Extract the actual AI text response from the JSON envelope
+        const result = parsedJson.result as string | undefined
+        if (typeof result === 'string') {
+          textOutput = result
+        }
+
         const u = parsedJson?.usage as Record<string, number> | undefined
         if (u) {
           const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
@@ -201,7 +208,7 @@ async function executeViaCli(task: Task, options: ExecuteOptions = {}): Promise<
       } catch { /* not JSON or no usage — graceful degradation */ }
       resolve({
         success: code === 0,
-        output: output.slice(0, 500_000),
+        output: textOutput.slice(0, 500_000),
         exitCode: code ?? -1,
         usage,
       })
