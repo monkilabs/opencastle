@@ -222,14 +222,11 @@ export async function executeViaCli(task: Task, options: ExecuteOptions = {}): P
       let textOutput = [stdout, stderr].filter(Boolean).join('\n')
       let usage: TokenUsage | undefined
       try {
+        // Try single JSON object first (claude CLI)
         const parsedJson = JSON.parse(stdout) as Record<string, unknown>
-
-        // Extract the actual AI text response from the JSON envelope
-        const result = parsedJson.result as string | undefined
-        if (typeof result === 'string') {
-          textOutput = result
+        if (typeof parsedJson.result === 'string') {
+          textOutput = parsedJson.result
         }
-
         const u = parsedJson?.usage as Record<string, number> | undefined
         if (u) {
           const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
@@ -237,7 +234,44 @@ export async function executeViaCli(task: Task, options: ExecuteOptions = {}): P
           const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
           usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
         }
-      } catch { /* not JSON or no usage — graceful degradation */ }
+      } catch {
+        // Fallback: parse JSONL (one JSON object per line)
+        // Claude CLI uses {"result": "text"}, Copilot CLI uses
+        // {"type":"assistant.message","data":{"content":"text"}} for the AI
+        // response and a separate {"type":"result"} line for session metadata.
+        const lines = stdout.split('\n')
+        let lastAssistantContent: string | undefined
+        for (const rawLine of lines) {
+          const line = rawLine.trim()
+          if (!line) continue
+          try {
+            const parsed = JSON.parse(line) as Record<string, unknown>
+            // Claude-style: result text in the result line
+            if (typeof parsed.result === 'string' && parsed.result) {
+              textOutput = parsed.result
+              const u = parsed?.usage as Record<string, number> | undefined
+              if (u) {
+                const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
+                const completionTokens = (u.output_tokens ?? u.completion_tokens) as number | undefined
+                const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
+                usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
+              }
+              lastAssistantContent = undefined // prefer explicit result field
+              break
+            }
+            // Copilot-style: AI response in assistant.message events
+            if (parsed.type === 'assistant.message') {
+              const data = parsed.data as Record<string, unknown> | undefined
+              if (data && typeof data.content === 'string') {
+                lastAssistantContent = data.content
+              }
+            }
+          } catch { /* skip non-JSON lines */ }
+        }
+        if (lastAssistantContent !== undefined) {
+          textOutput = lastAssistantContent
+        }
+      }
       resolve({
         success: code === 0,
         output: textOutput.slice(0, 500_000),

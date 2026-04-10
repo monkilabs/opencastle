@@ -130,6 +130,7 @@ describe('opencode adapter — MCP support', () => {
     })
     const { execute } = await import('./opencode.js')
     await execute(makeTask(), { cwd: tmpDir })
+    expect(capturedArgs).toContain('run')
     expect(capturedArgs).not.toContain('--mcp-config')
   })
 
@@ -155,5 +156,90 @@ describe('opencode adapter — MCP support', () => {
     const { execute } = await import('./opencode.js')
     await execute(makeTask(), { cwd: tmpDir })
     expect(capturedArgs).not.toContain('--approve-mcps')
+  })
+
+  it('extracts result from single-line JSON output', async () => {
+    mockSpawn.mockImplementation((cmd: string) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      return makeMockProc(0, '{"result":"# My PRD\\n\\nThe actual content"}')
+    })
+    const { execute } = await import('./opencode.js')
+    const result = await execute(makeTask(), { cwd: tmpDir })
+    expect(result.output).toBe('# My PRD\n\nThe actual content')
+  })
+
+  it('extracts result from JSONL output (last line has result)', async () => {
+    const jsonl = [
+      '{"type":"progress","content":"thinking..."}',
+      '{"type":"tool_use","tool":"read_file","args":{}}',
+      '{"type":"result","result":"# My PRD\\n\\nThe actual markdown content","usage":{"input_tokens":500,"output_tokens":1000}}',
+    ].join('\n')
+    mockSpawn.mockImplementation((cmd: string) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      return makeMockProc(0, jsonl)
+    })
+    const { execute } = await import('./opencode.js')
+    const result = await execute(makeTask(), { cwd: tmpDir })
+    expect(result.output).toBe('# My PRD\n\nThe actual markdown content')
+    expect(result.usage?.prompt_tokens).toBe(500)
+    expect(result.usage?.completion_tokens).toBe(1000)
+  })
+
+  it('scans JSONL and finds result line among non-result lines', async () => {
+    const jsonl = [
+      '{"type":"progress","content":"thinking..."}',
+      '{"type":"tool_use","tool":"edit","args":{}}',
+      '{"type":"result","result":"# Final Content","usage":{"input_tokens":100,"output_tokens":200}}',
+      '{"type":"done"}',
+    ].join('\n')
+    mockSpawn.mockImplementation((cmd: string) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      return makeMockProc(0, jsonl)
+    })
+    const { execute } = await import('./opencode.js')
+    const result = await execute(makeTask(), { cwd: tmpDir })
+    expect(result.output).toBe('# Final Content')
+  })
+
+  it('extracts content from Copilot-style assistant.message JSONL', async () => {
+    const jsonl = [
+      '{"type":"session.tools_updated","data":{"model":"claude-sonnet-4.6"}}',
+      '{"type":"user.message","data":{"content":"Generate a PRD"}}',
+      '{"type":"assistant.message","data":{"content":"# My PRD\\n\\nThe generated content","outputTokens":50}}',
+      '{"type":"assistant.turn_end","data":{"turnId":"0"}}',
+      '{"type":"result","sessionId":"abc","exitCode":0,"usage":{"premiumRequests":1}}',
+    ].join('\n')
+    mockSpawn.mockImplementation((cmd: string) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      return makeMockProc(0, jsonl)
+    })
+    const { execute } = await import('./opencode.js')
+    const result = await execute(makeTask(), { cwd: tmpDir })
+    expect(result.output).toBe('# My PRD\n\nThe generated content')
+  })
+
+  it('uses last assistant.message when multiple turns exist', async () => {
+    const jsonl = [
+      '{"type":"assistant.message","data":{"content":"Let me check..."}}',
+      '{"type":"assistant.message","data":{"content":"# Final PRD\\n\\nComplete document"}}',
+      '{"type":"result","sessionId":"abc","exitCode":0}',
+    ].join('\n')
+    mockSpawn.mockImplementation((cmd: string) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      return makeMockProc(0, jsonl)
+    })
+    const { execute } = await import('./opencode.js')
+    const result = await execute(makeTask(), { cwd: tmpDir })
+    expect(result.output).toBe('# Final PRD\n\nComplete document')
+  })
+
+  it('falls back to raw output when JSON has no result field', async () => {
+    mockSpawn.mockImplementation((cmd: string) => {
+      if (cmd === 'which') return makeMockProc(0, '')
+      return makeMockProc(0, '{"status":"ok","data":"something"}')
+    })
+    const { execute } = await import('./opencode.js')
+    const result = await execute(makeTask(), { cwd: tmpDir })
+    expect(result.output).toBe('{"status":"ok","data":"something"}')
   })
 })
