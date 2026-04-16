@@ -23,6 +23,10 @@ Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents
 5. **Match acceptance criteria exactly** — implement what's specified, nothing more
 6. **Avoid:** over-engineering, partition creep, inline styles, scope inflation, skipping verification
 
+## File Size Limits
+
+Target ≤ 500 lines per file. 500–800 use line-range reads. **> 800 → propose a split before editing.**
+
 ## Guidelines
 
 - Place shared components in UI library; queries in data layer
