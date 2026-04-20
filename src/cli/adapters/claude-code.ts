@@ -21,7 +21,7 @@ export const IDE_ID = 'claude-code'
 const { install, update, getManagedPaths, getDoctorChecks } = createSingleFileAdapter({
   rootFile: 'CLAUDE.md',
   dotDir: '.claude',
-  mcpConfigPath: '.claude/mcp.json',
+  mcpConfigPath: '.mcp.json',
   mcpFormat: 'claude-code',
   promptsDir: 'commands',
   workflowsDir: 'commands',

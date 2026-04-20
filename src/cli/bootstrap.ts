@@ -201,6 +201,10 @@ async function populateTestingConfig(
 
   const introLine = 'Project-specific testing details referenced by the `browser-testing` skill.'
   if (content.includes(introLine)) {
+    // Strip any previously-added content to make this idempotent
+    const existingAdditionRegex = /\n\n\*\*Test frameworks:\*\*[^\n]*(\n\n\*\*Config files:\*\*[^\n]*)?/;
+    content = content.replace(existingAdditionRegex, '');
+
     const cfg = filterConfigFiles(info.configFiles, [
       'vitest.config.ts',
       'vitest.config.js',

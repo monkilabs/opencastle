@@ -108,13 +108,23 @@ export async function scaffoldMcpConfig(
   // Build server list from plugin configs
   const servers: Record<string, VsCodeServer> = {};
   let inputs: McpInput[] = [];
+  const resolvedIde = ide ?? 'vscode';
 
   if (stack) {
     const included = getIncludedMcpServers(stack, repoInfo);
 
     for (const plugin of Object.values(PLUGINS)) {
       if (plugin.mcpServerKey && included.has(plugin.mcpServerKey)) {
-        servers[plugin.mcpServerKey] = plugin.mcpConfig! as VsCodeServer;
+        const serverConfig = { ...plugin.mcpConfig! } as VsCodeServer;
+        if (resolvedIde !== 'vscode' && plugin.envVars.length > 0) {
+          const envBlock: Record<string, string> = { ...(serverConfig.env ?? {}) };
+          for (const ev of plugin.envVars) {
+            envBlock[ev.name] = `\${${ev.name}}`;
+          }
+          serverConfig.env = envBlock;
+          delete serverConfig.envFile;
+        }
+        servers[plugin.mcpServerKey] = serverConfig;
         if (plugin.mcpInputs) {
           inputs.push(...plugin.mcpInputs);
         }
@@ -123,7 +133,6 @@ export async function scaffoldMcpConfig(
   }
 
   // Transform to IDE-specific format
-  const resolvedIde = ide ?? 'vscode';
   const output = transformMcpForIde(resolvedIde, servers, inputs.length > 0 ? inputs : undefined);
 
   if (existsSync(destPath)) {
@@ -197,7 +206,7 @@ function getMcpConfigRelPath(ide: IdeChoice): string {
     case 'cursor':
       return '.cursor/mcp.json';
     case 'claude-code':
-      return '.claude/mcp.json';
+      return '.mcp.json';
     case 'opencode':
       return 'opencode.json';
     case 'windsurf':

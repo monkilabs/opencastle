@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { readFile, readdir, access } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { IdeChoice, RepoInfo, StackConfig } from './types.js';
+import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js';
 
 // ── IDE detection ───────────────────────────────────────────────
 
@@ -658,6 +659,17 @@ export function mergeStackIntoRepoInfo(info: RepoInfo, stack: StackConfig): Repo
     } else if (['slack', 'teams'].includes(tool)) {
       merged.notifications = addUniqueToArray(merged.notifications, tool);
     }
+  }
+
+  const testingPluginIds = new Set([
+    ...getPluginsBySubCategory('testing').map(p => p.id),
+    ...getPluginsBySubCategory('e2e-testing').map(p => p.id),
+  ]);
+  const selectedTesting = stack.techTools.filter(t => testingPluginIds.has(t));
+  if (selectedTesting.length > 0) {
+    merged.testing = selectedTesting;
+  } else {
+    delete merged.testing;
   }
 
   return merged;
