@@ -121,6 +121,12 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // Pre-select tools already detected in the repo
   const detectedTools = buildDetectedToolsSet(repoInfo)
 
+  const existingTools = new Set<string>()
+  if (isReinit && existing?.stack) {
+    for (const t of existing.stack.techTools ?? []) existingTools.add(t)
+    for (const t of existing.stack.teamTools ?? []) existingTools.add(t)
+  }
+
   console.log(`  ${c.bold('── Stack ─────────────────────────────────────')}`)
 
   const categorySteps: Array<{ title: string; subCategories: string[]; target: 'tech' | 'team' }> = [
@@ -152,7 +158,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
         label: p.label,
         hint: p.hint,
         value: p.id,
-        ...((p.preselected || detectedTools.has(p.id)) && { selected: true }),
+        ...((p.preselected || detectedTools.has(p.id) || existingTools.has(p.id)) && { selected: true }),
       }))
     )
     for (const id of selected) {
@@ -203,29 +209,21 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   // ── Clean up previous installation on re-init ────────────────
   if (isReinit && existing) {
-    const frameworkPaths = existing.managedPaths?.framework ?? []
-    for (const p of frameworkPaths) {
-      const fullPath = resolve(projectRoot, p)
-      if (p.endsWith('/')) {
-        await removeDirIfExists(fullPath)
-      } else if (existsSync(fullPath)) {
-        await unlink(fullPath)
-      }
+    const oldIde = existing.stack?.ides?.[0]
+    let removeOldFiles = true
+    if (oldIde && oldIde !== ides[0]) {
+      const oldIdeLabel = IDE_LABELS[oldIde]
+      removeOldFiles = await confirm(`Remove ${oldIdeLabel} files from previous installation?`, false)
     }
-    // Remove MCP configs so they get regenerated with new stack
-    const mcpCandidates = [
-      '.vscode/mcp.json',
-      '.cursor/mcp.json',
-      '.claude/mcp.json',
-      'opencode.json',
-      '.windsurf/mcp.json',
-      '.codex/mcp.json',
-      '.gemini/mcp.json',
-    ]
-    for (const mcpPath of mcpCandidates) {
-      const fullPath = resolve(projectRoot, mcpPath)
-      if (existsSync(fullPath)) {
-        await unlink(fullPath)
+    if (removeOldFiles) {
+      const frameworkPaths = existing.managedPaths?.framework ?? []
+      for (const p of frameworkPaths) {
+        const fullPath = resolve(projectRoot, p)
+        if (p.endsWith('/')) {
+          await removeDirIfExists(fullPath)
+        } else if (existsSync(fullPath)) {
+          await unlink(fullPath)
+        }
       }
     }
   }
@@ -353,7 +351,13 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       const envContent = await readFile(envPath, 'utf8')
       const missing = envVars.filter(({ envVar }) => !envContent.includes(envVar))
       if (missing.length > 0) {
-        console.log(`  ${c.dim('→')} Your .env is missing: ${missing.map((m) => m.envVar).join(', ')}`)
+        const appendEnv = await confirm(`Append ${missing.length} missing variable(s) to .env?`, true)
+        if (appendEnv) {
+          const { appendFile } = await import('node:fs/promises')
+          const lines = missing.map(({ envVar, hint }) => `# ${hint}\n${envVar}=\n`)
+          await appendFile(envPath, '\n' + lines.join('\n'))
+          console.log(`  ${c.green('✓')} Appended ${missing.length} placeholder(s) to .env`)
+        }
       } else {
         console.log(`  ${c.green('✓')} All required variables found in .env`)
       }

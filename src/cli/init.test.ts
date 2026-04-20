@@ -847,7 +847,7 @@ describe('Claude Code adapter install', () => {
     await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
 
     const mcpConfig = await readJson<Record<string, unknown>>(
-      join(tempDir, '.claude', 'mcp.json')
+      join(tempDir, '.mcp.json')
     )
     expect(mcpConfig).toHaveProperty('mcpServers')
     expect(mcpConfig).not.toHaveProperty('servers')
@@ -887,7 +887,7 @@ describe('Claude Code adapter install', () => {
     expect(paths.framework).toContain('.claude/commands/')
 
     expect(paths.customizable).toContain('.opencastle/')
-    expect(paths.customizable).toContain('.claude/mcp.json')
+    expect(paths.customizable).toContain('.mcp.json')
   })
 })
 
@@ -1185,7 +1185,7 @@ describe('MCP config format per IDE', () => {
         const paths: Record<string, string> = {
           vscode: join(dir, '.vscode', 'mcp.json'),
           cursor: join(dir, '.cursor', 'mcp.json'),
-          'claude-code': join(dir, '.claude', 'mcp.json'),
+          'claude-code': join(dir, '.mcp.json'),
           opencode: join(dir, 'opencode.json'),
         }
 
