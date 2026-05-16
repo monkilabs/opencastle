@@ -214,7 +214,7 @@ function getMcpConfigRelPath(ide: IdeChoice): string {
     case 'codex':
       return '.codex/mcp.json';
     case 'antigravity':
-      return '.gemini/mcp.json';
+      return '.agents/mcp_config.json';
   }
 }
 

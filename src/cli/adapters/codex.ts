@@ -6,7 +6,7 @@ import { createSingleFileAdapter } from './single-file-base.js'
  * Generates AGENTS.md (root instructions) and .codex/ structure.
  *
  *   copilot-instructions.md    -> AGENTS.md  (combined with instructions/)
- *   skills/*\/SKILL.md          -> .codex/skills/<name>.md
+ *   skills/<name>/SKILL.md     -> .codex/skills/<name>/SKILL.md  (+ sibling resources, frontmatter preserved)
  *   agents/*.agent.md          -> .codex/agents/<name>.md
  *   agent-workflows/*.md       -> .codex/workflows/<name>.md
  *   prompts/*.prompt.md        -> .codex/prompts/<name>.md

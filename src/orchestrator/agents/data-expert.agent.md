@@ -1,7 +1,7 @@
 ---
 description: 'Data engineering expert for ETL pipelines, web crawlers, data processors, CLI tools, and CMS data import.'
 name: 'Data Expert'
-model: GPT-5.3-Codex
+model: GPT-5.5-Codex
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

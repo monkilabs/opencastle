@@ -1,7 +1,7 @@
 ---
 description: 'Release manager for pre-release verification, changelog generation, version management, regression checks, and release coordination.'
 name: 'Release Manager'
-model: GPT-5.3-Codex
+model: GPT-5.5-Codex
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

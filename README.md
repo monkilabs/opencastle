@@ -59,7 +59,7 @@ You can select multiple IDEs and tools — the output is adapted for each one.
 | **OpenCode** | `AGENTS.md` + `.opencode/` + `opencode.json` |
 | **Windsurf** | `.windsurfrules` + `.windsurf/rules/` |
 | **Codex CLI** | `AGENTS.md` + `.codex/` |
-| **Antigravity** | `GEMINI.md` + `.gemini/` |
+| **Antigravity** | `GEMINI.md` + `.agents/` |
 
 MCP servers are auto-configured for your stack in each IDE's native format.
 

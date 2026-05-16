@@ -1,5 +1,5 @@
 import { resolve, basename } from 'node:path'
-import { mkdir, writeFile, readdir, readFile, unlink, rm } from 'node:fs/promises'
+import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfig } from '../mcp.js'
@@ -115,6 +115,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const subdirs = (
           await readdir(skillsDir, { withFileTypes: true })
         ).filter((e) => e.isDirectory())
+        const skillRef = (name: string): string =>
+          `${config.dotDir}/skills/${name}/SKILL.md`
         for (const entry of subdirs.sort((a, b) =>
           a.name.localeCompare(b.name)
         )) {
@@ -124,7 +126,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
           const meta = parseFrontmatterMeta(await readFile(skillFile, 'utf8'))
           const desc = meta['description'] ?? ''
           skillLines.push(
-            `- **${entry.name}** (\`${config.dotDir}/skills/${entry.name}.md\`): ${desc}`
+            `- **${entry.name}** (\`${skillRef(entry.name)}\`): ${desc}`
           )
         }
 
@@ -136,7 +138,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
           const pluginMeta = parseFrontmatterMeta(await readFile(skillPath, 'utf8'))
           const pluginDesc = pluginMeta['description'] ?? ''
           skillLines.push(
-            `- **${id}** (\`${config.dotDir}/skills/${id}.md\`): ${pluginDesc}`
+            `- **${id}** (\`${skillRef(id)}\`): ${pluginDesc}`
           )
         }
 
@@ -170,7 +172,9 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       }
     }
 
-    // 3. Skills → dotDir/skills/<name>.md
+    // 3. Skills → dotDir/skills/<name>/SKILL.md (+ sibling resources, frontmatter preserved).
+    //    Matches the SKILL.md-per-folder format used by Claude Code, OpenCode, Codex,
+    //    and Antigravity — agents discover skills via the description: frontmatter field.
     const skillsDir = resolve(srcRoot, 'skills')
     if (existsSync(skillsDir)) {
       const destSkills = resolve(dotDirPath, 'skills')
@@ -182,18 +186,16 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (excludedSkills.has(entry.name)) continue
         const skillFile = resolve(skillsDir, entry.name, 'SKILL.md')
         if (!existsSync(skillFile)) continue
-        const destPath = resolve(destSkills, `${entry.name}.md`)
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
-        const content = await readFile(skillFile, 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
-        results.created.push(destPath)
+        const sub = await copyDir(
+          resolve(skillsDir, entry.name),
+          resolve(destSkills, entry.name)
+        )
+        results.created.push(...sub.created)
+        results.skipped.push(...sub.skipped)
       }
     }
 
-    // 3b. Plugin skills → dotDir/skills/<plugin-id>.md
+    // 3b. Plugin skills → dotDir/skills/<plugin-id>/SKILL.md
     {
       const pluginsRoot = getPluginsRoot(pkgRoot)
       const includedPlugins = stack ? getIncludedPluginIds(stack) : undefined
@@ -201,13 +203,14 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       const destSkills = resolve(dotDirPath, 'skills')
       await mkdir(destSkills, { recursive: true })
       for (const { id, skillPath } of pluginEntries) {
-        const destPath = resolve(destSkills, `${id}.md`)
+        const pluginDestDir = resolve(destSkills, id)
+        await mkdir(pluginDestDir, { recursive: true })
+        const destPath = resolve(pluginDestDir, 'SKILL.md')
         if (existsSync(destPath)) {
           results.skipped.push(destPath)
           continue
         }
-        const content = await readFile(skillPath, 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
+        await copyFile(skillPath, destPath)
         results.created.push(destPath)
       }
     }
@@ -310,7 +313,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     const checks: DoctorCheck[] = [
       { label: 'Root instructions file', path: config.rootFile, type: 'file' },
       { label: 'Agent definitions', path: `${config.dotDir}/agents/`, type: 'dir', countContents: true, countFilter: '.md' },
-      { label: 'Skills directory', path: `${config.dotDir}/skills/`, type: 'dir', countContents: true, countFilter: '.md' },
+      { label: 'Skills directory', path: `${config.dotDir}/skills/`, type: 'dir', countContents: true },
     ]
     if (config.promptsDir === config.workflowsDir) {
       checks.push({ label: 'Commands directory', path: `${config.dotDir}/${config.promptsDir}/`, type: 'dir', countContents: true })

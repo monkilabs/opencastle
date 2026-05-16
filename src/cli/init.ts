@@ -110,7 +110,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     },
     {
       label: 'Antigravity',
-      hint: 'GEMINI.md & .gemini/',
+      hint: 'GEMINI.md & .agents/',
       value: 'antigravity',
       ...(detectedIde === 'antigravity' && { selected: true }),
     },
