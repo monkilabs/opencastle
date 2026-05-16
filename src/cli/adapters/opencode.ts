@@ -6,7 +6,7 @@ import { createSingleFileAdapter } from './single-file-base.js'
  * Generates AGENTS.md (root instructions) and .opencode/ structure.
  *
  *   copilot-instructions.md    → AGENTS.md  (combined with instructions/)
- *   skills/*\/SKILL.md          → .opencode/skills/<name>.md
+ *   skills/<name>/SKILL.md     → .opencode/skills/<name>/SKILL.md  (+ sibling resources, frontmatter preserved)
  *   agents/*.agent.md          → .opencode/agents/<name>.md
  *   agent-workflows/*.md       → .opencode/workflows/<name>.md
  *   prompts/*.prompt.md        → .opencode/prompts/<name>.md

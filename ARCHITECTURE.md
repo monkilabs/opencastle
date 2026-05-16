@@ -10,7 +10,7 @@ OpenCastle turns AI coding assistants into multi-agent teams. A **Team Lead** ag
 
 ```mermaid
 graph TB
-    TL["🏰 Team Lead<br/><sub>Claude Opus 4.6</sub><br/><sub>Analyze → Decompose → Delegate → Verify</sub>"]
+    TL["🏰 Team Lead<br/><sub>Claude Opus 4.7</sub><br/><sub>Analyze → Decompose → Delegate → Verify</sub>"]
 
     subgraph Standard["Standard Tier"]
         DEV[Developer]
@@ -56,10 +56,10 @@ graph TB
 
 | Tier | Model | Use case |
 |------|-------|----------|
-| Premium | Claude Opus 4.6 | Architecture, security, orchestration |
+| Premium | Claude Opus 4.7 | Architecture, security, orchestration |
 | Standard | Gemini 3.1 Pro | Features, schemas, UI |
-| Utility | GPT-5.3-Codex | Testing, data, deployment |
-| Economy | GPT-5 mini | Documentation |
+| Utility | GPT-5.5-Codex | Testing, data, deployment |
+| Economy | GPT-5.4 mini | Documentation |
 
 ---
 

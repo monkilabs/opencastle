@@ -1,7 +1,7 @@
 ---
 description: "DevOps expert for deployments, CI/CD integration, cron jobs, security headers, caching, environment variables, and build optimization."
 name: "DevOps Expert"
-model: GPT-5.3-Codex
+model: GPT-5.5-Codex
 tools: ["search/changes", "search/codebase", "edit/editFiles", "web/fetch", "vscode/getProjectSetupInfo", "vscode/installExtension", "vscode/newWorkspace", "vscode/runCommand", "read/problems", "execute/getTerminalOutput", "execute/runInTerminal", "read/terminalLastCommand", "read/terminalSelection", "search", "execute/testFailure", "search/usages"]
 user-invocable: false
 ---

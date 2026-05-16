@@ -1,7 +1,7 @@
 ---
 description: 'SEO specialist for meta tags, structured data, sitemap strategy, Open Graph, search visibility, and crawlability audits.'
 name: 'SEO Specialist'
-model: GPT-5 mini
+model: GPT-5.4 mini
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'search', 'search/usages']
 user-invocable: false
 ---

@@ -6,7 +6,7 @@ import { createSingleFileAdapter } from './single-file-base.js'
  * Generates CLAUDE.md (root instructions) and .claude/ structure.
  *
  *   copilot-instructions.md    → CLAUDE.md  (combined with instructions/)
- *   skills/\*\/SKILL.md         → .claude/skills/<name>.md
+ *   skills/<name>/SKILL.md     → .claude/skills/<name>/SKILL.md  (+ sibling resources, frontmatter preserved)
  *   agent-workflows/*.md       → .claude/commands/workflow-<name>.md
  *   prompts/*.prompt.md        → .claude/commands/<name>.md
  *   customizations/            → .claude/customizations/  (scaffolded once)

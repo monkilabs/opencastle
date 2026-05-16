@@ -1,7 +1,7 @@
 ---
 description: 'Copywriter for UI microcopy, marketing text, email templates, venue descriptions, error messages, and all user-facing text.'
 name: 'Copywriter'
-model: GPT-5 mini
+model: GPT-5.4 mini
 tools: ['search/codebase', 'edit/editFiles', 'web/fetch', 'search', 'read/problems', 'search/usages']
 user-invocable: false
 ---

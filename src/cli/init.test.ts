@@ -825,21 +825,27 @@ describe('Claude Code adapter install', () => {
     expect(devAgent).toContain('Developer')
   })
 
-  it('creates skills as flat .md files stripped of frontmatter', async () => {
+  it('creates skills as <name>/SKILL.md subfolders with frontmatter preserved', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
 
     const skillsDir = join(tempDir, '.claude', 'skills')
-    const skills = await readdir(skillsDir)
+    const entries = await readdir(skillsDir)
 
-    expect(skills).toContain('self-improvement.md')
-    expect(skills).toContain('sanity.md')
-    expect(skills).toContain('linear.md')
-    expect(skills).not.toContain('supabase.md')
+    // Skills are subdirectories (Anthropic's Claude Code Skills format)
+    expect(entries).toContain('self-improvement')
+    expect(entries).toContain('sanity')
+    expect(entries).toContain('linear')
+    expect(entries).not.toContain('supabase')
 
-    // Verify frontmatter is stripped
-    const skillContent = await readFile(join(skillsDir, 'self-improvement.md'), 'utf8')
-    expect(skillContent).not.toMatch(/^---\n/)
+    // SKILL.md exists inside each skill subdirectory
+    const skillContent = await readFile(
+      join(skillsDir, 'self-improvement', 'SKILL.md'),
+      'utf8'
+    )
+    // Frontmatter is preserved — Claude Code uses the description: field for skill discovery
+    expect(skillContent).toMatch(/^---\n/)
+    expect(skillContent).toMatch(/\ndescription:/)
   })
 
   it('generates Claude Code MCP config with mcpServers format', async () => {
@@ -1128,31 +1134,31 @@ describe('Antigravity adapter install', () => {
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
     const content = await readFile(join(tmpDir, 'GEMINI.md'), 'utf8')
     expect(content).toContain('Project Instructions')
-    expect(content).toContain('.gemini/')
+    expect(content).toContain('.agents/')
   })
 
-  it('creates files in .gemini/ directory structure', async () => {
+  it('creates files in .agents/ directory structure', async () => {
     const adapter = await IDE_ADAPTERS['antigravity']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
-    expect(existsSync(join(tmpDir, '.gemini', 'agents'))).toBe(true)
-    expect(existsSync(join(tmpDir, '.gemini', 'skills'))).toBe(true)
+    expect(existsSync(join(tmpDir, '.agents', 'agents'))).toBe(true)
+    expect(existsSync(join(tmpDir, '.agents', 'skills'))).toBe(true)
   })
 
   it('generates Antigravity MCP config with mcpServers format', async () => {
     const adapter = await IDE_ADAPTERS['antigravity']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
-    const mcpPath = join(tmpDir, '.gemini', 'mcp.json')
+    const mcpPath = join(tmpDir, '.agents', 'mcp_config.json')
     expect(existsSync(mcpPath)).toBe(true)
     const mcp = await readJson(mcpPath)
     expect(mcp).toHaveProperty('mcpServers')
   })
 
-  it('getManagedPaths includes GEMINI.md and .gemini dirs', async () => {
+  it('getManagedPaths includes GEMINI.md and .agents dirs', async () => {
     const adapter = await IDE_ADAPTERS['antigravity']()
     const paths = adapter.getManagedPaths()
     expect(paths.framework).toContain('GEMINI.md')
-    expect(paths.framework.some(p => p.includes('.gemini/'))).toBe(true)
-    expect(paths.customizable).toContain('.gemini/mcp.json')
+    expect(paths.framework.some(p => p.includes('.agents/'))).toBe(true)
+    expect(paths.customizable).toContain('.agents/mcp_config.json')
   })
 })
 
@@ -1241,7 +1247,7 @@ describe('agent and skill parity across adapters', () => {
           opencode: join(dir, '.opencode', 'agents'),
           windsurf: join(dir, '.windsurf', 'rules', 'agents'),
           codex: join(dir, '.codex', 'agents'),
-          antigravity: join(dir, '.gemini', 'agents'),
+          antigravity: join(dir, '.agents', 'agents'),
         }
 
         const agents = await readdir(agentPaths[ideId])
