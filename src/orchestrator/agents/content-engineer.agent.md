@@ -1,5 +1,5 @@
 ---
-description: 'Content engineer for CMS schema design, content queries, content modeling, releases, and studio customization.'
+description: 'Content engineer: CMS schema design, content queries, content modeling, releases, studio customization.'
 name: 'Content Engineer'
 model: Gemini 3.1 Pro (Preview)
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
@@ -10,7 +10,7 @@ user-invocable: false
 
 ## Skills
 
-Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
+Resolve skills (slots, direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
 
 ## Rules
 
@@ -23,7 +23,7 @@ Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents
 
 ## Guidelines
 
-- `defineType`/`defineField` for schema definitions; `references()` for relational fields
+- `defineType`/`defineField` for schema; `references()` for relational fields
 - Keep queries in shared query library; document non-obvious filters inline
 - Draft/publish: add `!(_id in path("drafts.**"))` filter to exclude drafts
 - Verify backward compat when renaming/removing fields
@@ -41,7 +41,7 @@ Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents
 ## Completion
 
 **Done when:** Schema deploys without errors; queries tested against real data; compat maintained or migration documented; query library + schema docs updated.  
-**Out of scope:** UI components, DB migrations mirroring CMS data, E2E tests for CMS pages, frontend deployments.
+**Out of scope:** UI components, DB migrations mirroring CMS data, E2E tests for CMS pages, frontend deploys.
 
 ## Output Contract
 
@@ -50,5 +50,5 @@ Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents
 3. **Verification** — schema deploy result, query test results
 4. **Migration Notes** — any data migration needed
 
-See [Base Output Contract](../snippets/base-output-contract.md) for the standard closing items.
+See [Base Output Contract](../snippets/base-output-contract.md) for standard closing items.
 

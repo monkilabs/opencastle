@@ -1,5 +1,5 @@
 ---
-description: 'Instruct the Team Lead to implement a specific task from a roadmap with full orchestration, validation, and traceability.'
+description: 'Instruct the Team Lead to implement specific task from a roadmap with full orchestration, validation, traceability.'
 agent: 'Team Lead (OpenCastle)'
 ---
 
@@ -7,7 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Implement Roadmap Task
 
-You are the Team Lead. Implement the roadmap task described below following this strict workflow. The task comes from `.opencastle/project/roadmap.md`.
+You are the Team Lead. Implement the roadmap task described below following this strict workflow. Task comes from `.opencastle/project/roadmap.md`.
 
 ## Task
 
@@ -17,7 +17,7 @@ You are the Team Lead. Implement the roadmap task described below following this
 
 ## Workflow
 
-> **HARD GATE:** Steps 1→2 are **blocking prerequisites**. Do NOT write, edit, or delegate any code until tracker issues exist for every subtask. If you catch yourself writing code before issues are created, STOP immediately, create the issues, then resume.
+> **HARD GATE:** Steps 1→2 are **blocking prerequisites**. Do NOT write, edit, or delegate any code until tracker issues exist for every subtask. If you catch yourself writing code before issues are created, STOP immediately; create the issues; then resume.
 
 ### 1. Research & Context Gathering
 
@@ -39,7 +39,7 @@ Every subtask must be tracked. **No issue = no implementation.** This step produ
 
 ### 2.5 Generate Convoy Spec (BLOCKING — decides how Step 3 proceeds)
 
-All project-related work is executed via the convoy engine — regardless of subtask count.
+All project-related work executes via the convoy engine — regardless of subtask count.
 
 1. **Generate the spec** — use the `generate-convoy` prompt with the decomposed task list. The spec IS the implementation plan; even single-task fixes go through convoy for observability.
 2. **Hand the spec to the user** — tell them to run: `npx opencastle run -f .opencastle/convoys/<name>.convoy.yml`
@@ -48,26 +48,26 @@ All project-related work is executed via the convoy engine — regardless of sub
 
 ### 3. Implementation Rules
 
-> **Convoy execution:** The convoy spec IS the implementation plan — skip manual delegation and jump to Step 4 after the user runs the convoy.
+> **Convoy execution:** Convoy spec IS the implementation plan — skip manual delegation; jump to Step 4 after user runs convoy.
 
 #### Issue Traceability
 
-- Include the tracker issue ID and title in every delegation prompt
+- Include tracker issue ID and title in every delegation prompt
 - Reference issue IDs (e.g., `TAS-42`) in commit messages; move issues In Progress → Done as work progresses
 
 #### DRY Code
 
-- Search before creating — check for existing components, hooks, utilities, and queries first
+- Search before creating — check for existing components, hooks, utilities, queries first
 - Extract shared logic to `libs/`; no copy-paste across apps. Refactor duplicates when discovered
 
 #### Visual Consistency
 
-- Use the shared component library; never re-implement existing components
-- Match spacing, typography, and colors from existing pages; verify in all affected apps
+- Use shared component library; never re-implement existing components
+- Match spacing, typography, colors from existing pages; verify in all affected apps
 
 ### 4. Validation & Testing
 
-> Load the **validation-gates** skill for detailed steps on each gate.
+> Load **validation-gates** skill for detailed steps on each gate.
 
 Every subtask must pass ALL gates before being marked Done:
 
@@ -83,7 +83,7 @@ Every subtask must pass ALL gates before being marked Done:
 
 ### 5. Delivery
 
-Follow the **Delivery Outcome** defined in the **git-workflow** skill — commit, push, open PR (not merged), and link to the tracker. The convoy engine creates commits on the configured `branch` directly; open the PR from that branch after validation passes.
+Follow **Delivery Outcome** in **git-workflow** skill — commit, push, open PR (not merged), link to tracker. Convoy engine creates commits on configured `branch` directly; open PR from that branch after validation passes.
 
 ### 6. Documentation & Traceability
 
@@ -95,15 +95,15 @@ Follow the **Delivery Outcome** defined in the **git-workflow** skill — commit
 
 ### 7. Completion Criteria
 
-The roadmap task is complete when:
+Roadmap task is complete when:
 
 - [ ] All tracker subtask issues are Done
-- [ ] **All UI changes verified in Chrome browser via MCP with screenshots taken as proof**
-- [ ] **Every feature in the acceptance criteria visually confirmed** — not just "page loads"
+- [ ] **All UI changes verified in Chrome browser via MCP with screenshots as proof**
+- [ ] **Every feature in acceptance criteria visually confirmed** — not just "page loads"
 - [ ] No duplicated code — shared logic extracted to libraries
-- [ ] Visual consistency maintained across all affected pages and apps
+- [ ] Visual consistency maintained across all affected pages, apps
 - [ ] Documentation updated (roadmap, known issues, decisions)
 - [ ] Panel review passed for any high-stakes changes
 - [ ] Roadmap item marked complete in `.opencastle/project/roadmap.md`
-- [ ] Delivery Outcome completed (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery Outcome completed (see **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
 - [ ] Lessons learned captured if any retries occurred

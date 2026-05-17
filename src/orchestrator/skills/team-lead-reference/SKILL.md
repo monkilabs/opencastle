@@ -1,6 +1,6 @@
 ---
 name: team-lead-reference
-description: "Provides model routing rules, validates delegation prerequisites, supplies cost tracking templates, and defines dead-letter queue formats for Team Lead orchestration. Load when assigning tasks to agents, choosing model tiers, starting a delegation session, running a multi-agent workflow, delegating work, choosing which model to use, or assigning tasks."
+description: "Provides model routing rules, validates delegation prerequisites, supplies cost tracking templates, defines dead-letter queue formats for Team Lead orchestration. Load when assigning tasks to agents, choosing model tiers, starting delegation session, running multi-agent workflow, delegating work, choosing which model to use, or assigning tasks."
 ---
 
 # Team Lead Reference
@@ -15,7 +15,7 @@ description: "Provides model routing rules, validates delegation prerequisites, 
 6. **Handle** output per Status Handling table
 7. **Log** via **observability-logging** skill
 
-For the specialist agent registry and model assignments, see [agent-registry.md](../../.opencastle/agents/agent-registry.md).
+For specialist agent registry, model assignments, see [agent-registry.md](../../.opencastle/agents/agent-registry.md).
 
 ## Cost-Aware Model Routing
 
@@ -56,7 +56,7 @@ For the specialist agent registry and model assignments, see [agent-registry.md]
 | 3–5 subtasks, mixed | Quick deepen — single Researcher sub-agent |
 | 6+ subtasks, unfamiliar | Full deepen — parallel Researcher sub-agents |
 
-**Quick deepen:** Fire one Researcher for exact file paths & line numbers, patterns to follow (file:line examples), relevant lessons from `LESSONS-LEARNED.md`, and risks/blockers per subtask.
+**Quick deepen:** Fire one Researcher for exact file paths & line numbers, patterns to follow (file:line examples), relevant lessons from `LESSONS-LEARNED.md`, risks/blockers per subtask.
 **Full deepen:** Split by domain into parallel Researchers. See [agent-registry.md](../../.opencastle/agents/agent-registry.md) for scope examples.
 
 | Field | Before Deepen | After Deepen |
@@ -79,8 +79,8 @@ For the specialist agent registry and model assignments, see [agent-registry.md]
 ## Pre-Delegation Policy Checks
 
 1. Tracker issue exists for this task
-2. File partition is clean (no overlap with parallel agents)
-3. All dependency tasks are Done
+2. File partition clean (no overlap with parallel agents)
+3. All dependency tasks Done
 4. Delegation prompt has file paths + acceptance criteria
 5. Self-improvement reminder included (`Read LESSONS-LEARNED.md first`)
 
@@ -115,7 +115,7 @@ Entry (`DLQ-XXX: Short description`): **Date**, **Agent**, **Tracker Issue**, **
 
 ## Error Recovery
 
-For common failure modes and recovery procedures, load the **orchestration-protocols** skill.
+For common failure modes, recovery procedures, load **orchestration-protocols** skill.
 
 ## Dispute Protocol
 

@@ -1,5 +1,5 @@
 ---
-description: 'Deep-analyze the project to complete the .opencastle/ configuration with schema details, API routes, environment variables, and other information that requires reading actual config files. The programmatic bootstrap (run during opencastle init) has already populated the deterministic parts — do not redo that work.'
+description: 'Deep-analyze project to complete .opencastle/ configuration with schema details, API routes, environment variables, other info requiring reading actual config files. Programmatic bootstrap (run during opencastle init) already populated deterministic parts — do not redo that work.'
 agent: 'Team Lead (OpenCastle)'
 ---
 
@@ -7,7 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Complete Project Customizations
 
-You are completing the AI agent framework setup for a new project. The programmatic bootstrap (run automatically during `opencastle init`) has already populated the `.opencastle/` configuration files with everything it could determine automatically. Your job is to **deep-analyze** the project — reading actual config files, schemas, and source code — to **fill in the details** that require reading real file contents.
+Complete AI agent framework setup for a new project. Programmatic bootstrap (run automatically during `opencastle init`) already populated `.opencastle/` configuration files with everything it could determine automatically. Your job: **deep-analyze** project — reading actual config files, schemas, source code — to **fill in details** requiring reading real file contents.
 
 ## Additional Context (optional)
 
@@ -17,9 +17,9 @@ You are completing the AI agent framework setup for a new project. The programma
 
 ## Background
 
-The `.opencastle/` directory holds project-specific configuration that skills load at runtime. Skills contain generic methodology (how to write migrations, how to test, how to deploy); customizations hold the concrete values (which database, which endpoints, which project IDs).
+The `.opencastle/` directory holds project-specific configuration that skills load at runtime. Skills contain generic methodology (how to write migrations, how to test, how to deploy); customizations hold concrete values (which database, which endpoints, which project IDs).
 
-Without customizations, agents operate blind — they don't know the project's table schema, API routes, deployment target, or task board. This prompt fixes that.
+Without customizations, agents operate blind — they don't know project's table schema, API routes, deployment target, task board. This prompt fixes that.
 
 ## Pre-Existing Setup
 
@@ -27,10 +27,10 @@ Without customizations, agents operate blind — they don't know the project's t
 
 The project root contains **`.opencastle.json`** with a `repoInfo` field populated by `opencastle init`. It merges two sources:
 
-1. **Auto-detected tooling** — the init command scanned config files, `package.json` dependencies, and directory structures
-2. **User-declared choices** — the user selected CMS, database, project management, and notifications via the interactive questionnaire
+1. **Auto-detected tooling** — init command scanned config files, `package.json` dependencies, and directory structures
+2. **User-declared choices** — user selected CMS, database, project management, notifications via interactive questionnaire
 
-The result is a single unified view of the project's tech stack:
+Result: single unified view of project's tech stack:
 
 ```json
 {
@@ -63,17 +63,17 @@ The result is a single unified view of the project's tech stack:
 **Use `repoInfo` to:**
 - Know which technologies are present — skip re-scanning, go straight to reading their config files
 - Identify `configFiles` to read for deep inspection
-- Know which `project/` config files to create if they're missing (e.g., if `repoInfo.pm` includes `"linear"`, ensure `project/linear-config.md` exists)
+- Know which `project/` config files to create if missing (e.g., if `repoInfo.pm` includes `"linear"`, ensure `project/linear-config.md` exists)
 
 **`stack` vs `repoInfo`:** The `stack` field holds the raw user questionnaire answers (used internally for MCP server filtering and skill selection). The `repoInfo` field is the combined view you should use — it includes everything from `stack` plus all auto-detected tooling.
 
 **Still inspect:** `repoInfo` detects presence, not configuration details. You still need to read the actual config files for schemas, IDs, routes, etc.
 
-The skill matrix (`.opencastle/agents/skill-matrix.json`) will already have the `cms` and `database` binding entries pre-filled. The appropriate task management and notifications skills will already be installed. Verify they are correct and fill in any remaining empty bindings.
+Skill matrix (`.opencastle/agents/skill-matrix.json`) already has `cms`, `database` binding entries pre-filled. Appropriate task management, notifications skills already installed. Verify correctness; fill in remaining empty bindings.
 
 ### Pre-populated `.opencastle/` Files — What's Already Done
 
-The programmatic bootstrap that runs during `opencastle init` has already created and partially filled these files. **Do not regenerate them from scratch — update them instead.**
+Programmatic bootstrap running during `opencastle init` already created, partially filled these files. **Do not regenerate from scratch — update them instead.**
 
 | File | What's already there | What's missing |
 |------|---------------------|----------------|
@@ -92,25 +92,25 @@ The programmatic bootstrap that runs during `opencastle init` has already create
 - `stack/data-pipeline-config.md` — requires reading pipeline scripts
 - `agents/agent-registry.md`, `agents/skill-matrix.json`, `agents/skill-matrix.md` — if `.github/agents/` and `.github/skills/` exist
 
-Any template file for a technology NOT detected (no DB, no CMS, etc.) has already been removed.
+Any template file for technology NOT detected (no DB, no CMS, etc.) already removed.
 
 ## Workflow
 
 ### Phase 1: Discovery
 
-The programmatic bootstrap has already detected the tech stack. **Skip re-scanning** — focus on reading actual file contents to extract details.
+Programmatic bootstrap already detected tech stack. **Skip re-scanning** — focus on reading actual file contents to extract details.
 
 #### 1.1 Read Pre-populated Files
 
 - **First**: Read all existing `.opencastle/` files to understand what's already filled in
-- Read `.opencastle/project.instructions.md` to see the current tech stack table and gaps
+- Read `.opencastle/project.instructions.md` to see current tech stack table, gaps
 - Read each `stack/*.md` file — note any `<!-- TODO: verify -->` markers and empty table rows
 - Read `.opencastle.json` for `repoInfo` and `configFiles` — use `configFiles` as your reading list
 - Note what's missing (empty sections, placeholders, TODO markers)
 
 #### 1.2 Deep Inspection
 
-For each technology listed in the pre-populated files, read its actual config files to extract the details that couldn't be auto-detected:
+For each technology in pre-populated files, read its actual config files to extract details that couldn't be auto-detected:
 
 - **Database**: Read migration files, schema definitions, RLS policies, auth setup — extract table names, column types, policy names
 - **CMS**: Read schema files, document types, plugin config — extract content model names, field definitions, project/space IDs
@@ -122,7 +122,7 @@ For each technology listed in the pre-populated files, read its actual config fi
 
 ### Phase 2: Complete Customization Files
 
-Update the existing `.opencastle/` files using the deep inspection data gathered in Phase 1. **Do not regenerate files that already exist** — update them.
+Update existing `.opencastle/` files using deep inspection data from Phase 1. **Do not regenerate files that already exist** — update them.
 
 Target file structure for reference:
 
@@ -174,7 +174,7 @@ Target file structure for reference:
 5. **`agents/skill-matrix.json`** — If `.github/skills/` exists with skill definitions:
    - Capability slot bindings and `directSkills` per agent role (in JSON format)
    - Which agents load which skills (slots for plugin skills, directSkills for process skills)
-   - Note: `skill-matrix.md` is a companion documentation file — the JSON is the source of truth
+   - Note: `skill-matrix.md` is companion documentation file — JSON is source of truth
 
 #### `stack/` — Update Existing, Create Missing
 
@@ -271,7 +271,7 @@ Now that your `.opencastle/` configuration is complete, here's what you can do:
 
 - **Discover, don't assume.** Read actual config files. Don't guess that the project uses Supabase because it's a Next.js app.
 - **Skip what doesn't exist.** If there's no CMS, don't create a CMS config file.
-- **Names, not secrets.** Document environment variable names (`SUPABASE_URL`) but never their values.
+- **Names, not secrets.** Document environment variable names (`SUPABASE_URL`) but never values.
 - **Be specific.** Write actual table names, actual endpoint paths, actual file paths — not placeholders.
 - **Flag uncertainty.** If you can't determine something from the code, add a `<!-- TODO: verify -->` comment rather than guessing.
 - **Keep files focused.** Each file covers one domain. Don't put database schema in the deployment config.

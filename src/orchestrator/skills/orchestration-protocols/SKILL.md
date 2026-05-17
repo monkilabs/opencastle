@@ -1,15 +1,15 @@
 ---
 name: orchestration-protocols
-description: "Coordinates multiple agents with parallel task spawning, health monitoring, circuit breakers, and escalation paths. Use when managing parallel agents, handling agent timeouts, orchestrate agents, run tasks in parallel, concurrent agent execution, or fan-out tasks. Use when coordinating multi-agent task delegation."
+description: "Coordinate multiple agents: parallel spawning, health monitoring, circuit breakers, escalation. Use for parallel agents, agent timeouts, fan-out tasks, multi-agent delegation."
 ---
 
 # Orchestration Protocols
 
-Runtime patterns for managing delegated agents.
+Runtime patterns for delegated agents.
 
 ## Active Steering
 
-Intervene early when you spot:
+Intervene early on:
 
 | Signal | Action |
 |--------|--------|
@@ -19,11 +19,11 @@ Intervene early when you spot:
 | Circular behavior | Halt; switch approach |
 | Intent misunderstanding | Clarify prompt; re-delegate |
 
-When redirecting, explain *why* and *how*:
+When redirecting, explain *why* + *how*:
 
 > "Don't modify `libs/data/src/lib/product.ts` — shared across features. Add the new query in `libs/data/src/lib/reviews.ts`."
 
-**Sub-agents:** Catch problems early (5 min in can save an hour). **Background agents:** Steer post-hoc — invest in prompt specificity and partition constraints upfront.
+**Sub-agents:** Catch problems early (5 min in saves an hour). **Background agents:** Steer post-hoc — invest in prompt specificity, partition constraints upfront.
 
 ## Background Agents
 
@@ -31,18 +31,18 @@ Run autonomously in isolated Git worktrees. Reserve for well-scoped tasks >5 min
 
 - **Spawn:** Delegate Session → Background → Select agent → Enter prompt
 - **Auto-compaction:** At 95% token limit; use `--resume` to continue
-- **No real-time monitoring:** Invest in specific prompts, strict partition constraints, and acceptance criteria checklists upfront
+- **No real-time monitoring:** Invest in specific prompts, strict partition constraints, acceptance criteria checklists upfront
 
 ## Parallel Research Protocol
 
-Spawn multiple research sub-agents in parallel when 3+ independent questions must be answered before implementation. **Spawn if:** ≥3 independent questions AND answers span multiple codebase areas — otherwise handle sequentially.
+Spawn multiple research sub-agents in parallel when 3+ independent questions need answers before implementation. **Spawn if:** ≥3 independent questions AND answers span multiple codebase areas — else handle sequentially.
 
 ### Spawn Strategy
 
 | Rule | Detail |
 |------|--------|
 | Divide by topic/area | Each researcher owns a coherent domain |
-| Max 3–5 researchers | More creates diminishing returns and token waste |
+| Max 3–5 researchers | More: diminishing returns, token waste |
 | Focused scope per agent | Explicit dirs, file patterns, or questions |
 | Economy/Standard tier | Manage cost for research sub-agents |
 
@@ -56,21 +56,21 @@ Return: key findings, relevant file paths (with line numbers), patterns, unanswe
 ### Result Merge Protocol
 
 1. Collect all results into single context
-2. **Checkpoint:** verify every researcher returned a result (no timeout or error); re-run any that failed before proceeding.
+2. **Checkpoint:** verify every researcher returned a result (no timeout/error); re-run failures before proceeding.
 3. Deduplicate (same file/pattern counts once)
 4. Resolve conflicts — specific evidence beats general observations
 5. Synthesize into concise context block for implementation prompts
-6. **Checkpoint:** confirm synthesized block covers every original question; mark any unanswered questions as blockers.
+6. **Checkpoint:** confirm synthesized block covers every original question; mark unanswered as blockers.
 
 ## Batch Reviews
 
 - Group by domain (UI, data); run fast reviews in parallel for independent outputs
-- Review sequentially when outputs share the same partition boundary
-- Combine related artifacts into one panel question when they share acceptance criteria
+- Review sequentially when outputs share partition boundary
+- Combine related artifacts into one panel question when sharing acceptance criteria
 
 ## Context Compaction
 
-Summarize prior phase output before passing to the next agent. **Extract:** files changed, key decisions, verification (pass/fail), blockers. **Discard:** raw tool output, reasoning traces, failed attempts.
+Summarize prior phase output before passing to next agent. **Extract:** files changed, key decisions, verification (pass/fail), blockers. **Discard:** raw tool output, reasoning traces, failed attempts.
 
 **Template:**
 ```
@@ -94,12 +94,12 @@ Summarize prior phase output before passing to the next agent. **Extract:** file
 
 ## Health & Recovery Reference
 
-Detailed Agent Health Monitoring, Error Recovery Playbook, and Agent Circuit Breaker tables have been moved to REFERENCE.md to keep this skill concise. See REFERENCE.md in this directory for thresholds, recovery steps, and escalation flows.
+Agent Health Monitoring, Error Recovery Playbook, Circuit Breaker tables moved to REFERENCE.md. See REFERENCE.md for thresholds, recovery steps, escalation flows.
 
 
 ### CLI examples (spawn & monitor)
 
-These use the OpenCastle CLI (`npx opencastle` or `bin/cli.mjs`):
+Use OpenCastle CLI (`npx opencastle` or `bin/cli.mjs`):
 
 ```bash
 opencastle run --file convoy.yml --dry-run

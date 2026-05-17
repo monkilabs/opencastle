@@ -1,5 +1,5 @@
 ---
-description: 'Software architect for strategic architecture decisions, roadmap planning, ADRs, system design, and technology evaluation.'
+description: 'Software architect: strategic decisions, roadmap planning, ADRs, system design, technology evaluation.'
 name: 'Architect'
 model: Claude Sonnet 4.6
 tools: ['search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'search', 'search/usages', 'execute/runInTerminal', 'execute/getTerminalOutput', 'read/terminalLastCommand']
@@ -20,7 +20,7 @@ user-invocable: false
 
 ## Skills
 
-Resolve all skills (slots and direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
+Resolve skills (slots, direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
 
 ## ADR Template
 
@@ -40,12 +40,12 @@ For new features/APIs, assess AI agent consumability:
 
 | Check | Question |
 |-------|----------|
-| Entry points | Can an agent find where to start? Naming predictable? |
-| Self-describing APIs | Do routes/actions reveal intent without reading implementation? |
+| Entry points | Can agent find where to start? Naming predictable? |
+| Self-describing APIs | Routes/actions reveal intent without reading implementation? |
 | Discoverable context | Traceable from feature → files via search (no tribal knowledge)? |
-| Action+context parity | Context for each action co-located or easily findable? |
+| Action+context parity | Context for each action co-located or findable? |
 | Consistent patterns | New code follows existing patterns? |
-| Actionable errors | Messages include file path, expected vs. actual, suggested fix? |
+| Actionable errors | Messages include file path, expected vs actual, suggested fix? |
 | Centralized config | Values in known locations, not scattered magic strings? |
 
 ## When Stuck
@@ -59,7 +59,7 @@ For new features/APIs, assess AI agent consumability:
 
 ## Library Boundaries
 
-Apps → libs (never reverse) · UI never fetches data · no barrel files · co-locate code that changes together
+Apps → libs (never reverse) · UI never fetches data · no barrel files · co-locate code changing together
 
 ## Done When
 
@@ -77,4 +77,4 @@ Implementing changes · writing tests · DB/schema changes · deploying infrastr
 1. **Assessment** — APPROVE / CONCERNS / RETHINK + rationale
 2. **Strengths** · **Risks** (likelihood + impact) · **Alternatives** · **Action Items**
 
-See [Base Output Contract](../snippets/base-output-contract.md) for the standard closing items.
+See [Base Output Contract](../snippets/base-output-contract.md) for standard closing items.

@@ -12,7 +12,7 @@ description: "Scaffolds production-ready monorepo projects using the backbone CL
 
 ## How to Use the CLI
 
-Backbone is **interactive** — it uses `@clack/prompts` to ask a series of questions. Agents must run the command and respond to each prompt in sequence.
+Backbone is **interactive** — uses `@clack/prompts` to ask series of questions. Agents must run command, respond to each prompt in sequence.
 
 ### Prompt Sequence
 
@@ -93,21 +93,21 @@ After backbone runs, the output directory contains:
 
 **Always included regardless of options:** Vitest configuration, GitHub Actions CI workflows, root `tsconfig.base.json`, ESLint, Prettier.
 
-Agents working on post-scaffolding tasks must **not recreate** any of these files — they already exist. Build on top of the generated structure.
+Agents working on post-scaffolding tasks must **not recreate** these files — they already exist. Build on top of generated structure.
 
 ## Post-Scaffolding Steps
 
 After `npx @monkilabs/backbone <project-name>` completes:
 
-1. `cd <project-name>` into the generated directory
-2. Run `npm install` to install all dependencies
-3. Verify the project builds: run the monorepo build command (e.g. `npx turbo build` or `npx nx build`)
-4. All subsequent agent tasks should **import and extend** the generated boilerplate — never overwrite it
+1. `cd <project-name>` into generated directory
+2. Run `npm install` for all dependencies
+3. Verify project builds: run monorepo build command (e.g. `npx turbo build` or `npx nx build`)
+4. All subsequent agent tasks should **import and extend** generated boilerplate — never overwrite
 
 **If something fails:**
 - `npm install` errors → verify Node.js >= 22.5.0 (`node -v`)
-- Build errors → check that no incompatible options were selected (see Astro constraint above); re-run backbone with corrected choices if needed
-- Wrong option selected → delete the generated directory and re-run `npx @monkilabs/backbone` with the correct selections
+- Build errors → check no incompatible options selected (see Astro constraint above); re-run backbone with corrected choices if needed
+- Wrong option selected → delete generated directory; re-run `npx @monkilabs/backbone` with correct selections
 
 ## Example Convoy Task
 

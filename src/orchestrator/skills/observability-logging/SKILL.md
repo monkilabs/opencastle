@@ -1,11 +1,11 @@
 ---
 name: observability-logging
-description: "Writes session logs, records delegation decisions, and tracks review/dispute outcomes in NDJSON format. Use when logging session activity, recording audit trails, or running pre-response verification checklists."
+description: "Writes session logs, records delegation decisions, tracks review/dispute outcomes in NDJSON format. Use when logging session activity, recording audit trails, or running pre-response verification checklists."
 ---
 
 # Observability Logging
 
-> **⛔ HARD GATE.** Every agent MUST log every session to `events.ndjson` before responding. No exceptions. A session without logs is a failed session.
+> **⛔ HARD GATE.** Every agent MUST log every session to `events.ndjson` before responding. No exceptions. Session without logs is a failed session.
 
 | File | Event types | Who | When |
 |------|------------|-----|------|

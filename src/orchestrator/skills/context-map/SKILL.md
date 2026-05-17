@@ -1,11 +1,11 @@
 ---
 name: context-map
-description: "Maps file dependencies, flags shared imports, and groups files for safe parallel editing before code changes. Use when planning a refactoring, analyzing change impact, or understanding which files a modification will affect."
+description: "Maps file dependencies, flags shared imports, groups files for safe parallel editing before code changes. Use when planning a refactoring, analyzing change impact, or understanding which files a modification will affect."
 ---
 
 # Skill: Context Map
 
-Generate a **file impact map** before code changes to identify affected files, relationships, and cascades — improving agent file partitions for parallel work.
+Generate **file impact map** before code changes to identify affected files, relationships, cascades — improves agent file partitions for parallel work.
 
 ## When to Use
 
@@ -19,7 +19,7 @@ Generate a **file impact map** before code changes to identify affected files, r
 ## Steps
 
 ### 1 — Entry Points
-Identify files that MUST change from the task description.
+Identify files that MUST change from task description.
 
 ### 2 — Trace Outward (dependents)
 Find consumers of entry-point exports:
@@ -38,7 +38,7 @@ grep_search("from.*config", includePattern="src/places/**")  # config deps
 
 ### 4 — Build the Map
 
-Produce a compact Context Map for the Team Lead and downstream agents. Example minimal map (inline):
+Produce compact Context Map for Team Lead, downstream agents. Example minimal map (inline):
 
 ```markdown
 Context Map — Feature: Add priceRange
@@ -59,7 +59,7 @@ Context Map — Feature: Add priceRange
 	- src/components/Account/**
 ```
 
-Validation checkpoint: run `grep_search` and `vscode_listCodeUsages` results into the map and confirm all listed files open without errors (CI: `pnpm typecheck`). For full template and Team Lead integration snippets see REFERENCE.md in this directory.
+Validation checkpoint: run `grep_search`, `vscode_listCodeUsages` results into map; confirm all listed files open without errors (CI: `pnpm typecheck`). For full template, Team Lead integration snippets see REFERENCE.md in this directory.
 
 ## Anti-Patterns
 

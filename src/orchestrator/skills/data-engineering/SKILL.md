@@ -1,11 +1,11 @@
 ---
 name: data-engineering
-description: "Transforms, validates, and loads data in ETL pipelines. Use when building scrapers, validating NDJSON feeds, or importing data into CMS/DB targets."
+description: "Transforms, validates, loads data in ETL pipelines. Use when building scrapers, validating NDJSON feeds, or importing data into CMS/DB targets."
 ---
 
 # Data Engineering
 
-Generic pipeline patterns. For project-specific sources and full schema references see [REFERENCE.md](./REFERENCE.md).
+Generic pipeline patterns. For project-specific sources, full schema references see [REFERENCE.md](./REFERENCE.md).
 
 ## Scraper Architecture
 
@@ -26,17 +26,17 @@ One record per line. Schema:
 
 ## Recommended Workflow (numbered, with validation)
 
-1. Scrape: run scraper in `--dry-run` to collect a sample (50–200 records).
-   - Checkpoint: sample contains expected fields and geo data.
-   - Recovery: fix extractor selectors, re-run sample.
+1. Scrape: run scraper in `--dry-run` to collect sample (50–200 records).
+   - Checkpoint: sample contains expected fields, geo data.
+   - Recovery: fix extractor selectors; re-run sample.
 2. Validate NDJSON: run line-by-line JSON parse + schema validator (see `validate-ndjson.js` example).
    - Checkpoint: 0 parse errors, required fields present.
-   - Recovery: run `ndjson-filter` to isolate failing records and inspect source HTML.
-3. Dry-run import: import into staging with `createOrReplace` disabled; check counts and duplicates.
-   - Checkpoint: counts match expectation ±5% and no duplicates inserted.
-   - Recovery: revert staging and adjust dedupe key.
-4. Backup: snapshot current target (DB export) and store with timestamp.
-5. Import: run import with idempotent keys and monitor logs; on failure revert to backup.
+   - Recovery: run `ndjson-filter` to isolate failing records; inspect source HTML.
+3. Dry-run import: import into staging with `createOrReplace` disabled; check counts, duplicates.
+   - Checkpoint: counts match expectation ±5%; no duplicates inserted.
+   - Recovery: revert staging; adjust dedupe key.
+4. Backup: snapshot current target (DB export); store with timestamp.
+5. Import: run import with idempotent keys; monitor logs; on failure revert to backup.
 
 ## Quick executable pipeline (copy & adapt)
 
@@ -59,5 +59,5 @@ if (errors) { console.error(`${errors} errors`); process.exit(2); }
 console.log('OK');
 ```
 
-Full scraper and extended validator: see [REFERENCE.md](./REFERENCE.md).
+Full scraper, extended validator: see [REFERENCE.md](./REFERENCE.md).
 

@@ -13,7 +13,7 @@
 | Element | Convention |
 |---------|-----------|
 | Headings | Sentence case (`## Core principles`, not `## Core Principles`). Exception: proper nouns and acronyms. |
-| Lists | Parallel structure — all items start with the same part of speech |
+| Lists | Parallel structure — all items start with same part of speech |
 | Code | Inline backticks for symbols/commands; fenced blocks for multi-line |
 | Links | Descriptive text: `[migration guide](./migrate.md)` not `[click here](./migrate.md)` |
 | Tables | Use for structured comparisons; keep columns ≤5 |
@@ -21,7 +21,7 @@
 
 ## Markdown Standards
 
-- One blank line before and after headings, code blocks, and tables
+- One blank line before, after headings, code blocks, tables
 - No trailing whitespace
 - Files end with a single newline
 - Use `---` for horizontal rules (sparingly)
@@ -32,7 +32,7 @@
 | Anti-pattern | Fix |
 |-------------|-----|
 | Walls of prose without structure | Break into headings, bullets, or tables |
-| Duplicate content across docs | Link to the canonical source |
+| Duplicate content across docs | Link to canonical source |
 | Stale "Last Updated" dates | Remove or automate; manual dates drift |
 | TODO/FIXME placeholders in published docs | Resolve before merging |
 | Screenshots without alt text | Add descriptive alt text for accessibility |

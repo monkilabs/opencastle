@@ -1,6 +1,6 @@
 ---
 name: memory-merger
-description: "Reviews mature LESSONS-LEARNED.md entries, rewrites them as permanent rules in skill/instruction files, and archives graduated lessons. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded LESSONS-LEARNED.md."
+description: "Reviews mature LESSONS-LEARNED.md entries, rewrites them as permanent rules in skill/instruction files, archives graduated lessons. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded LESSONS-LEARNED.md."
 ---
 
 # Memory Merger
@@ -22,11 +22,11 @@ Combined signals to identify merge candidates.
 ## Workflow (numbered)
 
 1. Scan LESSONS-LEARNED.md for candidate entries (frequency, severity, age).
-2. Map each candidate to a target file and section.
-3. Draft the exact edit (concise rule or example).
-4. Apply the edit with an attribution comment.
-5. Archive the migrated lesson in LESSONS-LEARNED.md with a merge note.
-6. Update the index and run validation checks.
+2. Map each candidate to target file, section.
+3. Draft exact edit (concise rule or example).
+4. Apply edit with attribution comment.
+5. Archive migrated lesson in LESSONS-LEARNED.md with merge note.
+6. Update index; run validation checks.
 
 ## Merge Protocol
 
@@ -60,7 +60,7 @@ Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
 ### Worked Example
 
-See [REFERENCE.md](./REFERENCE.md) for a full worked merge example (LES-042: MCP tool timeout).
+See [REFERENCE.md](./REFERENCE.md) for full worked merge example (LES-042: MCP tool timeout).
 
 ## Quality Gates (validation checkpoints)
 

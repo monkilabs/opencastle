@@ -1,5 +1,5 @@
 ---
-description: 'Fix validation errors in a convoy task plan by outputting targeted JSON patches.'
+description: 'Fix validation errors in convoy task plan by outputting targeted JSON patches.'
 agent: 'Team Lead (OpenCastle)'
 output: json
 ---
@@ -8,7 +8,7 @@ output: json
 
 # Fix Task Plan
 
-You are the Team Lead. The task plan below has validation errors. Fix every error by outputting targeted JSON patches.
+You are the Team Lead. Task plan below has validation errors. Fix every error by outputting targeted JSON patches.
 
 ## Task Plan
 
@@ -25,13 +25,13 @@ You are the Team Lead. The task plan below has validation errors. Fix every erro
 ## Instructions
 
 1. Read every error before writing patches.
-2. Fix ALL reported errors — do not partially fix.
-3. Preserve intent, agent assignments, and task scope. Only fix what is broken.
+2. Fix ALL reported errors; do not partially fix.
+3. Preserve intent, agent assignments, task scope. Only fix what is broken.
 4. Each patch replaces ONE field on ONE task.
 
 ## Patch Format
 
-Output a single `json` fenced code block with an array of patches:
+Output single `json` fenced code block with array of patches:
 
 ```json
 [
@@ -59,12 +59,12 @@ Output a single `json` fenced code block with an array of patches:
 - `value`: Complete new value (replaces old value entirely)
 
 ### Common fixes
-- **Truncated prompt** → patch `field: "prompt"` with the complete, self-contained prompt text
-- **Missing dependency** → patch `field: "depends_on"` with the corrected array
+- **Truncated prompt** → patch `field: "prompt"` with complete, self-contained prompt text
+- **Missing dependency** → patch `field: "depends_on"` with corrected array
 - **Partition conflict** → patch `field: "files"` to use specific paths, or patch `field: "depends_on"` to add sequencing
 - **Wrong agent** → patch `field: "agent"` with correct value from roster
 - **Vague prompt** → patch with detailed, file-specific prompt including acceptance criteria
 
 ## Output
 
-Your entire response must be a single `json` fenced code block with the patches array. No text before or after.
+Your entire response must be single `json` fenced code block with patches array. No text before or after.

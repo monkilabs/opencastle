@@ -1,6 +1,6 @@
 ---
 name: security-hardening
-description: "Security architecture including authentication, authorization, RLS policies, CSP, input validation, and API security. Use when implementing auth flows, writing RLS policies, configuring CSP/headers, validating inputs, or auditing security. Trigger terms: RLS, CSP, Server Actions, Zod, auth flow"
+description: "Security architecture: authentication, authorization, RLS policies, CSP, input validation, API security. Use when implementing auth flows, writing RLS policies, configuring CSP/headers, validating inputs, or auditing security. Trigger terms: RLS, CSP, Server Actions, Zod, auth flow"
 ---
 
 # Security Hardening
@@ -33,7 +33,7 @@ Auth provider with Server Actions pattern. Resolve library via **database** capa
 
 ## CSP
 
-Principle of least privilege. External domains are project-specific (see deployment customization).
+Least privilege. External domains are project-specific (see deployment customization).
 
 - `default-src 'self'` — deny by default
 - `object-src 'none'` — block plugins
@@ -43,7 +43,7 @@ Principle of least privilege. External domains are project-specific (see deploym
 
 **Note:** `'unsafe-inline'`/`'unsafe-eval'` may be required in dev mode — use nonces/hashes in production.
 
-**Examples** — Next.js `next.config.js` headers and middleware pattern:
+**Examples** — Next.js `next.config.js` headers + middleware:
 
 ```js
 // next.config.js
@@ -97,7 +97,7 @@ WHERE relname = 'your_table_name';
 
 `relrowsecurity = true` indicates RLS enabled.
 
-2. Test pattern: verify a user without privileges cannot read rows.
+2. Test pattern: verify user without privileges cannot read rows.
 
 ```sql
 -- As owner (create test row)
@@ -109,7 +109,7 @@ SELECT * FROM your_table_name WHERE id = 1;
 -- expected: 0 rows
 ```
 
-Automate this check in CI: run the enabling query and a simple positive/negative test as part of the security gate.
+Automate this check in CI: run the enabling query + positive/negative test as part of the security gate.
 
 ## Server Action Zod example
 
@@ -141,7 +141,7 @@ if (!authHeader || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
 
 Generate secret: `openssl rand -hex 32`. Rotate quarterly.
 
-Input: Zod schemas in all Server Actions and route handlers; React Hook Form client-side.
+Input: Zod schemas in all Server Actions, route handlers; React Hook Form client-side.
 
 ## Critical Rules
 
@@ -154,10 +154,10 @@ Input: Zod schemas in all Server Actions and route handlers; React Hook Form cli
 7. Rotate secrets quarterly.
 
 ## Implementation checklist
-1. Enable RLS on tables and add an automated enablement check in CI (example: `SELECT relrowsecurity FROM pg_class WHERE relname = 'your_table'`).
-2. Configure authentication and session middleware; verify via an integration smoke test against a protected endpoint (e.g., `/api/me`).
-3. Add CSP and security headers in `next.config.js` or middleware; validate headers with `curl -I` against a preview URL.
-4. Add Zod validation to all Server Actions and route handlers (see Zod example above).
-5. Run a security audit (RLS positive/negative tests, header validation, and input fuzzing) and block merges on failing gates.
+1. Enable RLS on tables, add automated enablement check in CI (example: `SELECT relrowsecurity FROM pg_class WHERE relname = 'your_table'`).
+2. Configure authentication + session middleware; verify via integration smoke test against protected endpoint (e.g., `/api/me`).
+3. Add CSP + security headers in `next.config.js` or middleware; validate with `curl -I` against preview URL.
+4. Add Zod validation to all Server Actions, route handlers (see Zod example above).
+5. Run security audit (RLS positive/negative tests, header validation, input fuzzing); block merges on failing gates.
 
-Cross-reference: see [api-patterns/SKILL.md](../api-patterns/SKILL.md#architecture) for Server Action patterns and [session-checkpoints/SKILL.md](../session-checkpoints/SKILL.md) for checkpointing security-sensitive work.
+Cross-reference: [api-patterns/SKILL.md](../api-patterns/SKILL.md#architecture) for Server Action patterns; [session-checkpoints/SKILL.md](../session-checkpoints/SKILL.md) for checkpointing security-sensitive work.

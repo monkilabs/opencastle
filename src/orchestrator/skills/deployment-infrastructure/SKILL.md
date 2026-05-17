@@ -1,11 +1,11 @@
 ---
 name: deployment-infrastructure
-description: "Configures deployment pipelines, manages environment variables, schedules cron jobs, applies security headers, and implements caching strategies. Use when working with Docker, Vercel, AWS, Dockerfile, nginx.conf, or platform deployment configs."
+description: "Configures deployment pipelines, manages environment variables, schedules cron jobs, applies security headers, implements caching strategies. Use when working with Docker, Vercel, AWS, Dockerfile, nginx.conf, or platform deployment configs."
 ---
 
 # Deployment Infrastructure
 
-See [deployment-config.md](../../.opencastle/stack/deployment-config.md) for full architecture, env vars, cron jobs, and caching headers.
+See [deployment-config.md](../../.opencastle/stack/deployment-config.md) for full architecture, env vars, cron jobs, caching headers.
 
 ## Environment Variables
 
@@ -65,7 +65,7 @@ Apply via framework `headers()` config or CDN rules.
 
 ## Security Headers
 
-Load **security-hardening** skill for full CSP inventory and header configuration.
+Load **security-hardening** skill for full CSP inventory, header configuration.
 
 ## Release Process
 
@@ -79,7 +79,7 @@ Load **security-hardening** skill for full CSP inventory and header configuratio
 
 ## Rollback
 
-Prefer platform rollback (promote last good deploy). Fallback: `git revert -m 1 HEAD && git push`.
+Prefer platform rollback (promote last good deploy). Fallback: `git revert -m 1 HEAD Prefer platform rollback (promote last good deploy). Fallback: `git revert -m 1 HEAD && git push`.Prefer platform rollback (promote last good deploy). Fallback: `git revert -m 1 HEAD && git push`. git push`.
 
 1. Roll back → 2. Smoke-test (`curl -sI`) → 3. Confirm 200 + correct behavior → 4. If still broken, escalate
 5. Notify team; create post-mortem ticket

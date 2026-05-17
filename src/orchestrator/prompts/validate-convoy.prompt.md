@@ -1,5 +1,5 @@
 ---
-description: 'Validate a convoy task plan for semantic correctness. Outputs VALID or INVALID with specific errors.'
+description: 'Validate convoy task plan for semantic correctness. Outputs VALID or INVALID with specific errors.'
 agent: 'Reviewer'
 output: validation
 ---
@@ -8,9 +8,9 @@ output: validation
 
 # Validate Task Plan
 
-> **Note:** Schema validation (field types, YAML syntax, dependency cycles, glob patterns) has already passed. The generator already enforces prompt quality, agent matching, and file list completeness. Focus ONLY on the structural and logical checks below.
+> **Note:** Schema validation (field types, YAML syntax, dependency cycles, glob patterns) already passed. Generator already enforces prompt quality, agent matching, file list completeness. Focus ONLY on structural and logical checks below.
 
-You are a senior technical reviewer. Validate the task plan below for **structural correctness**. Pass the plan if the structure is sound — do not fail for prompt wording, style, or verbosity.
+You are a senior technical reviewer. Validate the task plan below for **structural correctness**. Pass plan if structure is sound — do not fail for prompt wording, style, or verbosity.
 
 ## Task Plan to Validate
 
@@ -20,9 +20,9 @@ You are a senior technical reviewer. Validate the task plan below for **structur
 
 ## Validation Checks
 
-> If the spec contains `<!-- validation-pass: N -->`, this is pass N. On pass 2+, verify previous fixes were applied — do NOT invent new issues.
+> If spec contains `<!-- validation-pass: N -->`, this is pass N. On pass 2+, verify previous fixes were applied — do NOT invent new issues.
 
-Evaluate the checks below. If ALL pass, respond `VALID`. Only fail for checks marked BLOCKING.
+Evaluate checks below. If ALL pass, respond `VALID`. Only fail for checks marked BLOCKING.
 
 ### Partition Conflicts (BLOCKING)
 
@@ -33,22 +33,22 @@ Two tasks that can run in parallel (no direct or transitive `depends_on` edge be
 
 ### Dependency Completeness (BLOCKING)
 
-If a task's prompt imports, references, or builds on files produced by another task, a `depends_on` edge to that producing task must exist.
+If task's prompt imports, references, or builds on files produced by another task, `depends_on` edge to that producing task must exist.
 
 - [ ] Scan every prompt for cross-task file references
-- [ ] Each such reference must be covered by a `depends_on` edge
+- [ ] Each such reference must be covered by `depends_on` edge
 
 ### Logical Soundness (BLOCKING)
 
-- [ ] No redundant tasks doing the same work
-- [ ] No obvious missing tasks that would leave the goal unachievable
+- [ ] No redundant tasks doing same work
+- [ ] No obvious missing tasks that would leave goal unachievable
 - [ ] No tasks with empty or stub prompts (`...`, placeholder text)
 
 ---
 
 ## Output Format
 
-Your entire response must be a single fenced JSON block — no text before or after:
+Your entire response must be single fenced JSON block — no text before or after:
 
 ```json
 {

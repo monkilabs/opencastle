@@ -1,6 +1,6 @@
 ---
 name: panel-majority-vote
-description: "Runs 3 isolated reviewer sub-agents and consolidates a PASS/BLOCK verdict by majority. Use when the user requests an independent review of code changes, pull requests, design documents, or release notes."
+description: "Runs 3 isolated reviewer sub-agents; consolidates PASS/BLOCK verdict by majority. Use when user requests independent review of code changes, pull requests, design documents, or release notes."
 ---
 
 # Skill: Panel majority vote
@@ -18,7 +18,7 @@ description: "Runs 3 isolated reviewer sub-agents and consolidates a PASS/BLOCK 
 
 ## Procedure
 
-1. **Validate scope** — every artifact path is under `<runRoot>` and the list is sufficient to answer the question.
+1. **Validate scope** — every artifact path under `<runRoot>`; list sufficient to answer question.
 
 2. **Spawn 3 reviewers in parallel** — start three isolated subagents with identical prompts. Spawn 3 reviewers using `runSubagent` with identical prompts; each reviewer receives the same question, artifact list, and constraints but runs in isolation. Required reviewer output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
 
@@ -48,9 +48,9 @@ jq -n --arg panel_key "run123-panel" --arg verdict "$verdict" --argjson pass_cou
 
 ## Notes
 
-- On BLOCK: change the underlying work and re-run; do not re-word the question.
+- On BLOCK: change underlying work; re-run; do not re-word question.
 - After 3 consecutive BLOCKs on the same panel key: create a dispute record per **team-lead-reference** § Dispute Protocol.
-- Model selection: use the same model for all 3 reviewers. See **team-lead-reference** for model routing.
+- Model selection: use same model for all 3 reviewers. See **team-lead-reference** for model routing.
 
 ## Related Resources
 
