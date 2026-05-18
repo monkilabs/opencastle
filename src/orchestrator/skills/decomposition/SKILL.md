@@ -34,7 +34,34 @@ F → C, D     Phase 3: E, F (parallel)
 | Acceptance Criteria | `[ ]` checklist |
 | Expected Output | Files changed · Verification · AC status · Discovered issues |
 
-For score 1-3, objective + files + criteria is sufficient. See `REFERENCE.md` for full delegation spec template.
+For score 1-3, objective + files + criteria is sufficient. Full template:
+
+```markdown
+## Delegation Spec: [Task Title]
+**Tracker Issue:** TAS-XX — [Title]
+**Complexity:** [score]/13 → [tier] tier
+**Agent:** [Agent Name]
+
+### Objective
+1-3 sentences: what to build/change and why.
+
+### Context
+- Key files: [list]
+- Related patterns: [file:line references]
+- Prior phase output: [compacted summary if applicable]
+- Relevant lessons: [LES-XXX from LESSONS-LEARNED.md]
+
+### Constraints
+- File partition: Only modify files under [paths]
+- Do NOT modify: [explicit exclusions]
+- Dependencies: Requires [TAS-XX] Done first
+
+### Acceptance Criteria
+- [ ] Criterion 1
+
+### Expected Output
+Files changed · Verification (lint/test/build) · AC status (✅/❌) · Discovered issues · Lessons applied
+```
 
 Read `.opencastle/LESSONS-LEARNED.md` before starting. Add lesson if you retry any approach.
 

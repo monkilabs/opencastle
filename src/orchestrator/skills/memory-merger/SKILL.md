@@ -58,9 +58,33 @@ Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.
 
 Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
-### Worked Example
+### Worked Example: LES-042 — MCP Tool Timeout
 
-See [REFERENCE.md](./REFERENCE.md) for full worked merge example (LES-042: MCP tool timeout).
+**Source lesson** (cited 4×, severity high, 90 days old):
+> LES-042: MCP tool timeout causes silent failures — set explicit timeout, check return value
+
+**Draft:**
+```
+Lesson: LES-042 — MCP tool timeout
+Target: src/orchestrator/skills/orchestration-protocols/SKILL.md
+Section: Error Recovery Playbook
+Edit: Add row: | **MCP timeout** | Tool returns null/undefined after delay | Set explicit timeout (30s); check return value; retry once; fall back to CLI; log to DLQ | <!-- Merged from LES-042 -->
+```
+
+**Archive in `LESSONS-LEARNED.md`:**
+```markdown
+### LES-042: MCP tool timeout → Merged to `src/orchestrator/skills/orchestration-protocols/SKILL.md` on 2026-05-18
+```
+
+### Automating the scan
+
+```sh
+# Find lessons cited 3+ times across sessions
+rg -c "LES-[0-9]+" .opencastle/logs/events.ndjson | awk -F: '$2 >= 3 {print $1}'
+
+# Find lessons referenced in recent retries
+rg "retry.*LES-[0-9]+" .opencastle/logs/events.ndjson | rg -o "LES-[0-9]+" | sort | uniq -c | sort -rn | head -20
+```
 
 ## Quality Gates (validation checkpoints)
 

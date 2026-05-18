@@ -1,6 +1,6 @@
 ---
 name: react-development
-description: "Enforces naming conventions, prop typing patterns, file structure, test coverage standards. Use when creating or modifying React components, custom hooks, or component tests. Trigger terms: React app, .tsx files, testing library, custom hooks, functional components"
+description: "Enforces React-specific patterns: functional components with hooks, TypeScript prop interfaces, CSS Modules co-location, React Testing Library behavioral tests. Use when creating React components, writing custom hooks, structuring component folders, applying RTL test patterns, or wiring TypeScript prop types. Trigger terms: React, .tsx, component, hook, RTL, jsx, useState, useEffect, prop interface"
 ---
 
 # React Development Standards
@@ -34,7 +34,7 @@ export function UserCard({ name, role }: UserCardProps) {
 
 ## TypeScript
 
-- Use interfaces for props, shared types; keep strict mode enabled in `tsconfig.json`. See [REFERENCE.md](REFERENCE.md) for detailed TypeScript patterns.
+- Use interfaces for props, shared types; keep strict mode enabled in `tsconfig.json`. Generic constraints: `<T extends Record<string, unknown>>`. Discriminated unions for variant props. Avoid `as` casts.
 
 ## Styling
 
@@ -76,4 +76,4 @@ If `lint` fails: run `pnpm lint --fix`; re-run. If `typecheck` fails: inspect re
 
 ## Security
 
-- Follow project conventions for input sanitization, secret handling, CSP. See **api-patterns** for validation patterns.
+- Sanitize user-supplied HTML before rendering (e.g. `dompurify`); never trust client validation alone — validate server-side. See **api-patterns** skill for server validation patterns.
