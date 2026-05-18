@@ -1,6 +1,6 @@
 ---
 name: agent-hooks
-description: "Four lifecycle hooks every agent runs: on-session-start scans LESSONS-LEARNED.md and resumes checkpoints, on-pre-delegate verifies tracker issues and file partitions, on-post-delegate runs fast-review and CI checks, on-session-end executes the session guard and writes logs. Use when starting a new session, running pre-flight checks before delegation, coordinating between agents, reviewing a completed handoff, or wrapping up a session. Trigger terms: multi-agent setup, delegate tasks, agent coordination, session management, run pre-flight checks, start a new session, coordinate between agents, wrap up session"
+description: "Four lifecycle hooks every agent runs: on-session-start scans LESSONS-LEARNED.md, resumes checkpoints; on-pre-delegate verifies tracker issues, file partitions; on-post-delegate runs fast-review, CI checks; on-session-end executes session guard, writes logs. Use when starting a new session, running pre-flight checks before delegation, coordinating between agents, reviewing a completed handoff, or wrapping up a session. Trigger terms: multi-agent setup, delegate tasks, agent coordination, session management, run pre-flight checks, start a new session, coordinate between agents, wrap up session"
 ---
 
 # Agent Lifecycle Hooks

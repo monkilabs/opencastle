@@ -1,6 +1,6 @@
 ---
 name: react-development
-description: "Enforces naming conventions, prop typing patterns, file structure, and test coverage standards. Use when creating or modifying React components, custom hooks, or component tests. Trigger terms: React app, .tsx files, testing library, custom hooks, functional components"
+description: "Enforces React-specific patterns: functional components with hooks, TypeScript prop interfaces, CSS Modules co-location, React Testing Library behavioral tests. Use when creating React components, writing custom hooks, structuring component folders, applying RTL test patterns, or wiring TypeScript prop types. Trigger terms: React, .tsx, component, hook, RTL, jsx, useState, useEffect, prop interface"
 ---
 
 # React Development Standards
@@ -9,7 +9,7 @@ description: "Enforces naming conventions, prop typing patterns, file structure,
 
 ## New Component Workflow
 
-1. **Create file** — `ComponentName.tsx` in the feature folder; co-locate `ComponentName.module.scss` and `ComponentName.test.tsx`
+1. **Create file** — `ComponentName.tsx` in feature folder; co-locate `ComponentName.module.scss`, `ComponentName.test.tsx`
 2. **Define interface** — export `ComponentNameProps` with TypeScript; destructure in function signature
 3. **Implement** — functional component with hooks; use CSS Modules for styling
 4. **Test** — RTL behavioral tests; cover render, interaction, edge cases, accessibility
@@ -17,7 +17,7 @@ description: "Enforces naming conventions, prop typing patterns, file structure,
 
 ## Architecture & Components (concise)
 
-- Functional components with hooks. Follow domain/feature folder structure and co-locate tests/styles with components.
+- Functional components with hooks. Follow domain/feature folder structure; co-locate tests/styles with components.
 - PascalCase names; destructure props; use TypeScript interfaces for props.
 
 ```tsx
@@ -34,7 +34,7 @@ export function UserCard({ name, role }: UserCardProps) {
 
 ## TypeScript
 
-- Use interfaces for props and shared types; keep strict mode enabled in `tsconfig.json`. See [REFERENCE.md](REFERENCE.md) for detailed TypeScript patterns.
+- Use interfaces for props, shared types; keep strict mode enabled in `tsconfig.json`. Generic constraints: `<T extends Record<string, unknown>>`. Discriminated unions for variant props. Avoid `as` casts.
 
 ## Styling
 
@@ -47,8 +47,8 @@ export function UserCard({ name, role }: UserCardProps) {
 ## Testing
 
 - React Testing Library (behavior, not implementation); Jest runner.
-- Co-locate tests next to components; mock external deps and API calls.
-- Test accessibility and keyboard navigation; verify component public surface via unit tests.
+- Co-locate tests next to components; mock external deps, API calls.
+- Test accessibility, keyboard navigation; verify component public surface via unit tests.
 
 ```tsx
 import { render, screen } from '@testing-library/react';
@@ -72,8 +72,8 @@ pnpm test        # rerun failing tests with `pnpm test -- -t <name>`
 pnpm build       # ensure production build succeeds
 ```
 
-If `lint` fails: run `pnpm lint --fix` and re-run. If `typecheck` fails: inspect reported files; add missing types. If tests fail: run with `--runInBand` to collect stack traces and reproduce locally.
+If `lint` fails: run `pnpm lint --fix`; re-run. If `typecheck` fails: inspect reported files; add missing types. If tests fail: run with `--runInBand` to collect stack traces; reproduce locally.
 
 ## Security
 
-- Follow project conventions for input sanitization, secret handling, and CSP. See **api-patterns** for validation patterns.
+- Sanitize user-supplied HTML before rendering (e.g. `dompurify`); never trust client validation alone — validate server-side. See **api-patterns** skill for server validation patterns.

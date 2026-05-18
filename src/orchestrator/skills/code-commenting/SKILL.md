@@ -1,6 +1,6 @@
 ---
 name: code-commenting
-description: "Guidelines for writing self-explanatory code with minimal comments. Covers when to comment (WHY not WHAT), anti-patterns to avoid, annotation tags, and public API documentation. Use when writing or reviewing code comments, docstrings, TODO/FIXME tags, code readability, or inline comments."
+description: "Guidelines for writing self-explanatory code with minimal comments. Covers when to comment (WHY not WHAT), anti-patterns to avoid, annotation tags, public API documentation. Use when writing or reviewing code comments, docstrings, TODO/FIXME tags, code readability, or inline comments."
 ---
 
 # Code Commenting
@@ -78,6 +78,6 @@ function calculateCompoundInterest(principal, rate, time, n = 1) { ... }
 ## Checklist
 
 - [ ] Explains WHY, not WHAT
-- [ ] Still accurate after the change
+- [ ] Still accurate after change
 - [ ] Adds genuine value
-- [ ] Placed above the code it describes
+- [ ] Placed above code it describes

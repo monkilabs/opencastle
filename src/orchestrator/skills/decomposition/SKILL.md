@@ -1,6 +1,6 @@
 ---
 name: decomposition
-description: "Resolves task dependencies, generates machine-actionable delegation specs, and structures phased subtask plans for multi-agent work. Use when writing delegation specs, resolving task dependencies, building phased subtask plans for multi-agent work, assigning work to sub-agents, or partitioning a feature into parallelizable phases."
+description: "Resolves task dependencies, generates machine-actionable delegation specs, structures phased subtask plans for multi-agent work. Use when writing delegation specs, resolving task dependencies, building phased subtask plans for multi-agent work, assigning work to sub-agents, or partitioning a feature into parallelizable phases."
 ---
 
 # Task Decomposition
@@ -12,7 +12,7 @@ description: "Resolves task dependencies, generates machine-actionable delegatio
 
 **Topological sort:** No-dep tasks → Phase 1. Tasks depending only on Phase N → Phase N+1. Same-phase tasks with no mutual deps run in parallel.
 
-**Cycle detection:** If A → B → C → A, split one task into an independent part + a dependent part.
+**Cycle detection:** If A → B → C → A, split one task into independent part + dependent part.
 
 ```
 Graph:        Plan:
@@ -28,15 +28,42 @@ F → C, D     Phase 3: E, F (parallel)
 | Tracker | TAS-XX — Title |
 | Complexity | [score]/13 → [tier] |
 | Agent | Agent Name |
-| Objective | 1-3 sentences: what to build/change and why |
+| Objective | 1-3 sentences: what to build/change, why |
 | Context | Key files, related patterns, prior phase output, relevant lessons |
 | Constraints | File partition, explicit exclusions, phase dependencies |
 | Acceptance Criteria | `[ ]` checklist |
 | Expected Output | Files changed · Verification · AC status · Discovered issues |
 
-For score 1-3, objective + files + criteria is sufficient. See `REFERENCE.md` for the full delegation spec template.
+For score 1-3, objective + files + criteria is sufficient. Full template:
 
-Read `.opencastle/LESSONS-LEARNED.md` before starting. Add a lesson if you retry any approach.
+```markdown
+## Delegation Spec: [Task Title]
+**Tracker Issue:** TAS-XX — [Title]
+**Complexity:** [score]/13 → [tier] tier
+**Agent:** [Agent Name]
+
+### Objective
+1-3 sentences: what to build/change and why.
+
+### Context
+- Key files: [list]
+- Related patterns: [file:line references]
+- Prior phase output: [compacted summary if applicable]
+- Relevant lessons: [LES-XXX from LESSONS-LEARNED.md]
+
+### Constraints
+- File partition: Only modify files under [paths]
+- Do NOT modify: [explicit exclusions]
+- Dependencies: Requires [TAS-XX] Done first
+
+### Acceptance Criteria
+- [ ] Criterion 1
+
+### Expected Output
+Files changed · Verification (lint/test/build) · AC status (✅/❌) · Discovered issues · Lessons applied
+```
+
+Read `.opencastle/LESSONS-LEARNED.md` before starting. Add lesson if you retry any approach.
 
 ## Prompt Quality
 
@@ -90,6 +117,6 @@ Phase 2+: page tasks (parallel)
 
 **Common mistake:** Decomposing pages as independent Phase 1 tasks → each agent invents its own design.
 
-**Distinctive note (AI delegation):** This skill focuses on decomposition that produces machine-actionable delegation prompts: file partitions, explicit acceptance criteria, and machine-friendly constraints (exact paths, line ranges, forbidden files). The output should be ready to paste into a sub-agent prompt without additional human translation.
+**Distinctive note (AI delegation):** This skill focuses on decomposition producing machine-actionable delegation prompts: file partitions, explicit acceptance criteria, machine-friendly constraints (exact paths, line ranges, forbidden files). Output should be ready to paste into sub-agent prompt without additional human translation.
 
-> Load the **project-consistency** skill for the full Foundation Phase pattern, prompt templates, and anti-patterns.
+> Load **project-consistency** skill for full Foundation Phase pattern, prompt templates, anti-patterns.

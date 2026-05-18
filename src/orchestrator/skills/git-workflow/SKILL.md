@@ -1,11 +1,11 @@
 ---
 name: git-workflow
-description: "Defines branch naming conventions, PR template requirements, commit message format, discovered-issues escalation policy, and task tracking conventions. Load when committing, pushing, or opening PRs."
+description: "Defines branch naming conventions, PR template requirements, commit message format, discovered-issues escalation policy, task tracking conventions. Load when committing, pushing, or opening PRs."
 ---
 
 # Git Workflow & Delivery
 
-**NEVER push directly to `main`.** All changes go through a feature/fix branch → PR.
+**NEVER push directly to `main`.** All changes go through feature/fix branch → PR.
 
 ## Branch & Commit Rules
 
@@ -22,7 +22,7 @@ description: "Defines branch naming conventions, PR template requirements, commi
 1. Branch `<type>/<ticket-id>-<slug>` from `main`
 2. Atomic commits referencing issue ID
 3. Push branch to origin
-4. Open PR (do NOT merge) — write the body to a temp file first, then use `--body-file`:
+4. Open PR (do NOT merge) — write body to temp file first; use `--body-file`:
    ```sh
    # Write PR body to a temp file to avoid shell escaping issues
    cat > /tmp/pr-body.md << 'EOF'
@@ -33,7 +33,7 @@ description: "Defines branch naming conventions, PR template requirements, commi
    EOF
    GH_PAGER=cat gh pr create --base main --title "TAS-XX: Short description" --body-file /tmp/pr-body.md
    ```
-   **Never use inline `--body` with markdown/backticks/special chars** — it breaks in zsh heredocs and quoted strings.
+   **Never use inline `--body` with markdown/backticks/special chars** — breaks in zsh heredocs, quoted strings.
 5. Update issue with PR URL
 
 ## Discovered Issues Policy
@@ -44,4 +44,4 @@ description: "Defines branch naming conventions, PR template requirements, commi
 
 Tracked in the **task tracker** (`tracker-config.md`). Team Lead creates/updates issues via MCP. Load **task-management** skill for conventions.
 
-**If MCP tools unavailable:** Document planned issues (title + AC) in output, use `"N/A"` (no tracker) or `"TAS-PENDING"` (tracker configured), proceed with work, update IDs when available.
+**If MCP tools unavailable:** Document planned issues (title + AC) in output; use `"N/A"` (no tracker) or `"TAS-PENDING"` (tracker configured); proceed with work; update IDs when available.

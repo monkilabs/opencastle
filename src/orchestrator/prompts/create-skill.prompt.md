@@ -1,5 +1,5 @@
 ---
-description: 'Scaffold a new skill file with proper frontmatter, structure, and registration. Use when adding a new domain skill to the AI configuration.'
+description: 'Scaffold new skill file with proper frontmatter, structure, registration. Use when adding new domain skill to AI configuration.'
 agent: 'Team Lead (OpenCastle)'
 ---
 
@@ -7,7 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Create Skill
 
-Scaffold a new skill for the AI agent configuration. Skills encode domain-specific knowledge that agents load on demand.
+Scaffold new skill for AI agent configuration. Skills encode domain-specific knowledge agents load on demand.
 
 ## Skill Request
 
@@ -17,14 +17,14 @@ Scaffold a new skill for the AI agent configuration. Skills encode domain-specif
 
 ## Skill Types
 
-OpenCastle has two kinds of skills with different locations and registration paths:
+OpenCastle has two skill kinds with different locations, registration paths:
 
 | Type | Location | Bound Via | Purpose |
 |------|----------|-----------|---------|
 | **Process skill** | `skills/<name>/SKILL.md` | `directSkills` in skill-matrix.json | Stack-agnostic methodology (testing workflow, self-improvement, validation gates) |
 | **Plugin skill** | `plugins/<plugin>/SKILL.md` | Capability slot in the skill matrix | Technology-specific knowledge (CMS queries, database patterns, deployment config) |
 
-> **Rule of thumb:** If the skill would need to be rewritten when switching technologies (e.g., Supabase → Convex), it belongs in a **plugin**. If it's useful regardless of stack, it's a **process skill**.
+> **Rule of thumb:** If skill would need rewriting when switching technologies (e.g., Supabase → Convex), it belongs in a **plugin**. If useful regardless of stack, it's a **process skill**.
 
 ---
 
@@ -45,7 +45,7 @@ Determine the type:
 - Use `kebab-case`
 - **Process skills:** descriptive domain name (e.g., `testing-workflow`, `context-map`, `security-hardening`)
 - **Plugin skills:** `skillName` field in the plugin's `config.ts` (e.g., `sanity-cms`, `supabase-database`, `nx-workspace`)
-- Check existing skills in `skills/` and `plugins/` to avoid overlap
+- Check existing skills in `skills/`, `plugins/` to avoid overlap
 
 ### Step 3: Create the Skill File
 
@@ -96,7 +96,7 @@ description: "<Verb1> X, <verb2> Y, and <verb3> Z. Use when <scenario1>, <scenar
 | **<related-skill>** skill | <What it contributes> |
 ```
 
-If the skill has large code examples (>30 lines), schema tables, or verbose reference material, create a companion `REFERENCE.md` in the same directory and link to it from SKILL.md. Keep SKILL.md as the lean operational overview. Companion files must start with a backlink: `> Parent: [SKILL.md](./SKILL.md)`.
+If skill has large code examples (>30 lines), schema tables, or verbose reference material, create companion `REFERENCE.md` in same directory; link to it from SKILL.md. Keep SKILL.md as lean operational overview. Companion files must start with backlink: `> Parent: [SKILL.md](./SKILL.md)`.
 
 ### Step 4: Register the Skill
 
@@ -104,30 +104,30 @@ Registration differs by type:
 
 #### Process Skill
 
-1. **Add to the skill matrix** — Add the skill name to the `directSkills` array of each relevant agent in `.opencastle/agents/skill-matrix.json`
-2. **Optional: reference in instructions** — If the skill should be loaded by default, add it to the appropriate `.github/instructions/` file
+1. **Add to skill matrix** — Add skill name to `directSkills` array of each relevant agent in `.opencastle/agents/skill-matrix.json`
+2. **Optional: reference in instructions** — If skill should load by default, add to appropriate `.github/instructions/` file
 
 #### Plugin Skill
 
-1. **Set `skillName` in the plugin's `config.ts`** — This connects the skill to the plugin
-2. **Update the skill matrix** — Add an entry to the matching capability slot's `entries` array in `.opencastle/agents/skill-matrix.json`
-3. **No agent changes needed** — Agents resolve plugin skills through capability slots automatically
+1. **Set `skillName` in plugin's `config.ts`** — Connects skill to plugin
+2. **Update skill matrix** — Add entry to matching capability slot's `entries` array in `.opencastle/agents/skill-matrix.json`
+3. **No agent changes** — Agents resolve plugin skills through capability slots automatically
 
 ### Step 5: Validate
 
-- [ ] File created at the correct path (`skills/` or `plugins/`)
+- [ ] File created at correct path (`skills/` or `plugins/`)
 - [ ] Frontmatter has `name` and `description` fields
-- [ ] Description is a single line (no line breaks)
-- [ ] Content follows the template structure
+- [ ] Description is single line (no line breaks)
+- [ ] Content follows template structure
 - [ ] No overlap with existing skills
 - [ ] Skill matrix updated (`directSkills` array or capability slot binding)
 - [ ] For process skills: at least one agent's `directSkills` array includes it in skill-matrix.json
-- [ ] For plugin skills: `config.ts` `skillName` matches the `name` in frontmatter
+- [ ] For plugin skills: `config.ts` `skillName` matches `name` in frontmatter
 - [ ] Run `npx tessl skill review <path>` — target 100 score (see Scoring Criteria below)
 
 ## Scoring Criteria
 
-Skills are evaluated by `npx tessl skill review` across 8 criteria (3 pts each = 24 total). Target 100.
+Skills evaluated by `npx tessl skill review` across 8 criteria (3 pts each = 24 total). Target 100.
 
 ### Description (frontmatter `description` field)
 
@@ -155,10 +155,10 @@ Skills are evaluated by `npx tessl skill review` across 8 criteria (3 pts each =
 - **Include executable examples** — At least one copy-paste-ready code block (5-15 lines). CLI commands with real flags, not placeholders
 - **Keep it scannable** — Tables over prose. Headings, bullets, code blocks. Agents parse structure, not paragraphs
 - **Number your workflows** — Every multi-step process needs numbered steps, checkpoints ("Gate: X passes"), and recovery ("Fail → fix → re-run step N")
-- **Don't explain what Claude knows** — Skip "what is X" explanations, obvious anti-pattern justifications, and concept definitions. Jump straight to the rules
-- **Avoid duplication** — If a rule exists in another skill or instruction file, reference it: "Load **security-hardening** skill for CSP configuration"
-- **Use REFERENCE.md for bulk** — Large code examples, schema tables, worked examples, and template libraries go in a companion `REFERENCE.md`. Link once from SKILL.md
+- **Don't explain what Claude knows** — Skip "what is X" explanations, obvious anti-pattern justifications, concept definitions. Jump straight to the rules
+- **Avoid duplication** — If rule exists in another skill or instruction file, reference it: "Load **security-hardening** skill for CSP configuration"
+- **Use REFERENCE.md for bulk** — Large code examples, schema tables, worked examples, template libraries go in companion `REFERENCE.md`. Link once from SKILL.md
 - **Stay stack-agnostic in process skills** — Use capability slot references ("the **database** skill" not "Supabase")
-- **Size target** — 80-200 lines in SKILL.md. Under 80 is too thin; over 200 should split content to REFERENCE.md. Over 300 should be split into multiple skills
-- **No standalone trigger-term sections** — Weave trigger terms naturally into the description's `Use when...` clause
+- **Size target** — 80-200 lines in SKILL.md. Under 80 too thin; over 200 split content to REFERENCE.md. Over 300 split into multiple skills
+- **No standalone trigger-term sections** — Weave trigger terms naturally into description's `Use when...` clause
 - **Third-person voice in descriptions** — "Creates X" not "Create X" or "This skill creates X"

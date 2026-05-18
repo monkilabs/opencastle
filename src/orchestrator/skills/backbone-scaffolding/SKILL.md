@@ -12,7 +12,7 @@ description: "Scaffolds production-ready monorepo projects using the backbone CL
 
 ## How to Use the CLI
 
-Backbone is **interactive** — it uses `@clack/prompts` to ask a series of questions. Agents must run the command and respond to each prompt in sequence.
+Backbone is **interactive** — uses `@clack/prompts` to ask series of questions. Agents must run command, respond to each prompt in sequence.
 
 ### Prompt Sequence
 
@@ -46,70 +46,43 @@ Backbone is **interactive** — it uses `@clack/prompts` to ask a series of ques
 
 ## OpenCastle TechTool → Backbone Mapping
 
-Most TechTool names map 1:1 to backbone prompt choices (e.g. `nextjs` → select Next.js, `supabase` → select Supabase). Exceptions:
+Most TechTool names map 1:1 to backbone prompt choices (e.g. `nextjs` → Next.js, `supabase` → Supabase). Non-1:1 exceptions:
 
-| TechTool | Backbone mapping | Notes |
-|----------|-----------------|-------|
-| `resend` | Select `emailLib` in Packages prompt | Only non-obvious mapping |
-| `drizzle` | Select `drizzle` in Backend prompt | Direct 1:1 mapping |
-| `cloudflare` | Select `cloudflare` in Deployment prompt | Direct 1:1 mapping |
-| `coolify` | Select `coolify` in Deployment prompt | Direct 1:1 mapping |
-| `expo` | Select `expo` in Mobile prompt | Direct 1:1 mapping; incompatible with `astro` |
-| `stripe` | Select `stripe` in Payments prompt | Direct 1:1 mapping |
-| `sentry` | Select `sentry` in Observability prompt | Direct 1:1 mapping |
-| `vitest` | — | Always included automatically |
-| `figma`, `chrome-devtools` | — | Not handled by backbone; configure separately |
+| TechTool | Backbone mapping |
+|----------|-----------------|
+| `resend` | `emailLib` in Packages prompt |
+| `vitest` | Always included automatically |
+| `figma`, `chrome-devtools` | Not handled by backbone; configure separately |
 
 ## Generated Project Structure
 
-After backbone runs, the output directory contains:
+`apps/` (`web`, conditional `mobile`), `packages/` (conditional `ui`, `email`, `llm`, `stripe`), `backend/` (one of `convex`/`supabase`/`prisma`/`drizzle`), `e2e/`, `.github/workflows/`. Always at root: `vitest.config.ts`, `tsconfig.base.json`, `package.json`, `turbo.json`/`nx.json`, ESLint, Prettier. Conditional root files: `wrangler.toml` (cloudflare), `Dockerfile` (coolify), `sentry.*.config.ts` (sentry, in `apps/web/`).
 
-```
-<project-name>/
-  apps/
-    web/          # Next.js or Astro application
-    mobile/       # (if ionic or expo selected)
-  packages/
-    ui/           # (if uiLib selected) shared React component library
-    email/        # (if emailLib selected) Resend/React Email package
-    llm/          # (if llmLib selected) LLM integration package
-    stripe/       # (if stripe selected) Stripe client + webhook handler
-  backend/
-    convex/       # (if convex selected)
-    supabase/     # (if supabase selected)
-    prisma/       # (if prisma selected)
-    drizzle/      # (if drizzle selected) schema, config, migrations
-  e2e/            # Playwright or Cypress tests
-  .github/
-    workflows/    # GitHub Actions CI pipelines (always included)
-  vitest.config.ts          # Always included
-  tsconfig.base.json        # Always included
-  package.json              # Monorepo root package.json
-  turbo.json / nx.json      # Monorepo tool config
-  wrangler.toml             # (if cloudflare selected)
-  Dockerfile                # (if coolify selected)
-  sentry.*.config.ts        # (if sentry selected) in apps/web/
-```
-
-**Always included regardless of options:** Vitest configuration, GitHub Actions CI workflows, root `tsconfig.base.json`, ESLint, Prettier.
-
-Agents working on post-scaffolding tasks must **not recreate** any of these files — they already exist. Build on top of the generated structure.
+Agents on post-scaffolding tasks **must not recreate** these — they already exist. Import and extend.
 
 ## Post-Scaffolding Steps
 
 After `npx @monkilabs/backbone <project-name>` completes:
 
-1. `cd <project-name>` into the generated directory
-2. Run `npm install` to install all dependencies
-3. Verify the project builds: run the monorepo build command (e.g. `npx turbo build` or `npx nx build`)
-4. All subsequent agent tasks should **import and extend** the generated boilerplate — never overwrite it
+1. `cd <project-name>` into generated directory
+2. Run `npm install` for all dependencies
+3. Verify project builds: run monorepo build command (e.g. `npx turbo build` or `npx nx build`)
+4. All subsequent agent tasks should **import and extend** generated boilerplate — never overwrite
 
 **If something fails:**
 - `npm install` errors → verify Node.js >= 22.5.0 (`node -v`)
-- Build errors → check that no incompatible options were selected (see Astro constraint above); re-run backbone with corrected choices if needed
-- Wrong option selected → delete the generated directory and re-run `npx @monkilabs/backbone` with the correct selections
+- Build errors → check no incompatible options selected (see Astro constraint above); re-run backbone with corrected choices if needed
+- Wrong option selected → delete generated directory; re-run `npx @monkilabs/backbone` with correct selections
 
 ## Example Convoy Task
 
-See [EXAMPLES.md](EXAMPLES.md) for a complete scaffolding task JSON.
+```json
+{
+  "id": "scaffold-monorepo",
+  "agent": "developer",
+  "prompt": "Run `npx @monkilabs/backbone my-app` interactively. Select: nx · nextjs · supabase · sanity · playwright · vercel · uiLib · stripe · sentry. Then `cd my-app && npm install && npx nx build`. Verify clean build before continuing.",
+  "files": ["my-app/"],
+  "timeout": "30m"
+}
+```
 

@@ -1,5 +1,5 @@
 ---
-description: 'Resolve GitHub PR review comments by reading them, grouping by file, and applying fixes systematically.'
+description: 'Resolve GitHub PR review comments by reading them, grouping by file, applying fixes systematically.'
 agent: 'Team Lead (OpenCastle)'
 ---
 
@@ -7,7 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Resolve PR Comments
 
-You are the Team Lead. A pull request has review comments that need to be resolved. Read the comments, group them by file, and delegate fixes efficiently.
+You are the Team Lead. A pull request has review comments needing resolution. Read comments, group by file, delegate fixes efficiently.
 
 ## PR Reference
 
@@ -36,7 +36,7 @@ You are the Team Lead. A pull request has review comments that need to be resolv
 
 ### Phase 3: Apply Fixes
 
-For each file group, delegate to the appropriate specialist agent:
+For each file group, delegate to appropriate specialist agent:
 
 ```
 Fix the following PR review comments in [file path]:
@@ -53,11 +53,11 @@ Acceptance criteria:
 - [ ] New tests added if the comment identified a gap
 ```
 
-**Discussion comments** — Do not fix these. Instead, compile them into a summary for the human reviewer with your recommendation.
+**Discussion comments** — Do not fix these. Compile into summary for human reviewer with your recommendation.
 
 ### Phase 4: Verify & Report
 
-> Load the **validation-gates** skill for detailed steps on each gate.
+> Load **validation-gates** skill for detailed steps on each gate.
 
 All fixes must pass applicable gates before pushing:
 
@@ -109,8 +109,8 @@ After resolving comments, report:
 
 ## Rules
 
-- **Never dismiss a must-fix comment** — if you disagree, flag it for discussion instead
-- **Preserve the reviewer's intent** — don't just technically satisfy the comment, address the underlying concern
-- **Don't over-fix** — resolve only what was commented on. Save unrelated improvements for a separate PR
+- **Never dismiss a must-fix comment** — if you disagree, flag for discussion instead
+- **Preserve reviewer's intent** — don't just technically satisfy the comment, address underlying concern
+- **Don't over-fix** — resolve only what was commented on. Save unrelated improvements for separate PR
 - **Respond to every comment** — nothing should be silently ignored
-- **Self-improvement** — Follow the **self-improvement** skill
+- **Self-improvement** — Follow **self-improvement** skill

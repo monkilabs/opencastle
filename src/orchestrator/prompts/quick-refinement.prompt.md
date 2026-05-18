@@ -1,5 +1,5 @@
 ---
-description: 'Handle follow-up refinements after a roadmap task — bug fixes, UI tweaks, polish, and adjustments that are too small for issue tracking.'
+description: 'Handle follow-up refinements after a roadmap task — bug fixes, UI tweaks, polish, adjustments too small for issue tracking.'
 agent: 'Team Lead (OpenCastle)'
 ---
 
@@ -7,7 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Follow-Up Refinement
 
-You are the Team Lead. Handle the follow-up refinement described below. This is a **post-task adjustment** — a bug fix, UI tweak, or polish item that came up after reviewing a completed roadmap task. It does NOT require issue tracking.
+You are the Team Lead. Handle the follow-up refinement described below. This is **post-task adjustment** — a bug fix, UI tweak, or polish item that came up after reviewing a completed roadmap task. Does NOT require issue tracking.
 
 ## Request
 
@@ -25,7 +25,7 @@ You are the Team Lead. Handle the follow-up refinement described below. This is 
 | Scope | Multi-step feature | Focused fix or adjustment |
 | Branch strategy | Dedicated feature branch | Current branch (already in progress) |
 
-**Despite being lighter-weight, follow-ups still require the same code quality and verification standards.** Never skip linting, testing, or browser checks just because the change is "small."
+**Despite being lighter-weight, follow-ups still require same code quality and verification standards.** Never skip linting, testing, or browser checks just because change is "small."
 
 ## Workflow
 
@@ -34,11 +34,11 @@ You are the Team Lead. Handle the follow-up refinement described below. This is 
 **Create a tracker issue if ANY of these are true:**
 - Affects user-visible behavior, touches >2–3 files, or modifies `libs/`, queries, API routes, or Server Actions
 - Could introduce regressions in other features
-- You want a record for future reference
+- You want record for future reference
 
 **Skip tracking if ALL of these are true:**
 - Pure cosmetic/spacing/copy change with no behavioral impact
-- Isolated to a single component or page
+- Isolated to single component or page
 - Trivial to verify visually
 
 If creating: title `[Follow-up] Short description`, label `follow-up`, priority Low/Medium, description: what changed, why, files
@@ -61,19 +61,19 @@ If creating: title `[Follow-up] Short description`, label `follow-up`, priority 
 
 #### Delegation Prompt Must Include
 
-- What to fix, exact file paths, and how to verify the result
+- What to fix, exact file paths, how to verify result
 - Boundaries: "Only modify files listed above. Do not refactor unrelated code."
 - Self-improvement reminder (see **self-improvement** skill)
 
 #### Implementation Rules
 
 - **No scope creep** — Fix only what was asked; note but don't fix adjacent issues
-- **DRY + Visual consistency** — Reuse existing components, utilities, and design system patterns
+- **DRY + Visual consistency** — Reuse existing components, utilities, design system patterns
 - **Cross-app + Accessibility** — Verify `libs/` changes across apps; don't regress keyboard nav/contrast
 
 ### 5. Validate
 
-> Load the **validation-gates** skill for detailed steps on each gate.
+> Load **validation-gates** skill for detailed steps on each gate.
 
 Every follow-up, no matter how small, must pass these gates:
 
@@ -87,24 +87,24 @@ Every follow-up, no matter how small, must pass these gates:
 
 ### 6. Delivery
 
-If tracked: follow the **Delivery Outcome** in the **git-workflow** skill — commit, push, open PR (not merged), tracker linked.
+If tracked: follow **Delivery Outcome** in **git-workflow** skill — commit, push, open PR (not merged), tracker linked.
 
-If untracked: commit to the current branch; Team Lead includes in the parent task's existing PR.
+If untracked: commit to current branch; Team Lead includes in parent task's existing PR.
 
 ### 7. Escalation Triggers
 
-- Requires a database migration or data model changes (CMS schemas, tables)
+- Requires database migration or data model changes (CMS schemas, tables)
 - Involves auth/authorization changes
 - Touches >5 files across multiple libraries
-- Introduces a new dependency or API endpoint
-- Is a systemic issue requiring architectural changes
+- Introduces new dependency or API endpoint
+- Systemic issue requiring architectural changes
 - Decomposes into 3+ subtasks → switch to `implement-feature`
 
 ### 8. Completion
 
-- [ ] The specific request is resolved
-- [ ] Tracker issue created and moved to Done (if triage determined tracking was needed)
-- [ ] **Visual changes verified in Chrome with screenshot taken as proof**
+- [ ] Specific request is resolved
+- [ ] Tracker issue created, moved to Done (if triage determined tracking was needed)
+- [ ] **Visual changes verified in Chrome with screenshot as proof**
 - [ ] Shared component changes tested across all consuming apps
-- [ ] Delivery Outcome completed if tracked (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
-- [ ] Lessons learned captured and known issues updated if applicable
+- [ ] Delivery Outcome completed if tracked (see **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Lessons learned captured, known issues updated if applicable

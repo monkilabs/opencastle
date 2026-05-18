@@ -2,7 +2,7 @@
 
 # Frontend Design Components
 
-Extended component patterns, card variants, and hero animations for the **frontend-design** skill.
+Extended component patterns, card variants, hero animations for **frontend-design** skill.
 
 ## Design Tokens (starter)
 

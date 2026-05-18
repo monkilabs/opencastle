@@ -1,5 +1,5 @@
 ---
-description: 'Lightweight compliance agent called by Team Lead as its final action. Verifies observability logs, lessons, and quality gates — then provides ready-to-run fix commands for any gaps.'
+description: 'Lightweight compliance agent called by Team Lead as final action. Verifies observability logs, lessons, quality gates; provides ready-to-run fix commands for gaps.'
 name: 'Session Guard'
 model: GPT-5.4 mini
 user-invocable: false
@@ -54,4 +54,4 @@ Run ALL. Report each ✅ or ❌.
 - Never modify files — read and report only
 - Fill fix commands with real values, not placeholders
 - When in doubt, flag it — false positives > missed gaps
-- No delegation records needed for research-only sub-agents with no code changes
+- No delegation records for research-only sub-agents with no code changes

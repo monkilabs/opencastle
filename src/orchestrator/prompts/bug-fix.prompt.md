@@ -1,5 +1,5 @@
 ---
-description: 'Investigate and fix a reported bug with proper triage, root cause analysis, issue tracking, and verification.'
+description: 'Investigate and fix reported bug with proper triage, root cause analysis, issue tracking, verification.'
 agent: 'Team Lead (OpenCastle)'
 ---
 
@@ -7,7 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Fix Bug
 
-You are the Team Lead. Investigate and fix the bug described below. Bugs are real defects that affect users — treat them seriously with proper triage, tracking, and verification.
+You are the Team Lead. Investigate and fix the bug described below. Bugs are real defects affecting users — treat seriously with proper triage, tracking, verification.
 
 ## Bug Report
 
@@ -32,7 +32,7 @@ You are the Team Lead. Investigate and fix the bug described below. Bugs are rea
 ### 1. Triage & Reproduce
 
 1. **Check known issues** — Search `.opencastle/KNOWN-ISSUES.md` for an existing entry. If found, note workarounds and decide if a fix is now feasible
-2. **Check tracker** — Search for existing bug tickets. If one exists, take it over instead of creating a duplicate
+2. **Check tracker** — Search for existing bug tickets. If one exists, take it over instead of creating duplicate
 3. **Read lessons learned** — Check `.opencastle/LESSONS-LEARNED.md` for related pitfalls
 4. **Reproduce the bug** — Start the dev server (see **codebase-tool** skill), navigate to the affected page in Chrome, follow the repro steps, and screenshot the broken state
 5. **Determine scope** — Which apps are affected? (see `project.instructions.md` for the app inventory)
@@ -40,9 +40,9 @@ You are the Team Lead. Investigate and fix the bug described below. Bugs are rea
 
 ### 2. Create Tracker Issue
 
-Every bug gets tracked. Create a tracker issue with:
+Every bug gets tracked. Create tracker issue with:
 
-- **Title**: `[Bug] Short description of the symptom`
+- **Title**: `[Bug] Short description of symptom`
 - **Label**: `bug`; **Priority**: based on severity
 - **Description**: Symptom, reproduction steps, expected vs actual behavior, affected apps + files, screenshot
 
@@ -56,7 +56,7 @@ Every bug gets tracked. Create a tracker issue with:
 
 ### 4. Implement the Fix
 
-All bug fixes are executed via the convoy engine — even single-task fixes — to ensure observability and crash recovery.
+All bug fixes execute via convoy engine — even single-task fixes — for observability, crash recovery.
 
 1. **Generate a convoy spec** — use the `generate-convoy` prompt with the root cause analysis, fix approach, and file paths as context.
 2. **Hand the spec to the user** — tell them to run: `npx opencastle run -f .opencastle/convoys/<name>.convoy.yml`
@@ -64,7 +64,7 @@ All bug fixes are executed via the convoy engine — even single-task fixes — 
 
 #### Convoy Task Prompt Must Include
 
-- Tracker issue ID and title, root cause, fix approach, file paths, reproduction steps
+- Tracker issue ID, title, root cause, fix approach, file paths, reproduction steps
 - Boundaries: "Only modify files listed above. Fix the bug, do not refactor surrounding code."
 - Self-improvement reminder (see **self-improvement** skill)
 
@@ -76,7 +76,7 @@ All bug fixes are executed via the convoy engine — even single-task fixes — 
 
 ### 5. Validate
 
-> Load the **validation-gates** skill for detailed steps on each gate.
+> Load **validation-gates** skill for detailed steps on each gate.
 
 1. **Secret Scanning** — block if API keys/tokens/passwords found in diff
 2. **Deterministic Checks** — lint, test, build — zero errors (see **codebase-tool** skill)
@@ -90,7 +90,7 @@ All bug fixes are executed via the convoy engine — even single-task fixes — 
 
 ### 6. Delivery
 
-Follow the **Delivery Outcome** defined in the **git-workflow** skill — commit, push, open PR (not merged), and link to the tracker.
+Follow **Delivery Outcome** in **git-workflow** skill — commit, push, open PR (not merged), link to tracker.
 
 ### 7. Wrap Up
 
@@ -100,7 +100,7 @@ Follow the **Delivery Outcome** defined in the **git-workflow** skill — commit
 
 ### 8. Completion Criteria
 
-The bug fix is complete when:
+Bug fix is complete when:
 
 - [ ] Bug is reproduced and root cause identified
 - [ ] Tracker issue created with full details
@@ -108,7 +108,7 @@ The bug fix is complete when:
 - [ ] Test added covering the bug scenario
 - [ ] Bug verified fixed in the browser
 - [ ] Both apps checked if shared code was modified
-- [ ] Delivery Outcome completed (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery Outcome completed (see **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
 - [ ] Tracker issue moved to Done
 - [ ] Known issues updated if applicable
 - [ ] Lessons learned captured if any retries occurred

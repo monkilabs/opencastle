@@ -1,11 +1,11 @@
 ---
 name: project-consistency
-description: "Generates shared CSS variables, validates component naming conventions, and creates layout pattern templates. Use when coordinating a design system, theme, consistent styling, CSS variables, or a component library across parallel agents."
+description: "Generates shared CSS variables, validates component naming conventions, creates layout pattern templates. Use when coordinating design system, theme, consistent styling, CSS variables, or component library across parallel agents."
 ---
 
 # Project Consistency
 
-Ensure consistency by producing shared artifacts and automated checks before parallel work begins.
+Ensure consistency by producing shared artifacts, automated checks before parallel work begins.
 
 ## Foundation-First Principle
 
@@ -22,13 +22,13 @@ Phase 1 (sequential): create shared artifacts (tokens, Layout, UI components). P
 
 **Validation checkpoints:**
 1. Foundation complete: `tokens.css` has all palette/type/spacing vars, Layout renders, UI components compile.
-2. Per-page: `grep -r 'style={{' src/pages/` returns 0 hits (no inline styles). All imports resolve.
+2. Per-page: `grep -r .style={{. src/pages/` returns 0 hits (no inline styles). All imports resolve.
 
 ---
 
 ## Convoy Integration
 
-Phase 1 (sequential): foundation-setup creates tokens, Layout, UI library, and style guide brief. Phase 2 (parallel): every page task imports from Phase 1. Include these 5 references in every page prompt:
+Phase 1 (sequential): foundation-setup creates tokens, Layout, UI library, style guide brief. Phase 2 (parallel): every page task imports from Phase 1. Include these 5 references in every page prompt:
 
 ```
 1. Design tokens path   2. Layout path   3. UI components path

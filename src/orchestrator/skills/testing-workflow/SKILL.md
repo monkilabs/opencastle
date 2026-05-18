@@ -1,6 +1,6 @@
 ---
 name: testing-workflow
-description: "Generates test plans, writes unit/integration/E2E test files, identifies coverage gaps, and flags common testing anti-patterns. Use when writing tests, creating test suites, planning test strategies, mocking dependencies, measuring code coverage, or test planning."
+description: "Generates test plans, writes unit/integration/E2E test files, identifies coverage gaps, flags common testing anti-patterns. Use when writing tests, creating test suites, planning test strategies, mocking dependencies, measuring code coverage, or test planning."
 ---
 
 # Testing Workflow
@@ -16,7 +16,7 @@ description: "Generates test plans, writes unit/integration/E2E test files, iden
 ## Core Rules
 
 - Validate every feature: happy paths, edge cases, error conditions, interactions.
-- **Mandatory**: Test in browser via the **e2e-testing** capability slot before marking complete.
+- **Mandatory**: Test in browser via **e2e-testing** capability slot before marking complete.
 
 ## E2E Context Limits
 
@@ -53,7 +53,7 @@ Suite files: see `.opencastle/project.instructions.md`.
 
 | Anti-Pattern | Correct Approach |
 |---|---|
-| Testing only initial page load | Test filter changes and different results |
+| Testing only initial page load | Test filter changes, different results |
 | Assuming filters work because they render | Verify each option changes results |
 | Client-side only | Verify server requests are triggered |
 | Single scenario | Test urban, rural, edge, out-of-range |

@@ -1,6 +1,6 @@
 ---
 name: memory-merger
-description: "Reviews mature LESSONS-LEARNED.md entries, rewrites them as permanent rules in skill/instruction files, and archives graduated lessons. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded LESSONS-LEARNED.md."
+description: "Reviews mature LESSONS-LEARNED.md entries, rewrites them as permanent rules in skill/instruction files, archives graduated lessons. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded LESSONS-LEARNED.md."
 ---
 
 # Memory Merger
@@ -22,11 +22,11 @@ Combined signals to identify merge candidates.
 ## Workflow (numbered)
 
 1. Scan LESSONS-LEARNED.md for candidate entries (frequency, severity, age).
-2. Map each candidate to a target file and section.
-3. Draft the exact edit (concise rule or example).
-4. Apply the edit with an attribution comment.
-5. Archive the migrated lesson in LESSONS-LEARNED.md with a merge note.
-6. Update the index and run validation checks.
+2. Map each candidate to target file, section.
+3. Draft exact edit (concise rule or example).
+4. Apply edit with attribution comment.
+5. Archive migrated lesson in LESSONS-LEARNED.md with merge note.
+6. Update index; run validation checks.
 
 ## Merge Protocol
 
@@ -58,9 +58,33 @@ Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.
 
 Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
-### Worked Example
+### Worked Example: LES-042 — MCP Tool Timeout
 
-See [REFERENCE.md](./REFERENCE.md) for a full worked merge example (LES-042: MCP tool timeout).
+**Source lesson** (cited 4×, severity high, 90 days old):
+> LES-042: MCP tool timeout causes silent failures — set explicit timeout, check return value
+
+**Draft:**
+```
+Lesson: LES-042 — MCP tool timeout
+Target: src/orchestrator/skills/orchestration-protocols/SKILL.md
+Section: Error Recovery Playbook
+Edit: Add row: | **MCP timeout** | Tool returns null/undefined after delay | Set explicit timeout (30s); check return value; retry once; fall back to CLI; log to DLQ | <!-- Merged from LES-042 -->
+```
+
+**Archive in `LESSONS-LEARNED.md`:**
+```markdown
+### LES-042: MCP tool timeout → Merged to `src/orchestrator/skills/orchestration-protocols/SKILL.md` on 2026-05-18
+```
+
+### Automating the scan
+
+```sh
+# Find lessons cited 3+ times across sessions
+rg -c "LES-[0-9]+" .opencastle/logs/events.ndjson | awk -F: '$2 >= 3 {print $1}'
+
+# Find lessons referenced in recent retries
+rg "retry.*LES-[0-9]+" .opencastle/logs/events.ndjson | rg -o "LES-[0-9]+" | sort | uniq -c | sort -rn | head -20
+```
 
 ## Quality Gates (validation checkpoints)
 

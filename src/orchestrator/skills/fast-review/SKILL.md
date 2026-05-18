@@ -1,6 +1,6 @@
 ---
 name: fast-review
-description: "Mandatory post-delegation gate that checks output completeness, verifies acceptance criteria compliance, flags regressions, and produces a PASS/FAIL verdict. Use when checking delegated work against acceptance criteria, running the post-delegation gate, validating agent output before acceptance, verifying a sub-agent completed its assignment, or running a post-delegation QA check."
+description: "Mandatory post-delegation gate: checks output completeness, verifies acceptance criteria compliance, flags regressions, produces PASS/FAIL verdict. Use when checking delegated work against acceptance criteria, running post-delegation gate, validating agent output before acceptance, verifying sub-agent completed its assignment, or running post-delegation QA check."
 ---
 
 # Skill: Fast Review
@@ -57,7 +57,7 @@ CONFIDENCE: low | medium | high
 
 ## Reviewer Prompt Template
 
-See [REFERENCE.md](REFERENCE.md) for the full reviewer prompt template.
+See [REFERENCE.md](REFERENCE.md) for full reviewer prompt template.
 
 ## Logging
 

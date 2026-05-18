@@ -1,6 +1,6 @@
 ---
 name: validation-gates
-description: "Defines 10 sequential validation gates: secret scanning, lint/test/build checks, blast radius analysis, dependency auditing, browser testing, cache management, regression checks, and smoke tests. Use when running pre-deploy validation or CI checks, CI/CD pipelines, deployment pipeline validation, pre-merge checks, continuous integration, or pull request validation."
+description: "Defines 10 sequential validation gates: secret scanning, lint/test/build checks, blast radius analysis, dependency auditing, browser testing, cache management, regression checks, smoke tests. Use when running pre-deploy validation or CI checks, CI/CD pipelines, deployment pipeline validation, pre-merge checks, continuous integration, or pull request validation."
 ---
 
 # Validation Gates
@@ -28,7 +28,7 @@ Example tool: `gitleaks detect --source . --verbosity warn` (or CI equivalent) �
 
 ## Gate 2: Deterministic Checks
 
-Run for every affected project (resolve exact commands via the **codebase-tool** skill): lint (with auto-fix), test, build. All must pass with zero errors.
+Run for every affected project (resolve exact commands via **codebase-tool** skill): lint (with auto-fix), test, build. All must pass with zero errors.
 
 Example (project with npm scripts):
 
@@ -59,7 +59,7 @@ npm run lint && npm test --silent && npm run build
 | Vulnerability | `npm audit --audit-level=moderate` | No new high/critical | BLOCK — use patched version or alternative |
 | Bundle size | `npx source-map-explorer dist/*.js` or `npx bundlesize` | Frontend pkgs ≤50KB gzipped (project policy) | SHOULD-FIX; blocking if >200KB |
 
-See [REFERENCE.md](REFERENCE.md) for the full dependency-audit checklist (license, duplicates, maintenance, and additional checks).
+See [REFERENCE.md](REFERENCE.md) for full dependency-audit checklist (license, duplicates, maintenance, additional checks).
 
 ## Gate 5: Fast Review
 
@@ -83,8 +83,8 @@ Additional options: see [REFERENCE.md](REFERENCE.md).
 ## Gate 8: Regression Testing
 
 1. `npm test -- --runInBand` for all affected projects
-2. Browser-test adjacent pages (navigation, routing, back-button). Identify adjacent pages by searching for route imports or links to the changed path (e.g., `rg "href=\"/changed-path|import .*from '@/components/changed'"`).
-3. Check consuming apps / packages that import the changed files: search the repo for the component or package name (e.g., `rg "from '@/components/PriceRange'|@my-org/ui-package"`) and run their tests or quick smoke builds.
+2. Browser-test adjacent pages (navigation, routing, back-button). Identify adjacent pages by searching for route imports or links to changed path (e.g., `rg "href=\"/changed-path|import .*from '@/components/changed'"`).
+3. Check consuming apps / packages importing changed files: search repo for component or package name (e.g., `rg "from '@/components/PriceRange'|@my-org/ui-package"`) and run their tests or quick smoke builds.
 
 ## Gate 9: Panel Review
 
@@ -102,4 +102,4 @@ runSubagent({ agentName: 'Reviewer', prompt: `Panel review 1/3: ${criteria}` });
 npm run build && npm test && npx playwright test
 ```
 
-Full build + test from clean state → E2E browser walkthrough → cross-task integration check → responsive sweep (if UI). On failure: re-delegate the specific failing integration only.
+Full build + test from clean state → E2E browser walkthrough → cross-task integration check → responsive sweep (if UI). On failure: re-delegate specific failing integration only.

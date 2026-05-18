@@ -1,11 +1,11 @@
 ---
 name: documentation-standards
-description: "Scaffolds issue docs, ADRs, README outlines, changelog entries, roadmap updates, and Mermaid architecture diagrams using project templates. Use when drafting an ADR, writing a changelog, updating the roadmap after a feature ships, creating a README for a new library, or diagramming a system flow."
+description: "Scaffolds issue docs, ADRs, README outlines, changelog entries, roadmap updates, Mermaid architecture diagrams using project templates. Use when drafting ADR, writing changelog, updating roadmap after a feature ships, creating README for a new library, or diagramming a system flow."
 ---
 
 # Documentation Standards
 
-For project-specific directory structure and practices, see [docs-structure.md](../../.opencastle/project/docs-structure.md).
+For project-specific directory structure, practices, see [docs-structure.md](../../.opencastle/project/docs-structure.md).
 
 
 ## Issue Documentation Template
@@ -34,7 +34,7 @@ For project-specific directory structure and practices, see [docs-structure.md](
 
 ## Roadmap Update Template
 
-When a feature is completed: add `COMPLETE` row with date and owner, list files changed with rationale, add validation command + exit status, move to `Completed` section with one-line release note.
+When feature completed: add `COMPLETE` row with date, owner; list files changed with rationale; add validation command + exit status; move to `Completed` section with one-line release note.
 
 ```markdown
 - Feature: Add priceRange filter
@@ -63,7 +63,7 @@ One-sentence summary of what this does and why it exists.
 ## Quick Start
 Brief usage example or setup steps.
 ## Architecture
-High-level overview. Include a Mermaid diagram for non-trivial systems.
+High-level overview. Include Mermaid diagram for non-trivial systems.
 ## Key Files
 | File | Purpose |
 |------|---------|
@@ -87,7 +87,7 @@ flowchart TD
 
 ## Changelog Entry Template
 
-Group entries by Conventional Commits type under a version heading:
+Group entries by Conventional Commits type under version heading:
 
 ```markdown
 ## [1.2.0] — YYYY-MM-DD
@@ -99,7 +99,7 @@ Group entries by Conventional Commits type under a version heading:
 - refactor: Extract validation into shared module (#125)
 ```
 
-- One line per change; reference the PR or issue number
+- One line per change; reference PR or issue number
 - Imperative mood; most recent version first
 
 ## Documentation workflow
@@ -117,4 +117,4 @@ Group entries by Conventional Commits type under a version heading:
 
 ## Writing, Formatting & Anti-Patterns
 
-See [WRITING-GUIDE.md](WRITING-GUIDE.md) for writing guidelines, formatting rules, and anti-patterns.
+See [WRITING-GUIDE.md](WRITING-GUIDE.md) for writing guidelines, formatting rules, anti-patterns.

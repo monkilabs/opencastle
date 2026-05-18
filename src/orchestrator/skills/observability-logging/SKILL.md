@@ -1,11 +1,11 @@
 ---
 name: observability-logging
-description: "Writes session logs, records delegation decisions, and tracks review/dispute outcomes in NDJSON format. Use when logging session activity, recording audit trails, or running pre-response verification checklists."
+description: "Logs sessions, tracks activity, records delegation decisions, and stores review/dispute outcomes as NDJSON audit trails. Use when logging session activity, tracking work, recording decisions, building audit trails, capturing delegation history, or running pre-response verification checklists. Trigger terms: log, track activity, audit trail, session record, delegation log, NDJSON"
 ---
 
 # Observability Logging
 
-> **⛔ HARD GATE.** Every agent MUST log every session to `events.ndjson` before responding. No exceptions. A session without logs is a failed session.
+> **⛔ HARD GATE.** Every agent MUST log every session to `events.ndjson` before responding. No exceptions. Session without logs is a failed session.
 
 | File | Event types | Who | When |
 |------|------------|-----|------|
@@ -22,7 +22,7 @@ opencastle log --type session --agent Developer --model claude-opus-4-6 \
   --files_changed 3 --retries 0
 ```
 
-**Delegation** (Team Lead — immediately after each delegation, not at session end):
+**Delegation** (Team Lead, after each delegation — never batched):
 ```sh
 opencastle log --type delegation --session_id feat/prj-57 --agent Developer \
   --model claude-sonnet-4-6 --tier quality --mechanism sub-agent \
@@ -32,7 +32,7 @@ opencastle log --type delegation --session_id feat/prj-57 --agent Developer \
 
 > `model` and `tier` must reflect the delegated agent's assignment from the agent registry.
 
-**Review** (Team Lead — immediately after each fast review):
+**Review** (Team Lead, after each fast review):
 ```sh
 opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
   --reviewer_model gpt-5-mini --verdict pass --attempt 1 \
@@ -40,7 +40,7 @@ opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
   --confidence high --escalated false --duration_sec 45
 ```
 
-**Panel** (Panel runner — immediately after each panel vote):
+**Panel** (Panel runner, after each vote):
 ```sh
 opencastle log --type panel --panel_key auth-review --verdict pass \
   --pass_count 3 --block_count 0 --must_fix 0 --should_fix 3 \
@@ -48,7 +48,7 @@ opencastle log --type panel --panel_key auth-review --verdict pass \
   --tracker_issue PRJ-42 --artifacts_count 5
 ```
 
-**Dispute** (Team Lead — immediately after each dispute):
+**Dispute** (Team Lead, after each dispute):
 ```sh
 opencastle log --type dispute --dispute_id DSP-001 --tracker_issue PRJ-42 \
   --priority high --trigger panel-3x-block --implementing_agent Developer \
@@ -65,11 +65,6 @@ Verify any append: `tail -1 .opencastle/logs/events.ndjson`
 - [ ] **Session logged** — `events.ndjson` has a `session` record (ALWAYS)
 - [ ] **Delegations logged** — `delegation` record per delegation (Team Lead) (if applicable)
 - [ ] **Reviews logged** — `review` record per fast review (if applicable)
-
-## Universal Agent Rules
-
-1. **Read and update lessons** — Read `.opencastle/LESSONS-LEARNED.md` before starting; add lessons after retries via **self-improvement** skill.
-2. **Log every session** — See [logging-mandatory](../../snippets/logging-mandatory.md).  
 
 ## Base Output Contract
 

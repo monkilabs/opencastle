@@ -1,13 +1,13 @@
 ---
 name: performance-optimization
-description: "Profiles and reduces frontend/backend costs: split bundles, optimize assets, apply caching, and fix Core Web Vitals regressions. Use when profiling Lighthouse/CI regressions, reducing bundle size, or fixing high CLS/LCP/TTI metrics."
+description: "Profiles, reduces frontend/backend costs: split bundles, optimize assets, apply caching, fix Core Web Vitals regressions. Use when profiling Lighthouse/CI regressions, reducing bundle size, or fixing high CLS/LCP/TTI metrics."
 ---
 
 # Performance Optimization
 
 **Rule:** Measure first (`Chrome DevTools`, `Lighthouse`, `Datadog`), optimize second. Set budgets (load time, memory, API latency). Automate in CI/CD.
 
-Domain-specific patterns (rendering, JS, Node optimizations) are referenced in REFERENCE.md to keep this skill concise.
+Domain-specific patterns (rendering, JS, Node optimizations) referenced in REFERENCE.md to keep this skill concise.
 
 ## Patterns by Domain
 
@@ -55,15 +55,15 @@ export default function List({items}){
 
 ## Profiling Workflow (step-by-step)
 
-1. Run Lighthouse (or CI perf job) and record baseline.
+1. Run Lighthouse (or CI perf job); record baseline.
 	 - Checkpoint: failing metric(s) identified (LCP/CLS/FID/TTI).
 	 - Recovery: if noisy, reproduce locally with `--emulated-form-factor=mobile`.
 2. Profile with DevTools Profiler / React profiler or Node `clinic` for backend.
 	 - Checkpoint: hotspot call stacks / long tasks located.
 3. Apply minimal fix (code-split, memoize, reduce payloads, defer non-critical work).
 	 - Checkpoint: targeted change reduces measured hotspot time in profiler.
-4. Re-run Lighthouse/CI perf job and compare; set threshold (e.g., 10% improvement or within budget).
-5. If regression persists, iterate and create a rollback plan; note fixes in changelog.
+4. Re-run Lighthouse/CI perf job; compare; set threshold (e.g., 10% improvement or within budget).
+5. If regression persists, iterate; create rollback plan; note fixes in changelog.
 
 ## Review Checklist
 

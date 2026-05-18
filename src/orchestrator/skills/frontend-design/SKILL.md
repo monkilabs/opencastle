@@ -1,6 +1,6 @@
 ---
 name: frontend-design
-description: "Defines a named visual aesthetic, selects typography pairings, builds CSS token systems, and adds entrance animations for high-design-quality pages. Use when the user asks to design a landing page, style a marketing site, create a distinctive UI theme, pick fonts, or add CSS animations — specifically when visual polish and brand identity matter rather than generic component scaffolding."
+description: "Defines named visual aesthetic, selects typography pairings, builds CSS token systems, adds entrance animations for high-design-quality pages. Use when user asks to design landing page, style marketing site, create distinctive UI theme, pick fonts, or add CSS animations — specifically when visual polish, brand identity matter rather than generic component scaffolding."
 license: Complete terms in LICENSE.txt
 ---
 
@@ -8,10 +8,10 @@ license: Complete terms in LICENSE.txt
 
 ## Design Workflow
 
-1. **Name the aesthetic** — declare a 2–3 word direction in a code comment at the top of the main CSS file
-2. **Set foundations** — define `:root` CSS custom properties for colors, spacing, and radii
+1. **Name the aesthetic** — declare 2–3 word direction in code comment at top of main CSS file
+2. **Set foundations** — define `:root` CSS custom properties for colors, spacing, radii
 3. **Build components** — implement layout, cards, heroes, forms using only tokens from step 2
-4. **Add motion** — add `@keyframes` entrance animations wrapped in a reduced-motion guard
+4. **Add motion** — add `@keyframes` entrance animations wrapped in reduced-motion guard
 5. **Validate** — run Quality Checklist below; fix any failing item before marking done
 
 ### Quick-start example
@@ -35,23 +35,23 @@ license: Complete terms in LICENSE.txt
 }
 ```
 
-Card patterns, hero animations, and extended token sets are in [COMPONENTS.md](./COMPONENTS.md).
+Card patterns, hero animations, extended token sets in [COMPONENTS.md](./COMPONENTS.md).
 
 ## Design Principles
 
-High-level design principles and the full set of example constraints live in [REFERENCE.md](./REFERENCE.md). Keep this checklist as a short reminder:
+High-level design principles, full example constraints live in [REFERENCE.md](./REFERENCE.md). Keep this checklist as short reminder:
 
-- Pick a named aesthetic (2–3 words) and commit to it.
-- Use tokenized colors/spacing, respect WCAG contrast, and prefer semantic HTML.
-- Respect `prefers-reduced-motion` and keep critical animations under 500ms.
+- Pick named aesthetic (2–3 words); commit to it.
+- Use tokenized colors/spacing; respect WCAG contrast; prefer semantic HTML.
+- Respect `prefers-reduced-motion`; keep critical animations under 500ms.
 
 **Every design must have one unforgettable detail.** No two designs should look alike.
 
 ## Typography Pairings
 
-Recommended typography pairings and an extended catalogue are in [REFERENCE.md](./REFERENCE.md). For production, always include a metric-preserving fallback chain (e.g., `'Fraunces', 'Georgia', serif`).
+Recommended typography pairings, extended catalogue in [REFERENCE.md](./REFERENCE.md). For production, always include metric-preserving fallback chain (e.g., `.Fraunces., .Georgia., serif`).
 
-> Load the **project-consistency** skill for the full Foundation Phase pattern and prompt templates.
+> Load **project-consistency** skill for full Foundation Phase pattern, prompt templates.
 
 ### Quality Checklist (quick)
 

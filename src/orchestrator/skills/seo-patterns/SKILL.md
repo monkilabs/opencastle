@@ -1,28 +1,27 @@
 ---
 name: seo-patterns
-description: "Implements technical SEO: meta tags, JSON-LD structured data, sitemaps, and crawlability fixes. Use when adding schema markup, JSON-LD, robots.txt updates, canonical URLs, Open Graph tags, or improving crawlability."
+description: "Implements technical SEO: meta tags, JSON-LD structured data, sitemaps, crawlability fixes. Use when adding schema markup, JSON-LD, robots.txt updates, canonical URLs, Open Graph tags, or improving crawlability."
 ---
 
 # SEO Patterns
 
 ## Core Principles
 
-- Every public page MUST have a unique `<title>` and `<meta name="description">`.
-- Structured data MUST validate against Google's Rich Results Test before shipping.
-- Server-render all content critical for indexing.
-- Canonical URLs are mandatory on every page.
+- Unique `<title>` + `<meta name="description">` per public page
+- Structured data MUST pass Google's Rich Results Test before shipping
+- Server-render indexable content; canonical URL on every page
 
 ## Implementation Workflow
 
-1. Add meta tags and canonical URLs in server-rendered HTML.
-  - Checkpoint: every page has unique `<title>` and `<meta name="description">`.
-2. Add structured data (JSON-LD) for the page type and keep blocks server-rendered.
-  - Checkpoint: Rich Results Test passes with zero errors.
-3. Generate / update sitemap and reference it from `robots.txt`.
-  - Checkpoint: sitemap URL present in `robots.txt` and accessible.
-4. Verify robots.txt rules and ensure public pages are allowed.
-  - Recovery: remove accidental `Disallow:` entries and re-submit sitemap.
-5. Monitor Search Console for warnings and enhancement reports post-deploy.
+1. Add meta tags + canonical URLs in server-rendered HTML.
+   - Checkpoint: every page has unique `<title>` + description.
+2. Add JSON-LD for page type (server-rendered).
+   - Checkpoint: Rich Results Test → 0 errors.
+3. Generate sitemap + reference from `robots.txt`.
+   - Checkpoint: sitemap URL accessible, listed in `robots.txt`.
+4. Verify `robots.txt` allows public pages.
+   - Recovery: remove accidental `Disallow:` entries; resubmit sitemap.
+5. Monitor Search Console for warnings post-deploy.
 
 ## Meta Tags & Open Graph
 
@@ -43,14 +42,38 @@ export const metadata: Metadata = {
 };
 ```
 
-**Checklist:** unique title (50-60 chars) · unique description (150-160 chars) · canonical URL · `og:title/description/image` (1200×630 px) · `og:type` · `twitter:card/title/image` · `noindex` only on admin/draft pages.
+**Constraints:** title 50–60 chars · description 150–160 chars · OG image 1200×630 px · `noindex` only on admin/draft pages.
 
-## Structured Data & Crawlability
-For structured data reference examples and detailed anti-patterns see [REFERENCE.md](./REFERENCE.md).
+## Structured Data (JSON-LD)
 
-- Generate XML sitemap dynamically from your data source (CMS, DB, filesystem).
-- Use a **sitemap index** when >50,000 URLs or >50 MB.
-- Include `<lastmod>` only if accurate; submit via Google Search Console and reference in `robots.txt`.
+```tsx
+function StructuredData({ breadcrumbs, article }: Props) {
+  const breadcrumbLd = {
+    '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbs.map((crumb, i) => ({ '@type': 'ListItem', position: i + 1, name: crumb.label, item: crumb.url })),
+  };
+  const articleLd = {
+    '@context': 'https://schema.org', '@type': 'Article',
+    headline: article.title, description: article.summary,
+    image: article.imageUrl, datePublished: article.publishedAt,
+    dateModified: article.updatedAt, author: { '@type': 'Person', name: article.author },
+  };
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }} />
+    </>
+  );
+}
+```
+
+**Validate:** `curl -s https://example.com/page | pup 'script[type=application/ld+json] text{}' | jq .` then run Google's Rich Results Test (https://search.google.com/test/rich-results).
+
+## Sitemap & robots.txt
+
+- Generate XML sitemap dynamically from your data source (CMS, DB, filesystem)
+- Use **sitemap index** when >50,000 URLs or >50 MB
+- Include `<lastmod>` only if accurate
 
 ```txt
 User-agent: *
@@ -61,7 +84,10 @@ Disallow: /preview/
 Sitemap: https://example.com/sitemap.xml
 ```
 
-**Crawlability checklist:** robots.txt allows public pages · blocks admin/API/preview · XML sitemap auto-generated · referenced in robots.txt · no orphan pages · primary content in initial HTML · unique `<h1>` with keyword · structured data in SSR HTML · descriptive `alt` on images · no stray `noindex` · page load < 3s.
+## Anti-Patterns
 
-## Anti-Patterns & Structured Data Reference
-See `REFERENCE.md` for detailed structured data examples, validation commands, and a trimmed anti-pattern checklist.
+- Duplicate titles across pages
+- Missing canonical URL → duplicate content
+- Client-only rendered primary content → not indexed
+- Unvalidated structured data shipped to prod
+- Page load >3s on mobile
