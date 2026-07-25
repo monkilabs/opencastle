@@ -156,7 +156,6 @@ export async function startDashboardServer(
   const seedDir = resolve(pkgRoot, 'src', 'dashboard', 'seed-data')
   const projectRoot = process.cwd()
   const convoyLogsDir = resolve(projectRoot, '.opencastle', 'logs')
-  const logsDir = resolve(projectRoot, '.github', 'customizations', 'logs')
 
   const runtimeDataDir = seed ? null : mkdtempSync(join(tmpdir(), 'opencastle-dashboard-'))
   if (runtimeDataDir) {
@@ -259,21 +258,8 @@ export async function startDashboardServer(
             }
           } else {
             const convoyPath = join(convoyLogsDir, filename)
-            const logsPath = join(logsDir, filename)
-            const inConvoy = await fileExists(convoyPath)
-            const inLogs = await fileExists(logsPath)
-
             res.writeHead(200, { 'Content-Type': 'application/x-ndjson' })
-            if (inConvoy && inLogs) {
-              const [c1, c2] = await Promise.all([readFile(convoyPath), readFile(logsPath)])
-              res.end(Buffer.concat([c1, c2]))
-            } else if (inConvoy) {
-              res.end(await readFile(convoyPath))
-            } else if (inLogs) {
-              res.end(await readFile(logsPath))
-            } else {
-              res.end('')
-            }
+            res.end(await fileExists(convoyPath) ? await readFile(convoyPath) : '')
           }
           return
         }
@@ -357,16 +343,11 @@ export default async function dashboard({
   if (!seed) {
     const projectRoot = process.cwd()
     const convoyLogsDir2 = resolve(projectRoot, '.opencastle', 'logs')
-    const logsDir = resolve(projectRoot, '.github', 'customizations', 'logs')
-    const checkFiles = ['events.ndjson', ...DATA_FILES]
-    for (const dir of [convoyLogsDir2, logsDir]) {
-      for (const f of checkFiles) {
-        if (await fileExists(join(dir, f))) {
-          hasLogs = true
-          break
-        }
+    for (const f of ['events.ndjson', ...DATA_FILES]) {
+      if (await fileExists(join(convoyLogsDir2, f))) {
+        hasLogs = true
+        break
       }
-      if (hasLogs) break
     }
   }
 

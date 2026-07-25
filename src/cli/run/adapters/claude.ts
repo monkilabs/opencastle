@@ -8,18 +8,6 @@ import type { Task, ExecuteOptions, ExecuteResult, TokenUsage } from '../../type
 export const name = 'claude'
 
 export function supportsSessionContinuity(): boolean { return false }
-// Module-level state for mode selection
-let mode: 'sdk' | 'cli' | null = null
-
-// SDK dynamic import check
-async function sdkAvailable(): Promise<boolean> {
-  try {
-    await import('@anthropic-ai/agent-sdk')
-    return true
-  } catch {
-    return false
-  }
-}
 
 // CLI check
 async function cliAvailable(): Promise<boolean> {
@@ -31,136 +19,7 @@ async function cliAvailable(): Promise<boolean> {
 }
 
 export async function isAvailable(): Promise<boolean> {
-  if (await sdkAvailable()) {
-    mode = 'sdk'
-    return true
-  }
-  if (await cliAvailable()) {
-    mode = 'cli'
-    return true
-  }
-  return false
-}
-
-// --- SDK implementation (from claude-sdk.ts) ---
-// Local type stubs for @anthropic-ai/agent-sdk
-interface AgentSession {
-  on(event: string, handler: (...args: unknown[]) => void): void
-  sendAndWait(msg: { prompt: string }, timeoutMs: number): Promise<unknown>
-  abort(): Promise<void>
-  destroy(): Promise<void>
-}
-interface SessionCreateOptions {
-  onPermissionRequest?: unknown
-  cwd?: string
-  systemMessage?: { content: string }
-  infiniteSessions?: { enabled: boolean }
-  streaming?: boolean
-}
-interface ClaudeAgentClient {
-  start(): Promise<void>
-  createSession(options: SessionCreateOptions): Promise<AgentSession>
-}
-let clientPromise: Promise<ClaudeAgentClient> | null = null
-let cachedApproveAll: unknown = null
-const activeSessions = new Map<string, AgentSession>()
-
-async function getClient(): Promise<ClaudeAgentClient> {
-  if (!clientPromise) {
-    clientPromise = (async () => {
-      const sdk = await import('@anthropic-ai/agent-sdk') as Record<string, unknown>
-      const { AgentClient, approveAll } = sdk as {
-        AgentClient: new (opts: { autoStart: boolean; logLevel: string }) => ClaudeAgentClient
-        approveAll: unknown
-      }
-      cachedApproveAll = approveAll
-      const client = new AgentClient({
-        autoStart: false,
-        logLevel: 'error',
-      })
-      await client.start()
-      return client
-    })()
-  }
-  return clientPromise
-}
-
-async function executeViaSdk(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  let prompt = `You are a ${task.agent}. ${task.prompt}`
-  if (task.files && task.files.length > 0) {
-    prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
-  }
-  const client = await getClient()
-  const session = await client.createSession({
-    onPermissionRequest: cachedApproveAll!,
-    cwd: options.cwd ?? process.cwd(),
-    systemMessage: {
-      content: [
-        `You are a ${task.agent}.`,
-        'Work autonomously without asking questions.',
-        'Follow all instructions precisely.',
-      ].join(' '),
-    },
-    infiniteSessions: { enabled: false },
-    ...(options.verbose ? { streaming: true } : {}),
-    // mcpServers is forward-compatible: field will be recognised by future SDK versions
-    ...(options.mcpServers?.length ? { mcpServers: options.mcpServers } : {}),
-  })
-  activeSessions.set(task.id, session)
-  if (options.verbose) {
-    session.on('assistant.message_delta', (...args: unknown[]) => {
-      const event = args[0] as { data: { deltaContent: string } }
-      process.stdout.write(event.data.deltaContent)
-    })
-  }
-  interface SdkResponse {
-    data?: {
-      content?: string
-      usage?: Record<string, number>
-    }
-    usage?: Record<string, number>
-  }
-
-  try {
-    const timeoutMs = parseTimeout(task.timeout)
-    const response = await session.sendAndWait({ prompt }, timeoutMs)
-    const typed = response as SdkResponse
-    const data = typed?.data
-    const output = (data?.content as string | undefined) ?? ''
-    const rawUsage = data?.usage ?? typed?.usage
-    const u = rawUsage as Record<string, number> | undefined
-    const usageResult = u
-      ? {
-          prompt_tokens: u.prompt_tokens ?? u.promptTokens,
-          completion_tokens: u.completion_tokens ?? u.completionTokens,
-          total_tokens: u.total_tokens ?? u.totalTokens,
-        }
-      : undefined
-    return {
-      success: true,
-      output: output.slice(0, 500_000),
-      exitCode: 0,
-      usage: usageResult,
-    }
-  } catch (err: unknown) {
-    return {
-      success: false,
-      output: `Claude Agent SDK error: ${(err as Error).message}`,
-      exitCode: 1,
-    }
-  } finally {
-    activeSessions.delete(task.id)
-    await session.destroy().catch(() => {})
-  }
-}
-
-function killSdk(task: Task): void {
-  const session = activeSessions.get(task.id)
-  if (session) {
-    session.abort().catch(() => {})
-    session.destroy().catch(() => {})
-    activeSessions.delete(task.id)
-  }
+  return cliAvailable()
 }
 
 // --- CLI implementation (from claude-code.ts) ---
@@ -308,12 +167,9 @@ function killCli(task: Task): void {
 
 // --- Unified interface ---
 export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  if (!mode) await isAvailable()
-  if (mode === 'sdk') return executeViaSdk(task, options)
   return executeViaCli(task, options)
 }
 
 export function kill(task: Task): void {
-  if (mode === 'sdk') killSdk(task)
-  else killCli(task)
+  killCli(task)
 }

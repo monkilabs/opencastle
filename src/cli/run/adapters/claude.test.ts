@@ -38,67 +38,6 @@ function makeMockProc(exitCode = 0, stdoutData = '{"result":"ok"}') {
   return proc
 }
 
-// ── SDK mode ──────────────────────────────────────────────────────────────────
-
-describe('claude adapter — SDK mode', () => {
-  let mockCreateSession: ReturnType<typeof vi.fn>
-  let mockSession: {
-    sendAndWait: ReturnType<typeof vi.fn>
-    on: ReturnType<typeof vi.fn>
-    destroy: ReturnType<typeof vi.fn>
-    abort: ReturnType<typeof vi.fn>
-  }
-
-  beforeEach(() => {
-    vi.resetModules()
-    mockSession = {
-      sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'I did the task' } }),
-      on: vi.fn(),
-      destroy: vi.fn().mockResolvedValue(undefined),
-      abort: vi.fn().mockResolvedValue(undefined),
-    }
-    mockCreateSession = vi.fn().mockResolvedValue(mockSession)
-    vi.doMock('@anthropic-ai/agent-sdk', () => {
-      // Must use a regular function (not arrow) so `new AgentClient()` works
-      function MockAgentClient(this: Record<string, unknown>) {
-        this.start = vi.fn().mockResolvedValue(undefined)
-        this.createSession = mockCreateSession
-      }
-      return {
-        AgentClient: MockAgentClient,
-        approveAll: vi.fn(),
-      }
-    })
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('passes mcpServers to createSession when provided', async () => {
-    const { execute } = await import('./claude.js')
-    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
-    await execute(makeTask(), { mcpServers })
-    expect(mockCreateSession).toHaveBeenCalledWith(
-      expect.objectContaining({ mcpServers }),
-    )
-  })
-
-  it('does NOT include mcpServers in createSession when not provided', async () => {
-    const { execute } = await import('./claude.js')
-    await execute(makeTask(), {})
-    const callArg = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(callArg).not.toHaveProperty('mcpServers')
-  })
-
-  it('does NOT include mcpServers when mcpServers is empty array', async () => {
-    const { execute } = await import('./claude.js')
-    await execute(makeTask(), { mcpServers: [] })
-    const callArg = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(callArg).not.toHaveProperty('mcpServers')
-  })
-})
-
 // ── CLI mode ──────────────────────────────────────────────────────────────────
 
 describe('claude adapter — CLI mode', () => {

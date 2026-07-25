@@ -33,7 +33,6 @@ const HELP = `
     plan        Generate a convoy spec (or PRD) from a task description
     validate    Validate a convoy YAML spec file
     run         Process a task queue from a spec file autonomously
-    dispute     Manage convoy dispute resolution
 
   Observability:
     dashboard   View agent observability dashboard in your browser
@@ -85,7 +84,6 @@ const commands = {
   log: () => import('../dist/cli/log.js'),
   lesson: () => import('../dist/cli/lesson.js'),
   agents: () => import('../dist/cli/agents.js'),
-  dispute: () => import('../dist/cli/dispute.js'),
   baselines: () => import('../dist/cli/baselines.js'),
   validate: () => import('../dist/cli/validate.js'),
   artifacts: () => import('../dist/cli/artifacts-cli.js'),
