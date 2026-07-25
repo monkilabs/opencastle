@@ -6,7 +6,10 @@ import { removeDirIfExists } from './copy.js'
 import { removeGitignoreBlock } from './gitignore.js'
 import { confirm, select, closePrompts, c } from './prompt.js'
 import { stripManagedBlockFromFile } from './managed-block.js'
-import type { CliContext } from './types.js'
+import { resolveManagedPaths } from './managed-paths.js'
+import { stripManagedMcpServers, getMcpConfigRelPath } from './mcp.js'
+import { IDE_ADAPTERS } from './adapters/index.js'
+import type { CliContext, IdeChoice } from './types.js'
 
 /**
  * Removal, with the destructive choice made explicit rather than encoded in the
@@ -71,9 +74,16 @@ export default async function remove({ args }: CliContext): Promise<void> {
     mode = answer as Mode
   }
 
-  const frameworkPaths = manifest.managedPaths?.framework ?? []
-  const customizablePaths = manifest.managedPaths?.customizable ?? []
-  const mergedPaths = manifest.managedPaths?.merged ?? []
+  // Not `manifest.managedPaths` directly: a manifest written before root files
+  // became co-owned files them under `framework`, and this loop unlinks that.
+  const managed = await resolveManagedPaths(manifest)
+  const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter(
+    (id): id is IdeChoice => Boolean(id) && id in IDE_ADAPTERS,
+  )
+  const mcpPaths = new Set(ides.map((ide) => getMcpConfigRelPath(ide)))
+  const frameworkPaths = managed.framework.filter((p) => !mcpPaths.has(p))
+  const customizablePaths = managed.customizable.filter((p) => !mcpPaths.has(p))
+  const mergedPaths = managed.merged
   const legacyManifestPath = resolve(projectRoot, '.opencastle.json')
   const hasLegacy = existsSync(legacyManifestPath)
 
@@ -142,6 +152,15 @@ export default async function remove({ args }: CliContext): Promise<void> {
   let stripped = 0
   for (const p of mergedPaths) {
     const outcome = await stripManagedBlockFromFile(resolve(projectRoot, p))
+    if (outcome === 'deleted') removed++
+    else if (outcome === 'stripped') stripped++
+  }
+
+  // MCP config is co-owned the same way: we merge our servers into a file that
+  // may be the assistant's entire project config. Take back the servers, not
+  // the file.
+  for (const ide of ides) {
+    const outcome = await stripManagedMcpServers(projectRoot, ide)
     if (outcome === 'deleted') removed++
     else if (outcome === 'stripped') stripped++
   }

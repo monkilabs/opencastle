@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
+import { resolveStack } from './stack-config.js'
 import { BLOCK_START, BLOCK_END, hasManagedBlock } from './managed-block.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeChoice, StackConfig } from './types.js'
@@ -139,8 +140,7 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
     (id): id is IdeChoice => id in IDE_ADAPTERS,
   )
 
-  const stack: StackConfig =
-    manifest.stack ?? { ides, techTools: [], teamTools: [] }
+  const stack: StackConfig = resolveStack({ ...manifest, ides })
   const repoInfo = manifest.repoInfo ?? mergeStackIntoRepoInfo(await detectRepoInfo(projectRoot), stack)
 
   const drift: Drift[] = []

@@ -127,6 +127,10 @@ export async function update(
   const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
   const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
+  // `.github/` may not exist: a teammate clones a repo whose generated config was
+  // never committed, and `update` used to die with ENOENT before writing anything.
+  await mkdir(destRoot, { recursive: true })
+
   // Refresh only the managed block, leaving any surrounding user content alone.
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
   await writeManagedBlock(

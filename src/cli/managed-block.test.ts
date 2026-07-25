@@ -208,8 +208,6 @@ describe('stripManagedBlockFromFile', () => {
     expect(text).toContain('NEVER_TOUCH_PAYMENTS')
     expect(text).not.toContain('generated')
     expect(hasManagedBlock(text)).toBe(false)
-    // The separator we inserted goes with our half.
-    expect(text.trimEnd().endsWith('---')).toBe(false)
   })
 
   it('deletes the file when nothing of the user\'s remains', async () => {
@@ -228,16 +226,115 @@ describe('stripManagedBlockFromFile', () => {
     expect(await stripManagedBlockFromFile(join(dir, 'nope.md'))).toBe('absent')
   })
 
-  it('survives strip/write cycles without accumulating separators', async () => {
-    writeFileSync(file, '# My Rules\n\nkeep me\n')
+  it('survives strip/write cycles without accumulating anything', async () => {
+    const original = '# My Rules\n\nkeep me\n'
+    writeFileSync(file, original)
     for (let i = 0; i < 4; i++) {
       await writeManagedBlock(file, `generation ${i}`)
       await stripManagedBlockFromFile(file)
+      expect(readFileSync(file, 'utf8'), `cycle ${i} changed the user's half`).toBe(original)
     }
-    await writeManagedBlock(file, 'final')
+  })
+})
 
+
+/**
+ * The promise the code makes in two places — "keep every byte of it", and
+ * init's "your content is above the managed block and is never overwritten".
+ *
+ * The first version of this merge reflowed the user's half: it collapsed runs of
+ * three or more newlines, which reaches inside fenced code blocks, and stripped
+ * a trailing `---` that the user may have written themselves. Neither is an edit
+ * the tool is entitled to make.
+ */
+describe("the user's half survives a round trip byte for byte", () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-fidelity-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const samples: Array<[string, string]> = [
+    ['plain prose', '# Acme\n\nUse pnpm, never npm.\n'],
+    ['a run of blank lines', '# Acme\n\n\n\nStill ours.\n'],
+    ['blank lines inside a fenced block', '# Acme\n\n```text\nline one\n\n\n\nline two\n```\n'],
+    ['a trailing horizontal rule', '# Acme\n\nRules below.\n\n---\n'],
+    ['a horizontal rule mid-document', '# Acme\n\n---\n\nMore.\n'],
+    ['trailing whitespace on a line', '# Acme\n\nTrailing spaces here:   \nand more.\n'],
+    ['CRLF line endings', '# Acme\r\n\r\nWindows wrote this.\r\n'],
+    ['no trailing newline', '# Acme\n\nNo newline at end.'],
+  ]
+
+  for (const [name, original] of samples) {
+    it(`preserves ${name}`, async () => {
+      writeFileSync(file, original)
+      await writeManagedBlock(file, 'generated body')
+
+      // Still all there, in order, while the block is present.
+      const merged = readFileSync(file, 'utf8')
+      expect(merged.startsWith(original.endsWith('\n') ? original : `${original}\n`)).toBe(true)
+
+      // And handed back on the way out. A file with no trailing newline gains
+      // one — the block has to start on its own line — and that is the only
+      // byte this is allowed to change.
+      await stripManagedBlockFromFile(file)
+      const after = readFileSync(file, 'utf8')
+      expect(after).toBe(original.endsWith('\n') ? original : `${original}\n`)
+    })
+  }
+
+  it('never writes a separator rule of its own', async () => {
+    writeFileSync(file, '# Acme\n\nNo rules here.\n')
+    await writeManagedBlock(file, 'generated body')
     const text = readFileSync(file, 'utf8')
-    expect(text).toContain('keep me')
-    expect((text.match(/^---$/gm) ?? []).length).toBe(1)
+    expect((text.match(/^---$/gm) ?? []).length).toBe(0)
+  })
+})
+
+/**
+ * Adoption replaces the file wholesale, so its test must be for what it will
+ * NOT touch as much as what it will.
+ */
+describe('adoption only claims a file that is generated all the way through', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-adopt-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('leaves a generated file the user prepended house rules to', async () => {
+    // The realistic upgrade: someone edited their generated CLAUDE.md.
+    writeFileSync(
+      file,
+      '# House Rules\n\nNEVER_TOUCH_PAYMENTS\n\n# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n',
+    )
+    const result = await writeManagedBlock(file, 'fresh')
+    expect(result.action).toBe('appended')
+    expect(readFileSync(file, 'utf8')).toContain('NEVER_TOUCH_PAYMENTS')
+  })
+
+  it('leaves a hand-written file that merely quotes the banner', async () => {
+    writeFileSync(
+      file,
+      '# Acme\n\nNote to the team: this file is managed by OpenCastle, so edit .opencastle/ instead.\n',
+    )
+    const result = await writeManagedBlock(file, 'fresh')
+    expect(result.action).toBe('appended')
+    expect(readFileSync(file, 'utf8')).toContain('Note to the team')
+  })
+
+  it('does not delete such a file on the way out either', async () => {
+    writeFileSync(file, '# House Rules\n\nNEVER_TOUCH_PAYMENTS\n\n# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n')
+    expect(await stripManagedBlockFromFile(file)).toBe('stripped')
+    expect(existsSync(file)).toBe(true)
+    expect(readFileSync(file, 'utf8')).toContain('NEVER_TOUCH_PAYMENTS')
   })
 })

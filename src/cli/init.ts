@@ -14,6 +14,7 @@ import { IDE_LABELS } from './types.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { bootstrapCustomizations } from './bootstrap.js'
 import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
+import { resolveManagedPaths } from './managed-paths.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -271,7 +272,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       removeOldFiles = await confirm(`Remove ${oldIdeLabel} files from previous installation?`, false)
     }
     if (removeOldFiles) {
-      for (const p of existing.managedPaths?.framework ?? []) {
+      // Resolved against today's adapters, not read off the manifest: manifests
+      // written before root files became co-owned list them under `framework`,
+      // and this loop unlinks that.
+      const previous = await resolveManagedPaths(existing)
+      for (const p of previous.framework) {
         const fullPath = resolve(projectRoot, p)
         if (p.endsWith('/')) {
           await removeDirIfExists(fullPath)
@@ -280,7 +285,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
         }
       }
       // Co-owned files are not ours to delete — take back only the block.
-      for (const p of existing.managedPaths?.merged ?? []) {
+      for (const p of previous.merged) {
         await stripManagedBlockFromFile(resolve(projectRoot, p))
       }
     }

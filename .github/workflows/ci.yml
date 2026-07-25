@@ -43,10 +43,22 @@ jobs:
           scratch="$(mktemp -d)"
           git -C "$scratch" init -q
           cd "$scratch"
-          printf '# House rules\n\nNEVER_TOUCH_PAYMENTS\n' > CLAUDE.md
+          printf '# House rules\n\nNEVER_TOUCH_PAYMENTS\n\n```text\nkeep\n\n\n\nthese\n```\n' > CLAUDE.md
+          cp CLAUDE.md /tmp/before
           node "$GITHUB_WORKSPACE/bin/cli.mjs" init --yes
           node "$GITHUB_WORKSPACE/bin/cli.mjs" init --yes
-          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md
           node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --check
+
+          # The generated config must be committed and must survive a clone —
+          # the only shape that catches a .gitignore still hiding it.
+          git -c user.email=ci@example.com -c user.name=ci add -A
+          git -c user.email=ci@example.com -c user.name=ci commit -qm generated
+          git clone -q "$scratch" "$scratch-clone"
+          cd "$scratch-clone"
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --check
+          cd "$scratch"
+
+          # And removal returns the user's half byte for byte, not merely with
+          # the sentinel still somewhere in it.
           node "$GITHUB_WORKSPACE/bin/cli.mjs" remove --all --yes
-          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md
+          diff /tmp/before CLAUDE.md

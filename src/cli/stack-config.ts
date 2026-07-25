@@ -71,6 +71,32 @@ const MCP_ENV_REQUIREMENTS: McpEnvRequirement[] = Object.values(PLUGINS)
 /**
  * Skills to EXCLUDE — all tool-specific skills that are NOT selected.
  */
+/**
+ * The StackConfig a manifest implies — one answer, for every caller.
+ *
+ * `sync` and `sync --check` used to derive this differently. The checker
+ * substituted an empty stack when the field was missing; the compiler passed
+ * `undefined` straight through, and the adapters read `undefined` as "no stack
+ * selected, so exclude nothing and include every plugin". A manifest without a
+ * `stack` therefore compiled to one tree and was checked against another: `sync`
+ * grew the skills directory, the check reported the surplus as drift forever,
+ * and running `sync` again changed nothing. Absorbing states like that are worth
+ * more than the one line it takes to avoid them.
+ */
+export function resolveStack(manifest: {
+  ide?: string
+  ides?: string[]
+  stack?: StackConfig
+}): StackConfig {
+  const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter(
+    (id): id is string => Boolean(id),
+  )
+  if (manifest.stack) {
+    return { ...manifest.stack, ides: (manifest.stack.ides?.length ? manifest.stack.ides : ides) as StackConfig['ides'] }
+  }
+  return { ides: ides as StackConfig['ides'], techTools: [], teamTools: [] }
+}
+
 export function getExcludedSkills(stack: StackConfig): Set<string> {
   const selectedIds = [...stack.techTools, ...stack.teamTools] as string[];
   const includedSkills = new Set(getSelectedSkillNames(selectedIds));

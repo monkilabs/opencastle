@@ -1,5 +1,5 @@
 import { resolve, dirname } from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { getIncludedMcpServers } from './stack-config.js';
 import { PLUGINS } from '../orchestrator/plugins/index.js';
@@ -199,7 +199,7 @@ export async function scaffoldMcpConfig(
 /**
  * Returns the relative path to the MCP config file for a given IDE.
  */
-function getMcpConfigRelPath(ide: IdeChoice): string {
+export function getMcpConfigRelPath(ide: IdeChoice): string {
   switch (ide) {
     case 'vscode':
       return '.vscode/mcp.json';
@@ -226,6 +226,65 @@ function getMcpConfigRelPath(ide: IdeChoice): string {
  * 3. Preserves manually-added server entries
  * 4. Re-scaffolds with the new stack selection
  */
+/**
+ * Take our MCP servers back out of a config file we only merged into.
+ *
+ * `scaffoldMcpConfig` never clobbers: if the file exists it adds the servers it
+ * owns and leaves everything else alone. `remove --all` did not honour that — it
+ * unlinked the whole file, so a project with a hand-written `opencode.json`
+ * (OpenCode's entire project config, not just its MCP section) lost it. Same
+ * mistake as deleting a co-owned CLAUDE.md, one file type over.
+ *
+ * Returns 'deleted' only when nothing of the user's was left in it.
+ */
+export async function stripManagedMcpServers(
+  projectRoot: string,
+  ide: IdeChoice,
+): Promise<'deleted' | 'stripped' | 'absent'> {
+  const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
+  if (!existsSync(destPath)) return 'absent';
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(await readFile(destPath, 'utf8')) as Record<string, unknown>;
+  } catch {
+    // Not ours to repair. Leaving it alone beats deleting something unreadable.
+    return 'stripped';
+  }
+
+  const containerKey =
+    ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers';
+  const servers = (parsed[containerKey] ?? {}) as Record<string, unknown>;
+
+  const ourServerKeys = new Set(
+    Object.values(PLUGINS)
+      .filter((p) => p.mcpServerKey)
+      .map((p) => p.mcpServerKey!),
+  );
+  for (const key of Object.keys(servers)) {
+    if (ourServerKeys.has(key)) delete servers[key];
+  }
+  if (Object.keys(servers).length === 0) delete parsed[containerKey];
+  else parsed[containerKey] = servers;
+
+  const ourInputIds = new Set(
+    Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id)),
+  );
+  if (Array.isArray(parsed.inputs)) {
+    const kept = (parsed.inputs as McpInput[]).filter((i) => !ourInputIds.has(i.id));
+    if (kept.length > 0) parsed.inputs = kept;
+    else delete parsed.inputs;
+  }
+
+  if (Object.keys(parsed).length === 0) {
+    await rm(destPath, { force: true });
+    return 'deleted';
+  }
+
+  await writeFile(destPath, JSON.stringify(parsed, null, 2) + '\n');
+  return 'stripped';
+}
+
 export async function rebuildMcpConfig(
   projectRoot: string,
   ide: IdeChoice,

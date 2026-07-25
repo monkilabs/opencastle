@@ -729,10 +729,8 @@ describe('Cursor adapter install', () => {
 
     expect(paths.merged).toContain('.cursorrules')
     expect(paths.framework).not.toContain('.cursorrules')
-    expect(paths.framework).toContain('.cursor/rules/agents/')
-    expect(paths.framework).toContain('.cursor/rules/skills/')
-    expect(paths.framework).toContain('.cursor/rules/general.mdc')
-    expect(paths.framework).toContain('.cursor/rules/ai-optimization.mdc')
+    // The whole rules directory, because `update` clears every rule file in it.
+    expect(paths.framework).toContain('.cursor/rules/')
 
     expect(paths.customizable).toContain('.opencastle/')
     expect(paths.customizable).toContain('.cursor/mcp.json')

@@ -71,18 +71,38 @@ describe('remove --all', () => {
   it('removes all managed framework files', async () => {
     await writeManifestFile(tmpDir, {
       managedPaths: {
-        framework: ['.github/instructions/general.instructions.md', '.github/copilot-instructions.md'],
+        framework: ['.github/instructions/general.instructions.md'],
         customizable: [],
       },
     })
     await mkdir(join(tmpDir, '.github', 'instructions'), { recursive: true })
     await writeFile(join(tmpDir, '.github', 'instructions', 'general.instructions.md'), 'content')
-    await writeFile(join(tmpDir, '.github', 'copilot-instructions.md'), 'content')
 
     await remove({ pkgRoot: tmpDir, args: ['--all'] })
 
     expect(existsSync(join(tmpDir, '.github', 'instructions', 'general.instructions.md'))).toBe(false)
-    expect(existsSync(join(tmpDir, '.github', 'copilot-instructions.md'))).toBe(false)
+  })
+
+  it('strips a root file the manifest wrongly filed under framework', async () => {
+    // This test used to assert the opposite. Every release before this one wrote
+    // `.github/copilot-instructions.md` into `framework`, so asserting it is
+    // deleted locked in the exact loss the merged category was added to prevent.
+    await writeManifestFile(tmpDir, {
+      ide: 'vscode',
+      ides: ['vscode'],
+      managedPaths: {
+        framework: ['.github/copilot-instructions.md'],
+        customizable: [],
+      },
+    })
+    const copilot = join(tmpDir, '.github', 'copilot-instructions.md')
+    await mkdir(join(tmpDir, '.github'), { recursive: true })
+    await writeFile(copilot, '# Our own instructions\n\nKEEP_THIS_LINE\n')
+
+    await remove({ pkgRoot: tmpDir, args: ['--all'] })
+
+    expect(existsSync(copilot)).toBe(true)
+    expect(await readFileText(copilot, 'utf8')).toContain('KEEP_THIS_LINE')
   })
 
   it("strips the block from a co-owned root file but keeps the user's writing", async () => {

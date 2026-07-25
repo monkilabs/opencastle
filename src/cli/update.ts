@@ -6,8 +6,10 @@ import { multiselect, confirm, closePrompts, c } from './prompt.js'
 import { isLegacyStack, migrateStackConfig, IDE_LABELS } from './types.js'
 import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js'
-import { getRequiredMcpEnvVars, updateSkillMatrixFile } from './stack-config.js'
+import { getRequiredMcpEnvVars, updateSkillMatrixFile, resolveStack } from './stack-config.js'
 import { rebuildMcpConfig } from './mcp.js'
+import { updateGitignore } from './gitignore.js'
+import { resolveManagedPaths } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 
@@ -89,8 +91,17 @@ export default async function update({
     }
   })()
 
+  const assumeYes = args.includes('--yes')
+
   if (!needsSync && !dryRun) {
     console.log(`  ${c.green('✓')} Everything matches its sources (v${pkg.version}).`)
+    // `--yes` means "do not ask me anything". This one slipped the guard, so a CI
+    // runner holding stdin open would block here on an up-to-date project, and
+    // `add`, which routes through sync, asked twice for one instruction.
+    if (assumeYes) {
+      closePrompts()
+      return
+    }
     wantsReconfigure = await confirm(
       'Would you like to change your stack selections?',
       false
@@ -106,7 +117,10 @@ export default async function update({
 
   // ── Reconfigure stack if requested ──────────────────────────────
   const oldStack = manifest.stack
-  let newStack: StackConfig | undefined = manifest.stack
+  // Resolved, never undefined: the adapters read `undefined` as "include every
+  // plugin", which is not what a manifest with no stack means, and is not what
+  // the drift checker assumes either.
+  let newStack: StackConfig = resolveStack({ ...manifest, ides })
   let stackChanged = false
   let addedTools: string[] = []
   let removedTools: string[] = []
@@ -247,7 +261,7 @@ export default async function update({
 
   // `opencastle add sentry` already said what to do. Asking again is a keystroke
   // charged for nothing.
-  if (!args.includes('--yes')) {
+  if (!assumeYes) {
     const proceed = await confirm('Proceed?')
     if (!proceed) {
       console.log('  Aborted.')
@@ -259,23 +273,17 @@ export default async function update({
   // ── Update each IDE ─────────────────────────────────────────────
   let totalCopied = 0
   let totalCreated = 0
-  const allManagedPaths = {
-    framework: [] as string[],
-    customizable: [] as string[],
-    merged: [] as string[],
-  }
-
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
     const results = await adapter.update(pkgRoot, projectRoot, newStack)
     totalCopied += results.copied.length
     totalCreated += results.created.length
-
-    const managed = adapter.getManagedPaths()
-    allManagedPaths.framework.push(...managed.framework)
-    allManagedPaths.customizable.push(...managed.customizable)
-    allManagedPaths.merged.push(...(managed.merged ?? []))
   }
+
+  // Deduplicated, and re-sorted by what the adapters declare today — two targets
+  // that share AGENTS.md used to record it twice, and a manifest from before
+  // root files were co-owned still files them under `framework`.
+  const allManagedPaths = await resolveManagedPaths({ ...manifest, ides })
 
   // The skill matrix and the MCP config are compiled output like everything else,
   // so they are regenerated whenever we recompile. Gating them on `stackChanged`
@@ -289,6 +297,15 @@ export default async function update({
     }
   }
 
+  // ── Rewrite the .gitignore block ────────────────────────────────
+  // Not just an init-time concern. Releases before this one ignored every
+  // generated path, so an existing install upgrades, keeps CLAUDE.md untracked,
+  // and the `sync --check` job the README prescribes reports every generated
+  // file as "never generated" on a clean checkout — with a suggested fix that
+  // cannot fix it. The population that most needs the new block is the one that
+  // never runs `init` again.
+  const gitignoreResult = await updateGitignore(projectRoot)
+
   // ── Migrate legacy log files ────────────────────────────────────
   await migrateLegacyLogs(projectRoot)
 
@@ -297,10 +314,8 @@ export default async function update({
   manifest.ides = ides
   manifest.updatedAt = new Date().toISOString()
   manifest.managedPaths = allManagedPaths
-  if (newStack) manifest.stack = newStack
-  manifest.repoInfo = newStack
-    ? mergeStackIntoRepoInfo(repoInfo, newStack)
-    : repoInfo
+  manifest.stack = newStack
+  manifest.repoInfo = mergeStackIntoRepoInfo(repoInfo, newStack)
   await writeManifest(projectRoot, manifest)
 
   // ── Results ─────────────────────────────────────────────────────
@@ -315,6 +330,9 @@ export default async function update({
   if (newStack) {
     console.log(`  ${c.green('✓')} Updated skill matrix`)
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
+  }
+  if (gitignoreResult !== 'unchanged') {
+    console.log(`  ${c.green('✓')} Updated .gitignore ${c.dim('(generated config is committed)')}`)
   }
 
   // ── Env var notice ──────────────────────────────────────────────

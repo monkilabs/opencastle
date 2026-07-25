@@ -335,14 +335,14 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   function getManagedPaths(): ManagedPaths {
     return {
       merged: [rootRulesFile],
-      framework: [
-        `${rulesPrefix}/agents/`,
-        `${rulesPrefix}/skills/`,
-        `${rulesPrefix}/agent-workflows/`,
-        `${rulesPrefix}/prompts/`,
-        `${rulesPrefix}/general${ruleExt}`,
-        `${rulesPrefix}/ai-optimization${ruleExt}`,
-      ],
+      // The whole rules directory, not the six paths inside it that we happen to
+      // write. `update` clears every rule file at this root before regenerating,
+      // so anything else living here is deleted — and listing only our own paths
+      // meant the drift check walked past a hand-written
+      // `.cursor/rules/team-conventions.mdc` and reported "all clear" moments
+      // before `sync` removed it. This is Cursor's documented place for project
+      // rules, so that file is one people really do write.
+      framework: [`${rulesPrefix}/`],
       customizable: ['.opencastle/', mcpPath],
     }
   }
