@@ -12,13 +12,14 @@ const adapter = createRulesDirAdapter({
   rootRulesFile: '.cursorrules',
   configDir: '.cursor',
   ruleExt: '.mdc',
-  renderFrontmatter({ description, applyTo, alwaysApply }) {
+  renderFrontmatter({ description, applyTo, alwaysApply, tier }) {
     const lines: string[] = []
     if (description) lines.push(`description: "${description}"`)
     if (applyTo) lines.push(`globs: ${JSON.stringify([applyTo])}`)
     // An applyTo of '**' means every file, which is the same as always applying.
     const apply = applyTo === '**' ? true : alwaysApply
     lines.push(`alwaysApply: ${apply ? 'true' : 'false'}`)
+    if (tier) lines.push(`tier: ${tier}`)
     return lines
   },
 })

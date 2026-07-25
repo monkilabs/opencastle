@@ -129,3 +129,45 @@ describe('the root-file list stays in step with the adapters', () => {
     }
   })
 })
+
+/**
+ * Adoption is the one place the tool replaces a file it did not write in this
+ * run. A previous release generated it, so replacing it is right — but there is
+ * no marker to say where anything appended since begins.
+ */
+describe('replacing a pre-marker root file leaves a way back', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'adopt-backup-'))
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('keeps the previous contents beside it', async () => {
+    const { writeManagedBlock } = await import('./managed-block.js')
+    const file = join(dir, 'CLAUDE.md')
+    const before =
+      '# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n\n## Our team additions\n\nDeploy only on Tuesdays.\n'
+    writeFileSync(file, before)
+
+    const result = await writeManagedBlock(file, 'fresh')
+    expect(result.action).toBe('adopted')
+
+    const backup = `${file}.opencastle-backup`
+    expect(existsSync(backup), 'no backup written').toBe(true)
+    expect(readFileSync(backup, 'utf8')).toBe(before)
+    expect(readFileSync(backup, 'utf8')).toContain('Deploy only on Tuesdays')
+  })
+
+  it('is reported by the adapter so a command can tell the user', async () => {
+    const { IDE_ADAPTERS } = await import('./adapters/index.js')
+    writeFileSync(
+      join(dir, 'CLAUDE.md'),
+      '# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n',
+    )
+    const adapter = await IDE_ADAPTERS['claude-code']()
+    const results = await adapter.install(pkgRoot, dir, { ides: ['claude-code'], techTools: [], teamTools: [] }, undefined)
+    expect(results.adopted ?? []).toContain(join(dir, 'CLAUDE.md'))
+  })
+})

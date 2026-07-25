@@ -58,8 +58,14 @@ export async function install(
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
   {
     const merge = await writeManagedBlock(copilotDest, await readFile(copilotSrc, 'utf8'))
-    if (merge.action === 'created' || merge.action === 'adopted') results.created.push(copilotDest)
-    else if (merge.action === 'unchanged') results.skipped.push(copilotDest)
+    if (merge.action === 'adopted') {
+      results.created.push(copilotDest)
+      ;(results.adopted ??= []).push(copilotDest)
+    } else if (merge.action === 'created') {
+      results.created.push(copilotDest)
+    } else if (merge.action === 'unchanged') {
+      results.skipped.push(copilotDest)
+    }
     else results.copied.push(copilotDest)
   }
 
@@ -133,11 +139,12 @@ export async function update(
 
   // Refresh only the managed block, leaving any surrounding user content alone.
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
-  await writeManagedBlock(
+  const rootMerge = await writeManagedBlock(
     copilotDest,
     await readFile(resolve(srcRoot, 'copilot-instructions.md'), 'utf8')
   )
   results.copied.push(copilotDest)
+  if (rootMerge.action === 'adopted') (results.adopted ??= []).push(copilotDest)
 
   // Remove existing framework directories to clear stale files
   for (const dir of FRAMEWORK_DIRS) {

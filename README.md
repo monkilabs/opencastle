@@ -111,6 +111,11 @@ Commit the generated config, like a lockfile. That is what gives the check
 something to compare and what lets a teammate clone the repo and have working
 rules without running anything. Only `.env` and run artefacts are gitignored.
 
+Upgrading from 0.35 or earlier? Run `opencastle sync` once — it rewrites the
+`.gitignore` block, repairs the manifest, and adopts root files an older release
+generated, keeping a `.opencastle-backup` of each. See
+[the quickstart](docs/quickstart.md#upgrading-from-035-or-earlier).
+
 <br>
 
 ## Supported assistants

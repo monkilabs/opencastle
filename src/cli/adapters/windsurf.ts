@@ -12,7 +12,7 @@ const adapter = createRulesDirAdapter({
   rootRulesFile: '.windsurfrules',
   configDir: '.windsurf',
   ruleExt: '.md',
-  renderFrontmatter({ description, applyTo, alwaysApply }) {
+  renderFrontmatter({ description, applyTo, alwaysApply, tier }) {
     let trigger: 'always_on' | 'model_decision' | 'glob'
     let globs: string[] | undefined
 
@@ -28,6 +28,7 @@ const adapter = createRulesDirAdapter({
     const lines = [`trigger: ${trigger}`]
     if (description) lines.push(`description: "${description}"`)
     if (globs) lines.push(`globs: ${JSON.stringify(globs)}`)
+    if (tier) lines.push(`tier: ${tier}`)
     return lines
   },
 })

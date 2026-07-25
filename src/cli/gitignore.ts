@@ -20,6 +20,9 @@ const END_MARKER = '# <<< OpenCastle managed <<<'
  */
 const LOCAL_ONLY = [
   '.env',
+  // Written once, when an upgrade replaces a root file an older release
+  // generated. Yours to read and delete; not part of the project.
+  '*.opencastle-backup',
   '.opencastle/logs/',
   '.opencastle/runs/',
   '.opencastle/worktrees/',

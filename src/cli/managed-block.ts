@@ -160,6 +160,12 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
   }
 
   if (looksLikeLegacyGenerated(existing)) {
+    // The one operation here that discards anything: a previous release wrote
+    // this whole file, so replacing it is right — but if someone appended notes
+    // below the generated part, there is no marker to tell us where theirs
+    // began. Keep a copy next to it rather than being clever, and let the user
+    // decide. It sits in the working tree where `git status` will show it.
+    await writeFile(`${path}.opencastle-backup`, existing)
     await writeFile(path, block)
     return { action: 'adopted', preservedUserContent: false }
   }

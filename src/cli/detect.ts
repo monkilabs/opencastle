@@ -37,6 +37,8 @@ export const ASSISTANT_CONFIG_FILES: ReadonlyArray<{
   path: string
   label: string
   ide: IdeChoice
+  /** Only counts when no other assistant was detected. */
+  fallback?: boolean
 }> = [
   { path: 'CLAUDE.md', label: 'Claude Code', ide: 'claude-code' },
   { path: '.claude', label: 'Claude Code', ide: 'claude-code' },
@@ -48,9 +50,12 @@ export const ASSISTANT_CONFIG_FILES: ReadonlyArray<{
   { path: 'GEMINI.md', label: 'Antigravity', ide: 'antigravity' },
   { path: '.codex', label: 'Codex CLI', ide: 'codex' },
   { path: 'opencode.json', label: 'OpenCode', ide: 'opencode' },
-  // AGENTS.md is shared by several tools, so it is checked last and only counts
-  // when nothing more specific matched.
-  { path: 'AGENTS.md', label: 'AGENTS.md', ide: 'codex' },
+  // AGENTS.md is a convention several tools share, so on its own it does not
+  // identify one. `fallback` means it is consulted only when nothing more
+  // specific matched — the comment used to claim that while the loop below
+  // ignored it, so a repo with CLAUDE.md and AGENTS.md silently gained Codex
+  // CLI and a .codex/ tree it never asked for.
+  { path: 'AGENTS.md', label: 'Codex CLI', ide: 'codex', fallback: true },
 ];
 
 export interface DetectedAssistant {
@@ -67,6 +72,7 @@ export interface DetectedAssistant {
 export function detectAssistantConfigs(projectRoot: string): DetectedAssistant[] {
   const byIde = new Map<IdeChoice, DetectedAssistant>();
   for (const entry of ASSISTANT_CONFIG_FILES) {
+    if (entry.fallback) continue;
     if (!existsSync(resolve(projectRoot, entry.path))) continue;
     const found = byIde.get(entry.ide);
     if (found) {
@@ -75,6 +81,14 @@ export function detectAssistantConfigs(projectRoot: string): DetectedAssistant[]
       byIde.set(entry.ide, { ide: entry.ide, label: entry.label, paths: [entry.path] });
     }
   }
+
+  if (byIde.size === 0) {
+    for (const entry of ASSISTANT_CONFIG_FILES.filter((e) => e.fallback)) {
+      if (!existsSync(resolve(projectRoot, entry.path))) continue;
+      byIde.set(entry.ide, { ide: entry.ide, label: entry.label, paths: [entry.path] });
+    }
+  }
+
   return [...byIde.values()];
 }
 

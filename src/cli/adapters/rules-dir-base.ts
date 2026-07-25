@@ -30,6 +30,14 @@ export interface RuleScope {
   applyTo?: string
   /** Whether this rule should apply unconditionally (instructions do). */
   alwaysApply: boolean
+  /**
+   * The agent's capability tier, when the source declared one.
+   *
+   * Carried through so an agent rule says what kind of model the work wants. The
+   * single-file targets render this into their agent index; dropping it here
+   * meant Cursor and Windsurf users were the only ones who could not see it.
+   */
+  tier?: string
 }
 
 export interface RulesDirConfig {
@@ -100,6 +108,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       description,
       applyTo: meta['applyTo'],
       alwaysApply,
+      tier: meta['tier'],
     }), '---', '', body.trim(), '']
     return lines.join('\n')
   }
@@ -243,8 +252,14 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const rootFile = resolve(projectRoot, rootRulesFile)
     {
       const merge = await writeManagedBlock(rootFile, rootIntro)
-      if (merge.action === 'created' || merge.action === 'adopted') results.created.push(rootFile)
-      else if (merge.action === 'unchanged') results.skipped.push(rootFile)
+      if (merge.action === 'adopted') {
+        results.created.push(rootFile)
+        ;(results.adopted ??= []).push(rootFile)
+      } else if (merge.action === 'created') {
+        results.created.push(rootFile)
+      } else if (merge.action === 'unchanged') {
+        results.skipped.push(rootFile)
+      }
       else results.copied.push(rootFile)
     }
 
@@ -285,8 +300,10 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
     const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-    await writeManagedBlock(resolve(projectRoot, rootRulesFile), rootIntro)
+    const rootPath = resolve(projectRoot, rootRulesFile)
+    const rootMerge = await writeManagedBlock(rootPath, rootIntro)
     results.copied.push(rootRulesFile)
+    if (rootMerge.action === 'adopted') (results.adopted ??= []).push(rootPath)
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
 

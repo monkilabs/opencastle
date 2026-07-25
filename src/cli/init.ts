@@ -1,7 +1,7 @@
 import { resolve, relative } from 'node:path'
 import { readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { select, multiselect, confirm, closePrompts, c } from './prompt.js'
+import { multiselect, confirm, closePrompts, c } from './prompt.js'
 import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
@@ -87,16 +87,31 @@ export function detectSelection(projectRoot: string, repoInfo: Awaited<ReturnTyp
 async function promptSelection(
   repoInfo: Awaited<ReturnType<typeof detectRepoInfo>>,
   existingTools: Set<string>,
+  currentIdes: Set<string> = new Set(),
 ): Promise<Selection> {
   const detectedIde = detectCurrentIde()
-  const selectedIde = await select(
-    'Which IDE do you use?',
+  // A multiselect, because this is the only screen that can add a second target
+  // and the tool advertises it as such: init prints "Also used by your team?
+  // opencastle init --customize", and status makes that the suggested next
+  // command whenever it sees an unmanaged assistant. With a single-choice
+  // picker, running it replaced the existing target instead of adding to it, the
+  // old target's files were orphaned, and status went on suggesting the same
+  // command — a loop that never converged.
+  const selectedIdes = await multiselect(
+    'Which assistants should this compile for?',
     (Object.keys(IDE_ADAPTERS) as IdeChoice[]).map((ide) => ({
       label: IDE_LABELS[ide],
       value: ide,
-      ...(detectedIde === ide && { selected: true }),
+      ...((currentIdes.has(ide) || (currentIdes.size === 0 && detectedIde === ide)) && {
+        selected: true,
+      }),
     })),
   )
+  if (selectedIdes.length === 0) {
+    console.log(`\n  ${c.red('✗')} Pick at least one assistant.\n`)
+    closePrompts()
+    process.exit(1)
+  }
 
   const detectedTools = buildDetectedToolsSet(repoInfo)
   const techTools: string[] = []
@@ -127,7 +142,7 @@ async function promptSelection(
     }
   }
 
-  return { ides: [selectedIde as IdeChoice], techTools, teamTools }
+  return { ides: selectedIdes as IdeChoice[], techTools, teamTools }
 }
 
 export default async function init({ pkgRoot, args }: CliContext): Promise<void> {
@@ -183,7 +198,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     const summary = formatRepoInfo(repoInfo)
     if (summary) console.log(`  ${c.green('Detected:')}\n` + summary + '\n')
     console.log(`  ${c.bold('── IDEs ──────────────────────────────────────')}`)
-    selection = await promptSelection(repoInfo, existingTools)
+    selection = await promptSelection(
+      repoInfo,
+      existingTools,
+      new Set(existing?.ides ?? (existing?.ide ? [existing.ide] : [])),
+    )
   } else {
     selection = detectSelection(projectRoot, repoInfo)
 

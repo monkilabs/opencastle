@@ -68,3 +68,4 @@ for (const r of replies || []) {
 
 ### Adaptive Cards and advanced payloads
 
+Use Adaptive Cards when structured inputs or buttons are required; otherwise post a simple threaded message.

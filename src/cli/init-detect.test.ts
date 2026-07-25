@@ -145,3 +145,38 @@ describe('detected selection', () => {
     expect(selection.techTools.length).toBeGreaterThan(0)
   })
 })
+
+/**
+ * AGENTS.md is a convention several tools read, so on its own it says only
+ * "some assistant". The table said as much in a comment while the loop treated
+ * it like any other signal, so a repo using CLAUDE.md plus AGENTS.md was told it
+ * used Codex CLI, and `init --yes` compiled a `.codex/` tree nobody asked for.
+ */
+describe('AGENTS.md only counts when nothing more specific matched', () => {
+  let dir: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'agents-md-'))
+  })
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('identifies Codex when AGENTS.md is the only signal', () => {
+    writeFileSync(join(dir, 'AGENTS.md'), '# Rules\n')
+    expect(detectAssistantConfigs(dir).map((a) => a.ide)).toEqual(['codex'])
+  })
+
+  it('does not add Codex to a project that also has CLAUDE.md', () => {
+    writeFileSync(join(dir, 'CLAUDE.md'), '# Rules\n')
+    writeFileSync(join(dir, 'AGENTS.md'), '# Rules\n')
+    expect(detectAssistantConfigs(dir).map((a) => a.ide)).toEqual(['claude-code'])
+  })
+
+  it('still identifies Codex from its own directory alongside others', () => {
+    writeFileSync(join(dir, 'CLAUDE.md'), '# Rules\n')
+    mkdirSync(join(dir, '.codex'), { recursive: true })
+    expect(detectAssistantConfigs(dir).map((a) => a.ide).sort()).toEqual(['claude-code', 'codex'])
+  })
+})

@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
-import { readdir, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars } from './stack-config.js';
 import { IDE_ADAPTERS } from './adapters/index.js';
+import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
 
@@ -169,6 +170,75 @@ const DOCTOR_HELP = `
     --help, -h      Show this help
 `
 
+/**
+ * Is any generated file hidden from git?
+ *
+ * Releases before this one ignored the whole compiled output, including the root
+ * instruction file the user writes in. That makes two of the tool's promises
+ * false at once — a teammate's clone has no rules, and `sync --check` in CI
+ * reports every file as never generated — and nothing anywhere said so. `sync`
+ * rewrites the block now, but an install that has not synced yet is still in
+ * that state, and this is where it becomes visible.
+ */
+async function checkGitignoredOutput(
+  projectRoot: string,
+  manifest: Manifest | null,
+): Promise<CheckResult> {
+  if (!manifest) return { label: 'Generated config is committed', ok: true, warning: false };
+
+  const gitignorePath = resolve(projectRoot, '.gitignore');
+  if (!existsSync(gitignorePath)) {
+    return { label: 'Generated config is committed', ok: true, warning: false };
+  }
+
+  const managed = await resolveManagedPaths(manifest);
+  const candidates = [...managed.framework, ...managed.merged];
+  const content = await readFile(gitignorePath, 'utf8');
+  const rules = new Set(
+    content
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !l.startsWith('#') && !l.startsWith('!')),
+  );
+
+  const hidden = candidates.filter((p) => rules.has(p) || rules.has(p.replace(/\/$/, '')));
+  if (hidden.length === 0) {
+    return { label: 'Generated config is committed', ok: true, warning: false };
+  }
+
+  return {
+    label: 'Generated config is committed',
+    ok: false,
+    warning: false,
+    detail: `${hidden.length} generated path(s) are gitignored — run "opencastle sync" to update the block`,
+  };
+}
+
+/**
+ * Does the manifest still file a co-owned root file as wholly generated?
+ *
+ * `framework` licenses deletion. A stale record saying CLAUDE.md belongs there
+ * is the precondition for losing it, so it is worth naming even though `init`
+ * and `remove` no longer trust the record.
+ */
+function checkRootFileClassification(manifest: Manifest | null): CheckResult {
+  const label = 'Manifest classifies root files correctly';
+  if (!manifest?.managedPaths) return { label, ok: true, warning: false };
+
+  const misfiled = [
+    ...(manifest.managedPaths.framework ?? []),
+    ...(manifest.managedPaths.customizable ?? []),
+  ].filter((p) => (ROOT_INSTRUCTION_FILES as readonly string[]).includes(p));
+
+  if (misfiled.length === 0) return { label, ok: true, warning: false };
+  return {
+    label,
+    ok: true,
+    warning: true,
+    detail: `${misfiled.join(', ')} recorded as generated — run "opencastle sync" to repair`,
+  };
+}
+
 export default async function doctor({ args }: CliContext): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(DOCTOR_HELP)
@@ -190,6 +260,8 @@ export default async function doctor({ args }: CliContext): Promise<void> {
     await checkLogs(projectRoot),
     checkMcpEnvVars(manifest),
     await checkDotEnv(projectRoot, manifest),
+    await checkGitignoredOutput(projectRoot, manifest),
+    checkRootFileClassification(manifest),
   ];
 
   // IDE-specific checks derived from each adapter
@@ -248,7 +320,9 @@ export default async function doctor({ args }: CliContext): Promise<void> {
   const warnings = allResults.filter((r) => r.ok && r.warning);
 
   if (failures.length > 0) {
-    console.log(`  ${BOLD(`${failures.length} issue(s) found.`)} Run "npx opencastle init" to fix.\n`);
+    // Not `init`: that re-runs setup, and for most failures here `sync` is both
+    // sufficient and the one that cannot surprise you.
+    console.log(`  ${BOLD(`${failures.length} issue(s) found.`)} Run "npx opencastle sync" to fix.\n`);
     process.exit(1);
   } else if (warnings.length > 0) {
     console.log(`  ${BOLD('All checks passed')} with ${warnings.length} warning(s).\n`);

@@ -227,7 +227,52 @@ describe('every copy of the tier table agrees with the agents', () => {
  * The compiled agent index is its consumer.
  */
 describe('the compiled output carries the tier', () => {
-  it('names each agent tier and explains what the tiers mean', async () => {
+  /**
+   * Parameterised over every adapter, because the first version of this test
+   * exercised one single-file target and passed while Cursor and Windsurf
+   * dropped the tier on the floor — their frontmatter was rebuilt from
+   * description/applyTo/alwaysApply and never carried it.
+   */
+  it('every target names the tier somewhere in its output', async () => {
+    const { IDE_ADAPTERS } = await import('./adapters/index.js')
+    const { mkdtempSync, rmSync, readdirSync, statSync, readFileSync: read } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+
+    function allText(dir: string): string {
+      let out = ''
+      for (const entry of readdirSync(dir)) {
+        if (entry === '.git' || entry === 'node_modules') continue
+        const p = join(dir, entry)
+        out += statSync(p).isDirectory() ? allText(p) : read(p, 'utf8')
+      }
+      return out
+    }
+
+    for (const [ide, load] of Object.entries(IDE_ADAPTERS)) {
+      const dir = mkdtempSync(join(tmpdir(), `tier-${ide}-`))
+      try {
+        const adapter = await load()
+        await adapter.install(repoRoot, dir, { ides: [ide], techTools: [], teamTools: [] } as never, undefined)
+        const text = allText(dir)
+
+        // Two shapes, both specific enough to fail when the tier is dropped:
+        // rules targets carry it in each agent's frontmatter, single-file
+        // targets render it beside the agent's name in the index. A loose
+        // /premium/i would have passed vacuously — the word appears in skill
+        // prose, which is how this went unnoticed the first time.
+        const inFrontmatter = /^tier: premium$/m.test(text)
+        const inIndex = text.includes('*(Premium)*')
+        expect(inFrontmatter || inIndex, `${ide} output does not associate any agent with its tier`).toBe(true)
+
+        const economy = /^tier: economy$/m.test(text) || text.includes('*(Economy)*')
+        expect(economy, `${ide} output never names the economy tier`).toBe(true)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('the single-file targets explain what the tiers mean', async () => {
     const { IDE_ADAPTERS } = await import('./adapters/index.js')
     const { mkdtempSync, rmSync, readFileSync: read } = await import('node:fs')
     const { tmpdir } = await import('node:os')

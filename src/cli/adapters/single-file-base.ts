@@ -201,9 +201,16 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       }
 
       const merge = await writeManagedBlock(rootPath, sections.join('\n'))
-      if (merge.action === 'created' || merge.action === 'adopted') results.created.push(rootPath)
-      else if (merge.action === 'unchanged') results.skipped.push(rootPath)
-      else results.copied.push(rootPath)
+      if (merge.action === 'adopted') {
+        results.created.push(rootPath)
+        ;(results.adopted ??= []).push(rootPath)
+      } else if (merge.action === 'created') {
+        results.created.push(rootPath)
+      } else if (merge.action === 'unchanged') {
+        results.skipped.push(rootPath)
+      } else {
+        results.copied.push(rootPath)
+      }
     }
 
     const dotDirPath = resolve(projectRoot, config.dotDir)
@@ -346,6 +353,9 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     const installResult = await install(pkgRoot, projectRoot, stack)
     results.copied.push(...installResult.created)
     results.skipped.push(...installResult.skipped)
+    // Adoption happens inside install(); without this the notice never reaches
+    // the user on the one command they actually run to upgrade.
+    if (installResult.adopted?.length) results.adopted = installResult.adopted
 
     return results
   }
