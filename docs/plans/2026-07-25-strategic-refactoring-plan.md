@@ -125,13 +125,14 @@ Net: **19 commands → 6 visible + 1 experimental namespace**; global flags stan
 ### Phase 2 — Content diet (in progress)
 - ✅ **2a:** Agents 19 → 13. Merges: Copywriter+SEO+Docs → Writer; Data Expert+Database Engineer → Data Engineer; Release Manager → DevOps & Release; API Designer → Developer; Session Guard dropped. **Deviation:** the plan said "~10"; 13 is where the real seams are. Performance Expert, Content Engineer, and Researcher were kept because their scopes do not overlap anything else — over-merging would have destroyed genuine specialisation to hit a number. Surfaced and fixed a real bug: optional contract fields were never validated. Tests: 16.
 
-- **2b:** Strip generic advice; keep protocol wiring. Target ~95K → ~30K words.
-- **2c:** Inline the 4 snippets, delete the Inherits layer.
-- **2d:** Slim plugin SKILL.md files to non-obvious content.
+- ✅ **2b/2c/2d:** Content 89,400 → 56,957 words (36%); plugins 37,236 → 10,201 (73%). Snippets inlined and the directory deleted. **Two shipping bugs found and fixed:** (1) `snippets/` was never installed by any adapter, so all 13 agents linked to a nonexistent file and the mandatory-logging rule never reached any agent; (2) plugin `references/` and `REFERENCE.md` were never installed either (only SKILL.md is read), so convex's 16-file references directory was dead weight *and* its SKILL.md routed readers to missing files — its hard limits are now inline. Note the asymmetry: *skill* REFERENCE.md files **are** installed and were left alone. Also deleted `backbone-scaffolding` (documented a different MonkiLabs product, bound to nothing).
+- **Did not reach the ~30K target.** Remaining weight is prompts (12.7K), customizations (8.4K), and agent-workflows (6.3K), which were out of 2b's scope. Four content agents were interrupted mid-pass by a session limit, so protocol skills got only a partial sharpening pass.
 
-### Phase 3 — Product work (2–4 weeks)
-- Build the config-lift step inside `init` (§5's import, starting with Claude Code + Cursor formats), `sync --check` + GitHub Action, `add` (rename of plugin install), `lint` v1.
-- Canonical-source refactor: AGENTS.md + `opencastle.yml` as source of truth; adapters become pure compile targets.
+### Phase 3 — Product work (in progress)
+- ✅ **3a — config-lift:** root instruction files are now *merged*, not skipped. Found that the previous skip-if-exists behaviour meant the instructions layer silently never installed on a repo that already had a CLAUDE.md — the exact adoption case — and that `update` deleted the user's root file outright. Generated content now lives in a marked block; user content is preserved and never overwritten. Verified idempotent.
+- ✅ **3b — `sync --check` + GitHub Action:** compiles to a scratch dir and byte-compares; exits non-zero on drift. **Found and fixed a dead end this created:** `sync` gated on version equality, so `--check` could report drift while `sync` said "already up to date" — the two commands disagreed. Sync now decides on content.
+- **3c — lint v1:** not started.
+- **3d — canonical source (AGENTS.md + opencastle.yml):** not started. The managed-block work in 3a is the foundation it needs.
 
 ### Phase 4 — Convoy extraction (1 week)
 - Move `src/cli/convoy/` + `run/` + dashboard core to `packages/convoy`, slim to minimal core, one adapter (claude-agent-sdk), mark experimental.
