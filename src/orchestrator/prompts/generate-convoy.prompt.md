@@ -77,7 +77,6 @@ Example prompt suffix when content research needed:
 
 ### Scaffolding Rule
 
-New project from scratch? You MUST load **backbone-scaffolding** skill; follow it.
 
 ---
 

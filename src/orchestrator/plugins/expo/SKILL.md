@@ -5,110 +5,22 @@ description: "Scaffolds Expo/React Native apps, configures EAS Build profiles, m
 
 # Expo Development
 
-## Topic Routing
+## Continuous Native Generation
 
-Read the matching reference before writing code for any of these topics:
+- Never eject, never edit `ios/` or `android/` — `npx expo prebuild` regenerates both from `app.json` / `app.config.ts`, so hand edits vanish. Gitignore both directories. `npx expo prebuild --clean` when native state is suspect.
+- Native config changes go through config plugins (`app.plugin.js`, registered in `expo.plugins`) applied at prebuild time. `npx create-expo-module` scaffolds a Swift + Kotlin module.
+- Install with `npx expo install`, not `npm install`, so versions resolve against the SDK. `npx expo install --fix` repairs an SDK version mismatch.
 
-| Topic | Reference |
-|-------|-----------|
-| EAS Build & deployment | `references/eas-build.md` |
-| Expo Router & navigation | `references/routing.md` |
-| Native modules & CNG | `references/native-modules.md` |
+## EAS Build / Update
 
-## Critical Rules
+- `eas.json` profiles: development = `developmentClient: true` + `distribution: internal`; preview = `distribution: internal` + `channel`; production = `channel` + `autoIncrement: true`.
+- Set `runtimeVersion: { policy: "fingerprint" }` in app.json. `eas update --channel production` ships JS only — a runtimeVersion mismatch forces a new binary build, and native changes can never go OTA.
+- Rollback: `eas update:republish --group <previous-group-id>`. Diagnose failures via `eas build:list` then `eas build:view <id>`.
+- Secrets belong in EAS Secrets (`eas secret:create`), never `app.json`; device-side storage via `expo-secure-store`.
+- iOS signing failures: `eas credentials`. CI/CD lives in `.eas/workflows/`.
 
-**Project Setup**
-- Use `npx create-expo-app@latest` for new projects — always target the latest SDK
-- Use Continuous Native Generation (CNG) — never eject; prefer `npx expo prebuild` when native config is needed
-- Configure `app.json` / `app.config.ts` for all project metadata — never modify native projects directly when using CNG
+## Expo Router
 
-**Expo Router**
-- File-based routing in `app/` — define `_layout.tsx` in each directory for `<Stack>`, `<Tabs>`, or `<Drawer>`
-- Use `Link` for declarative navigation, `useRouter()` for imperative — configure `scheme` in app.json for deep links
+Files under `app/` are routes; a `_layout.tsx` per directory supplies `<Stack>` / `<Tabs>` / `<Drawer>`. Parenthesized directories are groups and do not appear in the URL — `app/(auth)/login.tsx` serves `/login`. Read dynamic segments with `useLocalSearchParams()`. Deep links require `scheme` in app.json; `myapp://user/123` then resolves to `app/user/[id].tsx`.
 
-**EAS Build**
-- Define `development` / `preview` / `production` profiles in `eas.json`
-- Preview: `"distribution": "internal"` + `"channel": "preview"` — Development: add `"developmentClient": true`
-- Production: `"channel": "production"` + `"autoIncrement": true`
-
-**EAS Update (OTA)**
-- `eas update --channel production` for JS-only changes — no app store review
-- Set `"runtimeVersion": { "policy": "fingerprint" }` — mismatched runtimeVersion forces a new binary build
-
-**Native Modules**
-- Prefer Expo SDK packages over community alternatives — install with `npx expo install` for version resolution
-- Config plugins (`app.plugin.js`) modify native projects at prebuild time — never edit `ios/` or `android/` directly
-- Custom native code: `npx create-expo-module` scaffolds Swift + Kotlin module
-
-**Security**
-- Store API keys and secrets in EAS Secrets — never hardcode in `app.json` or source code
-- Use `expo-secure-store` for device-side secret storage
-
-## Workflow: New Project → Build → Deploy
-
-1. **Scaffold** — `npx create-expo-app@latest my-app --template default@sdk-55`
-2. **Verify local** — `cd my-app && npx expo start` → confirm app loads in simulator
-3. **Init EAS** — `eas init && eas build:configure` → creates `eas.json` with profiles
-4. **Build preview** — `eas build --profile preview --platform ios`
-5. **Check status** — `eas build:list` → wait for `finished` status; if `errored` → `eas build:view <id>` → fix config → rebuild
-6. **Test** — install preview build on device via QR code or TestFlight
-7. **Build production** — `eas build --profile production --platform all`
-8. **Submit** — `eas submit --platform ios && eas submit --platform android`
-
-## Workflow: OTA Update
-
-1. **Make JS-only changes** — modify components, styles, or logic (no native module changes)
-2. **Deploy** — `eas update --channel production --message "Fix: button alignment"`
-3. **Verify** — `eas update:list` → confirm update published with correct `runtimeVersion`
-4. **Rollback if needed** — `eas update:republish --group <previous-group-id>`
-
-> If `runtimeVersion` mismatch: a new binary build is required — OTA cannot bridge native changes.
-
-## Build Failure Recovery
-
-```
-Build failed → check logs
-├── "Provisioning profile" error → eas credentials → fix iOS signing
-├── "SDK version mismatch" → npx expo install --fix → rebuild
-├── "Metro bundler" error → check JS syntax → npx expo start to reproduce
-├── "Native module" error → npx expo prebuild --clean → verify config plugins
-└── "EAS secret" missing → eas secret:create → rebuild
-```
-
-## Screen with Expo Router
-
-```tsx
-// app/user/[id].tsx
-import { useLocalSearchParams } from 'expo-router';
-import { View, Text } from 'react-native';
-
-export default function UserScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Text>User {id}</Text>
-    </View>
-  );
-}
-```
-
-## EAS Build Profile
-
-```json
-{
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal"
-    },
-    "preview": {
-      "distribution": "internal",
-      "channel": "preview"
-    },
-    "production": {
-      "channel": "production",
-      "autoIncrement": true
-    }
-  }
-}
-```
+Docs: https://docs.expo.dev/

@@ -7,48 +7,34 @@ description: "Generates Supabase database migrations, writes RLS policies with a
 
 # Supabase Database
 
-Generic Supabase development methodology. For project-specific schema, roles, migration history, auth flow, and key files, see [supabase-config.md](../../.opencastle/stack/supabase-config.md).
+Project schema, roles, migration history, auth flow, and key files: [supabase-config.md](../../.opencastle/stack/supabase-config.md). Docs: https://supabase.com/docs
 
-## Migration Rules (sequential workflow)
+## RLS gotchas
 
-1. Plan: create a migration with a descriptive name (`YYYYMMDD_add_profiles.sql`) and list expected schema changes.  
-2. Author: write the SQL migration and include inline comments describing intent and rollback considerations.  
-3. Local validate: apply the migration to a local or ephemeral DB; run smoke tests and verify RLS policies for `anon`, `user`, and `admin`.  
-4. Inspect: review generated SQL for destructive actions (table drops, column rewrites). If destructive, add backfill scripts and phased changes.  
-5. CI verify: run the migration in CI against a test replica and run the full test suite.  
-6. Deploy: promote migration to production using the project's safe-deploy pipeline.  
-7. Post-check: verify row-level security, indexes, and perform a small data validation query.
+- **`ENABLE ROW LEVEL SECURITY` with no policy denies everything.** Enabling and adding policies must land in the same migration.
+- Policies are per-operation. `FOR SELECT USING (...)` does not cover writes; `INSERT` needs `WITH CHECK`, not `USING`.
+- `auth.uid()` is the owner check (`auth.uid() = id`). It is `NULL` for the `anon` role, so any policy relying on it silently blocks anonymous access.
+- Test every policy against **all three** roles — `anon`, `user`, `admin`. A policy that works as your own user tells you nothing about `anon`.
+- Reference `auth.users(id)` with `ON DELETE CASCADE` on profile-style tables, or deleted users leave orphans.
 
-Validation checkpoints: after steps 3 and 5 assert (a) migration completes, (b) RLS policies still pass for role-specific queries, (c) tests covering changed paths pass. On failure: revert, adjust migration, and re-run.
-
-## Migration Example (consolidated)
+Confirm RLS coverage before shipping:
 
 ```sql
--- 20260331_create_profiles.sql
-CREATE TABLE IF NOT EXISTS public.profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  display_name TEXT NOT NULL,
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
--- RLS: Users can read all profiles, update only their own
-CREATE POLICY "Profiles are viewable by everyone"
-  ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Users can update own profile"
-  ON public.profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Users can insert own profile"
-  ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
-
--- Type generation (CI):
--- supabase gen types typescript --project-id <project-id> > src/types/supabase.ts
-```
-
-## Verification
-
-```sql
--- Confirm RLS is enabled on all tables
 SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public';
 ```
+
+## Migration workflow
+
+1. Name migrations `YYYYMMDD_add_profiles.sql`; comment intent and rollback considerations inline.
+2. Apply to a local/ephemeral DB; run smoke tests plus per-role RLS checks.
+3. Review the SQL for destructive actions (table drops, column rewrites) — those need a backfill script and phased rollout, never a single migration.
+4. Re-run in CI against a test replica with the full suite.
+5. Deploy via the safe-deploy pipeline, then re-verify RLS, indexes, and a data sanity query.
+
+Regenerate types after every schema change (CI step):
+
+```bash
+supabase gen types typescript --project-id <project-id> > src/types/supabase.ts
+```
+
+Assert at steps 2 and 4 that the migration completes, per-role RLS queries still pass, and tests on changed paths pass. On failure: revert, adjust, re-run.

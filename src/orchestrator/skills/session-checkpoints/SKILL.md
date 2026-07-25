@@ -15,40 +15,13 @@ description: "Saves, restores session state including task progress, file change
 | Session end | Any session with incomplete work |
 | Context running low | Checkpoint immediately |
 
-## Checkpoint Template
+Phase boundaries that warrant a checkpoint: see [decomposition](../../skills/decomposition/SKILL.md).
 
-Full checkpoint template moved to `CHECKPOINT-TEMPLATE.md` in this directory for progressive disclosure. Use that file as canonical, copy-pasteable checkpoint document.
+## Creating a Checkpoint
 
-See Decomposition Flow in `decomposition` skill for when to create checkpoints: [decomposition](../../skills/decomposition/SKILL.md).
-## Checkpoint creation (quick)
-
-1. Create `.opencastle/SESSION-CHECKPOINT.md` from example below.
-2. Commit checkpoint or save to workspace; attach to tracker issue.
+1. Write `.opencastle/SESSION-CHECKPOINT.md` from the canonical [CHECKPOINT-TEMPLATE.md](./CHECKPOINT-TEMPLATE.md).
+2. Commit it or save to workspace; attach to the tracker issue.
 3. Verify: `cat .opencastle/SESSION-CHECKPOINT.md`; confirm listed files exist.
-
-```markdown
-# Session Checkpoint — 2026-04-01
-
-## Summary
-Implementing search filters — unit tests passing, E2E pending.
-
-## Files Touched
-- src/components/SearchFilter.tsx (new)
-- src/hooks/useFilters.ts (modified)
-
-## Task Status
-| Task | Status |
-|------|--------|
-| TASK-12 Search filter component | Done |
-| TASK-13 E2E filter tests | In Progress |
-
-## Resume Instructions
-1. Run `git checkout feat/search-filters`
-2. Start dev server: `pnpm dev`
-3. Continue TASK-13: write E2E tests for filter interactions
-```
-
-For complete copy-pasteable template, see [CHECKPOINT-TEMPLATE.md](./CHECKPOINT-TEMPLATE.md).
 
 ## Resuming
 

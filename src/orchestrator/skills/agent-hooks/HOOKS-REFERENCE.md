@@ -4,14 +4,12 @@
 
 ## on-session-start (extended checks)
 
+In addition to the four checks in SKILL.md:
+
 | # | Action |
 |---|--------|
-| 1 | `rg -n "keyword" .opencastle/LESSONS-LEARNED.md` |
-| 2 | `cat .opencastle/SESSION-CHECKPOINT.md` |
-| 3 | `rg -n "Pending Approvals" .opencastle/SESSION-CHECKPOINT.md || true` |
-| 4 | `rg -n "ERROR\|FAIL" .opencastle/AGENT-FAILURES.md || true` |
-| 5 | `jq '.bindings' .opencastle/agents/skill-matrix.json` — verify bindings present |
-| 6 | Load domain skills before writing code |
+| 5 | `rg -n "Pending Approvals" .opencastle/SESSION-CHECKPOINT.md || true` |
+| 6 | `jq '.bindings' .opencastle/agents/skill-matrix.json` — verify bindings present, then load domain skills before writing code |
 
 ## on-pre-delegate (example commands)
 

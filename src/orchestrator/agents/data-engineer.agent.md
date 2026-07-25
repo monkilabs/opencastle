@@ -61,4 +61,5 @@ production deployment
 4. **Data impact** — rows affected, records skipped and why
 5. **Verification** — apply results, test queries, pipeline counts
 
-See [Base Output Contract](../snippets/base-output-contract.md) for standard closing items.
+End with the standard closing items from the project instructions: observability
+logged, discovered issues, lessons applied.

@@ -23,17 +23,6 @@ F → C, D     Phase 3: E, F (parallel)
 
 ## Delegation Spec
 
-| Field | Content |
-|-------|---------|
-| Tracker | TAS-XX — Title |
-| Complexity | [score]/13 → [tier] |
-| Agent | Agent Name |
-| Objective | 1-3 sentences: what to build/change, why |
-| Context | Key files, related patterns, prior phase output, relevant lessons |
-| Constraints | File partition, explicit exclusions, phase dependencies |
-| Acceptance Criteria | `[ ]` checklist |
-| Expected Output | Files changed · Verification · AC status · Discovered issues |
-
 For score 1-3, objective + files + criteria is sufficient. Full template:
 
 ```markdown
@@ -100,15 +89,7 @@ Need result immediately?
 
 Apply when: 2+ pages/views/UI sections · multiple agents produce visual output · no existing design system.
 
-```
-Phase 1: foundation-setup
-├── Creates: design tokens, layout, UI component library, style guide brief
-└── All visual tasks → depends_on: [foundation-setup]
-
-Phase 2+: page tasks (parallel)
-├── Each prompt includes 5 Foundation References
-└── Consume tokens — never create new values
-```
+Phase 1 `foundation-setup` is sequential; every visual task gets `depends_on: [foundation-setup]` and the 5 Foundation References in its prompt.
 
 **Partition rules:**
 - Foundation owns: `src/styles/`, `src/components/Layout.*`, `src/components/ui/`
@@ -117,6 +98,6 @@ Phase 2+: page tasks (parallel)
 
 **Common mistake:** Decomposing pages as independent Phase 1 tasks → each agent invents its own design.
 
-**Distinctive note (AI delegation):** This skill focuses on decomposition producing machine-actionable delegation prompts: file partitions, explicit acceptance criteria, machine-friendly constraints (exact paths, line ranges, forbidden files). Output should be ready to paste into sub-agent prompt without additional human translation.
+Specs must be paste-ready for a sub-agent: exact paths, line ranges, forbidden files — no human translation step.
 
 > Load **project-consistency** skill for full Foundation Phase pattern, prompt templates, anti-patterns.

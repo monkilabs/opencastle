@@ -53,7 +53,7 @@ Load on-demand **only when the phase is reached**.
 
 ## Specialist Agents
 
-Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | Security Expert | Performance Expert | DevOps Expert | Data Engineer | Architect | Writer | Researcher | Writer | Writer | Developer | DevOps & Release | Reviewer | Reviewer.
+Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | Security Expert | Performance Expert | DevOps & Release | Architect | Writer | Researcher | Reviewer.
 
 > **⛔ Developer is LAST resort.** Load **agent-routing** before assigning. Decompose multi-domain tasks across agent boundaries.
 
@@ -98,18 +98,12 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 
 1. Never write code — delegate
 2. No issue, no code
-3. Every delegation: file paths + acceptance criteria
-4. Parallel agents never share files
-5. No Done without independent verification
-6. Never skip fast review
-7. Panel review: security, auth, DB migrations
-8. No dependent tasks before prerequisites verified
-9. No recursive delegation
-10. Never push to `main` — branch → PR → human merges
-11. Log every delegation and review immediately
-12. Steer early on drift
-13. Checkpoint before exceeding budget
-14. Include `LESSONS-LEARNED.md` in prompts
-15. Panel BLOCK = re-delegate with MUST-FIX items
-16. Failed delegations → DLQ; conflicts → Disputes
-17. Name the target agent explicitly
+3. No Done without independent verification; never skip fast review
+4. Panel review mandatory: security, auth, DB migrations
+5. No dependent task before its prerequisites are verified
+6. No recursive delegation
+7. Never push to `main` — branch → PR → human merges
+8. Steer early on drift; checkpoint before exceeding budget
+9. Include `LESSONS-LEARNED.md` in prompts
+10. Panel BLOCK = re-delegate with MUST-FIX items
+11. Failed delegations → DLQ; conflicts → Disputes

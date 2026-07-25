@@ -29,6 +29,8 @@ Single `runSubagent`. Context = acceptance criteria, diff, partition, determinis
 runSubagent({ agentName: 'Reviewer', prompt: `Review against ACs:\n${criteria}\nDiff:\n${diff}\nGates: lint ✅ test ✅ build ✅` });
 ```
 
+Full reviewer prompt template: [REFERENCE.md](REFERENCE.md).
+
 ### 3 — Parse Verdict
 
 ```
@@ -55,10 +57,6 @@ CONFIDENCE: low | medium | high
 | FAIL 3 | Log `escalated: true`; load **panel-majority-vote** skill |
 | Panel BLOCK ×3 | Dispute in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol) |
 
-## Reviewer Prompt Template
-
-See [REFERENCE.md](REFERENCE.md) for full reviewer prompt template.
-
 ## Logging
 
 > **⛔ HARD GATE — Log the review before proceeding.**
@@ -73,7 +71,6 @@ npx opencastle log review --skill <name> --outcome pass|fail --reviewer "Reviewe
 
 ## Anti-Patterns
 
-- **Skipping fast review** — never, including "trivial" changes.
 - **Panel as fast review** — wastes ~3× tokens.
 - **Reviewer sees delegation prompt** — evaluate against acceptance criteria only.
 - **Ignoring minor issues** — track; 3+ recurrences → ticket.

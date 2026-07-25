@@ -114,7 +114,7 @@ in whichever shape it expects.
 **Agents** — 13 role definitions (Developer, UI/UX, Data, Security, Testing,
 Reviewer, and others), each with a defined scope and output contract.
 
-**Skills** — 28 domain skills plus 30 tool integrations, loaded on demand so
+**Skills** — 27 domain skills plus 30 tool integrations, loaded on demand so
 they don't sit in the context window. Selected during init from what your
 repository actually uses.
 

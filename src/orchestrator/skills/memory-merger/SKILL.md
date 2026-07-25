@@ -58,24 +58,6 @@ Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.
 
 Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
-### Worked Example: LES-042 — MCP Tool Timeout
-
-**Source lesson** (cited 4×, severity high, 90 days old):
-> LES-042: MCP tool timeout causes silent failures — set explicit timeout, check return value
-
-**Draft:**
-```
-Lesson: LES-042 — MCP tool timeout
-Target: src/orchestrator/skills/orchestration-protocols/SKILL.md
-Section: Error Recovery Playbook
-Edit: Add row: | **MCP timeout** | Tool returns null/undefined after delay | Set explicit timeout (30s); check return value; retry once; fall back to CLI; log to DLQ | <!-- Merged from LES-042 -->
-```
-
-**Archive in `LESSONS-LEARNED.md`:**
-```markdown
-### LES-042: MCP tool timeout → Merged to `src/orchestrator/skills/orchestration-protocols/SKILL.md` on 2026-05-18
-```
-
 ### Automating the scan
 
 ```sh
@@ -88,12 +70,10 @@ rg "retry.*LES-[0-9]+" .opencastle/logs/events.ndjson | rg -o "LES-[0-9]+" | sor
 
 ## Quality Gates (validation checkpoints)
 
-- [ ] Merged content reads naturally (not copy-pasted)
 - [ ] No duplicate rules created in target files or other skills
 - [ ] Archived lesson references target file and date
-- [ ] Core insight preserved — no loss of nuance
 - [ ] Target file still passes lint/markdown checks (if applicable)
-- [ ] A quick smoke verification (search for relevant keyword) confirms merge applied
+- [ ] Keyword search in the target file confirms the merge applied
 
 ## Anti-Patterns
 

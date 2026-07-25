@@ -20,7 +20,7 @@ description: "Runs 3 isolated reviewer sub-agents; consolidates PASS/BLOCK verdi
 
 1. **Validate scope** — every artifact path under `<runRoot>`; list sufficient to answer question.
 
-2. **Spawn 3 reviewers in parallel** — start three isolated subagents with identical prompts. Spawn 3 reviewers using `runSubagent` with identical prompts; each reviewer receives the same question, artifact list, and constraints but runs in isolation. Required reviewer output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
+2. **Spawn 3 reviewers in parallel** — three `runSubagent` calls with identical prompts (same question, artifact list, constraints), each isolated. Required reviewer output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
 
 3. **Persist outputs** — write `<panelDir>/<panelKey>-reviewer-outputs.md` with a header (run root, panel key, question, artifacts) and each reviewer output verbatim, separated.
 
@@ -36,7 +36,7 @@ verdict=$([ "$pass_count" -ge 2 ] && echo PASS || echo BLOCK)
 jq -n --arg panel_key "run123-panel" --arg verdict "$verdict" --argjson pass_count $pass_count --argjson block_count $block_count '{panel_key:$panel_key, verdict:$verdict, pass_count:$pass_count, block_count:$block_count}' > panel/run123-summary.json
 ```
 
-5. **Write report** — create `<panelDir>/<panelKey>.md` with the minimal structure below and reference the generated summary.
+5. **Write report** — create `<panelDir>/<panelKey>.md` from [panel-report.template.md](./panel-report.template.md), referencing the generated summary. Minimal structure:
 
 - Title: Panel `<panelKey>` — Verdict: `PASS | BLOCK` (pass_count/block_count)
 - Highlights: top deduplicated `MUST-FIX` and `SHOULD-FIX` items
@@ -50,14 +50,6 @@ jq -n --arg panel_key "run123-panel" --arg verdict "$verdict" --argjson pass_cou
 
 - On BLOCK: change underlying work; re-run; do not re-word question.
 - After 3 consecutive BLOCKs on the same panel key: create a dispute record per **team-lead-reference** § Dispute Protocol.
-- Model selection: use same model for all 3 reviewers. See **team-lead-reference** for model routing.
-
-## Related Resources
-
-| Resource | Purpose |
-|----------|---------|
-| `panel-report.template.md` | Report template for step 5 |
-| `REFERENCE.md` | Weighted consensus variant and weighting details |
-| **observability-logging** skill | Panel logging command (step 7) |
-| **team-lead-reference** skill | Model routing and dispute protocol |
+- Model selection: same model for all 3 reviewers. See **team-lead-reference** for model routing.
+- Weighted consensus variant (domain-expertise weighting): see [REFERENCE.md](./REFERENCE.md).
 

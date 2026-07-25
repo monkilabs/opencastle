@@ -39,4 +39,4 @@
 | **3 failures** | Open circuit — stop delegating; reassign or escalate to user |
 | **Next session** | Half-open — resets; re-open + add lesson if fails again |
 
-Judgment-based, not a hard gate. 3 similar failures with the same error is more concerning than 3 unrelated failures.
+Judgment-based, not a hard gate — 3 failures sharing one error class outweigh 3 unrelated ones.

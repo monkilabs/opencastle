@@ -64,4 +64,5 @@ paid search · architectural decisions · code changes beyond the strings themse
 3. **Limits met** — character counts, casing, validation results
 4. **Divergence** — anything where the code contradicted the docs
 
-See [Base Output Contract](../snippets/base-output-contract.md) for standard closing items.
+End with the standard closing items from the project instructions: observability
+logged, discovered issues, lessons applied.

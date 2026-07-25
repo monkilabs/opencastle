@@ -7,70 +7,34 @@ description: "Slack MCP integration for agent-to-human notifications and bi-dire
 
 # Slack Notifications
 
-## MCP Server
+Package `@kazuph/mcp-slack` (stdio). Docs: https://api.slack.com/docs. Channel mappings: `.opencastle/stack/notifications-config.md`
 
-Package: `@kazuph/mcp-slack` (stdio). Auth: `SLACK_MCP_XOXB_TOKEN` env var. Enable `SLACK_MCP_ADD_MESSAGE_TOOL=true`.
+## Setup
 
-See [REFERENCE.md](REFERENCE.md) for OAuth scopes and token setup.
+- `SLACK_MCP_XOXB_TOKEN` — bot token, stored in CI/env, rotated periodically.
+- **`SLACK_MCP_ADD_MESSAGE_TOOL=true` is required to post at all** — write support is off by default.
+- Minimal bot scopes for notifications: `chat:write`, `channels:read`, `conversations:history`, `users:read`. Read-only: `channels:read`, `channels:history`, `im:read`.
 
-## Agent Notification Patterns
+## Rate limits
 
-### Progress Updates
+Write **20/min**, read **50/min**. Batch updates instead of per-step chatter, thread rather than posting new messages, and cache channel/user IDs — repeated `users_resolve` lookups burn the read budget.
 
-```
-🔄 TAS-42 — In progress — implementing unit tests
-Files: 3 (PriceFilter.tsx, test, index) | ETA: ~5 min
-```
+## Tools
 
-### MCP invocation example
+- `conversations_add_message` — `channel_id`, `payload`, `content_type`, `thread_ts`
+- `conversations_history` — `channel_id`, `limit`
+- `conversations_replies` — `channel_id`, `thread_ts`, `limit`
+- `users_resolve` — `email|username`
 
-Post an approval request:
+Check the response for `ok`; a failed post returns `error` rather than throwing.
 
-```js
-const res = mcp_slack_conversations_add_message({
-  channel: 'C012345',
-  text: '⏳ Approval Required — TAS-42: Run DB migration?',
-  thread_ts: null
-});
-if (!res?.ok) throw new Error('Slack post failed: ' + res?.error);
-```
+## Approvals are dual-channel
 
-## Bi-Directional Communication
+Post to Slack **and** ask in chat. First response wins.
 
-Approval requests are **dual-channel** — post to Slack AND ask in chat. First response wins.
+1. Post `⏳ Approval Required — TAS-42: <action>` with reply instructions, keeping the returned `thread_ts`.
+2. Ask the same question in chat. A chat answer wins → post the confirmation into the Slack thread.
+3. Otherwise poll `conversations_replies` on that thread every **30s, timing out at 10 min**, matching approved/yes/go vs rejected/no/stop.
+4. **If the session ends before a reply, write a checkpoint** with channel, thread ID, question, and timestamp. The next session's `on-session-start` hook picks up the reply.
 
-1. **Post to Slack:**
-   ```
-   ⏳ Approval Required — TAS-42: Run DB migration
-   Reply: ✅ approved | ❌ rejected | 💬 questions
-   ```
-
-2. **Ask in chat** with the same question.
-
-3. **Chat response wins** → post confirmation to Slack thread.
-
-4. **Waiting for Slack** → poll thread:
-
-```js
-// Poll for approval reply (30s interval, 10 min timeout)
-const replies = mcp_slack_conversations_replies({ channel: 'C012345', ts: threadTs, limit: 20 });
-for (const msg of replies?.messages || []) {
-  if (/\b(approved|yes|go)\b/i.test(msg.text)) return 'approved';
-  if (/\b(rejected|no|stop)\b/i.test(msg.text)) return 'rejected';
-}
-// Retry after 30s; timeout after 10 min
-```
-
-5. **If session ends before reply** — Save to checkpoint with channel, thread ID, question, and timestamp. The next session's `on-session-start` hook checks for replies.
-
-
-
-## Conventions
-
-Project-specific channel mappings: `.opencastle/stack/notifications-config.md`. Always thread replies; one thread per task; include tracker issue ID.
-
-## Rate Limits
-
-Write: 20/min; Read: 50/min. Batch updates; use threads; cache channel/user IDs.
-
-See [REFERENCE.md](REFERENCE.md) for security guidelines.
+Always thread; one thread per task; include the tracker issue ID in every message. Never put secrets in a message body.

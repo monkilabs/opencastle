@@ -7,54 +7,37 @@ description: "Figma design-to-code workflows, design token extraction, component
 
 # Figma Design
 
-For project-specific design system details, see the **frontend-design** skill.
+Project design system: the **frontend-design** skill. Docs: https://www.figma.com/developers/api
 
-## MCP Tools
+## MCP tools
 
 | Tool | Purpose |
 |------|---------|
-| `figma/get_file` | Retrieve full Figma file structure |
-| `figma/get_file_nodes` | Get specific nodes/frames |
-| `figma/get_images` | Export nodes as images |
-| `figma/get_comments` | Read design review comments |
-| `figma/get_styles` | Extract color/text/effect styles |
-| `figma/get_components` | List reusable components |
+| `figma/get_file` | Full file structure — takes `depth` to cap traversal |
+| `figma/get_file_nodes` | Specific nodes/frames by `node_ids` |
+| `figma/get_images` | Export nodes: `{ ids, format, scale }` |
+| `figma/get_comments` | Design review comments |
+| `figma/get_styles` | Color/text/effect styles |
+| `figma/get_components` | Reusable components |
 
-### Example MCP invocations
+Every call needs `file_key` (from the file URL). Node IDs use a colon, e.g. `"123:45"`. Never call `get_file` without `depth` on a large file — it returns the entire node tree.
 
-```json
-// figma/get_file — full file structure
-{ "file_key": "a1b2C3d4E5", "depth": 2 }
-// figma/get_file_nodes — specific frames
-{ "file_key": "a1b2C3d4E5", "node_ids": ["123:45"] }
-// figma/get_images — export as PNG at 2x
-{ "file_key": "a1b2C3d4E5", "ids": ["123:45"], "format": "png", "scale": 2 }
-```
+## Workflow
 
-## Design-to-Code Workflow
+1. `get_file_nodes` for the target frames; extract bounding boxes, fills, text styles, and auto-layout properties.
+2. Map returned styles into token files (`src/styles/tokens.css` or token JSON) — do not inline raw hex values into components.
+3. Build the component consuming those tokens, with a `data-testid` so the result can be verified programmatically.
+4. Verify: render in Storybook, compare DOM bounding boxes against the Figma node metrics. **Acceptance: spacing within 4px, token colors exact, font family and weight exact.**
+5. Outside threshold → fix the token mapping or ask design; re-run from step 1.
 
-1. **Identify the frame** — obtain the Figma file key or node ID from the task input.
-2. **Inspect nodes** — call `figma/get_file_nodes` for the target node IDs and extract bounding boxes, fills, text styles, and auto-layout info.
-3. **Extract tokens** — map returned styles to token files (colors, typography, spacing) and commit tokens to `src/styles/tokens.css` or a token JSON.
-4. **Implement component** — scaffold a framework component that consumes tokens and matches layout properties (gap, padding, width). Import tokens (CSS variables or JSON) and attach a `data-testid` for programmatic verification.
+## Figma → CSS, the non-obvious mappings
 
-```tsx
-// src/components/ui/Card.tsx — consumes tokens, matches Figma layout
-import '../styles/tokens.css';
-interface CardProps { title: string; description?: string }
-export function Card({ title, description }: CardProps) {
-  return (
-    <div data-testid="card" className="card">
-      <span className="card-title">{title}</span>
-      {description && <p>{description}</p>}
-    </div>
-  );
-}
-```
-5. **Verify programmatically** — run a visual diff or DOM-attribute check:
-  - Render in Storybook and compare DOM bounding boxes against Figma node metrics.
-  - Acceptance: differences <= 4px for spacing and matching token colors; fonts must match family and weight.
-6. **Feedback loop** — if implementation deviates beyond thresholds, update token mapping or request design clarification and repeat from step 2.
+| Figma | CSS |
+|-------|-----|
+| Hug contents | `width: fit-content` |
+| Fill container | `flex: 1` (or `width: 100%`) |
+| Fixed | `width: Npx` |
+| Auto Layout gap | `gap` (not margins) |
+| Drop shadow | `box-shadow: x y blur spread color` |
 
-See REFERENCE.md for a verification script and Figma→CSS translation rules.
-
+Auto Layout horizontal/vertical is just `flex-direction: row`/`column`.

@@ -5,119 +5,22 @@ description: "Drizzle ORM schema definition, type-safe queries, relational queri
 
 # Drizzle ORM
 
-## Topic Routing
+## Gotchas
 
-Read the matching reference before writing code for any of these topics:
+- `drizzle(client, { schema })` — omit `{ schema }` and the `db.query.*` relational API silently does not exist.
+- `relations()` is ORM-level metadata only and creates no constraint. Define `references(() => users.id, { onDelete: 'cascade' })` as well; you need both.
+- Types come from `typeof table.$inferSelect` / `$inferInsert` — never hand-write them.
+- SQL-like API (`db.select().from()`) for joins and aggregates; relational API (`db.query.x.findMany({ with: {...} })`) for nested reads. `insert`/`update`/`delete` give back nothing usable without `.returning()`.
+- Inside `db.transaction(async (tx) => ...)` every call must use `tx`; a stray `db` call runs outside the transaction.
+- Prepared statements need `sql.placeholder('id')` + `.prepare('name')`, then `.execute({ id })`.
+- Partial selects (`db.select({ id: users.id })`) avoid loading unused columns; declare indexes in the table definition.
 
-| Topic | Reference |
-|-------|-----------|
-| Schema definition & column types | `references/schema-patterns.md` |
-| Queries, joins, & CRUD operations | `references/query-patterns.md` |
-| Migrations & drizzle-kit | `references/migrations.md` |
+## drizzle-kit
 
-## Critical Rules
+- `generate` → review the SQL in the `out` dir → `migrate`. `push` is dev-only. Never edit generated SQL; fix the schema and regenerate. `check` validates migration history consistency.
+- A column rename generates DROP + ADD, i.e. data loss. Hand-write the migration file instead — `ALTER TABLE users RENAME COLUMN old_name TO new_name;` — then `migrate` applies it.
+- A new non-nullable column takes two migrations: add nullable → backfill → add `.notNull()` → migrate again.
+- The programmatic migrator needs a single connection: `postgres(url, { max: 1 })`, then `migrate(drizzle(client), { migrationsFolder: './drizzle' })`, then close it.
+- `drizzle.config.ts` must supply `dialect`, `schema`, `out`, and `dbCredentials.url` before any command runs.
 
-**Schema**
-- Define schemas in dedicated `schema.ts` files using `pgTable` / `mysqlTable` / `sqliteTable` from the correct dialect package
-- Use `$inferSelect` and `$inferInsert` for TypeScript types — never duplicate type definitions manually
-- Foreign keys require explicit `references(() => table.column)` — omitting this creates an unconstrained column
-- Pass `{ schema }` to `drizzle()` when initializing the client to enable relational queries
-
-**Relations**
-- Define with `relations()` from `drizzle-orm` alongside the table definition
-- Relations are required for `db.query` relational API — the SQL-like API does not use them
-- Do not use relations as a substitute for foreign key constraints; define both
-
-**Queries**
-- Use SQL-like API (`db.select().from()`) for complex joins and aggregations
-- Use relational API (`db.query.table.findMany({ with: { ... } })`) for nested data fetching
-- Import `eq`, `and`, `or`, `gt`, `like`, `isNull` etc. from `drizzle-orm` for `where` clauses
-- Always use `returning()` to get the inserted, updated, or deleted rows back
-
-**Migrations**
-- Use `drizzle-kit` for all migrations: `npx drizzle-kit generate` then `npx drizzle-kit migrate`
-- Configure in `drizzle.config.ts` — connections string must be set before running commands
-- Never manually edit generated migration SQL files — regenerate if changes are needed
-- Use `npx drizzle-kit push` in development only; always use `migrate` for production
-
-**Transactions**
-- Wrap multi-step operations in `db.transaction(async (tx) => { ... })`
-- Use `tx` (the transaction argument) instead of `db` for all queries inside the callback
-
-**Performance**
-- Use `db.select({ col: table.col })` for partial selects — avoids loading unused columns
-- Add indexes in the schema definition for frequently queried columns
-- Use `.prepare()` for repeated queries (prepared statements)
-
-## Schema Definition
-
-```typescript
-import { pgTable, text, integer, timestamp, boolean } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
-
-export const users = pgTable('users', {
-  id: text('id').primaryKey(),
-  email: text('email').notNull().unique(),
-  name: text('name').notNull(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-});
-
-export const posts = pgTable('posts', {
-  id: text('id').primaryKey(),
-  title: text('title').notNull(),
-  authorId: text('author_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  published: boolean('published').default(false).notNull(),
-});
-
-export const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
-}));
-
-export const postsRelations = relations(posts, ({ one }) => ({
-  author: one(users, { fields: [posts.authorId], references: [users.id] }),
-}));
-
-// Type inference — no manual duplication
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
-```
-
-## Query Patterns
-
-```typescript
-import { db } from './db';
-import { eq } from 'drizzle-orm';
-import { users, posts } from './schema';
-
-// SQL-like: select with join
-const results = await db
-  .select({ user: users, postCount: count(posts.id) })
-  .from(users)
-  .leftJoin(posts, eq(posts.authorId, users.id))
-  .groupBy(users.id);
-
-// Relational: nested fetch
-const usersWithPosts = await db.query.users.findMany({
-  where: eq(users.id, userId),
-  with: { posts: { where: eq(posts.published, true) } },
-});
-
-// Insert with returning
-const [newUser] = await db.insert(users).values({ id, email, name }).returning();
-```
-
-## Reference Files
-
-- `references/schema-patterns.md` — Table definitions, column types, constraints, indexes, relations, type inference
-- `references/query-patterns.md` — Select, joins, where clauses, relational API, CRUD, transactions, prepared statements
-- `references/migrations.md` — drizzle.config.ts, generate/migrate/push commands, migration workflow
-
-## Quick Workflow: Set up Drizzle in a project
-1. Install: `npm install drizzle-orm` + dialect driver (`postgres` / `@libsql/client` / `better-sqlite3`)
-2. Install drizzle-kit: `npm install -D drizzle-kit`
-3. Define schema in `src/db/schema.ts` using the correct dialect table builder
-4. Create `drizzle.config.ts` with database URL and schema path — verify the config before running commands
-5. Generate migration: `npx drizzle-kit generate` — inspect the SQL output before applying
-6. Apply migration: `npx drizzle-kit migrate`
-   - **If migration fails:** check DB connection string → verify schema matches existing tables → use `npx drizzle-kit push` for dev environments
-7. Initialize client: `const db = drizzle(pool, { schema })` and run a test query to confirm connectivity
+Docs: https://orm.drizzle.team/

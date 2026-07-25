@@ -69,12 +69,28 @@ export default async function update({
   const forceFlag = args.includes('--force')
   const reconfigureFlag = args.includes('--reconfigure')
 
-  const hasVersionUpdate = manifest.version !== pkg.version || forceFlag
+  const isVersionBump = manifest.version !== pkg.version
   let wantsReconfigure = reconfigureFlag
 
-  // If no version update and no --reconfigure, offer reconfigure option
-  if (!hasVersionUpdate && !wantsReconfigure && !dryRun) {
-    console.log(`  Already up to date (v${pkg.version}).`)
+  // Whether to recompile is a question about content, not about version numbers.
+  // Sources change without a release — someone edits a skill, or edits a
+  // generated file by hand — and gating on version equality meant `sync --check`
+  // could report drift while `sync` insisted everything was up to date. Compare
+  // against a fresh compile instead; recompiling is idempotent and cheap.
+  const needsSync = await (async () => {
+    if (manifest.version !== pkg.version || forceFlag || reconfigureFlag) return true
+    try {
+      const { buildCheckReport } = await import('./sync-check.js')
+      const report = await buildCheckReport(pkgRoot, projectRoot)
+      return report.drift.length > 0
+    } catch {
+      // If the comparison itself fails, err towards doing the work.
+      return true
+    }
+  })()
+
+  if (!needsSync && !dryRun) {
+    console.log(`  ${c.green('✓')} Everything matches its sources (v${pkg.version}).`)
     wantsReconfigure = await confirm(
       'Would you like to change your stack selections?',
       false
@@ -152,7 +168,7 @@ export default async function update({
   }
 
   // Nothing to do?
-  if (!hasVersionUpdate && !stackChanged) {
+  if (!needsSync && !stackChanged) {
     console.log(`  No changes to apply.`)
     closePrompts()
     return
@@ -163,7 +179,7 @@ export default async function update({
     .map((id) => IDE_LABELS[id as IdeChoice] ?? id)
     .join(', ')
 
-  if (hasVersionUpdate) {
+  if (isVersionBump) {
     console.log(
       `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'update'}: ${c.dim(`v${manifest.version}`)} → ${c.green(`v${pkg.version}`)}\n`
     )
@@ -191,7 +207,7 @@ export default async function update({
     }
   }
 
-  if (hasVersionUpdate) {
+  if (needsSync) {
     console.log(`  ${c.dim('Framework files will be overwritten.')}`)
     console.log(`  ${c.dim('Customization files will be preserved.')}`)
   }
@@ -272,7 +288,7 @@ export default async function update({
   await migrateLegacyLogs(projectRoot)
 
   // ── Update manifest ─────────────────────────────────────────────
-  if (hasVersionUpdate) manifest.version = pkg.version
+  manifest.version = pkg.version
   manifest.ides = ides
   manifest.updatedAt = new Date().toISOString()
   manifest.managedPaths = allManagedPaths

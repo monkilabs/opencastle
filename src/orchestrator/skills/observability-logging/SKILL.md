@@ -68,4 +68,6 @@ Verify any append: `tail -1 .opencastle/logs/events.ndjson`
 
 ## Base Output Contract
 
-> Inherits: [base-output-contract](../../snippets/base-output-contract.md)
+Every agent closes its output contract with: observability logged (the `session`
+record always, plus `delegation`/`review`/`panel`/`dispute` when they happened),
+discovered issues and what was done about them, and lessons applied or added.

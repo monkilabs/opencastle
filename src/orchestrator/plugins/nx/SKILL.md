@@ -7,136 +7,52 @@ description: "Run and generate NX targets, configure project.json, and visualize
 
 # NX Workspace
 
-## Commands
+Docs: https://nx.dev/getting-started/intro. Project name → location mapping: `project.instructions.md`.
 
-### Testing
-
-```bash
-yarn nx run <project-name>:test
-yarn nx run <project-name>:test --coverage
-yarn nx run <project-name>:test -u              # Update snapshots
-yarn nx affected -t test                         # Affected tests only
-```
-
-### Linting
+## Never bypass NX
 
 ```bash
-yarn nx run <project-name>:lint --fix
-yarn nx run <project-name>:lint-styles --fix     # CSS/SCSS
-yarn nx affected -t lint
+# FORBIDDEN — skips caching, parallelism, and dependency resolution:
+npm test | npm run test | npm run lint | npm run build | npm run dev | npm start
+npx jest | npx eslint | jest --coverage | eslint --fix
 ```
 
-### Building
-
-```bash
-yarn nx run <project-name>:build
-yarn nx affected -t build
-```
-
-### Serving
-
-```bash
-yarn nx run <project-name>:serve
-yarn nx run <project-name>:dev
-```
-
-### Code Generation
-
-```bash
-# Generate a library
-yarn nx generate @nrwl/js:library ui --no-interactive
-# Run affected builds/tests
-yarn nx affected -t build
-yarn nx affected -t test
-```
-
-### Formatting
-
-```bash
-yarn nx format --fix
-```
-
-### Forbidden Commands
-
-```bash
-# NEVER use these:
-npm test | npm run test | npm run lint | npm run build
-npm run dev | npm start | npx jest | npx eslint
-jest --coverage | eslint --fix
-```
+Always `yarn nx run <project>:<target>` for one project, `yarn nx affected -t <target>` for multi-project changes.
 
 ## Requirements
 
-- **Minimum Coverage**: 95% for new components/functions.
-- **Coverage Reports**: `reports/coverage/jest/`.
-- **Code Linting**: Always use `--fix` flag.
-- **Style Linting**: `yarn nx run <project>:lint-styles --fix` for CSS/SCSS.
+- Minimum coverage **95%** for new components/functions. Reports land in `reports/coverage/jest/`.
+- Lint always with `--fix`. CSS/SCSS uses a separate target: `yarn nx run <project>:lint-styles --fix`.
+- `yarn nx run <project>:test -u` updates snapshots. `yarn nx format --fix` after any generation.
 
-## Best Practices
+## MCP tools — query, don't guess
 
-1. Use `yarn nx run <project-name>:<target>` for explicit runs.
-2. Use `yarn nx affected -t <target>` for multi-project changes.
+| Tool | When |
+|------|------|
+| `nx_workspace` | First call — architecture and current errors |
+| `nx_docs` | Any config question; check before assuming |
+| `nx_project_details` | One project's targets, config, dependencies |
+| `nx_visualize_graph` | Project/task dependency graph |
+| `nx_generators` | List generators (plugin + local) |
+| `nx_generator_schema` | Required options and defaults for one generator |
+| `nx_available_plugins` | Only when no existing generator fits |
+| `nx_current_running_tasks_details` | Running/completed/failed tasks |
+| `nx_current_running_task_output` | Terminal output for one task |
 
-## NX MCP Server
+## Generation
 
-The NX MCP server provides tools for understanding and working with the workspace. Use these tools instead of guessing about workspace structure:
-
-| Tool | When to Use |
-|------|-------------|
-| `nx_workspace` | First — understand workspace architecture, get errors |
-| `nx_docs` | Configuration questions, best practices (always check before assuming) |
-| `nx_project_details` | Inspect a specific project's targets, config, and dependencies |
-| `nx_visualize_graph` | Visualize project/task dependency graphs |
-| `nx_generators` | List available generators (plugin + local) |
-| `nx_generator_schema` | Get schema details for a specific generator |
-| `nx_available_plugins` | Discover installable plugins when no existing generator fits |
-| `nx_current_running_tasks_details` | Monitor running/completed/failed tasks |
-| `nx_current_running_task_output` | Get terminal output for a specific task |
-
----
-
-## Code Generation Workflow
-
-See [REFERENCE.md](REFERENCE.md) for generator schemas and `project.json` examples.
-
-### Phase 1: Discover
-1. List available generators using the `nx_generators` MCP tool (plugin + local workspace generators).
-2. Prefer local generators over plugin generators — they're customized for this repo.
-3. If no generator fits, check `nx_available_plugins`; only fall back to manual creation after exhausting all generator options.
-
-### Phase 2: Understand
-
-1. Fetch generator schema using `nx_generator_schema` — note required options, defaults, and file structure impacts
-2. Read generator source to understand side effects (config updates, dep installs, files created/modified)
-3. Examine existing similar artifacts for naming, structure, test runner, and config conventions; map user's request to generator options
-
-### Phase 3: Execute
+Prefer **local** generators over plugin generators — they encode repo conventions. Manual file creation is a last resort after `nx_generators` and `nx_available_plugins` both come up empty. Read `nx_generator_schema`, then read the generator source for side effects (config edits, dep installs).
 
 ```bash
-yarn nx generate <generator-name> <options> --dry-run --no-interactive  # optional preview
-yarn nx generate <generator-name> <options> --no-interactive
+yarn nx generate <generator> <options> --dry-run --no-interactive   # preview
+yarn nx generate <generator> <options> --no-interactive
 ```
 
-**CRITICAL**: Always include `--no-interactive` to prevent prompts that hang execution.
+- **`--no-interactive` is mandatory** — prompts hang the run with no output.
+- **Verify cwd first** — generators derive file placement from it.
 
-**CRITICAL**: Verify cwd before running — generators may use it to determine file placement.
+After generating: `yarn nx format --fix`, then lint/test/build the affected projects.
 
-On failure: read the error, adjust options, and retry. Use the [self-improvement skill](../../skills/self-improvement/SKILL.md) for non-obvious fixes.
+## Running tasks
 
-### Phase 4: Post-Generation
-
-1. Modify generated code to match requirements (imports, exports, config, integrations)
-2. Format: `yarn nx format --fix`
-3. Verify lint, test, and build on generated/affected projects; fix small-scope issues directly, escalate large-scope failures
-
-## Running Tasks Workflow
-
-1. Use `nx_current_running_tasks_details` to check for active/completed/failed tasks
-2. Use `nx_current_running_task_output` to get terminal output for a specific task
-3. Diagnose issues from the output and apply fixes
-4. To rerun, use `yarn nx run <taskId>` to preserve NX context
-5. **Continuous tasks** (like `serve`) are already running — don't rerun, just check output
-
-## Project Names
-
-See `project.instructions.md` for the full project name → location mapping.
+Check `nx_current_running_tasks_details` before starting anything. **Continuous targets (`serve`, `dev`) are already running — read their output instead of re-running.** To rerun, use `yarn nx run <taskId>` so NX context is preserved.

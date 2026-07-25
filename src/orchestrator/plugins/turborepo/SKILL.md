@@ -103,7 +103,6 @@ turbo run build --remote-only      # Force remote cache usage
 
 **Validation (recommended):** run `turbo run build --dry-run` locally or in CI to preview the task graph and catch misconfigured inputs/outputs before executing.
 
-See REFERENCE.md for CI snippets and advanced cache tuning.
 
 ## Package Workspace Structure
 
@@ -130,4 +129,3 @@ monorepo/
 - Add `TURBO_TOKEN` and `TURBO_TEAM` to CI for remote caching
 - Never commit `.turbo/` or `node_modules/.cache/turbo`
 
-Further reading: see REFERENCE.md in this directory for CI snippets and advanced cache tuning.

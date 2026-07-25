@@ -33,7 +33,6 @@ If feature request involves specific person, place, organization, topic, or any 
 
 ## Scaffolding Awareness
 
-New project from scratch? You MUST load **backbone-scaffolding** skill; follow it.
 
 ## Output Rules
 

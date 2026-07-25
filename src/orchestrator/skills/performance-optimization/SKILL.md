@@ -5,75 +5,18 @@ description: "Profiles, reduces frontend/backend costs: split bundles, optimize 
 
 # Performance Optimization
 
-**Rule:** Measure first (`Chrome DevTools`, `Lighthouse`, `Datadog`), optimize second. Set budgets (load time, memory, API latency). Automate in CI/CD.
+Measure before changing anything. Add `React.memo`/`useMemo`/`useCallback` only after a profile shows the cost — never speculatively. Set budgets (load time, memory, API latency) and enforce them in CI.
 
-Domain-specific patterns (rendering, JS, Node optimizations) referenced in REFERENCE.md to keep this skill concise.
+## Rules
 
-## Patterns by Domain
+- Node: async APIs only — never `readFileSync` or other sync I/O on a request path.
+- Debounce input-driven fetches at 300 ms.
+- Profile Node with `clinic.js` or `node --inspect`; profile React with `<Profiler onRender>` or the DevTools Profiler.
 
-| Domain | Key patterns |
-|--------|-------------|
-| **Rendering** | `React.memo`/`useMemo`/`useCallback` only after profiling; stable `key` props; CSS classes over inline styles; CSS animations (GPU); `requestIdleCallback` for non-critical work |
-| **Assets** | WebP/AVIF images; SVG icons; bundle+minify+tree-shake (esbuild/Rollup); `loading="lazy"`; dynamic imports; long-lived cache headers + cache-busting; font subsetting + `font-display: swap` |
-| **JS** | Web Workers for heavy computation; debounce/throttle events; clean up listeners/intervals; `Map`/`Set` for lookups; `TypedArray` for numeric data |
-| **Node.js** | Async APIs only (never `readFileSync` in prod); clustering/worker threads for CPU; streams for large I/O; profile with `clinic.js` / `node --inspect` |
+## Profiling Workflow
 
-## Debounce Example
-
-```js
-// BAD: fetch on every keystroke
-input.addEventListener('input', (e) => fetch(`/search?q=${e.target.value}`));
-// GOOD: debounced 300 ms
-let t; input.addEventListener('input', (e) => { clearTimeout(t); t = setTimeout(() => fetch(`/search?q=${e.target.value}`), 300); });
-```
-
-## Executable Examples
-
-### Dynamic import splitting (example)
-
-```js
-// Lazy-load a heavy chart only on client
-import dynamic from 'next/dynamic';
-const Chart = dynamic(() => import('../components/Chart'), { ssr: false, loading: () => <div>Loading chart…</div> });
-export default function Page(){ return <Chart />; }
-```
-
-### React.memo + profiler pattern
-
-```jsx
-import React, { Profiler } from 'react';
-const Item = React.memo(function Item({data}){ return <div>{data.title}</div>; });
-function onRender(id, phase, actualDuration){ console.log(id, phase, actualDuration); }
-export default function List({items}){
-	return (
-		<Profiler id="List" onRender={onRender}>
-			{items.map(i=> <Item key={i.id} data={i} />)}
-		</Profiler>
-	);
-}
-```
-
-## Profiling Workflow (step-by-step)
-
-1. Run Lighthouse (or CI perf job); record baseline.
-	 - Checkpoint: failing metric(s) identified (LCP/CLS/FID/TTI).
-	 - Recovery: if noisy, reproduce locally with `--emulated-form-factor=mobile`.
-2. Profile with DevTools Profiler / React profiler or Node `clinic` for backend.
-	 - Checkpoint: hotspot call stacks / long tasks located.
-3. Apply minimal fix (code-split, memoize, reduce payloads, defer non-critical work).
-	 - Checkpoint: targeted change reduces measured hotspot time in profiler.
-4. Re-run Lighthouse/CI perf job; compare; set threshold (e.g., 10% improvement or within budget).
-5. If regression persists, iterate; create rollback plan; note fixes in changelog.
-
-## Review Checklist
-
-- [ ] No O(n²)+ algorithms; appropriate data structures
-- [ ] Caching with correct invalidation; no N+1 DB queries
-- [ ] Large payloads paginated/streamed; network requests batched
-- [ ] No memory leaks or blocking ops in hot paths
-- [ ] Assets optimized; memoization only where profiling shows benefit
-- [ ] Benchmarks for perf-sensitive code; alerts for regressions
-
-## References
-
-- [web.dev/performance](https://web.dev/performance/) · [MDN Performance](https://developer.mozilla.org/en-US/docs/Web/Performance) · [Lighthouse](https://developers.google.com/web/tools/lighthouse)
+1. Lighthouse (or the CI perf job) for a baseline; name the failing metric (LCP/CLS/FID/TTI). If results are noisy, reproduce locally with `--emulated-form-factor=mobile`.
+2. Profile to locate the hotspot call stacks / long tasks.
+3. Apply the minimal fix (code-split, memoize, shrink payloads, defer non-critical work); confirm in the profiler that the measured hotspot actually shrank.
+4. Re-run Lighthouse / the CI perf job. Ship only at ≥10% improvement or once inside budget.
+5. If the regression persists, iterate and record a rollback plan; note fixes in the changelog.

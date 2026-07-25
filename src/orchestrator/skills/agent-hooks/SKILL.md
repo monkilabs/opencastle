@@ -31,7 +31,9 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for extended startup checks (approv
 
 ## on-session-end
 
-> **⛔ HARD GATE** — See [logging-mandatory](../../snippets/logging-mandatory.md). Load **observability-logging** for the Pre-Response Quality Gate.
+> **HARD GATE** — every session gets a record in `.opencastle/logs/events.ndjson`,
+> written before you yield, one per task, never batched retrospectively. Load
+> **observability-logging** for the Pre-Response Quality Gate.
 
 | # | Action |
 |---|--------|
@@ -72,7 +74,5 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for detailed verification commands.
 
 ## Anti-Patterns
 
-| Anti-pattern | Impact |
-|---|---|
-| Batch-logging retrospectively | Loses per-task provenance |
-| Partial post-delegate checks | False positives — build passes but ACs fail |
+- Batch-logging retrospectively — loses per-task provenance.
+- Running only part of on-post-delegate — build passes while ACs fail.

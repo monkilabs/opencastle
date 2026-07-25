@@ -19,11 +19,11 @@ Intervene early on:
 | Circular behavior | Halt; switch approach |
 | Intent misunderstanding | Clarify prompt; re-delegate |
 
-When redirecting, explain *why* + *how*:
+When redirecting, state *why* + *how*:
 
 > "Don't modify `libs/data/src/lib/product.ts` — shared across features. Add the new query in `libs/data/src/lib/reviews.ts`."
 
-**Sub-agents:** Catch problems early (5 min in saves an hour). **Background agents:** Steer post-hoc — invest in prompt specificity, partition constraints upfront.
+**Sub-agents:** steer live, within the first 5 min. **Background agents:** no live steering — front-load prompt specificity, partition constraints, acceptance criteria checklists.
 
 ## Background Agents
 
@@ -31,11 +31,10 @@ Run autonomously in isolated Git worktrees. Reserve for well-scoped tasks >5 min
 
 - **Spawn:** Delegate Session → Background → Select agent → Enter prompt
 - **Auto-compaction:** At 95% token limit; use `--resume` to continue
-- **No real-time monitoring:** Invest in specific prompts, strict partition constraints, acceptance criteria checklists upfront
 
 ## Parallel Research Protocol
 
-Spawn multiple research sub-agents in parallel when 3+ independent questions need answers before implementation. **Spawn if:** ≥3 independent questions AND answers span multiple codebase areas — else handle sequentially.
+**Spawn parallel research sub-agents if:** ≥3 independent questions AND answers span multiple codebase areas — else handle sequentially.
 
 ### Spawn Strategy
 
@@ -82,22 +81,11 @@ Summarize prior phase output before passing to next agent. **Extract:** files ch
 - Blockers: [none | list]
 ```
 
-**Concrete example:**
-```
-### Prior Phase Output
-**Phase 2 — Researcher A — Find usages of `calculateTotal()`**
-- Files changed: none (read-only research)
-- Decisions: `calculateTotal` lives in `libs/cart/src/lib/total.ts`; new logic should live in `libs/cart/src/lib/discounts.ts`
-- Verification: lint ✅ | types ✅ | unit smoke test (cart total) ✅
-- Blockers: design question on rounding behavior (see `docs/rounding.md`)
-```
-
 ## Health & Recovery Reference
 
-Agent Health Monitoring, Error Recovery Playbook, Circuit Breaker tables moved to REFERENCE.md. See REFERENCE.md for thresholds, recovery steps, escalation flows.
+Health thresholds, escalation path, Error Recovery Playbook, Circuit Breaker: see [REFERENCE.md](./REFERENCE.md).
 
-
-### CLI examples (spawn & monitor)
+## CLI (spawn & monitor)
 
 Use OpenCastle CLI (`npx opencastle` or `bin/cli.mjs`):
 
