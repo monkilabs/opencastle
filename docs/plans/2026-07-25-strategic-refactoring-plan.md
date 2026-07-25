@@ -172,3 +172,56 @@ Net: **19 commands → 6 visible + 1 experimental namespace**; global flags stan
 11. The demo generator was not idempotent, failing on any re-run.
 
 **Open follow-ups:** content is 57k words against the ~30k target — prompts, customizations, and workflows were out of scope for the content pass. Cursor still receives `alwaysApply: true` on scoped instructions, which widens them to every file (pinned by a test, fix belongs with canonical-source work). `lint` v1 and the AGENTS.md canonical-source refactor are not started.
+
+## Review loop
+
+The branch was then reviewed by OpenCastle's own panel-majority-vote skill: three
+reviewers per round, isolated, identical prompts, no knowledge of each other.
+
+| Round | Verdict | Confidence | MUST-FIX |
+|---|---|---|---|
+| 1 | BLOCK 0/3 PASS | 3× high | 8 |
+| 2 | BLOCK 0/3 PASS | 3× high | 4 (2 unanimous) |
+| 3 | *running* | | |
+
+**Round 1** found one mistake with four faces: root instruction files were made
+co-owned without teaching any write path about the managed block, so `init`
+re-run and `remove --all` destroyed the user's own prose, the gitignore block
+meant there was no committed copy to restore, and the CI check the branch shipped
+could only ever fail. Two reviewers independently proposed the same fix — a third
+`merged` category — which corrected all four at once.
+
+**Round 2** found that those fixes covered every path reading the *new*
+categorisation and none reading a *stored* one. Since every release up to 0.35.2
+recorded the root file under `framework` and wrote no `merged` key, the fix
+reached no install that actually existed: the strip loop iterated an empty array
+while the unlink still fired. `updateGitignore` likewise had a single call site
+in `init`, so the population that upgrades rather than reinstalls never got the
+new block. Both were reproduced by all three reviewers.
+
+Round 2 also caught four defects introduced *by* the round-1 fixes — the value of
+re-reviewing rather than re-reading:
+
+- The legacy-adoption heuristic matched its fingerprint anywhere in the file, so
+  a generated `CLAUDE.md` someone had added house rules to was replaced wholesale.
+- The merge reflowed the user's half, collapsing blank runs inside fenced code
+  blocks and stripping a trailing `---` the user may have written.
+- `.cursor/rules/` was declared as six paths but swept as a directory, so a
+  hand-written rule there was deleted with `sync --check` reporting "all clear"
+  moments earlier.
+- `sync --yes` prompted anyway when there was nothing to do.
+
+### What the loop is worth
+
+Every one of these was reproducible from the shipped entrypoint, and none was
+caught by 1,586 passing tests — because the tests all constructed manifests in
+the shape the new code wrote. Two rounds cost roughly an hour of wall time and
+found nine defects that would have shipped, four of them data loss for every
+existing user. The tests added since (`legacy-install.test.ts`, the byte-fidelity
+samples, the per-adapter tier and extra-detection sweeps) exist because a
+reviewer named the fixture that was missing.
+
+**Practice worth keeping:** when a change alters what a *record* means, the
+migration is the feature. Grep for every reader of that record before declaring
+the change done — `init.ts` had one call site that already did it correctly, and
+that inconsistency was the tell.
