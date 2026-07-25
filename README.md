@@ -70,6 +70,7 @@ you which ones it left alone.
 ```bash
 opencastle              # what's installed, what drifted, what to run next
 opencastle sync         # recompile every target from source
+opencastle sync --check # fail if anything drifted (for CI)
 opencastle add stripe   # adopt a new tool, recompile
 opencastle doctor       # diagnose setup problems
 ```
@@ -87,6 +88,20 @@ answers the question you actually have:
 
   Next: opencastle sync
   generated files are older than the framework sources
+```
+
+
+### Keep it in sync in CI
+
+`sync --check` compiles to a scratch directory and compares. It writes nothing and
+exits non-zero when a generated file no longer matches its source — someone edited
+`.cursor/rules/foo.mdc` by hand, or upgraded without recompiling.
+
+```yaml
+# .github/workflows/opencastle.yml
+- uses: actions/setup-node@v4
+  with: { node-version: 22 }
+- run: npx opencastle sync --check
 ```
 
 <br>
