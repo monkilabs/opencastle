@@ -15,7 +15,7 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
-import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ReviewHeuristics } from '../types.js'
+import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ReviewHeuristics } from './spec-types.js'
 import { createConvoyStore, ConvoyArtifactLimitError, type ConvoyStore } from './store.js'
 import { acquireEngineLock } from './lock.js'
 import { createEventEmitter, ndjsonPathForConvoy, recoverNdjson, type ConvoyEventEmitter } from './events.js'

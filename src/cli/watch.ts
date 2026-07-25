@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import type { TaskSpec, AgentAdapter } from './types.js'
+import type { TaskSpec, AgentAdapter } from './convoy/spec-types.js'
 import type { ConvoyResult } from './convoy/engine.js'
 import type { WatchConfig } from './convoy/types.js'
 import { parseTaskSpecText, parseYaml } from './run/schema.js'

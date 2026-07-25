@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createPipelineOrchestrator } from './pipeline.js'
 import { createConvoyStore } from './store.js'
-import type { AgentAdapter, TaskSpec, ExecuteResult, Task } from '../types.js'
+import type { AgentAdapter, TaskSpec, ExecuteResult, Task } from './spec-types.js'
 import type { ConvoyEngine, ConvoyResult, ConvoyEngineOptions } from './engine.js'
 import type { ConvoyStatus } from './types.js'
 

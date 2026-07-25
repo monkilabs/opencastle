@@ -6,7 +6,7 @@ import { createConvoyEngine, evaluateReviewLevel, runConvoyGuard } from './engin
 import { recoverNdjson, createEventEmitter } from './events.js'
 import type { ConvoyEngineOptions, DiffStats } from './engine.js'
 import { createConvoyStore } from './store.js'
-import type { AgentAdapter, Task, TaskSpec, ExecuteResult, ExecuteOptions } from '../types.js'
+import type { AgentAdapter, Task, TaskSpec, ExecuteResult, ExecuteOptions } from './spec-types.js'
 import type { WorktreeManager } from './worktree.js'
 import type { MergeQueue } from './merge.js'
 import type { TaskRecord } from './types.js'

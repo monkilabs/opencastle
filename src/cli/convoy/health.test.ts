@@ -7,7 +7,7 @@ import type { ConvoyStore } from './store.js'
 import type { ConvoyEventEmitter } from './events.js'
 import { createHealthMonitor, detectDrift } from './health.js'
 import type { HealthMonitorOptions } from './health.js'
-import type { AgentAdapter } from '../types.js'
+import type { AgentAdapter } from './spec-types.js'
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
 

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { resolve, join, dirname, relative, isAbsolute, sep } from 'node:path'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
-import type { TaskSpec, AgentAdapter } from '../types.js'
+import type { TaskSpec, AgentAdapter } from './spec-types.js'
 import { parseTaskSpecText } from '../run/schema.js'
 import { createConvoyStore } from './store.js'
 import {

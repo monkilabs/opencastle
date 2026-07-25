@@ -5,7 +5,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { getAdapter, detectAdapter, cleanupAdapters } from './run/adapters/index.js'
 import { parseTaskSpecText } from './run/schema.js'
 import { c } from './prompt.js'
-import type { CliContext, Task } from './types.js'
+import type { CliContext } from './types.js'
+import type { Task } from './convoy/spec-types.js'
 import type { MCPServerConfig } from './convoy/types.js'
 
 const HELP = `

@@ -10,7 +10,7 @@ import type {
   RunReport,
   Reporter,
   ReporterOptions,
-} from '../types.js'
+} from '../convoy/spec-types.js'
 
 /**
  * Status icons for terminal output.

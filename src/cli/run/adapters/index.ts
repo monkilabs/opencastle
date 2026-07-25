@@ -1,4 +1,4 @@
-import type { AgentAdapter } from '../../types.js'
+import type { AgentAdapter } from '../../convoy/spec-types.js'
 
 /**
  * Adapter registry for agent runtimes.

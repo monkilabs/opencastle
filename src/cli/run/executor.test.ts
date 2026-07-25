@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { buildPhases, createExecutor, formatDuration } from './executor.js'
-import type { Task, TaskSpec, AgentAdapter, Reporter, TaskResult, RunReport } from '../types.js'
+import type { Task, TaskSpec, AgentAdapter, Reporter, TaskResult, RunReport } from '../convoy/spec-types.js'
 
 // ── Helpers ────────────────────────────────────────────────────
 

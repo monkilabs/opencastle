@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync, realpathSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
-import type { Task } from '../../types.js'
+import type { Task } from '../../convoy/spec-types.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

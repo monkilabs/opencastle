@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { parse as yamlParse } from 'yaml'
-import type { TaskSpec, ValidationResult } from '../types.js'
+import type { TaskSpec, ValidationResult } from '../convoy/spec-types.js'
 
 /**
  * Parse a YAML string into a JS object.

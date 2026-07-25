@@ -26,7 +26,7 @@ import {
   scanSymlinks,
   scanNewSymlinks,
 } from './partition.js'
-import type { Task } from '../types.js'
+import type { Task } from './spec-types.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
