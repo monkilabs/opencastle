@@ -120,12 +120,20 @@ Run `opencastle <command> --help` for the flags.
 
 | Path | Yours or ours |
 |------|---------------|
-| `.opencastle/` | **Yours.** Project conventions, stack notes, lessons. Never overwritten. Commit it. |
-| The managed block in `CLAUDE.md` etc. | Ours. Regenerated on every sync. |
+| `.opencastle/` | **Yours.** Project conventions, stack notes, lessons. Never overwritten. |
+| Everything around the managed block in `CLAUDE.md` etc. | **Yours.** Kept byte for byte. |
+| The managed block itself | Ours. Regenerated on every sync. |
 | `.claude/`, `.cursor/rules/`, `.github/` | Ours. Regenerated on every sync. |
 
+**Commit all of it.** Generated config is committed like a lockfile: a teammate
+who clones the repo gets working rules without running anything, and
+`sync --check` has something to check. Only `.env` and run artefacts under
+`.opencastle/` are gitignored.
+
 To change what the assistants are told, edit `.opencastle/` — not the generated
-files. `sync --check` exists to tell you when someone forgets.
+files. `sync --check` exists to tell you when someone forgets: it reports files
+edited in place, files never generated, and files added by hand under a
+generated directory (the next sync would delete those).
 
 ## Adding a tool later
 

@@ -316,7 +316,8 @@ const pages = [
               <span class="quickstart__num">&bull;</span>
               <div>
                 <p class="quickstart__label">Catch drift in CI</p>
-                <p class="quickstart__desc"><code class="quickstart__code">opencastle sync --check</code> compiles to a scratch directory and compares. It writes nothing and exits non-zero when a generated file no longer matches its source &mdash; someone edited <code class="quickstart__code">.cursor/rules/foo.mdc</code> by hand, or upgraded without recompiling. Without it, drift is invisible: a stale rule file still loads fine.</p>
+                <p class="quickstart__desc"><code class="quickstart__code">opencastle sync --check</code> compiles to a scratch directory and compares. It writes nothing and exits non-zero when a generated file no longer matches its source &mdash; someone edited <code class="quickstart__code">.cursor/rules/foo.mdc</code> by hand, dropped a file into a generated directory, or upgraded without recompiling. Without it, drift is invisible: a stale rule file still loads fine.</p>
+                <p class="quickstart__desc">Commit the generated config, like a lockfile &mdash; that is what gives the check something to compare, and what lets a teammate clone the repo and have working rules without running anything. Only <code class="quickstart__code">.env</code> and run artefacts are gitignored.</p>
                 <pre><code>{`# .github/workflows/opencastle.yml
 - uses: actions/setup-node@v4
   with: { node-version: 22 }

@@ -97,7 +97,8 @@ answers the question you actually have:
 
 `sync --check` compiles to a scratch directory and compares. It writes nothing and
 exits non-zero when a generated file no longer matches its source — someone edited
-`.cursor/rules/foo.mdc` by hand, or upgraded without recompiling.
+`.cursor/rules/foo.mdc` by hand, added a file under a generated directory, or
+upgraded without recompiling.
 
 ```yaml
 # .github/workflows/opencastle.yml
@@ -105,6 +106,10 @@ exits non-zero when a generated file no longer matches its source — someone ed
   with: { node-version: 22 }
 - run: npx opencastle sync --check
 ```
+
+Commit the generated config, like a lockfile. That is what gives the check
+something to compare and what lets a teammate clone the repo and have working
+rules without running anything. Only `.env` and run artefacts are gitignored.
 
 <br>
 
