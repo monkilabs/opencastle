@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { resolve, relative } from 'node:path'
 import { readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { select, multiselect, confirm, closePrompts, c } from './prompt.js'
@@ -8,7 +8,7 @@ import { updateGitignore } from './gitignore.js'
 import { getRequiredMcpEnvVars, getCustomizationsTransform } from './stack-config.js'
 import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
 import type { PluginConfig } from '../orchestrator/plugins/types.js'
-import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde } from './detect.js'
+import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde, detectAssistantConfigs } from './detect.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { IDE_LABELS } from './types.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
@@ -17,13 +17,116 @@ import { bootstrapCustomizations } from './bootstrap.js'
 const INIT_HELP = `
   opencastle init [options]
 
-  Set up OpenCastle in your project — copies framework files, configures
-  IDE adapters, and creates the .opencastle/ directory.
+  Set up this project: detects your stack and any assistant config you already
+  have, shows what it will do, and asks once.
 
   Options:
+    --customize     Choose IDEs and integrations manually
+    --yes           Accept the detected setup without asking
     --dry-run       Preview what would be changed without writing files
     --help, -h      Show this help
 `
+
+/** Every plugin category, in the order the customize flow presents them. */
+const CATEGORY_STEPS: Array<{ title: string; subCategories: string[]; target: 'tech' | 'team' }> = [
+  { title: 'Frameworks', subCategories: ['framework'], target: 'tech' },
+  { title: 'Databases', subCategories: ['database'], target: 'tech' },
+  { title: 'CMS', subCategories: ['cms'], target: 'tech' },
+  { title: 'Deployment', subCategories: ['deployment'], target: 'tech' },
+  { title: 'Testing', subCategories: ['testing', 'e2e-testing'], target: 'tech' },
+  { title: 'Build Tools', subCategories: ['codebase-tool'], target: 'tech' },
+  { title: 'More Tools', subCategories: ['design', 'email', 'payments', 'observability', 'knowledge-management'], target: 'tech' },
+  { title: 'Project Management', subCategories: ['task-management'], target: 'team' },
+  { title: 'Notifications', subCategories: ['notifications'], target: 'team' },
+]
+
+export interface Selection {
+  ides: IdeChoice[]
+  techTools: string[]
+  teamTools: string[]
+}
+
+/**
+ * Choose IDEs and integrations from what is already in the project.
+ *
+ * Any assistant with config present is a target — that is the whole pitch: you
+ * keep what you have and gain the rest. Falls back to the IDE the CLI is running
+ * from, then to VS Code. Integrations come from repo detection plus each
+ * plugin's own default.
+ */
+export function detectSelection(projectRoot: string, repoInfo: Awaited<ReturnType<typeof detectRepoInfo>>): Selection {
+  const assistants = detectAssistantConfigs(projectRoot)
+  let ides = assistants.map((a) => a.ide)
+
+  if (ides.length === 0) {
+    const current = detectCurrentIde()
+    ides = [current ?? 'vscode']
+  }
+
+  const detected = buildDetectedToolsSet(repoInfo)
+  const techTools: string[] = []
+  const teamTools: string[] = []
+
+  for (const step of CATEGORY_STEPS) {
+    const plugins = step.subCategories.flatMap((sc) =>
+      getPluginsBySubCategory(sc as PluginConfig['subCategory']),
+    )
+    for (const p of plugins) {
+      if (!p.preselected && !detected.has(p.id)) continue
+      if (p.category === 'team') teamTools.push(p.id)
+      else techTools.push(p.id)
+    }
+  }
+
+  return { ides: [...new Set(ides)], techTools, teamTools }
+}
+
+/** The original category-by-category interrogation, behind --customize. */
+async function promptSelection(
+  repoInfo: Awaited<ReturnType<typeof detectRepoInfo>>,
+  existingTools: Set<string>,
+): Promise<Selection> {
+  const detectedIde = detectCurrentIde()
+  const selectedIde = await select(
+    'Which IDE do you use?',
+    (Object.keys(IDE_ADAPTERS) as IdeChoice[]).map((ide) => ({
+      label: IDE_LABELS[ide],
+      value: ide,
+      ...(detectedIde === ide && { selected: true }),
+    })),
+  )
+
+  const detectedTools = buildDetectedToolsSet(repoInfo)
+  const techTools: string[] = []
+  const teamTools: string[] = []
+
+  console.log(`  ${c.bold('── Stack ─────────────────────────────────────')}`)
+  for (const step of CATEGORY_STEPS) {
+    const plugins = step.subCategories.flatMap((sc) =>
+      getPluginsBySubCategory(sc as PluginConfig['subCategory']),
+    )
+    if (plugins.length === 0) continue
+    if (step.title === 'Project Management') {
+      console.log(`  ${c.bold('── Team ──────────────────────────────────────')}`)
+    }
+    const selected = await multiselect(
+      step.title,
+      plugins.map((p) => ({
+        label: p.label,
+        hint: p.hint,
+        value: p.id,
+        ...((p.preselected || detectedTools.has(p.id) || existingTools.has(p.id)) && { selected: true }),
+      })),
+    )
+    for (const id of selected) {
+      const plugin = plugins.find((p) => p.id === id)
+      if (plugin?.category === 'team') teamTools.push(id)
+      else techTools.push(id)
+    }
+  }
+
+  return { ides: [selectedIde as IdeChoice], techTools, teamTools }
+}
 
 export default async function init({ pkgRoot, args }: CliContext): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) {
@@ -33,18 +136,22 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   const projectRoot = process.cwd()
   const dryRun = args.includes('--dry-run') || args.includes('--dryRun')
+  const customize = args.includes('--customize') || args.includes('--reconfigure')
+  const assumeYes = args.includes('--yes') || args.includes('-y')
 
   // Check for existing installation
   const existing = await readManifest(projectRoot)
   let isReinit = false
   if (existing) {
-    const proceed = await confirm(
-      `OpenCastle already installed (v${existing.version}). Re-initialize?`,
-      false
-    )
-    if (!proceed) {
-      console.log('  Aborted.')
-      return
+    if (!assumeYes) {
+      const proceed = await confirm(
+        `OpenCastle already installed (v${existing.version}). Re-initialize?`,
+        false
+      )
+      if (!proceed) {
+        console.log('  Aborted.')
+        return
+      }
     }
     isReinit = true
   }
@@ -54,72 +161,12 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   ) as { version: string }
 
   console.log(`\n  🏰 ${c.bold('OpenCastle')} ${c.dim(`v${pkg.version}`)}`)
-  console.log(
-    `  ${c.dim('Multi-agent orchestration framework for AI coding assistants')}\n`
-  )
+  console.log(`  ${c.dim('Compiles your AI assistant config for every assistant you use')}\n`)
 
-  // ── Repo research ───────────────────────────────────────────────
-  console.log(`  ${c.dim('Scanning repository...')}`)
+  // ── Detect ──────────────────────────────────────────────────────
+  console.log(`  ${c.dim('Scanning repository…')}`)
   const repoInfo = await detectRepoInfo(projectRoot)
-  const summary = formatRepoInfo(repoInfo)
-  if (summary) {
-    console.log(`  ${c.green('Detected:')}\n` + summary + '\n')
-  } else {
-    console.log(`  ${c.dim('No tooling detected (empty project?)')}\n`)
-  }
-
-  // ── IDE (single select) ────────────────────────────────────────
-  console.log(`  ${c.bold('── IDEs ──────────────────────────────────────')}`)
-  const detectedIde = detectCurrentIde()
-  const selectedIde = await select('Which IDE do you use?', [
-    {
-      label: 'VS Code',
-      hint: 'GitHub Copilot agents, instructions, skills',
-      value: 'vscode',
-      ...(detectedIde === 'vscode' && { selected: true }),
-    },
-    {
-      label: 'Cursor',
-      hint: '.cursorrules & .cursor/rules/*.mdc',
-      value: 'cursor',
-      ...(detectedIde === 'cursor' && { selected: true }),
-    },
-    {
-      label: 'Claude Code',
-      hint: 'CLAUDE.md & .claude/ commands, skills',
-      value: 'claude-code',
-      ...(detectedIde === 'claude-code' && { selected: true }),
-    },
-    {
-      label: 'OpenCode',
-      hint: 'AGENTS.md & opencode.json',
-      value: 'opencode',
-      ...(detectedIde === 'opencode' && { selected: true }),
-    },
-    {
-      label: 'Windsurf',
-      hint: '.windsurfrules & .windsurf/rules/*.md',
-      value: 'windsurf',
-      ...(detectedIde === 'windsurf' && { selected: true }),
-    },
-    {
-      label: 'Codex CLI',
-      hint: 'AGENTS.md & .codex/',
-      value: 'codex',
-      ...(detectedIde === 'codex' && { selected: true }),
-    },
-    {
-      label: 'Antigravity',
-      hint: 'GEMINI.md & .agents/',
-      value: 'antigravity',
-      ...(detectedIde === 'antigravity' && { selected: true }),
-    },
-  ])
-  const ides = [selectedIde]
-
-  // ── Stack (category-by-category) ─────────────────────────────
-  // Pre-select tools already detected in the repo
-  const detectedTools = buildDetectedToolsSet(repoInfo)
+  const assistants = detectAssistantConfigs(projectRoot)
 
   const existingTools = new Set<string>()
   if (isReinit && existing?.stack) {
@@ -127,46 +174,54 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     for (const t of existing.stack.teamTools ?? []) existingTools.add(t)
   }
 
-  console.log(`  ${c.bold('── Stack ─────────────────────────────────────')}`)
+  // Detection over interrogation: propose a complete setup and ask once. The
+  // full category-by-category selection is still available via --customize.
+  let selection: Selection
+  if (customize) {
+    const summary = formatRepoInfo(repoInfo)
+    if (summary) console.log(`  ${c.green('Detected:')}\n` + summary + '\n')
+    console.log(`  ${c.bold('── IDEs ──────────────────────────────────────')}`)
+    selection = await promptSelection(repoInfo, existingTools)
+  } else {
+    selection = detectSelection(projectRoot, repoInfo)
 
-  const categorySteps: Array<{ title: string; subCategories: string[]; target: 'tech' | 'team' }> = [
-    { title: 'Frameworks', subCategories: ['framework'], target: 'tech' },
-    { title: 'Databases', subCategories: ['database'], target: 'tech' },
-    { title: 'CMS', subCategories: ['cms'], target: 'tech' },
-    { title: 'Deployment', subCategories: ['deployment'], target: 'tech' },
-    { title: 'Testing', subCategories: ['testing', 'e2e-testing'], target: 'tech' },
-    { title: 'Build Tools', subCategories: ['codebase-tool'], target: 'tech' },
-    { title: 'More Tools', subCategories: ['design', 'email', 'payments', 'observability', 'knowledge-management'], target: 'tech' },
-  ]
-
-  const teamSteps: Array<{ title: string; subCategories: string[]; target: 'team' }> = [
-    { title: 'Project Management', subCategories: ['task-management'], target: 'team' },
-    { title: 'Notifications', subCategories: ['notifications'], target: 'team' },
-  ]
-
-  const techTools: string[] = []
-  const teamTools: string[] = []
-
-  for (const step of [...categorySteps, ...teamSteps]) {
-    const plugins = step.subCategories.flatMap((sc) => getPluginsBySubCategory(sc as PluginConfig['subCategory']))
-    if (plugins.length === 0) continue
-    if (step === teamSteps[0]) {
-      console.log(`  ${c.bold('── Team ──────────────────────────────────────')}`)
+    console.log('')
+    if (assistants.length > 0) {
+      console.log(`  ${c.green('Found assistant config:')}`)
+      for (const a of assistants) {
+        console.log(`    ${c.dim('•')} ${a.label} ${c.dim(`(${a.paths.join(', ')})`)}`)
+      }
+      console.log('')
     }
-    const selected = await multiselect(step.title,
-      plugins.map((p) => ({
-        label: p.label,
-        hint: p.hint,
-        value: p.id,
-        ...((p.preselected || detectedTools.has(p.id) || existingTools.has(p.id)) && { selected: true }),
-      }))
-    )
-    for (const id of selected) {
-      const plugin = plugins.find((p) => p.id === id)
-      if (plugin?.category === 'team') teamTools.push(id)
-      else techTools.push(id)
+
+    console.log(`  ${c.bold('Will compile for:')}`)
+    for (const ide of selection.ides) {
+      const known = assistants.some((a) => a.ide === ide)
+      console.log(`    ${c.green('→')} ${IDE_LABELS[ide]}${known ? '' : c.dim(' (new)')}`)
+    }
+
+    if (selection.techTools.length > 0 || selection.teamTools.length > 0) {
+      console.log(`\n  ${c.bold('Integrations detected:')}`)
+      const all = [...selection.techTools, ...selection.teamTools]
+      console.log(`    ${c.green(all.join(', '))}`)
+    } else {
+      console.log(`\n  ${c.dim('No stack integrations detected.')}`)
+    }
+
+    console.log('')
+    if (!assumeYes && !dryRun) {
+      const ok = await confirm('Set this up?', true)
+      if (!ok) {
+        console.log(`\n  Aborted. Run ${c.cyan('opencastle init --customize')} to choose manually.\n`)
+        closePrompts()
+        return
+      }
     }
   }
+
+  const ides = selection.ides
+  const techTools = selection.techTools
+  const teamTools = selection.teamTools
 
   const stack: StackConfig = {
     ides: ides as IdeChoice[],
@@ -178,14 +233,13 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const combinedRepoInfo = mergeStackIntoRepoInfo(repoInfo, stack)
 
   const ideNames = ides.map((id) => IDE_LABELS[id as IdeChoice]).join(', ')
-  console.log(`\n  Installing for ${c.cyan(ideNames)}...`)
-  if (techTools.length > 0) {
-    console.log(`  Tech: ${c.green(techTools.join(', '))}`)
+  if (customize) {
+    // The default flow already printed this summary before confirming.
+    console.log(`\n  Installing for ${c.cyan(ideNames)}...`)
+    if (techTools.length > 0) console.log(`  Tech: ${c.green(techTools.join(', '))}`)
+    if (teamTools.length > 0) console.log(`  Team: ${c.green(teamTools.join(', '))}`)
+    console.log()
   }
-  if (teamTools.length > 0) {
-    console.log(`  Team: ${c.green(teamTools.join(', '))}`)
-  }
-  console.log()
 
   // ── Dry run ─────────────────────────────────────────────────────
   if (dryRun) {
@@ -231,6 +285,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // ── Run adapters for each selected IDE ──────────────────────────
   let totalCreated = 0
   let totalSkipped = 0
+  const skippedPaths: string[] = []
   const allManagedPaths = { framework: [] as string[], customizable: [] as string[] }
 
   for (const ide of ides) {
@@ -238,6 +293,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     const results = await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo)
     totalCreated += results.created.length
     totalSkipped += results.skipped.length
+    skippedPaths.push(...results.skipped)
 
     const managed = adapter.getManagedPaths()
     allManagedPaths.framework.push(...managed.framework)
@@ -324,7 +380,15 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     console.log(`  ${c.green('✓')} Updated .gitignore with OpenCastle entries`)
   }
   if (totalSkipped > 0) {
-    console.log(`  ${c.dim('→')} Skipped ${totalSkipped} existing files`)
+    const noun = totalSkipped === 1 ? 'file' : 'files'
+    console.log(`  ${c.dim('→')} Left ${totalSkipped} existing ${noun} untouched`)
+    // Name the ones the user is likely to care about — their own root config.
+    const notable = skippedPaths
+      .map((p) => relative(projectRoot, p))
+      .filter((p) => !p.includes('/') && !p.startsWith('.opencastle'))
+    for (const p of notable.slice(0, 4)) {
+      console.log(`    ${c.dim('•')} ${p} ${c.dim('(your version kept)')}`)
+    }
   }
 
   // ── Env var notice + .env file generation ────────────────────
@@ -402,6 +466,14 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   step++
   console.log(`  ${step}. Commit the .opencastle/ folder to your repository`)
+
+  // Name the assistants not yet being compiled for — the reason to come back.
+  const configured = new Set(ides)
+  const otherIdes = (Object.keys(IDE_ADAPTERS) as IdeChoice[]).filter((id) => !configured.has(id))
+  if (otherIdes.length > 0) {
+    console.log(`\n  ${c.dim('Also used by your team?')} ${c.cyan('opencastle init --customize')}`)
+    console.log(`  ${c.dim(`compiles the same config for ${otherIdes.map((id) => IDE_LABELS[id]).join(', ')}`)}`)
+  }
   console.log()
 
   closePrompts()

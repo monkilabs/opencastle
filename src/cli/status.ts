@@ -3,6 +3,7 @@ import { existsSync, statSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
+import { detectAssistantConfigs } from './detect.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeAdapter, Manifest } from './types.js'
 
@@ -45,17 +46,6 @@ export interface StatusReport {
   nextCommand?: string
   nextReason?: string
 }
-
-/** Config files written by assistants OpenCastle can compile for. */
-const KNOWN_ASSISTANT_FILES: Array<{ path: string; label: string; ide: string }> = [
-  { path: 'CLAUDE.md', label: 'Claude Code', ide: 'claude-code' },
-  { path: '.cursorrules', label: 'Cursor', ide: 'cursor' },
-  { path: '.cursor/rules', label: 'Cursor rules', ide: 'cursor' },
-  { path: '.github/copilot-instructions.md', label: 'GitHub Copilot', ide: 'vscode' },
-  { path: 'AGENTS.md', label: 'AGENTS.md', ide: 'codex' },
-  { path: '.windsurfrules', label: 'Windsurf', ide: 'windsurf' },
-  { path: 'GEMINI.md', label: 'Antigravity', ide: 'antigravity' },
-]
 
 /** Newest mtime under a directory tree, or 0 when absent. */
 async function newestMtime(root: string, depth = 4): Promise<number> {
@@ -102,9 +92,7 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   if (!manifest) {
     // Not installed: the useful signal is which assistants are already configured,
     // because that is what init can lift and compile for the others.
-    const unmanaged = KNOWN_ASSISTANT_FILES.filter((f) =>
-      existsSync(resolve(projectRoot, f.path)),
-    ).map((f) => f.label)
+    const unmanaged = detectAssistantConfigs(projectRoot).map((a) => a.label)
     return {
       installed: false,
       ides: [],
@@ -149,9 +137,9 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
 
   // Assistants configured in the repo that this install does not compile for.
   const managedIdes = new Set(adapters.map((a) => a.ide))
-  const unmanaged = KNOWN_ASSISTANT_FILES.filter(
-    (f) => !managedIdes.has(f.ide) && existsSync(resolve(projectRoot, f.path)),
-  ).map((f) => f.label)
+  const unmanaged = detectAssistantConfigs(projectRoot)
+    .filter((a) => !managedIdes.has(a.ide))
+    .map((a) => a.label)
 
   const incomplete = targets.filter((t) => !t.present)
   let nextCommand: string | undefined

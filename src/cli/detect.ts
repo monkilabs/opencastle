@@ -28,6 +28,56 @@ export function detectCurrentIde(): IdeChoice | undefined {
   return undefined;
 }
 
+/**
+ * Config files each assistant writes, used to tell which assistants a project
+ * already uses. This is the input to both `opencastle` status and the default
+ * init flow: what is already configured is a better starting point than asking.
+ */
+export const ASSISTANT_CONFIG_FILES: ReadonlyArray<{
+  path: string
+  label: string
+  ide: IdeChoice
+}> = [
+  { path: 'CLAUDE.md', label: 'Claude Code', ide: 'claude-code' },
+  { path: '.claude', label: 'Claude Code', ide: 'claude-code' },
+  { path: '.cursorrules', label: 'Cursor', ide: 'cursor' },
+  { path: '.cursor/rules', label: 'Cursor', ide: 'cursor' },
+  { path: '.github/copilot-instructions.md', label: 'GitHub Copilot', ide: 'vscode' },
+  { path: '.windsurfrules', label: 'Windsurf', ide: 'windsurf' },
+  { path: '.windsurf/rules', label: 'Windsurf', ide: 'windsurf' },
+  { path: 'GEMINI.md', label: 'Antigravity', ide: 'antigravity' },
+  { path: '.codex', label: 'Codex CLI', ide: 'codex' },
+  { path: 'opencode.json', label: 'OpenCode', ide: 'opencode' },
+  // AGENTS.md is shared by several tools, so it is checked last and only counts
+  // when nothing more specific matched.
+  { path: 'AGENTS.md', label: 'AGENTS.md', ide: 'codex' },
+];
+
+export interface DetectedAssistant {
+  ide: IdeChoice;
+  label: string;
+  /** The config paths found for this assistant. */
+  paths: string[];
+}
+
+/**
+ * Find assistants already configured in the project, deduplicated by IDE.
+ * Returns them in the order they were found.
+ */
+export function detectAssistantConfigs(projectRoot: string): DetectedAssistant[] {
+  const byIde = new Map<IdeChoice, DetectedAssistant>();
+  for (const entry of ASSISTANT_CONFIG_FILES) {
+    if (!existsSync(resolve(projectRoot, entry.path))) continue;
+    const found = byIde.get(entry.ide);
+    if (found) {
+      found.paths.push(entry.path);
+    } else {
+      byIde.set(entry.ide, { ide: entry.ide, label: entry.label, paths: [entry.path] });
+    }
+  }
+  return [...byIde.values()];
+}
+
 // ── Detection rules ───────────────────────────────────────────
 
 interface DetectionRule {
