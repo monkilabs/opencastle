@@ -461,6 +461,29 @@ function appendDlqMarkdownClean(marker: string, entry: string, basePath: string)
   appendFileSync(mdPath, entry)
 }
 
+/**
+ * Marks a convoy 'failed' after an unexpected throw escapes runConvoy.
+ *
+ * Both run() and resume() previously wrapped runConvoy in try/finally with no
+ * catch, so a crash left the row reading 'running' — which resume() then treats
+ * as owned by a live engine and refuses to pick up (KI-003). Best-effort: if the
+ * store is already closed or the DB is gone, the original error still wins.
+ */
+function markConvoyCrashed(
+  store: ConvoyStore,
+  events: ConvoyEventEmitter | null,
+  convoyId: string,
+  err: unknown,
+): void {
+  const reason = err instanceof Error ? err.message : String(err)
+  try {
+    store.updateConvoyStatus(convoyId, 'failed', { finished_at: new Date().toISOString() })
+  } catch { /* store may already be closed — the throw we are handling matters more */ }
+  try {
+    events?.emit('convoy_failed', { status: 'failed', reason: `engine crashed: ${reason}` }, { convoy_id: convoyId })
+  } catch { /* ditto */ }
+}
+
 function writeDisputeToMarkdown(
   disputeId: string,
   convoyId: string,
@@ -3120,6 +3143,11 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
         options._reviewRunner,
       )
+    } catch (err) {
+      // Without this, an unexpected throw from runConvoy leaves the convoy row
+      // reading 'running' forever, and a later resume() refuses to touch it.
+      markConvoyCrashed(store, events, convoyId, err)
+      throw err
     } finally {
       events.close()
       store.close()
@@ -3255,6 +3283,9 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
         options._reviewRunner,
       )
+    } catch (err) {
+      markConvoyCrashed(store, events ?? null, convoyId, err)
+      throw err
     } finally {
       events?.close()
       store.close()
