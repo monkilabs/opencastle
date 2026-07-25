@@ -308,3 +308,53 @@ describe('remove mode selection', () => {
     expect(existsSync(join(tmpDir, '.opencastle', 'manifest.json'))).toBe(true)
   })
 })
+
+/**
+ * The preview is the only thing standing between the user and an irreversible
+ * command, so it has to describe what will actually happen. It used to print
+ * "Will permanently delete" above a list that included files the command only
+ * strips a section out of — a description of the behaviour from before those
+ * files became co-owned.
+ */
+describe('the removal preview distinguishes deleted from edited', () => {
+  let dir: string
+  let cwdSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'oc-preview-'))
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    vi.mocked(confirm).mockResolvedValue(true)
+  })
+
+  afterEach(async () => {
+    cwdSpy.mockRestore()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('lists a co-owned root file under edited, not deleted', async () => {
+    await writeManifestFile(dir, {
+      ide: 'claude-code',
+      ides: ['claude-code'],
+      managedPaths: { framework: ['.claude/agents/'], customizable: [], merged: ['CLAUDE.md'] },
+    })
+    await writeFile(join(dir, 'CLAUDE.md'), '# Mine\n')
+
+    const lines: string[] = []
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => void lines.push(a.join(' ')))
+    try {
+      await remove({ pkgRoot: dir, args: ['--all', '--dry-run'] })
+    } finally {
+      logSpy.mockRestore()
+    }
+
+    const text = lines.join('\n')
+    const deletedAt = text.indexOf('Deleted')
+    const editedAt = text.indexOf('Edited, not deleted')
+    const claudeAt = text.indexOf('CLAUDE.md')
+
+    expect(editedAt, 'no "edited" section').toBeGreaterThan(-1)
+    expect(claudeAt, 'CLAUDE.md listed under deleted').toBeGreaterThan(editedAt)
+    expect(text).not.toContain('Will permanently delete')
+    expect(text.slice(deletedAt, editedAt)).toContain('.claude/agents/')
+  })
+})

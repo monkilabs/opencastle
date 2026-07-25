@@ -95,16 +95,32 @@ export default async function remove({ args }: CliContext): Promise<void> {
     console.log('\n  Every generated file stays exactly where it is.')
     console.log(`  Afterwards: ${c.bold('npm uninstall opencastle')}\n`)
   } else {
-    console.log('  Will permanently delete:\n')
+    console.log(`  ${c.bold('Deleted')}\n`)
     for (const p of [...frameworkPaths, ...customizablePaths]) {
-      console.log(`    ${c.dim(p)}`)
+      console.log(`    ${c.red('-')} ${c.dim(p)}`)
     }
-    for (const p of mergedPaths) {
-      console.log(`    ${c.dim(p)} ${c.dim('— only the OpenCastle block; your own content stays')}`)
+    // Named plainly: this is the one path in the list that holds writing of the
+    // user's own, and the command spends the rest of its effort preserving
+    // exactly that kind of content elsewhere.
+    console.log(`    ${c.red('-')} ${c.dim('.opencastle/')} ${c.yellow('including any conventions and lessons you edited')}`)
+    if (hasLegacy) console.log(`    ${c.red('-')} ${c.dim('.opencastle.json')}`)
+
+    // These are co-owned. Saying "permanently delete" over them, as this preview
+    // used to, described the old behaviour rather than the current one.
+    const coOwned = [
+      ...mergedPaths.map((p) => [p, 'the OpenCastle block; your own writing stays'] as const),
+      ...[...mcpPaths]
+        .filter((p) => existsSync(resolve(projectRoot, p)))
+        .map((p) => [p, 'our MCP servers; the rest of the file stays'] as const),
+    ].filter(([p]) => existsSync(resolve(projectRoot, p)))
+
+    if (coOwned.length > 0) {
+      console.log(`\n  ${c.bold('Edited, not deleted')}\n`)
+      for (const [p, what] of coOwned) {
+        console.log(`    ${c.yellow('~')} ${c.dim(p)} ${c.dim(`— removes ${what}`)}`)
+      }
     }
-    console.log(`    ${c.dim('.opencastle/')}`)
-    if (hasLegacy) console.log(`    ${c.dim('.opencastle.json')}`)
-    console.log(`    ${c.dim('.gitignore block')}\n`)
+    console.log(`    ${c.yellow('~')} ${c.dim('.gitignore')} ${c.dim('— removes the OpenCastle block')}\n`)
   }
 
   if (dryRun) {
@@ -115,7 +131,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
 
   if (!assumeYes) {
     const proceed = await confirm(
-      mode === 'all' ? 'Permanently delete all of the above?' : 'Continue?',
+      mode === 'all' ? 'Go ahead?' : 'Continue?',
       mode !== 'all',
     )
     if (!proceed) {
