@@ -17,8 +17,8 @@
 
 <p align="center">
   <a href="https://www.opencastle.dev/">Website</a> &middot;
+  <a href="docs/quickstart.md">Quickstart</a> &middot;
   <a href="https://www.opencastle.dev/docs/">Docs</a> &middot;
-  <a href="#quick-start">Quick Start</a> &middot;
   <a href="ARCHITECTURE.md">Architecture</a> &middot;
   <a href="#contributing">Contributing</a>
 </p>
@@ -62,6 +62,8 @@ it found and asks once.
 
 No questionnaire. Your existing files are never overwritten — OpenCastle tells
 you which ones it left alone.
+
+Full walkthrough: **[docs/quickstart.md](docs/quickstart.md)** — five minutes.
 
 <br>
 

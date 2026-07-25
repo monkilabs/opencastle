@@ -173,3 +173,36 @@ describe('the pitch leads with the compiler', () => {
     expect(readme.slice(heading, heading + 400)).toMatch(/experimental/i)
   })
 })
+
+describe('quickstart stays runnable', () => {
+  const quickstartPath = join(repoRoot, 'docs', 'quickstart.md')
+  const quickstart = existsSync(quickstartPath) ? readFileSync(quickstartPath, 'utf8') : ''
+
+  it('exists and is linked from the README', () => {
+    expect(quickstart.length).toBeGreaterThan(0)
+    expect(readme).toContain('docs/quickstart.md')
+  })
+
+  it('shows only commands the CLI exposes', () => {
+    const visible = visibleCommands()
+    const shown = [...quickstart.matchAll(/^(?:npx )?opencastle ([a-z-]+)/gm)].map((m) => m[1])
+    for (const cmd of shown) {
+      expect(visible, `quickstart shows "${cmd}", which the CLI does not expose`).toContain(cmd)
+    }
+  })
+
+  it('shows no removed command', () => {
+    for (const cmd of replacedCommands()) {
+      expect(quickstart).not.toMatch(new RegExp(`^\\s*(?:npx )?opencastle ${cmd}\\b`, 'm'))
+    }
+  })
+
+  it('quotes the managed-block marker exactly as the code writes it', async () => {
+    const { BLOCK_START } = await import('./managed-block.js')
+    // The doc shows the marker so readers recognise it in their own files.
+    const shown = quickstart.match(/<!-- >>> OpenCastle managed[^>]*>>> -->/)
+    expect(shown, 'quickstart does not show the marker').toBeTruthy()
+    expect(BLOCK_START).toContain('OpenCastle managed')
+    expect(shown![0]).toBe(BLOCK_START)
+  })
+})
