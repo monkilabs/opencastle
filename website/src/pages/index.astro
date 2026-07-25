@@ -223,7 +223,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         <div class="hero__illustration">
           <img src={illustration.src} alt="OpenCastle illustration" width="360" />
         </div>
-        <span class="hero__badge">Open Source · Free for Non-Commercial Use</span>
+        <span class="hero__badge">Open Source · MIT Licensed</span>
         <h1 class="hero__title">
           Write your AI config once.
           <br />
@@ -380,7 +380,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <!-- ==================== Convoy Engine ==================== -->
     <section class="section section--border-top" id="convoy">
       <div class="container">
-        <span class="section__label">Convoy Engine</span>
+        <span class="section__label">Convoy Engine · Experimental</span>
         <h2 class="section__title">
           Convoy Engine. Crash-safe. Isolated. Observable.
         </h2>
@@ -389,6 +389,11 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           crash-recoverable orchestrator backed by SQLite WAL-mode persistence.
           Each worker gets its own git worktree — no shared mutable state.
           Define your batch in <code>convoy.yml</code>, run it overnight, and resume exactly where you left off.
+        </p>
+        <p class="section__subtitle">
+          <strong>This part is experimental and may change.</strong> The compiler above
+          does not depend on it — native background and cloud agents now cover much of
+          what it was built for.
         </p>
         <div class="autonomous-grid">
           <div class="code-block">
@@ -793,13 +798,15 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <!-- ==================== Quality Gates ==================== -->
     <section class="section section--border-top" id="quality">
       <div class="container">
-        <span class="section__label">Quality Gates</span>
+        <span class="section__label">Quality Gates · Convoy</span>
         <h2 class="section__title">
           No code ships without verification.
         </h2>
         <p class="section__subtitle">
-          Multi-layered validation gates — from secret scanning to final smoke tests —
-          with structured dispute escalation when agents can't converge.
+          When the convoy engine runs work for you, it puts it through layered
+          validation — secret scanning through final smoke test — escalating to a
+          structured dispute when agents cannot converge. These gates apply to convoy
+          runs, not to the compiler.
         </p>
         <div class="quality-grid">
           <div class="quality-card">
@@ -911,10 +918,8 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             <div class="stat__label">Skills &amp; Integrations</div>
           </div>
           <div class="stat">
-            <a href="https://tessl.io/registry?q=opencastle" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
-              <div class="stat__value">100</div>
-              <div class="stat__label">tessl Skill Score</div>
-            </a>
+            <div class="stat__value">1</div>
+            <div class="stat__label">Source of truth</div>
           </div>
         </div>
       </div>
@@ -1042,7 +1047,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <footer class="footer">
       <div class="footer__inner">
         <span class="footer__copyright">
-          BSL 1.1 License · Filip Mares · 2026
+          MIT License · Filip Mares · 2026
         </span>
         <ul class="footer__links">
           <li>

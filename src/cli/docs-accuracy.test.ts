@@ -157,6 +157,54 @@ describe('website matches the shipped CLI', () => {
       .map((p) => p.rel)
     expect(offenders).toEqual([])
   })
+
+  it('lists no removed command in an embedded help block', () => {
+    // The CLI reference page embedded a verbatim copy of the old help output.
+    // Those are bare command names in a listing, not `opencastle <cmd>` calls,
+    // so the invocation check above walked straight past them.
+    const offenders: string[] = []
+    for (const cmd of replacedCommands()) {
+      const listing = new RegExp(`^\\s{2,}${cmd}\\s{2,}\\S`, 'm')
+      for (const page of pages) {
+        if (listing.test(page.text)) offenders.push(`${page.rel}: ${cmd}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('names no retired agent', () => {
+    const retired = [
+      'Copywriter', 'SEO Specialist', 'Documentation Writer', 'API Designer',
+      'Release Manager', 'Data Expert', 'Database Engineer', 'Session Guard',
+    ]
+    const offenders: string[] = []
+    for (const name of retired) {
+      for (const page of pages) {
+        if (page.text.includes(name)) offenders.push(`${page.rel}: ${name}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('states the licence the LICENSE file actually grants', () => {
+    // The footer said BSL 1.1 and the hero said "Free for Non-Commercial Use",
+    // while LICENSE, package.json, and npm all say MIT — the site was telling
+    // people they could not use commercially when the licence permits it.
+    const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as { license: string }
+    expect(pkg.license).toBe('MIT')
+    const offenders = pages
+      .filter((p) => /BSL|Non-Commercial/i.test(p.text))
+      .map((p) => p.rel)
+    expect(offenders).toEqual([])
+  })
+
+  it('marks the convoy engine experimental where it is presented', () => {
+    const landing = pages.find((p) => p.rel.endsWith('pages/index.astro'))
+    expect(landing).toBeDefined()
+    const idx = landing!.text.indexOf('Convoy Engine')
+    expect(idx).toBeGreaterThan(-1)
+    expect(landing!.text.slice(idx, idx + 200)).toMatch(/Experimental/i)
+  })
 })
 
 describe('the pitch leads with the compiler', () => {

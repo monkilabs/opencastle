@@ -868,7 +868,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             and messages from the messages tab".</p>
           </div>
 
-          <div class="plugin-card" id="microsoft-teams">
+          <div class="plugin-card" id="teams">
             <h3 class="plugin-card__name"><Fragment set:html={icons.teams} /> Microsoft Teams</h3>
             <p class="plugin-card__desc">Agent notifications via Teams channels.</p>
             <table class="plugin-table">
@@ -1552,7 +1552,8 @@ TRELLO_TOKEN="your-token-here"</code></pre>
         const countEl = document.getElementById('plugin-count');
         if (countEl) {
           if (sectionId === 'all') {
-            countEl.textContent = '23 plugins';
+            const total = document.querySelectorAll('.plugin-card').length;
+            countEl.textContent = `${total} plugins`;
           } else {
             const visible = document.querySelectorAll(`#${sectionId} .plugin-card`);
             countEl.textContent = `${visible.length} plugin${visible.length !== 1 ? 's' : ''}`;

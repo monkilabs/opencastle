@@ -254,29 +254,22 @@ const commands = [
         <div class="usage-block">
           <pre><code>{`npx opencastle <command> [options]
 
-Project Commands:
-  init        Set up OpenCastle in your project
-  update      Update framework files (preserves customizations)
-  eject       Remove dependency, keep all files standalone
-  destroy     Remove ALL OpenCastle files (reverse of init)
-  doctor      Validate your OpenCastle setup
+Commands:
+  (none)      Show project status and what to do next
+  init        Set up this project (detects your stack and existing config)
+  sync        Recompile the generated config for every target
+  add         Add an integration, e.g. "add supabase"
+  doctor      Diagnose setup problems
+  remove      Remove OpenCastle from this project
 
-Convoy Commands:
-  start        Go from idea to convoy spec in one command (recommended)
-  plan        Run a single prompt template step
-  validate    Validate a convoy YAML spec file
-  run         Run convoy specs — deterministic, crash-recoverable agent orchestration
-  dispute     Manage convoy dispute resolution
+Experimental:
+  convoy      Run multi-step work through the convoy engine
 
-Observability:
-  dashboard   View agent observability dashboard in your browser
-  agents      Manage persistent agent identities
-  baselines   Manage visual regression baselines
-  log         Append a structured event to the observability log
-  lesson      Append a structured lesson to LESSONS-LEARNED.md
-
-Global options:
-  --help, -h       Show help
+Options:
+  --dry-run        Preview changes without writing files
+  --yes            Skip confirmation prompts
+  --json           Machine-readable output where supported
+  --help, -h       Show help for a command
   --version, -v    Show version number`}</code></pre>
         </div>
 
@@ -467,7 +460,7 @@ Global options:
     <footer class="footer">
       <div class="footer__inner">
         <span class="footer__copyright">
-          BSL 1.1 License · Filip Mares · 2026
+          MIT License · Filip Mares · 2026
         </span>
         <ul class="footer__links">
           <li><a href="/docs/">Docs</a></li>

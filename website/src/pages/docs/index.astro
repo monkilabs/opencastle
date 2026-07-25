@@ -141,8 +141,8 @@ const pages = [
             <div class="quickstart__step">
               <span class="quickstart__num">2</span>
               <div>
-                <p class="quickstart__label">Select your stack</p>
-                <p class="quickstart__desc">Pick your IDE, frameworks, and team tools in the interactive wizard.</p>
+                <p class="quickstart__label">Confirm what it found</p>
+                <p class="quickstart__desc">It reads your repository first &mdash; which assistants already have config, which framework, database, and test runner you use &mdash; shows the plan, and asks once. Files you already wrote are never overwritten: your <code class="quickstart__code">CLAUDE.md</code> keeps its content and the generated config goes into a managed block below it. Prefer to choose by hand? <code class="quickstart__code">npx opencastle init --customize</code>.</p>
               </div>
             </div>
           </div>
@@ -294,6 +294,45 @@ const pages = [
           </div>
         </section>
 
+        <!-- Staying in sync -->
+        <section class="quickstart" id="staying-in-sync">
+          <h3 class="quickstart__heading">Staying in sync</h3>
+          <div class="quickstart__steps">
+            <div class="quickstart__step">
+              <span class="quickstart__num">&bull;</span>
+              <div>
+                <p class="quickstart__label">Ask what needs doing</p>
+                <p class="quickstart__desc">Run <code class="quickstart__code">opencastle</code> with no arguments. It reports which targets exist, whether the generated files are still current, which assistants are configured but not being compiled, and the one command to run next.</p>
+              </div>
+            </div>
+            <div class="quickstart__step">
+              <span class="quickstart__num">&bull;</span>
+              <div>
+                <p class="quickstart__label">Recompile</p>
+                <p class="quickstart__desc"><code class="quickstart__code">opencastle sync</code> regenerates every target from source. Your <code class="quickstart__code">.opencastle/</code> customizations and anything outside a managed block are left alone.</p>
+              </div>
+            </div>
+            <div class="quickstart__step">
+              <span class="quickstart__num">&bull;</span>
+              <div>
+                <p class="quickstart__label">Catch drift in CI</p>
+                <p class="quickstart__desc"><code class="quickstart__code">opencastle sync --check</code> compiles to a scratch directory and compares. It writes nothing and exits non-zero when a generated file no longer matches its source &mdash; someone edited <code class="quickstart__code">.cursor/rules/foo.mdc</code> by hand, or upgraded without recompiling. Without it, drift is invisible: a stale rule file still loads fine.</p>
+                <pre><code>{`# .github/workflows/opencastle.yml
+- uses: actions/setup-node@v4
+  with: { node-version: 22 }
+- run: npx opencastle sync --check`}</code></pre>
+              </div>
+            </div>
+            <div class="quickstart__step">
+              <span class="quickstart__num">&bull;</span>
+              <div>
+                <p class="quickstart__label">Adopt a new tool</p>
+                <p class="quickstart__desc"><code class="quickstart__code">opencastle add supabase</code> updates the stored stack and recompiles, so the integration's skills and MCP config reach every target. <code class="quickstart__code">opencastle add --list</code> shows what is available.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- Doc pages grid -->
         <section class="docs-grid">
           {pages.map((page) => (
@@ -317,7 +356,7 @@ const pages = [
     <footer class="footer">
       <div class="footer__inner">
         <span class="footer__copyright">
-          BSL 1.1 License · Filip Mares · 2026
+          MIT License · Filip Mares · 2026
         </span>
         <ul class="footer__links">
           <li><a href="/docs/">Docs</a></li>

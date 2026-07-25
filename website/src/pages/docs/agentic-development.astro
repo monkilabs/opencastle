@@ -242,39 +242,31 @@ const sectionIcons: Record<string, string> = {
             <div class="agent-tier">
               <div class="agent-tier__header agent-tier__header--premium">Premium</div>
               <div class="agent-tier__body">
-                <p>Orchestration and cross-system coordination — tasks requiring deep reasoning and multi-step planning.</p>
-                <div class="agent-tier__examples">Team Lead</div>
-              </div>
-            </div>
-            <div class="agent-tier">
-              <div class="agent-tier__header agent-tier__header--quality">Quality</div>
-              <div class="agent-tier__body">
-                <p>Feature implementation, UI components, security audits — core development work that demands precision and nuanced reasoning.</p>
-                <div class="agent-tier__examples">Developer · UI/UX Expert · Security Expert · Architect</div>
+                <p>Orchestration, architecture decisions, security review &mdash; the hardest reasoning.</p>
+                <div class="agent-tier__examples">Team Lead · Architect · Security Expert</div>
               </div>
             </div>
             <div class="agent-tier">
               <div class="agent-tier__header agent-tier__header--standard">Standard</div>
               <div class="agent-tier__body">
-                <p>CMS integration, database work, API design, performance profiling — domain-specific tasks with broad context needs.</p>
-                <div class="agent-tier__examples">Content Engineer · Database Engineer · API Designer · Performance Expert · Researcher</div>
-              </div>
-            </div>
-            <div class="agent-tier">
-              <div class="agent-tier__header agent-tier__header--fast">Fast</div>
-              <div class="agent-tier__body">
-                <p>Testing, data pipelines, DevOps, releases — terminal-heavy tasks that benefit from rapid iteration cycles.</p>
-                <div class="agent-tier__examples">Testing Expert · Data Expert · DevOps Expert · Release Manager</div>
+                <p>Feature work, schemas, UI, tests, deployments &mdash; the bulk of the work.</p>
+                <div class="agent-tier__examples">Developer · UI/UX Expert · Data Engineer · Content Engineer · Testing Expert · Performance Expert · DevOps &amp; Release · Researcher</div>
               </div>
             </div>
             <div class="agent-tier">
               <div class="agent-tier__header agent-tier__header--economy">Economy</div>
               <div class="agent-tier__body">
-                <p>Documentation, copy, SEO, code review — tasks that benefit from speed and cost-efficiency over raw reasoning power.</p>
-                <div class="agent-tier__examples">Documentation Writer · Reviewer · Copywriter · SEO Specialist</div>
+                <p>Review passes, docs, copy, search metadata &mdash; high volume, low ambiguity.</p>
+                <div class="agent-tier__examples">Writer · Reviewer</div>
               </div>
             </div>
           </div>
+
+          <p style="margin-top: 16px; opacity: 0.75; font-size: 0.95em;">
+            A tier says what kind of model the work wants, not which model to use.
+            Your assistant picks that &mdash; it knows which models your account can
+            reach and what they cost today.
+          </p>
 
           <div class="do-dont-grid">
             <div class="card card--do">
@@ -864,7 +856,7 @@ const sectionIcons: Record<string, string> = {
     <footer class="footer">
       <div class="footer__inner">
         <span class="footer__copyright">
-          BSL 1.1 License · Filip Mares · 2026
+          MIT License · Filip Mares · 2026
         </span>
         <ul class="footer__links">
           <li><a href="/docs/">Docs</a></li>
