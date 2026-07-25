@@ -1,5 +1,5 @@
 import { resolve, dirname } from 'node:path'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createConvoyStore } from '../../cli/convoy/store.js'
 import { calculateCost } from '../../cli/convoy/pricing.js'
@@ -49,6 +49,12 @@ function dayTs(dayIdx: number, hour = 10, minute = 0): string {
 export async function createDemoDb(outPath: string, eventsOutPath?: string): Promise<void> {
   const dbPath = resolve(process.cwd(), outPath)
   mkdirSync(dirname(dbPath), { recursive: true })
+  // Start from empty. Re-running against an existing demo database failed on the
+  // first UNIQUE constraint, which made the generator a one-shot — awkward
+  // locally and a hazard in any workflow that caches between runs.
+  for (const suffix of ['', '-wal', '-shm']) {
+    rmSync(dbPath + suffix, { force: true })
+  }
   const store = createConvoyStore(dbPath)
 
   store.insertPipeline({ id: 'demo-pipeline-1', name: 'Auth & Dashboard Sprint', status: 'done', branch: 'sprint/auth-ui', spec_yaml: 'name: auth-dashboard-sprint', convoy_specs: JSON.stringify(['auth-revamp.yml', 'dashboard-ui.yml']), created_at: dayTs(2, 9) })
