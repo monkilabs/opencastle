@@ -2,7 +2,12 @@
 
 > Back to [README](README.md)
 
-OpenCastle turns AI coding assistants into multi-agent teams. A **Team Lead** agent decomposes work, delegates to specialist agents, and verifies results through layered quality gates — all orchestrated via the `opencastle` CLI.
+OpenCastle compiles one definition of your project's AI assistant setup —
+instructions, agents, skills, MCP servers — into the native format of every
+assistant your team uses, and reports when the generated files drift from source.
+
+An experimental convoy engine builds on the same content to run long multi-step
+work in dependency order. The compiler does not depend on it.
 
 ---
 
@@ -10,7 +15,7 @@ OpenCastle turns AI coding assistants into multi-agent teams. A **Team Lead** ag
 
 ```mermaid
 graph TB
-    TL["🏰 Team Lead<br/><sub>Claude Opus 4.7</sub><br/><sub>Analyze → Decompose → Delegate → Verify</sub>"]
+    TL["🏰 Team Lead<br/><sub>Premium tier</sub><br/><sub>Analyze → Decompose → Delegate → Verify</sub>"]
 
     subgraph Standard["Standard Tier"]
         DEV[Developer]
@@ -52,14 +57,20 @@ graph TB
 
 ---
 
-## Model Tiers
+## Capability Tiers
 
-| Tier | Model | Use case |
-|------|-------|----------|
-| Premium | Claude Opus 4.7 | Architecture, security, orchestration |
-| Standard | Gemini 3.1 Pro | Features, schemas, UI |
-| Utility | GPT-5.5-Codex | Testing, data, deployment |
-| Economy | GPT-5.4 mini | Documentation |
+Agents declare a tier rather than a model. Which model serves a tier is the
+assistant's decision — it knows which models the account can reach, what they
+cost today, and which have been retired.
+
+| Tier | For |
+|------|-----|
+| Premium | Orchestration, architecture, security review — the hardest reasoning |
+| Standard | Feature work, schemas, UI, tests — the bulk of the work |
+| Economy | Review passes, docs, copy — high volume, low ambiguity |
+
+Defined once in [`src/cli/tiers.ts`](src/cli/tiers.ts); agent frontmatter carries
+`tier:` and a test asserts no shipped file names a model.
 
 ---
 
@@ -286,7 +297,7 @@ Tasks can write artifacts to `.opencastle/artifacts/{convoy-id}/{task-id}/`:
 
 - Named files with metadata (type, summary, size)
 - Downstream tasks can read upstream artifacts via dependency resolution
-- Pruned by age via `opencastle artifacts prune`
+- Pruned by age as later convoys run
 
 ---
 
@@ -308,22 +319,15 @@ The [dashboard](src/dashboard/) provides a web UI for exploring convoy runs, tas
 
 ## CLI
 
-The `opencastle` CLI manages the full lifecycle:
-
 | Command | Purpose |
 |---------|---------|
-| `init` | Bootstrap OpenCastle in a project |
-| `update` | Regenerate agent/skill files from templates |
-| `run` | Execute a convoy |
-| `plan` | Generate a convoy spec from a task description |
-| `log` | Append observability records |
-| `dashboard` | Launch the web dashboard |
-| `doctor` | Diagnose configuration issues |
-| `validate` | Validate convoy specs and project config |
-| `detect` | Detect IDE and project stack |
-| `skills` | List and manage skills |
-| `agents` | List and manage agents |
-| `lesson` | Read/write lessons learned |
-| `insights` | Query convoy analytics |
-| `artifacts` | Manage convoy artifacts |
-| `eject` | Remove OpenCastle, keeping generated files |
+| *(none)* | Project status: targets, drift, and the next command to run |
+| `init` | Set up the project from detected stack and existing assistant config |
+| `sync` | Recompile every configured target from source |
+| `add <pack>` | Adopt an integration and recompile |
+| `doctor` | Diagnose configuration problems |
+| `remove` | Remove OpenCastle, keeping or deleting generated files |
+| `convoy` | Experimental: plan and run multi-step work |
+
+`log` and `lesson` also exist but are invoked by agents from generated
+instructions rather than by people, so they are not listed in help.
