@@ -134,16 +134,41 @@ Net: **19 commands → 6 visible + 1 experimental namespace**; global flags stan
 - **3c — lint v1:** not started.
 - **3d — canonical source (AGENTS.md + opencastle.yml):** not started. The managed-block work in 3a is the foundation it needs.
 
-### Phase 4 — Convoy extraction (1 week)
-- Move `src/cli/convoy/` + `run/` + dashboard core to `packages/convoy`, slim to minimal core, one adapter (claude-agent-sdk), mark experimental.
-- Decouple demo-DB/ETL from `publish.yml`; keep a static dashboard demo for the website.
+### Phase 4 — Convoy extraction — ✅ DONE (one deliberate deviation)
+- ✅ **4b — slim the core:** removed the intelligence suite (lessons, expertise, knowledge graph, discovered-issues, skill refinement, compaction). Six modules, each with a single call site wrapped in a silent catch. Deleting them broke compilation in exactly one file, confirming they were isolated. Also removed the dead config surface they exposed, which would otherwise have validated and silently done nothing.
+- ✅ **4c — decouple the release:** publishing no longer runs the demo generator, so an engine schema change can't break the npm release. Also made the generator idempotent — it previously failed on re-run.
+- ⚠️ **4a — deviation.** The plan called for physically moving the engine to `packages/convoy`. That is ~33k LOC needing npm workspaces, a tsconfig split, and build/publish rework — real risk for an organisational gain. The property that actually matters is the *dependency direction*, and checking it found the product was already engine-free except for `src/cli/types.ts`, which imported engine types to describe the engine's own spec model. That model moved to `convoy/spec-types.ts` (types.ts: 396 → 146 lines), and `boundary.test.ts` now enforces that no product module imports the engine. **The physical move is deferred, not done** — but it is now mechanical rather than delicate.
 
-### Phase 5 — Relaunch
-- v1.0.0 with the new story. Show HN / dev.to round two: "Your AI assistant config is sprawling across 7 formats — we built the compiler." The GITHUB-STARS-STRATEGY.md playbook from March still applies; the product finally matches a felt pain.
+### Phase 5 — Relaunch prep
+- ✅ Five-minute quickstart at `docs/quickstart.md`, every command and quoted output transcribed from real runs, guarded by tests.
+- **Not done:** version bump to 1.0.0, a replacement demo recording (the old gif shows the nine-screen flow that no longer exists), and the Show HN / dev.to launch itself. These are release decisions, not code.
 
-### Success metrics (DX-first)
-- **Time-to-visible-value < 2 minutes**: `npx opencastle init` on a repo with existing assistant config ends with lifted + compiled targets and a summary of what changed. Test this on real repos, timed.
-- **Quickstart completable in 5 minutes** by someone who has never seen the project; validate with 2–3 cold users before relaunch.
-- **Second-session signal**: `sync --check` adopted in ≥1 external CI within a month of relaunch — the retention proof `init` alone never produced.
-- Maintenance surface: ~46.5k → ~15k LOC core product; visible CLI surface 19 commands → 6.
-- npm weekly downloads recovering past the March organic baseline (~200/wk) without a launch spike.
+---
+
+## Outcome
+
+| Metric | Before | After |
+|---|---|---|
+| Visible CLI commands | 19 | 6 (+ experimental `convoy`) |
+| Installed content | 89,400 words | 56,951 |
+| Plugin content | 37,236 words | ~10,200 |
+| Agents | 19 | 13 |
+| Product code (excl. engine) | — | 10,657 LOC |
+| Tests | 1,489 | 1,560 |
+| Time-to-value (`init --yes`, 2 assistants) | nine-screen questionnaire | ~100ms, one confirmation |
+
+**Bugs found and fixed along the way** — all pre-existing, none introduced by the refactor:
+
+1. Ledger writes resolved from `process.cwd()`, so the test suite had been writing into the repo's own `.opencastle/` since March (1.6 MB of fake DLQ entries).
+2. `consolidateLessons` re-joined entries that kept their trailing whitespace, growing the file without bound — 378,053 blank lines around 206 real ones.
+3. The dispute writer never created its parent directory; it only worked because `cwd/.opencastle` happened to exist.
+4. KI-003: a crash left convoys reading `running` forever, which `resume` then refused to touch.
+5. The Anthropic SDK path targeted a package that does not exist, calling an API that appears in no published Anthropic SDK. It had never run.
+6. `snippets/` was never installed, so all 13 agents linked to a missing file and the mandatory-logging rule never reached any agent.
+7. Plugin `references/` was never installed either, and several SKILL.md files routed readers to it.
+8. Root instruction files were skipped when they already existed, so on a repo with a `CLAUDE.md` — the exact adoption case — the instructions layer silently never installed, and `update` deleted the file outright.
+9. `sync` gated on version equality, so `sync --check` could report drift while `sync` insisted everything was current.
+10. Optional contract fields were never validated.
+11. The demo generator was not idempotent, failing on any re-run.
+
+**Open follow-ups:** content is 57k words against the ~30k target — prompts, customizations, and workflows were out of scope for the content pass. Cursor still receives `alwaysApply: true` on scoped instructions, which widens them to every file (pinned by a test, fix belongs with canonical-source work). `lint` v1 and the AGENTS.md canonical-source refactor are not started.
