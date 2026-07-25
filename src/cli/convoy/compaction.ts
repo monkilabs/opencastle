@@ -91,8 +91,8 @@ export function parseCompactionSummary(
 
 // --- Save / restore ---
 
-export function getCompactionDir(convoyId: string, taskId: string): string {
-  return join(resolve(process.cwd()), '.opencastle', 'artifacts', convoyId, taskId)
+export function getCompactionDir(convoyId: string, taskId: string, basePath?: string): string {
+  return join(resolve(basePath ?? process.cwd()), '.opencastle', 'artifacts', convoyId, taskId)
 }
 
 export function saveCompaction(
@@ -100,8 +100,9 @@ export function saveCompaction(
   taskId: string,
   summary: CompactionSummary,
   compactionCount: number,
+  basePath?: string,
 ): string {
-  const dir = getCompactionDir(convoyId, taskId)
+  const dir = getCompactionDir(convoyId, taskId, basePath)
   mkdirSync(dir, { recursive: true })
   const filename = `compaction-${compactionCount}.json`
   const filePath = join(dir, filename)

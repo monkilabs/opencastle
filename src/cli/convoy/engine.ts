@@ -449,8 +449,8 @@ function buildDlqMarkdownEntry(
 
 // Appends a pre-scanned DLQ entry to AGENT-FAILURES.md. The caller must have
 // already verified the entry is clean via scanForSecrets — no re-scan here.
-function appendDlqMarkdownClean(marker: string, entry: string): void {
-  const mdPath = join(resolve(process.cwd()), '.opencastle', 'AGENT-FAILURES.md')
+function appendDlqMarkdownClean(marker: string, entry: string, basePath: string): void {
+  const mdPath = join(resolve(basePath), '.opencastle', 'AGENT-FAILURES.md')
   try {
     const existing = readFileSync(mdPath, 'utf8')
     if (existing.includes(marker)) return
@@ -466,9 +466,10 @@ function writeDisputeToMarkdown(
   convoyId: string,
   task: TaskRecord,
   panelResults: ReviewResult[],
+  basePath: string,
   events?: ConvoyEventEmitter | null,
 ): void {
-  const mdPath = join(resolve(process.cwd()), '.opencastle', 'DISPUTES.md')
+  const mdPath = join(resolve(basePath), '.opencastle', 'DISPUTES.md')
   const marker = `<!-- dispute:${disputeId} -->`
 
   try {
@@ -502,6 +503,7 @@ function writeDisputeToMarkdown(
     return
   }
 
+  mkdirSync(dirname(mdPath), { recursive: true })
   appendFileSync(mdPath, entry)
 }
 
@@ -1018,7 +1020,7 @@ async function runConvoy(
           created_at: new Date().toISOString(),
           resolved_at: null,
         })
-        appendDlqMarkdownClean(dlqMarker, dlqMdEntry)
+        appendDlqMarkdownClean(dlqMarker, dlqMdEntry, basePath)
         events.emit('dlq_entry_created', {
           dlq_id: dlqId,
           task_id: taskRecord.id,
@@ -1311,7 +1313,7 @@ async function runConvoy(
 
     // ── Artifact output instructions (Phase 43) ────────────────────────────
     try {
-      const artifactDir = getArtifactDir(convoyId, taskRecord.id)
+      const artifactDir = getArtifactDir(convoyId, taskRecord.id, basePath)
       const artifactInstructions = [
         '',
         '## Artifact Output (for large results)',
@@ -2111,7 +2113,7 @@ async function runConvoy(
               const onDispute = spec.defaults?.on_dispute ?? 'stop'
 
               store.updateTaskDisputeStatus(taskRecord.id, convoyId, 'disputed', disputeId)
-              writeDisputeToMarkdown(disputeId, convoyId, taskRecord, panelResults, events)
+              writeDisputeToMarkdown(disputeId, convoyId, taskRecord, panelResults, basePath, events)
 
               events.emit('dispute_opened', {
                 dispute_id: disputeId,
@@ -2387,7 +2389,7 @@ async function runConvoy(
             let summaryPath: string | undefined
             if (summaryFromOutput) {
               try {
-                summaryPath = saveCompaction(convoyId, taskRecord.id, summaryFromOutput, newCount)
+                summaryPath = saveCompaction(convoyId, taskRecord.id, summaryFromOutput, newCount, basePath)
               } catch { /* non-critical */ }
             }
 

@@ -102,6 +102,7 @@ function makeSpec(
 function makeEngine(opts: ConvoyEngineOptions): ReturnType<typeof createConvoyEngine> {
   return createConvoyEngine({
     logsDir: join(tmpDir, 'logs'),  // prevents test data in production logs
+    basePath: tmpDir,               // ditto for the .opencastle/ ledgers
     _ensureBranch: vi.fn().mockResolvedValue(undefined),
     _convoyWorktreeDir: null,
     ...opts,
@@ -3290,7 +3291,7 @@ describe('convoy-level worktree when branch is set', () => {
   it('runs successfully when _convoyWorktreeDir is null and branch is set', async () => {
     const adapter = makeAdapter()
     const spec = makeSpec({ branch: 'feature-x' })
-    const engine = createConvoyEngine({
+    const engine = makeEngine({
       spec,
       specYaml: 'name: test',
       adapter,

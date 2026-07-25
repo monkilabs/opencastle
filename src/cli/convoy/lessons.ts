@@ -159,6 +159,10 @@ export function consolidateLessons(basePath?: string): { merged: number; remaini
     processed.add(i)
     kept.push(entries[bestIdx])
   }
-  writeFileSync(filePath, header + kept.join('\n'), 'utf8')
+  // Entries keep the whitespace that preceded the next heading, so joining them
+  // verbatim re-adds a blank line on every consolidation run. Trim each entry and
+  // use a fixed separator, otherwise the file grows without bound.
+  const body = kept.map(e => e.trim()).join('\n\n')
+  writeFileSync(filePath, `${header.trimEnd()}\n\n${body}\n`, 'utf8')
   return { merged: mergedCount, remaining: kept.length }
 }
