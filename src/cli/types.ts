@@ -91,8 +91,16 @@ export interface Manifest {
 
 /** Framework vs customizable file paths. */
 export interface ManagedPaths {
+  /** Wholly generated. Safe to delete and regenerate. */
   framework: string[];
+  /** The user's, never overwritten. */
   customizable: string[];
+  /**
+   * Co-owned: the user's prose plus a managed block. Never delete these — strip
+   * the block and keep the rest. Treating them as `framework` is what let
+   * `init` and `remove --all` destroy someone's CLAUDE.md.
+   */
+  merged?: string[];
 }
 
 /** Structure check for the doctor command — describes expected files/dirs per IDE. */

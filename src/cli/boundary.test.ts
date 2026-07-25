@@ -119,3 +119,50 @@ describe('the release does not depend on the engine schema', () => {
     expect(workflow).not.toMatch(/npm run dashboard:generate-demo-db/)
   })
 })
+
+/**
+ * The invariant behind the co-owned root file.
+ *
+ * `framework` means "wholly generated, safe to delete and regenerate", and three
+ * code paths act on exactly that promise. When the root instruction file became a
+ * merge target it stayed in `framework`, so `init` re-run and `remove --all`
+ * deleted files that held the user's own writing, and `.gitignore` kept that
+ * writing out of git so there was no copy to restore. Every root file belongs in
+ * `merged`, and nothing may quietly move one back.
+ */
+describe('root instruction files are co-owned, never framework', () => {
+  const ROOT_FILES = [
+    'CLAUDE.md',
+    'AGENTS.md',
+    'GEMINI.md',
+    '.cursorrules',
+    '.windsurfrules',
+    '.github/copilot-instructions.md',
+  ]
+
+  it('every adapter declares its root file as merged', async () => {
+    const { IDE_ADAPTERS } = await import('./adapters/index.js')
+    for (const [ide, load] of Object.entries(IDE_ADAPTERS)) {
+      const managed = (await load()).getManagedPaths()
+      const roots = [...(managed.merged ?? [])]
+      expect(roots.length, `${ide} declares no merged root file`).toBeGreaterThan(0)
+      for (const root of roots) {
+        expect(ROOT_FILES, `${ide} merges an unexpected path: ${root}`).toContain(root)
+      }
+      for (const p of managed.framework) {
+        expect(ROOT_FILES, `${ide} still lists ${p} as framework`).not.toContain(p)
+      }
+    }
+  })
+
+  it('the gitignore block never hides generated config from git', async () => {
+    const source = readFileSync(join(cliDir, 'gitignore.ts'), 'utf8')
+    for (const root of ROOT_FILES) {
+      expect(source, `gitignore.ts mentions ${root}`).not.toContain(root)
+    }
+    // Nor the generated directories.
+    for (const dir of ['.claude/', '.cursor/rules', '.github/agents', '.opencode/', '.codex/']) {
+      expect(source, `gitignore.ts mentions ${dir}`).not.toContain(dir)
+    }
+  })
+})

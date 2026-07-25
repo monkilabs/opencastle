@@ -1,33 +1,45 @@
 import { resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import type { ManagedPaths } from './types.js'
 
 const START_MARKER = '# >>> OpenCastle managed (do not edit) >>>'
 const END_MARKER = '# <<< OpenCastle managed <<<'
 
 /**
- * Build the gitignore block for OpenCastle-managed files.
+ * What OpenCastle asks git to ignore — which is almost nothing.
  *
- * Ignores all framework-managed paths plus the manifest file.
- * Explicitly un-ignores customizable directories so user edits
- * are committed even when a parent directory is ignored.
+ * Generated assistant config used to be ignored wholesale, on the reasoning that
+ * build output does not belong in git. That was wrong twice over. A teammate who
+ * cloned the repo got no rules until they ran the tool, which defeats the point
+ * of compiling one source into every assistant's format. And `sync --check` on a
+ * clean CI checkout found no generated files at all, so the drift check this tool
+ * ships could only ever fail.
+ *
+ * Generated config is committed, like a lockfile. What stays out is the genuinely
+ * local: secrets and run artefacts.
  */
-function buildBlock(managed: ManagedPaths): string {
-  const lines: string[] = [START_MARKER]
+const LOCAL_ONLY = [
+  '.env',
+  '.opencastle/logs/',
+  '.opencastle/runs/',
+  '.opencastle/worktrees/',
+  '.opencastle/artifacts/',
+  '.opencastle/baselines/',
+  '.opencastle/*.db',
+  '.opencastle/*.db-wal',
+  '.opencastle/*.db-shm',
+  '.opencastle/*.ndjson',
+]
 
-  // Framework-managed paths (overwritten on `opencastle update`)
-  for (const p of managed.framework) {
-    lines.push(p)
-  }
-
-  // Un-ignore customizable paths so they stay tracked
-  for (const p of managed.customizable) {
-    lines.push(`!${p}`)
-  }
-
-  lines.push(END_MARKER)
-  return lines.join('\n')
+function buildBlock(): string {
+  return [
+    START_MARKER,
+    '# Generated assistant config is committed on purpose, so teammates get',
+    '# working rules on clone and `opencastle sync --check` can verify it in CI.',
+    '# Only local artefacts are ignored.',
+    ...LOCAL_ONLY,
+    END_MARKER,
+  ].join('\n')
 }
 
 /**
@@ -39,11 +51,10 @@ function buildBlock(managed: ManagedPaths): string {
  *   (handles re-init or IDE switch cleanly).
  */
 export async function updateGitignore(
-  projectRoot: string,
-  managed: ManagedPaths
+  projectRoot: string
 ): Promise<'created' | 'updated' | 'unchanged'> {
   const gitignorePath = resolve(projectRoot, '.gitignore')
-  const block = buildBlock(managed)
+  const block = buildBlock()
 
   if (!existsSync(gitignorePath)) {
     await writeFile(gitignorePath, block + '\n', 'utf8')

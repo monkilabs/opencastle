@@ -58,7 +58,7 @@ export async function install(
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
   {
     const merge = await writeManagedBlock(copilotDest, await readFile(copilotSrc, 'utf8'))
-    if (merge.action === 'created') results.created.push(copilotDest)
+    if (merge.action === 'created' || merge.action === 'adopted') results.created.push(copilotDest)
     else if (merge.action === 'unchanged') results.skipped.push(copilotDest)
     else results.copied.push(copilotDest)
   }
@@ -180,10 +180,8 @@ export async function update(
 
 export function getManagedPaths(): ManagedPaths {
   return {
-    framework: [
-      '.github/copilot-instructions.md',
-      ...FRAMEWORK_DIRS.map((d) => `.github/${d}/`),
-    ],
+    framework: FRAMEWORK_DIRS.map((d) => `.github/${d}/`),
+    merged: ['.github/copilot-instructions.md'],
     customizable: [
       '.opencastle/',
       '.vscode/mcp.json',

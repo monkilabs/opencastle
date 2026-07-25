@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, readFile as readFileText, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -21,6 +21,7 @@ vi.mock('./prompt.js', () => ({
 
 import remove from './remove.js'
 import { confirm, select } from './prompt.js'
+import { writeManagedBlock } from './managed-block.js'
 import type { Manifest } from './types.js'
 
 const START_MARKER = '# >>> OpenCastle managed (do not edit) >>>'
@@ -82,6 +83,36 @@ describe('remove --all', () => {
 
     expect(existsSync(join(tmpDir, '.github', 'instructions', 'general.instructions.md'))).toBe(false)
     expect(existsSync(join(tmpDir, '.github', 'copilot-instructions.md'))).toBe(false)
+  })
+
+  it("strips the block from a co-owned root file but keeps the user's writing", async () => {
+    // The tool created the merge; it may only undo its own half. Deleting the file
+    // outright destroyed prose the user wrote before OpenCastle ever ran.
+    await writeManifestFile(tmpDir, {
+      managedPaths: { framework: [], customizable: [], merged: ['CLAUDE.md'] },
+    })
+    const claudeMd = join(tmpDir, 'CLAUDE.md')
+    await writeFile(claudeMd, '# House rules\n\nNEVER_TOUCH_PAYMENTS\n')
+    await writeManagedBlock(claudeMd, 'compiled instructions')
+
+    await remove({ pkgRoot: tmpDir, args: ['--all'] })
+
+    expect(existsSync(claudeMd)).toBe(true)
+    const text = await readFileText(claudeMd, 'utf8')
+    expect(text).toContain('NEVER_TOUCH_PAYMENTS')
+    expect(text).not.toContain('compiled instructions')
+  })
+
+  it('deletes a co-owned root file that holds nothing but our block', async () => {
+    await writeManifestFile(tmpDir, {
+      managedPaths: { framework: [], customizable: [], merged: ['CLAUDE.md'] },
+    })
+    const claudeMd = join(tmpDir, 'CLAUDE.md')
+    await writeManagedBlock(claudeMd, 'compiled instructions')
+
+    await remove({ pkgRoot: tmpDir, args: ['--all'] })
+
+    expect(existsSync(claudeMd)).toBe(false)
   })
 
   it('removes .opencastle/ directory', async () => {

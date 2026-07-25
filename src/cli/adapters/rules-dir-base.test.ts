@@ -161,7 +161,9 @@ describe.each([
 
   it('lists managed and doctor paths under its own config directory', () => {
     const managed = adapter.getManagedPaths()
-    expect(managed.framework).toContain(rootFile)
+    // Co-owned, not framework — `remove --all` may only strip its own block from it.
+    expect(managed.merged).toContain(rootFile)
+    expect(managed.framework).not.toContain(rootFile)
     expect(managed.customizable).toContain(`${configDir}/mcp.json`)
     for (const check of adapter.getDoctorChecks()) {
       expect(check.path === rootFile || check.path.startsWith(`${configDir}/`)).toBe(true)

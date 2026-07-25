@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, readFile, readdir, rm, unlink } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -344,46 +344,39 @@ describe('gitignore generation', () => {
     await rm(tempDir, { recursive: true, force: true })
   })
 
-  it('creates .gitignore with framework paths ignored and customizable un-ignored', async () => {
-    const managed = {
-      framework: ['.github/copilot-instructions.md', '.github/agents/'],
-      customizable: ['.opencastle/', '.vscode/mcp.json'],
-    }
-
-    await updateGitignore(tempDir, managed)
+  it('does not ignore generated config — it must be committed for teammates and CI', async () => {
+    await updateGitignore(tempDir)
     const content = await readFile(join(tempDir, '.gitignore'), 'utf8')
 
-    // Framework paths should be ignored
-    expect(content).toContain('.github/copilot-instructions.md')
-    expect(content).toContain('.github/agents/')
-    // Customizable paths should be un-ignored
-    expect(content).toContain('!.opencastle/')
-    expect(content).toContain('!.vscode/mcp.json')
-    // Markers should be present
+    // The compiled output is committed, like a lockfile.
+    expect(content).not.toContain('.github/copilot-instructions.md')
+    expect(content).not.toContain('CLAUDE.md')
+    expect(content).not.toMatch(/^\.claude\/agents\/$/m)
+    // Secrets and run artefacts stay local.
+    expect(content).toContain('.env')
+    expect(content).toContain('.opencastle/logs/')
+    expect(content).toContain('.opencastle/*.db')
     expect(content).toContain('# >>> OpenCastle managed (do not edit) >>>')
     expect(content).toContain('# <<< OpenCastle managed <<<')
   })
 
   it('replaces existing block on re-init', async () => {
-    const managed1 = {
-      framework: ['.github/agents/'],
-      customizable: ['.vscode/mcp.json'],
-    }
-    await updateGitignore(tempDir, managed1)
-
-    const managed2 = {
-      framework: ['.github/agents/', '.github/skills/'],
-      customizable: ['.vscode/mcp.json', '.opencastle/'],
-    }
-    const result = await updateGitignore(tempDir, managed2)
-    expect(result).toBe('updated')
+    await updateGitignore(tempDir)
+    const result = await updateGitignore(tempDir)
+    expect(result).toBe('unchanged')
 
     const content = await readFile(join(tempDir, '.gitignore'), 'utf8')
-    expect(content).toContain('.github/skills/')
-    expect(content).toContain('!.opencastle/')
-    // Only one managed block
     const startCount = (content.match(/>>> OpenCastle managed/g) ?? []).length
     expect(startCount).toBe(1)
+  })
+
+  it('keeps the user\'s own gitignore rules when adding the block', async () => {
+    await writeFile(join(tempDir, '.gitignore'), 'node_modules\ndist/\n')
+    await updateGitignore(tempDir)
+    const content = await readFile(join(tempDir, '.gitignore'), 'utf8')
+    expect(content).toContain('node_modules')
+    expect(content).toContain('dist/')
+    expect(content).toContain('.opencastle/logs/')
   })
 })
 
@@ -606,7 +599,8 @@ describe('VS Code adapter install', () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('.github/copilot-instructions.md')
+    expect(paths.merged).toContain('.github/copilot-instructions.md')
+    expect(paths.framework).not.toContain('.github/copilot-instructions.md')
     expect(paths.framework).toContain('.github/agents/')
     expect(paths.framework).toContain('.github/instructions/')
     expect(paths.framework).toContain('.github/skills/')
@@ -733,7 +727,8 @@ describe('Cursor adapter install', () => {
     const adapter = await IDE_ADAPTERS['cursor']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('.cursorrules')
+    expect(paths.merged).toContain('.cursorrules')
+    expect(paths.framework).not.toContain('.cursorrules')
     expect(paths.framework).toContain('.cursor/rules/agents/')
     expect(paths.framework).toContain('.cursor/rules/skills/')
     expect(paths.framework).toContain('.cursor/rules/general.mdc')
@@ -887,7 +882,8 @@ describe('Claude Code adapter install', () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('CLAUDE.md')
+    expect(paths.merged).toContain('CLAUDE.md')
+    expect(paths.framework).not.toContain('CLAUDE.md')
     expect(paths.framework).toContain('.claude/agents/')
     expect(paths.framework).toContain('.claude/skills/')
     expect(paths.framework).toContain('.claude/commands/')
@@ -977,7 +973,8 @@ describe('OpenCode adapter install', () => {
     const adapter = await IDE_ADAPTERS['opencode']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('AGENTS.md')
+    expect(paths.merged).toContain('AGENTS.md')
+    expect(paths.framework).not.toContain('AGENTS.md')
     expect(paths.framework).toContain('.opencode/agents/')
     expect(paths.framework).toContain('.opencode/skills/')
     expect(paths.framework).toContain('.opencode/prompts/')
@@ -1070,7 +1067,8 @@ describe('Windsurf adapter install', () => {
   it('getManagedPaths returns expected Windsurf paths', async () => {
     const adapter = await IDE_ADAPTERS['windsurf']()
     const paths = adapter.getManagedPaths()
-    expect(paths.framework).toContain('.windsurfrules')
+    expect(paths.merged).toContain('.windsurfrules')
+    expect(paths.framework).not.toContain('.windsurfrules')
     expect(paths.framework.some(p => p.includes('.windsurf/rules/'))).toBe(true)
     expect(paths.customizable).toContain('.windsurf/mcp.json')
   })
@@ -1113,7 +1111,8 @@ describe('Codex adapter install', () => {
   it('getManagedPaths includes AGENTS.md and .codex dirs', async () => {
     const adapter = await IDE_ADAPTERS['codex']()
     const paths = adapter.getManagedPaths()
-    expect(paths.framework).toContain('AGENTS.md')
+    expect(paths.merged).toContain('AGENTS.md')
+    expect(paths.framework).not.toContain('AGENTS.md')
     expect(paths.framework.some(p => p.includes('.codex/'))).toBe(true)
     expect(paths.customizable).toContain('.codex/mcp.json')
   })
@@ -1156,7 +1155,8 @@ describe('Antigravity adapter install', () => {
   it('getManagedPaths includes GEMINI.md and .agents dirs', async () => {
     const adapter = await IDE_ADAPTERS['antigravity']()
     const paths = adapter.getManagedPaths()
-    expect(paths.framework).toContain('GEMINI.md')
+    expect(paths.merged).toContain('GEMINI.md')
+    expect(paths.framework).not.toContain('GEMINI.md')
     expect(paths.framework.some(p => p.includes('.agents/'))).toBe(true)
     expect(paths.customizable).toContain('.agents/mcp_config.json')
   })

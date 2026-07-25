@@ -13,6 +13,7 @@ import { IDE_ADAPTERS } from './adapters/index.js'
 import { IDE_LABELS } from './types.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { bootstrapCustomizations } from './bootstrap.js'
+import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -270,14 +271,17 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       removeOldFiles = await confirm(`Remove ${oldIdeLabel} files from previous installation?`, false)
     }
     if (removeOldFiles) {
-      const frameworkPaths = existing.managedPaths?.framework ?? []
-      for (const p of frameworkPaths) {
+      for (const p of existing.managedPaths?.framework ?? []) {
         const fullPath = resolve(projectRoot, p)
         if (p.endsWith('/')) {
           await removeDirIfExists(fullPath)
         } else if (existsSync(fullPath)) {
           await unlink(fullPath)
         }
+      }
+      // Co-owned files are not ours to delete — take back only the block.
+      for (const p of existing.managedPaths?.merged ?? []) {
+        await stripManagedBlockFromFile(resolve(projectRoot, p))
       }
     }
   }
@@ -286,7 +290,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   let totalCreated = 0
   let totalSkipped = 0
   const skippedPaths: string[] = []
-  const allManagedPaths = { framework: [] as string[], customizable: [] as string[] }
+  const allManagedPaths = { framework: [] as string[], customizable: [] as string[], merged: [] as string[] }
 
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
@@ -298,6 +302,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     const managed = adapter.getManagedPaths()
     allManagedPaths.framework.push(...managed.framework)
     allManagedPaths.customizable.push(...managed.customizable)
+    allManagedPaths.merged.push(...(managed.merged ?? []))
   }
 
   // If all files were skipped (orphaned install — no manifest but files exist)
@@ -316,6 +321,9 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
           } else if (existsSync(fullPath)) {
             await unlink(fullPath)
           }
+        }
+        for (const p of managed.merged ?? []) {
+          await stripManagedBlockFromFile(resolve(projectRoot, p))
         }
       }
       // Re-run install
@@ -363,14 +371,10 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   manifest.repoInfo = combinedRepoInfo
   await writeManifest(projectRoot, manifest)
 
-  // ── Ensure .env is gitignored when MCP env vars are needed ────
-  const envVars = getRequiredMcpEnvVars(stack, combinedRepoInfo)
-  if (envVars.length > 0 && !allManagedPaths.framework.includes('.env')) {
-    allManagedPaths.framework.push('.env')
-  }
-
   // ── Update .gitignore ───────────────────────────────────────────
-  const gitignoreResult = await updateGitignore(projectRoot, allManagedPaths)
+  // Only local artefacts and .env; the generated config is meant to be committed.
+  const envVars = getRequiredMcpEnvVars(stack, combinedRepoInfo)
+  const gitignoreResult = await updateGitignore(projectRoot)
 
   // ── Summary ─────────────────────────────────────────────────────
   console.log(`  ${c.green('✓')} Created ${c.bold(String(totalCreated))} files`)
@@ -386,14 +390,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   // Name the root files that already existed and were merged rather than replaced.
   const mergedRoots: string[] = []
-  for (const p of allManagedPaths.framework) {
-    if (p.includes('/') || p.endsWith('/')) continue
+  for (const p of allManagedPaths.merged) {
     const abs = resolve(projectRoot, p)
     if (!existsSync(abs)) continue
     try {
-      const { stripManagedBlock } = await import('./managed-block.js')
-      const { readFile: rf } = await import('node:fs/promises')
-      const text = await rf(abs, 'utf8')
+      const text = await readFile(abs, 'utf8')
       if (stripManagedBlock(text).trim().length > 0) mergedRoots.push(p)
     } catch { /* not readable — nothing to claim */ }
   }

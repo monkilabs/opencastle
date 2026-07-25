@@ -243,7 +243,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const rootFile = resolve(projectRoot, rootRulesFile)
     {
       const merge = await writeManagedBlock(rootFile, rootIntro)
-      if (merge.action === 'created') results.created.push(rootFile)
+      if (merge.action === 'created' || merge.action === 'adopted') results.created.push(rootFile)
       else if (merge.action === 'unchanged') results.skipped.push(rootFile)
       else results.copied.push(rootFile)
     }
@@ -334,8 +334,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
 
   function getManagedPaths(): ManagedPaths {
     return {
+      merged: [rootRulesFile],
       framework: [
-        rootRulesFile,
         `${rulesPrefix}/agents/`,
         `${rulesPrefix}/skills/`,
         `${rulesPrefix}/agent-workflows/`,

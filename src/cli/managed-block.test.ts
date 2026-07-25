@@ -14,6 +14,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   writeManagedBlock,
   stripManagedBlock,
+  stripManagedBlockFromFile,
   hasManagedBlock,
   BLOCK_START,
   BLOCK_END,
@@ -124,8 +125,119 @@ describe('stripManagedBlock', () => {
     expect(stripped).not.toContain('generated')
   })
 
-  it('handles a start marker with no end marker', () => {
-    const text = `# Mine\n\n${BLOCK_START}\ntruncated`
-    expect(stripManagedBlock(text)).toBe('# Mine\n\n')
+  it('keeps text below the block when the end marker was lost', () => {
+    // A hand edit or a merge resolution can delete the closing marker. Treating
+    // "no end marker" as "block runs to EOF" silently ate everything below it.
+    const text = `# Mine\n\n${BLOCK_START}\n\n## Written after\n\nstill mine\n`
+    const stripped = stripManagedBlock(text)
+    expect(stripped).toContain('# Mine')
+    expect(stripped).toContain('## Written after')
+    expect(stripped).toContain('still mine')
+    expect(stripped).not.toContain(BLOCK_START)
+  })
+})
+
+/**
+ * Everything below covers the three paths that used to unlink a co-owned root
+ * file outright: `init` re-run, the orphaned-install overwrite, and `remove --all`.
+ */
+describe('upgrading an install that predates the markers', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-upgrade-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('adopts a previously generated root file instead of doubling it', async () => {
+    // What a release before the markers wrote: no markers, all of it ours.
+    writeFileSync(
+      file,
+      '# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n\n## Agents\n\n- retired-agent\n',
+    )
+
+    const result = await writeManagedBlock(file, 'fresh generation')
+    expect(result.action).toBe('adopted')
+    expect(result.preservedUserContent).toBe(false)
+
+    const text = readFileSync(file, 'utf8')
+    expect(text).toContain('fresh generation')
+    // The stale half must be gone, not stranded above the block.
+    expect(text).not.toContain('retired-agent')
+    expect(text.split(BLOCK_START)).toHaveLength(2)
+  })
+
+  it('recognises the copilot-instructions header too', async () => {
+    writeFileSync(
+      file,
+      '<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. -->\n\n# Copilot Instructions\n\nold body\n',
+    )
+    const result = await writeManagedBlock(file, 'fresh')
+    expect(result.action).toBe('adopted')
+    expect(readFileSync(file, 'utf8')).not.toContain('old body')
+  })
+
+  it('does not mistake a hand-written file for generated output', async () => {
+    writeFileSync(file, '# Acme\n\nUse pnpm. Our architecture is documented in docs/.\n')
+    const result = await writeManagedBlock(file, 'fresh')
+    expect(result.action).toBe('appended')
+    expect(readFileSync(file, 'utf8')).toContain('Use pnpm.')
+  })
+})
+
+describe('stripManagedBlockFromFile', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-strip-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it("keeps the user's prose and removes only the block", async () => {
+    writeFileSync(file, '# My Rules\n\nNEVER_TOUCH_PAYMENTS\n')
+    await writeManagedBlock(file, 'generated')
+
+    expect(await stripManagedBlockFromFile(file)).toBe('stripped')
+    const text = readFileSync(file, 'utf8')
+    expect(text).toContain('NEVER_TOUCH_PAYMENTS')
+    expect(text).not.toContain('generated')
+    expect(hasManagedBlock(text)).toBe(false)
+    // The separator we inserted goes with our half.
+    expect(text.trimEnd().endsWith('---')).toBe(false)
+  })
+
+  it('deletes the file when nothing of the user\'s remains', async () => {
+    await writeManagedBlock(file, 'generated')
+    expect(await stripManagedBlockFromFile(file)).toBe('deleted')
+    expect(existsSync(file)).toBe(false)
+  })
+
+  it('deletes a pre-marker generated file rather than leaving a stale copy', async () => {
+    writeFileSync(file, '# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n')
+    expect(await stripManagedBlockFromFile(file)).toBe('deleted')
+    expect(existsSync(file)).toBe(false)
+  })
+
+  it('reports absent for a file that was never written', async () => {
+    expect(await stripManagedBlockFromFile(join(dir, 'nope.md'))).toBe('absent')
+  })
+
+  it('survives strip/write cycles without accumulating separators', async () => {
+    writeFileSync(file, '# My Rules\n\nkeep me\n')
+    for (let i = 0; i < 4; i++) {
+      await writeManagedBlock(file, `generation ${i}`)
+      await stripManagedBlockFromFile(file)
+    }
+    await writeManagedBlock(file, 'final')
+
+    const text = readFileSync(file, 'utf8')
+    expect(text).toContain('keep me')
+    expect((text.match(/^---$/gm) ?? []).length).toBe(1)
   })
 })

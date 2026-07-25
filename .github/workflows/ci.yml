@@ -30,3 +30,23 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      # bin/cli.mjs loads from dist/, so the round trip needs a build first.
+      - name: Build CLI
+        run: npm run cli:build
+
+      # The claim the README makes: init a project, and `sync --check` on the
+      # committed output is clean. Runs the local build, not the published one.
+      - name: Compile-and-check round trip
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          git -C "$scratch" init -q
+          cd "$scratch"
+          printf '# House rules\n\nNEVER_TOUCH_PAYMENTS\n' > CLAUDE.md
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" init --yes
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" init --yes
+          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --check
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" remove --all --yes
+          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md

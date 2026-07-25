@@ -5,6 +5,7 @@ import { readManifest } from './manifest.js'
 import { removeDirIfExists } from './copy.js'
 import { removeGitignoreBlock } from './gitignore.js'
 import { confirm, select, closePrompts, c } from './prompt.js'
+import { stripManagedBlockFromFile } from './managed-block.js'
 import type { CliContext } from './types.js'
 
 /**
@@ -72,6 +73,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
 
   const frameworkPaths = manifest.managedPaths?.framework ?? []
   const customizablePaths = manifest.managedPaths?.customizable ?? []
+  const mergedPaths = manifest.managedPaths?.merged ?? []
   const legacyManifestPath = resolve(projectRoot, '.opencastle.json')
   const hasLegacy = existsSync(legacyManifestPath)
 
@@ -86,6 +88,9 @@ export default async function remove({ args }: CliContext): Promise<void> {
     console.log('  Will permanently delete:\n')
     for (const p of [...frameworkPaths, ...customizablePaths]) {
       console.log(`    ${c.dim(p)}`)
+    }
+    for (const p of mergedPaths) {
+      console.log(`    ${c.dim(p)} ${c.dim('— only the OpenCastle block; your own content stays')}`)
     }
     console.log(`    ${c.dim('.opencastle/')}`)
     if (hasLegacy) console.log(`    ${c.dim('.opencastle.json')}`)
@@ -132,6 +137,15 @@ export default async function remove({ args }: CliContext): Promise<void> {
     }
   }
 
+  // Co-owned files hold the user's own writing above our block. Take back the
+  // block; delete the file only if nothing of theirs remains.
+  let stripped = 0
+  for (const p of mergedPaths) {
+    const outcome = await stripManagedBlockFromFile(resolve(projectRoot, p))
+    if (outcome === 'deleted') removed++
+    else if (outcome === 'stripped') stripped++
+  }
+
   await removeDirIfExists(resolve(projectRoot, '.opencastle'))
   removed++
 
@@ -144,6 +158,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
 
   console.log(
     `\n  ${c.green('✓')} Removed ${removed} path(s)` +
+      `${stripped > 0 ? `, kept your content in ${stripped} file(s)` : ''}` +
       `${gitignoreResult === 'removed' ? ' + .gitignore block' : ''}.`,
   )
   console.log(`  You can uninstall: ${c.bold('npm uninstall opencastle')}\n`)

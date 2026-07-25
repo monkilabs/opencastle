@@ -149,7 +149,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       }
 
       const merge = await writeManagedBlock(rootPath, sections.join('\n'))
-      if (merge.action === 'created') results.created.push(rootPath)
+      if (merge.action === 'created' || merge.action === 'adopted') results.created.push(rootPath)
       else if (merge.action === 'unchanged') results.skipped.push(rootPath)
       else results.copied.push(rootPath)
     }
@@ -302,10 +302,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     // Deduplicate dirs (e.g. promptsDir === workflowsDir for claude-code's 'commands')
     const dirs = new Set(['agents', 'skills', ...config.frameworkDirs])
     return {
-      framework: [
-        config.rootFile,
-        ...Array.from(dirs).map((d) => `${config.dotDir}/${d}/`),
-      ],
+      framework: Array.from(dirs).map((d) => `${config.dotDir}/${d}/`),
+      merged: [config.rootFile],
       customizable: ['.opencastle/', config.mcpConfigPath],
     }
   }
