@@ -26,25 +26,25 @@ Use `opencastle log` to append events. Agents should call this instead of raw `e
 
 ```sh
 # Session
-opencastle log --type session --agent Developer --model claude-sonnet-4-6 \
+opencastle log --type session --agent Developer --model "$MODEL" \
   --task "PRJ-57: Fix header component" --outcome success --duration_min 12 \
   --files_changed 5 --retries 0
 
 # Delegation
 opencastle log --type delegation --session_id feat/prj-57 --agent Developer \
-  --model claude-opus-4-6 --tier fast --mechanism sub-agent \
+  --model "$MODEL" --tier standard --mechanism sub-agent \
   --outcome success --phase 2 --file_partition "src/components/,src/pages/"
 
 # Review
 opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
-  --reviewer_model gpt-5-mini --verdict pass --attempt 1 \
+  --reviewer_model "$MODEL" --verdict pass --attempt 1 \
   --issues_critical 0 --issues_major 0 --issues_minor 2 \
   --confidence high --escalated false
 
 # Panel
 opencastle log --type panel --panel_key auth-review --verdict pass \
   --pass_count 3 --block_count 0 --must_fix 0 --should_fix 5 \
-  --reviewer_model claude-opus-4-6 --weighted false --attempt 1
+  --reviewer_model "$MODEL" --weighted false --attempt 1
 
 # Dispute
 opencastle log --type dispute --dispute_id DSP-001 --tracker_issue PRJ-42 \
@@ -61,7 +61,7 @@ Run `opencastle log --help` for full options.
   "type": "session",
   "timestamp": "2026-02-25T14:30:00Z",
   "agent": "Developer",
-  "model": "gpt-5.3-codex",
+  "model": "<model reported by the assistant>",
   "task": "PRJ-57: Fix header component",
   "tracker_issue": "PRJ-57",
   "outcome": "success",
@@ -78,7 +78,7 @@ Run `opencastle log --help` for full options.
 | `type` | `string` | Yes | Always `"session"` |
 | `timestamp` | `string` | Yes | ISO 8601 datetime (YYYY-MM-DDTHH:MM:SSZ) |
 | `agent` | `string` | Yes | Agent name from the registry |
-| `model` | `string` | Yes | Model used (e.g., `claude-opus-4-6`, `gpt-5.3-codex`) |
+| `model` | `string` | Yes | Model used — whatever the assistant reported |
 | `task` | `string` | Yes | Short description of the task performed |
 | `tracker_issue` | `string` | No | Issue ID if applicable (e.g., `PRJ-57`) |
 | `outcome` | `string` | Yes | `success`, `partial`, `failed` |
@@ -96,7 +96,7 @@ Run `opencastle log --help` for full options.
   "timestamp": "2026-02-25T14:30:00Z",
   "session_id": "feat/prj-57",
   "agent": "Developer",
-  "model": "gpt-5.3-codex",
+  "model": "<model reported by the assistant>",
   "tier": "fast",
   "mechanism": "sub-agent",
   "tracker_issue": "PRJ-57",
@@ -130,7 +130,7 @@ Run `opencastle log --help` for full options.
   "timestamp": "2026-02-28T14:30:00Z",
   "tracker_issue": "PRJ-42",
   "agent": "Developer",
-  "reviewer_model": "gpt-5-mini",
+  "reviewer_model": "<model reported by the assistant>",
   "verdict": "pass",
   "attempt": 1,
   "issues_critical": 0,
@@ -148,7 +148,7 @@ Run `opencastle log --help` for full options.
 | `timestamp` | `string` | Yes | ISO 8601 datetime (YYYY-MM-DDTHH:MM:SSZ) |
 | `tracker_issue` | `string` | No | Issue ID if applicable |
 | `agent` | `string` | Yes | Agent whose output was reviewed |
-| `reviewer_model` | `string` | Yes | Model used for the reviewer (e.g., `gpt-5-mini`) |
+| `reviewer_model` | `string` | Yes | Model used for the reviewer — whatever the assistant reported |
 | `verdict` | `string` | Yes | `pass` or `fail` |
 | `attempt` | `number` | Yes | Review attempt number (1, 2, or 3) |
 | `issues_critical` | `number` | Yes | Count of critical severity issues |
@@ -170,7 +170,7 @@ Run `opencastle log --help` for full options.
   "block_count": 0,
   "must_fix": 0,
   "should_fix": 5,
-  "reviewer_model": "claude-opus-4-6",
+  "reviewer_model": "<model reported by the assistant>",
   "weighted": false,
   "attempt": 1,
   "tracker_issue": "PRJ-57",

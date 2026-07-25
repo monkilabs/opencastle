@@ -1,7 +1,7 @@
 ---
 description: 'Codebase exploration specialist: deep research, pattern discovery, git archaeology, context gathering before implementation. Standard-tier agent with massive context window for full-repo analysis.'
 name: 'Researcher'
-model: Gemini 3.1 Pro (Preview)
+tier: standard
 tools: ['search/codebase', 'search/textSearch', 'search/fileSearch', 'search/usages', 'read/readFile', 'search/listDirectory', 'web/fetch', 'execute/runInTerminal', 'read/terminalLastCommand']
 user-invocable: false
 ---

@@ -1,7 +1,7 @@
 ---
 description: 'Database engineer: schema design, migrations, security policies, performance optimization, auth integration.'
 name: 'Database Engineer'
-model: Gemini 3.1 Pro (Preview)
+tier: standard
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

@@ -17,7 +17,7 @@ Use `opencastle log` CLI. One record per task; never batch-log retrospectively.
 
 **Session** (ALL agents, EVERY session):
 ```sh
-opencastle log --type session --agent Developer --model claude-opus-4-6 \
+opencastle log --type session --agent Developer --model "$MODEL" \
   --task "Fix login redirect bug" --outcome success --duration_min 15 \
   --files_changed 3 --retries 0
 ```
@@ -25,17 +25,17 @@ opencastle log --type session --agent Developer --model claude-opus-4-6 \
 **Delegation** (Team Lead, after each delegation — never batched):
 ```sh
 opencastle log --type delegation --session_id feat/prj-57 --agent Developer \
-  --model claude-sonnet-4-6 --tier quality --mechanism sub-agent \
+  --model "$MODEL" --tier standard --mechanism sub-agent \
   --tracker_issue PRJ-57 --outcome success --retries 0 --phase 2 \
   --file_partition "src/components/"
 ```
 
-> `model` and `tier` must reflect the delegated agent's assignment from the agent registry.
+> `tier` must match the delegated agent's tier in the agent registry. `model` is whatever the assistant actually used — leave it out if it did not report one.
 
 **Review** (Team Lead, after each fast review):
 ```sh
 opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
-  --reviewer_model gpt-5-mini --verdict pass --attempt 1 \
+  --reviewer_model "$MODEL" --verdict pass --attempt 1 \
   --issues_critical 0 --issues_major 0 --issues_minor 2 \
   --confidence high --escalated false --duration_sec 45
 ```
@@ -44,7 +44,7 @@ opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
 ```sh
 opencastle log --type panel --panel_key auth-review --verdict pass \
   --pass_count 3 --block_count 0 --must_fix 0 --should_fix 3 \
-  --reviewer_model claude-opus-4-6 --weighted false --attempt 1 \
+  --reviewer_model "$MODEL" --weighted false --attempt 1 \
   --tracker_issue PRJ-42 --artifacts_count 5
 ```
 

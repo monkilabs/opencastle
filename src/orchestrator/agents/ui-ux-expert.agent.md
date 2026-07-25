@@ -1,7 +1,7 @@
 ---
 description: 'UI/UX expert: designs, builds accessible, consistent UI components with deep design system knowledge.'
 name: 'UI/UX Expert'
-model: Claude Sonnet 4.6
+tier: standard
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'vscode/getProjectSetupInfo', 'vscode/installExtension', 'vscode/newWorkspace', 'vscode/runCommand', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

@@ -1,7 +1,7 @@
 ---
 description: 'Content engineer: CMS schema design, content queries, content modeling, releases, studio customization.'
 name: 'Content Engineer'
-model: Gemini 3.1 Pro (Preview)
+tier: standard
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

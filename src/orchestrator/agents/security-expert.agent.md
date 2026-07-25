@@ -1,7 +1,7 @@
 ---
 description: "Security expert: authentication, authorization, RLS policies, security headers, input validation, API security, vulnerability management."
 name: "Security Expert"
-model: Claude Sonnet 4.6
+tier: premium
 tools: ["search/changes", "search/codebase", "edit/editFiles", "web/fetch", "vscode/getProjectSetupInfo", "vscode/installExtension", "vscode/newWorkspace", "vscode/runCommand", "read/problems", "execute/getTerminalOutput", "execute/runInTerminal", "read/terminalLastCommand", "read/terminalSelection", "search", "execute/testFailure", "search/usages"]
 user-invocable: false
 ---

@@ -1,7 +1,7 @@
 ---
 description: 'Documentation writer: maintains project docs, roadmaps, changelogs, known issues, technical guides.'
 name: 'Documentation Writer'
-model: GPT-5.4 mini
+tier: economy
 tools: ['search/codebase', 'edit/editFiles', 'web/fetch', 'search', 'read/problems']
 user-invocable: false
 ---

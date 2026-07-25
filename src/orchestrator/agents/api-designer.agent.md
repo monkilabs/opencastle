@@ -1,7 +1,7 @@
 ---
 description: 'API designer: route architecture, endpoint conventions, request/response schemas, versioning, API documentation.'
 name: 'API Designer'
-model: Gemini 3.1 Pro (Preview)
+tier: standard
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

@@ -1,7 +1,7 @@
 ---
 description: 'Full-stack developer: pages, components, routing, layouts, API routes, server-side logic, feature implementation.'
 name: 'Developer'
-model: Claude Sonnet 4.6
+tier: standard
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'vscode/getProjectSetupInfo', 'vscode/installExtension', 'vscode/newWorkspace', 'vscode/runCommand', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

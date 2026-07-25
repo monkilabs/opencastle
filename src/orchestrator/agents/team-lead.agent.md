@@ -1,7 +1,7 @@
 ---
 description: 'Task orchestrator: analyzes work, decomposes into subtasks, delegates to specialized agents via sub-agents (inline) or background sessions (parallel worktrees).'
 name: 'Team Lead (OpenCastle)'
-model: Claude Opus 4.7
+tier: premium
 tools: [read/problems, read/readFile, agent/runSubagent, edit/createDirectory, edit/createFile, edit/createJupyterNotebook, edit/editFiles, edit/editNotebook, search/changes, search/codebase, search/fileSearch, search/listDirectory, search/searchResults, search/textSearch, search/usages, web/fetch, agent, execute/runInTerminal, execute/getTerminalOutput, read/terminalLastCommand, read/terminalSelection]
 agents: ['*']
 handoffs:

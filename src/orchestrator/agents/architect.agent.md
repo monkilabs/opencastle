@@ -1,7 +1,7 @@
 ---
 description: 'Software architect: strategic decisions, roadmap planning, ADRs, system design, technology evaluation.'
 name: 'Architect'
-model: Claude Sonnet 4.6
+tier: premium
 tools: ['search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'search', 'search/usages', 'execute/runInTerminal', 'execute/getTerminalOutput', 'read/terminalLastCommand']
 user-invocable: false
 ---

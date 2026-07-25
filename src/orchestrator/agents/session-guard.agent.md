@@ -1,7 +1,7 @@
 ---
 description: 'Lightweight compliance agent called by Team Lead as final action. Verifies observability logs, lessons, quality gates; provides ready-to-run fix commands for gaps.'
 name: 'Session Guard'
-model: GPT-5.4 mini
+tier: economy
 user-invocable: false
 tools: [read/readFile, search/textSearch, search/fileSearch, execute/runInTerminal, execute/getTerminalOutput, read/terminalLastCommand]
 ---

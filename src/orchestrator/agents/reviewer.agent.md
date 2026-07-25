@@ -1,7 +1,7 @@
 ---
 description: 'Mandatory fast reviewer: validates every agent delegation output before acceptance. Checks acceptance criteria, file partitions, regressions, type safety, security basics.'
 name: 'Reviewer'
-model: GPT-5.4 mini
+tier: economy
 user-invocable: false
 tools: [read/readFile, search/codebase, search/fileSearch, search/textSearch, search/listDirectory, read/problems]
 ---

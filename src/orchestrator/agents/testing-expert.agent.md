@@ -1,7 +1,7 @@
 ---
 description: 'Testing expert: E2E tests, integration tests, browser validation, test suites via browser automation, test file authoring.'
 name: 'Testing Expert'
-model: GPT-5.5-Codex
+tier: standard
 tools: ['search/changes', 'search/codebase', 'edit/editFiles', 'web/fetch', 'read/problems', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'search', 'execute/testFailure', 'search/usages']
 user-invocable: false
 ---

@@ -44,29 +44,6 @@ import { calculateCost } from './pricing.js'
 
 const execFile = promisify(execFileCb)
 
-/** Map agent names to their default model. Used when adapters don't report model. */
-const AGENT_MODEL_MAP: Record<string, string> = {
-  'developer': 'claude-sonnet-4-6',
-  'ui-ux-expert': 'claude-sonnet-4-6',
-  'testing-expert': 'claude-sonnet-4-6',
-  'security-expert': 'claude-sonnet-4-6',
-  'performance-expert': 'claude-sonnet-4-6',
-  'devops-expert': 'claude-sonnet-4-6',
-  'data-expert': 'claude-sonnet-4-6',
-  'api-designer': 'claude-sonnet-4-6',
-  'copywriter': 'claude-sonnet-4-6',
-  'content-engineer': 'claude-sonnet-4-6',
-  'database-engineer': 'claude-sonnet-4-6',
-  'researcher': 'claude-sonnet-4-6',
-  'release-manager': 'claude-sonnet-4-6',
-  'architect': 'claude-opus-4-6',
-  'team-lead': 'claude-opus-4-6',
-  'reviewer': 'claude-haiku-3-5',
-  'documentation-writer': 'claude-haiku-3-5',
-  'seo-specialist': 'claude-haiku-3-5',
-  'session-guard': 'claude-haiku-3-5',
-}
-
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 export interface ConvoyEngineOptions {
@@ -1490,7 +1467,7 @@ async function runConvoy(
         // Estimate tokens even for timed-out tasks — you still paid for them
         const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
         const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
-        const timeoutModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+        const timeoutModel = taskRecord.model ?? taskAdapter.name
         const timeoutCost = calculateCost(timeoutModel, estimatedPrompt, estimatedCompletion)
         store.withTransaction(() => {
           store.updateTaskStatus(taskRecord.id, convoyId, 'timed-out', {
@@ -2602,7 +2579,7 @@ async function runConvoy(
         } catch { /* non-critical */ }
       }
 
-      const taskModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+      const taskModel = taskRecord.model ?? taskAdapter.name
       const taskCost = calculateCost(taskModel, usageExtra.prompt_tokens, usageExtra.completion_tokens)
 
       store.withTransaction(() => {
@@ -2689,7 +2666,7 @@ async function runConvoy(
       // Estimate tokens even for failed tasks — you still paid for them
       const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
       const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
-      const failModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+      const failModel = taskRecord.model ?? taskAdapter.name
       const failCost = calculateCost(failModel, estimatedPrompt, estimatedCompletion)
       store.withTransaction(() => {
         store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
