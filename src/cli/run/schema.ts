@@ -291,30 +291,6 @@ export function validateSpec(spec: unknown): ValidationResult {
         validateBrowserTestConfig(d.browser_test, 'defaults.browser_test', errors)
       }
 
-      // compaction config validation (Phase 44)
-      if (d.compaction !== undefined) {
-        if (!d.compaction || typeof d.compaction !== 'object' || Array.isArray(d.compaction)) {
-          errors.push('`defaults.compaction` must be an object')
-        } else {
-          const comp = d.compaction as Record<string, unknown>
-          if (comp.enabled !== undefined && typeof comp.enabled !== 'boolean') {
-            errors.push('`defaults.compaction.enabled` must be a boolean')
-          }
-          if (comp.token_threshold_pct !== undefined) {
-            const pct = Number(comp.token_threshold_pct)
-            if (!Number.isFinite(pct) || pct < 1 || pct > 100) {
-              errors.push('`defaults.compaction.token_threshold_pct` must be a number between 1 and 100')
-            }
-          }
-          if (comp.summary_max_tokens !== undefined) {
-            const smt = Number(comp.summary_max_tokens)
-            if (!Number.isInteger(smt) || smt < 1) {
-              errors.push('`defaults.compaction.summary_max_tokens` must be a positive integer')
-            }
-          }
-        }
-      }
-
       // review_stages validation (Phase 40 — two-stage review toggle)
       if (d.review_stages !== undefined && typeof d.review_stages !== 'boolean') {
         errors.push('`defaults.review_stages` must be a boolean')

@@ -177,12 +177,6 @@ export interface TaskDefaults {
   review_heuristics?: ReviewHeuristics;
   detect_drift?: boolean;
   on_dispute?: 'continue' | 'stop';
-  /** Enable automated lesson injection into task prompts (Phase 18.1). */
-  inject_lessons?: boolean;
-  /** Enable discovered issues tracking in task prompts (Phase 18.4). */
-  track_discovered_issues?: boolean;
-  /** Skip assigning agent to tasks matching their weak areas (Phase 18.2). */
-  avoid_weak_agents?: boolean;
   /** Maximum concurrent tasks in swarm mode (default: 8). */
   max_swarm_concurrency?: number;
   /** MCP servers available to tasks (Phase 19.7). */

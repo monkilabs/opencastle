@@ -144,9 +144,6 @@ export function buildConvoyYaml(plan: TaskPlan, enrichment?: SpecEnrichment): st
     timeout: '30m',
     max_retries: 1,
     review: 'fast',
-    inject_lessons: true,
-    track_discovered_issues: true,
-    avoid_weak_agents: true,
   }
 
   if (enrichment?.circuit_breaker) defaults.circuit_breaker = enrichment.circuit_breaker

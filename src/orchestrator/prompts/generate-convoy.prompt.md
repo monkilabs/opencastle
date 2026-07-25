@@ -36,7 +36,7 @@ You are the Team Lead. User wants to run `opencastle run` to execute batch of ta
 | `gates` | array of strings | no | Shell commands run after all tasks complete; each must exit 0 |
 | `gate_retries` | integer ≥ 0 | no | Times to retry failing gates with an auto-fix task |
 
-> **Added automatically — you do not need to set these:** `version: 1`, `defaults.inject_lessons: true`, `defaults.track_discovered_issues: true`, `defaults.avoid_weak_agents: true`, `defaults.timeout: '30m'`, `defaults.max_retries: 1`, `defaults.review: 'fast'`.
+> **Added automatically — you do not need to set these:** `version: 1`, `defaults.timeout: '30m'`, `defaults.max_retries: 1`, `defaults.review: 'fast'`.
 
 ### Task Fields
 

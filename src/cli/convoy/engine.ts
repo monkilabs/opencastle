@@ -29,17 +29,11 @@ import { getAdapter, detectAdapter } from '../run/adapters/index.js'
 import { c } from '../prompt.js'
 import { validateFilePartitions, scanSymlinks, scanNewSymlinks, normalizePath, pathsOverlap } from './partition.js'
 import { scanForSecrets, runSecretScanGate, runBlastRadiusGate, browserTestGate } from './gates.js'
-import { readLessons, captureLessons, consolidateLessons } from './lessons.js'
-import { updateExpertise, feedCircuitBreaker } from './expertise.js'
-import { buildKnowledgeGraph } from './knowledge.js'
-import { injectDiscoveredIssuesInstruction, checkDiscoveredIssues, consolidateIssues } from './issues.js'
 import { validateOutput, buildContractInstruction, buildContractRetryPrompt } from './contracts.js'
 import { runTwoStageReview } from './review-stages.js'
 import { buildIsolationPreamble, resolveDependencyResults, detectPartitionViolations } from './isolation.js'
 import { checkTDD, formatTDDFailure, DEFAULT_TDD_CONFIG } from './tdd-gate.js'
-import { runSkillRefinementCheck } from './skill-refinement.js'
 import { getArtifactDir, extractArtifactRefs } from './artifacts.js'
-import { shouldCompact, parseCompactionSummary, saveCompaction, canCompact, getMaxCompactions, generateCompactionPrompt, buildContinuationPrompt } from './compaction.js'
 import { calculateCost } from './pricing.js'
 
 const execFile = promisify(execFileCb)
@@ -1179,23 +1173,6 @@ async function runConvoy(
       }
     }
 
-    // ── Intelligence: circuit breaker weak-area avoidance (Phase 18.2) ─────
-    if (spec.defaults?.avoid_weak_agents) {
-      try {
-        const weakAreas = feedCircuitBreaker(taskRecord.agent, basePath)
-        const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-        const matchesWeakArea = weakAreas.some(area =>
-          taskFiles.some(f => f.toLowerCase().includes(area.toLowerCase()))
-        )
-        if (matchesWeakArea && taskRecord.retries === 0) {
-          events.emit('weak_area_skipped', { agent: taskRecord.agent, weak_areas: weakAreas, task_files: taskFiles }, { convoy_id: convoyId, task_id: taskRecord.id })
-          store.updateTaskStatus(taskRecord.id, convoyId, 'skipped', { output: `Agent "${taskRecord.agent}" has weak-area match for task files. Skipped by avoid_weak_agents policy.` })
-          completedCount++
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-      } catch { /* non-critical */ }
-    }
 
     // Create worktree (skip for copilot adapter)
     let worktreePath: string | null = null
@@ -1329,20 +1306,6 @@ async function runConvoy(
       task.prompt = task.prompt + '\n' + artifactInstructions
     } catch { /* non-critical */ }
 
-    // ── Intelligence: inject lessons (Phase 18.1) ─────────────────────────
-    if (spec.defaults?.inject_lessons !== false) {
-      try {
-        const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-        const lessons = readLessons(taskRecord.agent, taskFiles, basePath)
-        if (lessons.length > 0) {
-          const lessonsBlock
-            = '\n\n---\nRelevant lessons from previous sessions:\n'
-            + lessons.join('\n\n')
-            + '\n---\n\n'
-          task.prompt = lessonsBlock + task.prompt
-        }
-      } catch { /* non-critical */ }
-    }
     // ── Intelligence: inject persistent agent identity (Phase 17.2) ────────
     const specTaskForPersistent = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
     if (specTaskForPersistent?.persistent) {
@@ -1355,10 +1318,6 @@ async function runConvoy(
           task.prompt = contextBlock + task.prompt
         }
       } catch { /* non-critical */ }
-    }
-    // ── Intelligence: inject discovered issues instruction (Phase 18.4) ────
-    if (spec.defaults?.track_discovered_issues) {
-      task.prompt = injectDiscoveredIssuesInstruction(task.prompt)
     }
 
     // ── Output contract injection ─────────────────────────────────────────
@@ -2170,12 +2129,6 @@ async function runConvoy(
         }
       }
 
-      // ── Intelligence: check discovered issues (Phase 18.4) ─────────────
-      if (spec.defaults?.track_discovered_issues) {
-        try {
-          checkDiscoveredIssues(taskRecord.id, events, convoyId, worktreePath ?? basePath)
-        } catch { /* non-critical */ }
-      }
 
       // ── post_task hooks ───────────────────────────────────────────────────
       if (taskHooks.length > 0) {
@@ -2348,16 +2301,6 @@ async function runConvoy(
           taskAdapterMap.delete(taskRecord.id)
           return
         }
-
-        // ── Intelligence: update expertise post-merge (Phase 18.2) ─────────
-        try {
-          updateExpertise(taskRecord.agent, { taskId: taskRecord.id, success: true, retries: taskRecord.retries, files: taskRecord.files ? JSON.parse(taskRecord.files) as string[] : [] }, basePath)
-        } catch { /* non-critical */ }
-        // ── Intelligence: build knowledge graph post-merge (Phase 18.3) ────
-        try {
-          const { stdout: diffOut } = await execFile('git', ['diff', 'HEAD~1'], { cwd: basePath })
-          buildKnowledgeGraph(diffOut, convoyId, basePath)
-        } catch { /* non-critical */ }
       }
 
       const usageExtra: Partial<{ prompt_tokens: number; completion_tokens: number; total_tokens: number }> = {}
@@ -2377,71 +2320,6 @@ async function runConvoy(
         }
       }
 
-      // ── Context compaction check (Phase 44) ─────────────────────────────
-      const compactionConfig = spec.defaults?.compaction
-      if (compactionConfig?.enabled && usageExtra.total_tokens != null && taskRecord.model) {
-        if (shouldCompact(usageExtra.total_tokens, taskRecord.model, compactionConfig)) {
-          if (canCompact(taskRecord.compaction_count)) {
-            const newCount = taskRecord.compaction_count + 1
-            store.updateTaskCompaction(taskRecord.id, convoyId, newCount)
-
-            const summaryFromOutput = parseCompactionSummary(result.output, taskRecord.id, convoyId)
-            let summaryPath: string | undefined
-            if (summaryFromOutput) {
-              try {
-                summaryPath = saveCompaction(convoyId, taskRecord.id, summaryFromOutput, newCount, basePath)
-              } catch { /* non-critical */ }
-            }
-
-            const compactionTaskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-            const compactionDepIds = taskRecord.depends_on ? JSON.parse(taskRecord.depends_on) as string[] : []
-            const compactionDepResults = resolveDependencyResults(store, convoyId, compactionDepIds)
-            const compactionPreamble = buildIsolationPreamble(
-              { id: taskRecord.id, description: taskRecord.prompt.slice(0, 200), prompt: taskRecord.prompt, files: compactionTaskFiles, agent: taskRecord.agent },
-              compactionDepResults,
-            )
-
-            const continuationPrompt = summaryPath
-              ? buildContinuationPrompt(taskRecord.prompt, summaryPath, compactionPreamble)
-              : compactionPreamble + '\n\n' + generateCompactionPrompt(taskRecord.id) + '\n\n' + taskRecord.prompt
-
-            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-              worker_id: null,
-              worktree: null,
-              started_at: null,
-              finished_at: null,
-              prompt: continuationPrompt,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-
-            events.emit('context_compacted', {
-              task_id: taskRecord.id,
-              compaction_count: newCount,
-              summary_path: summaryPath ?? '',
-              model: taskRecord.model,
-              tokens_used: usageExtra.total_tokens,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-            taskAdapterMap.delete(taskRecord.id)
-            return
-          } else {
-            // Max compactions exceeded — fail the task
-            const exhaustedAt = new Date().toISOString()
-            store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
-              finished_at: exhaustedAt,
-              output: `Context exhausted: reached maximum ${getMaxCompactions()} compactions`,
-              exit_code: 1,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: exhaustedAt })
-            events.emit('task_failed', {
-              reason: 'context_exhausted',
-              worker_id: workerId,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-            taskAdapterMap.delete(taskRecord.id)
-            return
-          }
-        }
-      }
 
       // ── Capture outputs as artifacts ────────────────────────────────────────
       if (taskRecord.outputs) {
@@ -2599,19 +2477,6 @@ async function runConvoy(
         circuitBreaker.recordSuccess(taskRecord.agent)
         try { store.updateConvoyCircuitState(convoyId, circuitBreaker.serialize()) } catch { /* non-critical */ }
       }
-      // ── Intelligence: capture retry lesson (Phase 18.1) ─────────────────
-      if (taskRecord.retries > 0 && spec.defaults?.inject_lessons !== false) {
-        try {
-          captureLessons({
-            title: `Retry success for ${taskRecord.agent} on ${taskRecord.id}`,
-            category: 'convoy',
-            agent: taskRecord.agent,
-            problem: `Task ${taskRecord.id} required ${taskRecord.retries} retries`,
-            solution: 'Succeeded after retry with adjusted approach',
-            files: taskRecord.files ? JSON.parse(taskRecord.files) as string[] : undefined,
-          }, basePath)
-        } catch { /* non-critical */ }
-      }
       completedCount++
       process.stdout.write(`  ${c.green('✓')} ${c.bold(`[${taskRecord.id}]`)} ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
       events.emit(
@@ -2683,7 +2548,6 @@ async function runConvoy(
       })
       // ── Intelligence: record failure in expertise (Phase 18.2) ──────────
       try {
-        updateExpertise(taskRecord.agent, { taskId: taskRecord.id, success: false, retries: freshRecord.retries, files: taskRecord.files ? JSON.parse(taskRecord.files) as string[] : [] }, basePath)
       } catch { /* non-critical */ }
       // ── Circuit breaker: record failure ────────────────────────────────────
       if (circuitBreakerConfig) {
@@ -2878,25 +2742,6 @@ async function runConvoy(
   }
 
   // ── Intelligence: post-convoy consolidation ──────────────────────────────
-  if (spec.defaults?.inject_lessons !== false) {
-    try { consolidateLessons(basePath) } catch { /* non-critical */ }
-  }
-  if (spec.defaults?.track_discovered_issues) {
-    try { consolidateIssues(basePath) } catch { /* non-critical */ }
-  }
-
-  // ── Intelligence: skill refinement check ───────────────────────────────
-  try {
-    const proposals = runSkillRefinementCheck(convoyId, basePath)
-    for (const p of proposals) {
-      events.emit('skill_refinement_proposed', {
-        skill_name: p.skill,
-        proposal_path: p.proposalPath,
-      }, { convoy_id: convoyId })
-      process.stdout.write(`  ${c.yellow('◆')} Skill refinement proposed for "${p.skill}". Review at ${p.proposalPath}\n`)
-    }
-  } catch { /* non-critical */ }
-
   // ── Final status & summary ────────────────────────────────────────────────
 
   const allTasksFinal = store.getTasksByConvoy(convoyId)
