@@ -274,15 +274,15 @@ const pages = [
                       <div class="quickstart__substeps">
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">1</span>
-                          <p class="quickstart__desc"><strong>Generate:</strong> Describe your goal and run the start command: <code class="quickstart__code">npx opencastle start -t "Add user reviews to the place detail page"</code>. It generates a PRD, validates it, produces a <code class="quickstart__code">.convoy.yml</code> spec, and validates that too &mdash; all in one command.</p>
+                          <p class="quickstart__desc"><strong>Generate:</strong> Describe your goal: <code class="quickstart__code">npx opencastle convoy "Add user reviews to the place detail page"</code>. It plans the work, produces a <code class="quickstart__code">.convoy.yml</code> spec, validates it, and executes &mdash; all in one command.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">2</span>
-                          <p class="quickstart__desc"><strong>Review:</strong> Open the generated YAML file and verify the task breakdown, file partitions, and dependency order. You can also validate it: <code class="quickstart__code">npx opencastle validate .opencastle/convoys/your-spec.convoy.yml</code></p>
+                          <p class="quickstart__desc"><strong>Review:</strong> Open the generated YAML file and verify the task breakdown, file partitions, and dependency order. Validation runs automatically when the convoy executes.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">3</span>
-                          <p class="quickstart__desc"><strong>Execute:</strong> <code class="quickstart__code">npx opencastle run -f .opencastle/convoys/your-spec.convoy.yml</code></p>
+                          <p class="quickstart__desc"><strong>Execute:</strong> <code class="quickstart__code">npx opencastle convoy run .opencastle/convoys/your-spec.convoy.yml</code></p>
                         </div>
                       </div>
                     </div>

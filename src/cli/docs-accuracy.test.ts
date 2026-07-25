@@ -107,6 +107,58 @@ describe('docs name no models', () => {
   })
 })
 
+describe('website matches the shipped CLI', () => {
+  const websiteDir = join(repoRoot, 'website', 'src')
+
+  function websiteFiles(dir: string, out: string[] = []): string[] {
+    if (!existsSync(dir)) return out
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) websiteFiles(p, out)
+      else if (entry.name.endsWith('.astro')) out.push(p)
+    }
+    return out
+  }
+
+  const pages = websiteFiles(websiteDir).map((p) => ({
+    rel: p.slice(repoRoot.length + 1),
+    text: readFileSync(p, 'utf8'),
+  }))
+
+  it('has pages to check', () => {
+    expect(pages.length).toBeGreaterThan(0)
+  })
+
+  it('shows no removed command as usable', () => {
+    const offenders: string[] = []
+    for (const cmd of replacedCommands()) {
+      // Match an invocation, not prose that happens to contain the word.
+      const usage = new RegExp(`(?:npx )?opencastle ${cmd}(?![a-z-])`)
+      for (const page of pages) {
+        const hit = page.text.match(usage)
+        if (hit) offenders.push(`${page.rel}: ${hit[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('names no model', () => {
+    const pattern = /\b(claude[- ](?:opus|sonnet|haiku)[- ]?[\d.]+|gpt-[\d.]+|gemini[- ][\d.]+)/i
+    const offenders = pages
+      .map((p) => ({ rel: p.rel, hit: p.text.match(pattern)?.[0] }))
+      .filter((x) => x.hit)
+      .map((x) => `${x.rel}: ${x.hit}`)
+    expect(offenders).toEqual([])
+  })
+
+  it('does not repeat the stale skill-count claims', () => {
+    const offenders = pages
+      .filter((p) => /\b51 skills\b|\b50\+ skills\b/.test(p.text))
+      .map((p) => p.rel)
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('the pitch leads with the compiler', () => {
   it('says what the tool does before listing what is inside', () => {
     const compiles = readme.search(/compiles one source/i)

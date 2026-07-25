@@ -45,7 +45,7 @@ const features = [
     icon: 'skills',
     title: 'On-Demand Skills',
     description:
-      'Modular knowledge files loaded per task. Keeps context windows lean while enabling deep domain expertise. Stack-specific skills are auto-selected during init. All 51 skills scored 100 on the tessl Skill Evaluator.',
+      'Modular knowledge files loaded per task. Keeps context windows lean while enabling deep domain expertise. Stack-specific skills are auto-selected during init from what your repository actually uses.',
   },
   {
     icon: 'workflows',
@@ -231,14 +231,18 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         </div>
         <span class="hero__badge">Open Source · Free for Non-Commercial Use</span>
         <h1 class="hero__title">
-          AI agents that build
+          Write your AI config once.
           <br />
-          <span class="hero__title-gradient">software together.</span>
+          <span class="hero__title-gradient">Use it in every assistant.</span>
         </h1>
         <p class="hero__description">
-          OpenCastle turns <b>GitHub Copilot</b>, <b>Cursor</b>, <b>Claude Code</b>, <b>OpenCode</b>, <b>Windsurf</b>, <b>Codex</b>, and <b>Antigravity</b> into
-          coordinated multi-agent development teams. One orchestrator.
-          Multiple specialists. Zero chaos.
+          Your team's assistant config is scattered across seven formats —
+          <code>CLAUDE.md</code>, <code>.cursor/rules</code>,
+          <code>copilot-instructions.md</code> — saying almost the same thing and
+          drifting apart. OpenCastle compiles one source into all of them for
+          <b>Claude Code</b>, <b>Copilot</b>, <b>Cursor</b>, <b>Windsurf</b>,
+          <b>OpenCode</b>, <b>Codex</b>, and <b>Antigravity</b>, and tells you when
+          they fall out of sync.
         </p>
         <div class="hero__actions">
           <a
@@ -307,47 +311,35 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             </div>
           ))}
         </div>
+        <p class="tier-intro">
+          Agents declare a capability tier, not a model. Your assistant picks the
+          model — it knows which ones your account can reach and what they cost
+          today. A pinned model name can only be wrong later.
+        </p>
         <div class="tier-grid">
           <div class="tier-card">
             <div class="tier-card__tier tier-card__tier--premium">
               Premium
             </div>
-            <div class="tier-card__model">Claude Opus 4.6</div>
             <div class="tier-card__use">
-              Orchestration
-            </div>
-          </div>
-          <div class="tier-card">
-            <div class="tier-card__tier tier-card__tier--quality">
-              Quality
-            </div>
-            <div class="tier-card__model">Claude Sonnet 4.6</div>
-            <div class="tier-card__use">
-              Coding, UI, security, architecture
+              Orchestration, architecture, security review — the hardest reasoning
             </div>
           </div>
           <div class="tier-card">
             <div class="tier-card__tier tier-card__tier--standard">
               Standard
             </div>
-            <div class="tier-card__model">Gemini 3.1 Pro</div>
             <div class="tier-card__use">
-              Analysis, schemas, exploration
-            </div>
-          </div>
-          <div class="tier-card">
-            <div class="tier-card__tier tier-card__tier--fast">Fast</div>
-            <div class="tier-card__model">GPT-5.3-Codex</div>
-            <div class="tier-card__use">
-              Testing, pipelines, terminal
+              Feature work, schemas, UI, tests — the bulk of the work
             </div>
           </div>
           <div class="tier-card">
             <div class="tier-card__tier tier-card__tier--economy">
               Economy
             </div>
-            <div class="tier-card__model">GPT-5 mini</div>
-            <div class="tier-card__use">Docs, reviews, SEO</div>
+            <div class="tier-card__use">
+              Review passes, docs, copy — high volume, low ambiguity
+            </div>
           </div>
         </div>
       </div>
@@ -380,9 +372,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 <span class="code-comment"># Select Team Tools:       Linear / Jira / Trello / Slack / Teams / Notion</span>
 
 <span class="code-comment"># Key commands</span>
-<span class="code-folder">$ npx opencastle update     </span><span class="code-comment"># Update framework, preserve customizations</span>
-<span class="code-folder">$ npx opencastle start      </span><span class="code-comment"># Go from idea to convoy spec (PRD → validate → convoy)</span>
-<span class="code-folder">$ npx opencastle dashboard  </span><span class="code-comment"># View observability dashboard</span>
+<span class="code-folder">$ npx opencastle sync     </span><span class="code-comment"># Update framework, preserve customizations</span>
+<span class="code-folder">$ npx opencastle add stripe  </span><span class="code-comment"># Adopt a tool and recompile</span>
+<span class="code-folder">$ npx opencastle convoy dashboard  </span><span class="code-comment"># View observability dashboard</span>
 <span class="code-folder">$ npx opencastle doctor     </span><span class="code-comment"># Check system health and configuration</span>
 
 <span class="code-comment"># See all commands: <a href="/docs/cli">docs/cli</a></span></pre>

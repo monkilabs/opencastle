@@ -22,353 +22,164 @@ const categories = [
 /* ---------- Command data ---------- */
 const commands = [
   {
+    id: 'status',
+    category: 'setup',
+    name: '(no command)',
+    summary: 'Show project status and what to run next',
+    description: 'Running <code>opencastle</code> with no arguments reports which assistants it compiles for, whether the generated files are current, which assistants are configured in the repo but not being compiled, and the single command that resolves whatever it found. It is the one command worth remembering.',
+    usage: 'npx opencastle',
+    options: [
+      { flag: '--json', desc: 'Machine-readable output' },
+      { flag: '--help, -h', desc: 'Show help' },
+    ],
+    details: [
+      { heading: 'Why no flags', content: `<p>The tool can see whether a target is missing files, whether sources are newer than what was generated, and whether a run was interrupted. Asking you to restate that on the command line is what produced the old <code>--status</code>, <code>--resume</code>, and <code>--retry-failed</code> flag families. Those are gone; the state is read instead.</p>` },
+    ],
+    examples: [
+      { cmd: 'npx opencastle', desc: 'Status and the next step' },
+      { cmd: 'npx opencastle --json', desc: 'Same, for scripts' },
+    ],
+  },
+  {
     id: 'init',
     category: 'setup',
     name: 'init',
-    summary: 'Set up OpenCastle in your project',
-    description: 'Interactive setup wizard that scans your repository, detects your tech stack, and generates all configuration files — agent definitions, skills, instruction files, MCP configs, and IDE-specific settings.',
+    summary: 'Set up this project',
+    description: 'Reads the repository, proposes a complete setup, and asks once. Detects which assistants already have config, which framework, database, and test runner the project uses, then compiles the config for every assistant it found.',
     usage: 'npx opencastle init [options]',
     options: [
-      { flag: '--dry-run', desc: 'Preview what files would be created without writing anything' },
+      { flag: '--customize', desc: 'Choose IDEs and integrations manually instead of accepting detection' },
+      { flag: '--yes', desc: 'Accept the detected setup without the confirmation' },
+      { flag: '--dry-run', desc: 'Preview what would be created without writing anything' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
       { heading: 'What it does', content: `<ol>
-        <li><strong>Scans your repo</strong> — detects frameworks (Next.js, Astro), databases (Supabase, Prisma), monorepo tools (NX, Turborepo), deployment targets, and more</li>
-        <li><strong>Prompts for IDEs</strong> — select VS Code, Cursor, Claude Code, OpenCode, Windsurf, Codex, and/or Antigravity</li>
-        <li><strong>Prompts for tech & team tools</strong> — pick from 25 plugins (CMS, database, testing, notifications, etc.)</li>
-        <li><strong>Generates files</strong> — instruction files, agent definitions, skills, MCP configs, skill matrix, and <code>.opencastle.json</code> manifest</li>
-        <li><strong>Updates .gitignore</strong> — adds entries for framework-managed files</li>
-        <li><strong>Creates .env template</strong> — if any selected plugins require API keys, offers to create a <code>.env</code> with placeholders</li>
+        <li><strong>Finds your assistants</strong> — any of <code>CLAUDE.md</code>, <code>.cursor/rules</code>, <code>.github/copilot-instructions.md</code>, <code>.windsurfrules</code>, <code>GEMINI.md</code>, <code>AGENTS.md</code>, <code>.codex</code>, or <code>opencode.json</code> makes that assistant a compile target</li>
+        <li><strong>Scans the stack</strong> — frameworks, databases, CMSes, deployment targets, test runners, monorepo tools</li>
+        <li><strong>Shows the plan</strong> — what it found and what it will write</li>
+        <li><strong>Asks once</strong> — then compiles agents, skills, instructions, and MCP config for each target</li>
+        <li><strong>Leaves your files alone</strong> — existing config is never overwritten, and the summary names what it skipped</li>
       </ol>` },
-      { heading: 'Re-initialization', content: `<p>Running <code>init</code> again on an existing installation will prompt you to re-initialize. It cleans up old framework files before writing new ones, but preserves your customization files.</p>` },
+      { heading: 'If you would rather choose', content: `<p><code>--customize</code> restores the full selection: an IDE picker followed by a screen per plugin category. Most people do not need it — detection is pre-checked from the same signals you would be confirming by hand.</p>` },
     ],
     examples: [
-      { cmd: 'npx opencastle init', desc: 'Interactive setup' },
-      { cmd: 'npx opencastle init --dry-run', desc: 'Preview without writing files' },
+      { cmd: 'npx opencastle init', desc: 'Detect, show the plan, confirm once' },
+      { cmd: 'npx opencastle init --yes', desc: 'No prompts, for CI or scripted setup' },
+      { cmd: 'npx opencastle init --customize', desc: 'Pick IDEs and integrations by hand' },
     ],
   },
   {
-    id: 'update',
+    id: 'sync',
     category: 'lifecycle',
-    name: 'update',
-    summary: 'Update framework files while preserving customizations',
-    description: 'Upgrades OpenCastle framework files to the latest version. Your customization files — agent prompts, lessons learned, known issues — are never touched. Also supports reconfiguring your tech stack without a full re-init.',
-    usage: 'npx opencastle update [options]',
+    name: 'sync',
+    summary: 'Recompile every target from source',
+    description: 'Compiles the framework sources into each configured assistant format, preserving everything under <code>.opencastle/</code>. Run it after upgrading the package, or when <code>opencastle</code> reports that generated files are older than their sources.',
+    usage: 'npx opencastle sync [options]',
     options: [
-      { flag: '--dry-run', desc: 'Preview changes without writing files' },
-      { flag: '--force', desc: 'Force update even if versions match' },
-      { flag: '--reconfigure', desc: 'Change tech/team tool selections without waiting for a version bump' },
+      { flag: '--dry-run', desc: 'Preview what would change' },
+      { flag: '--force', desc: 'Sync even when versions match' },
+      { flag: '--reconfigure', desc: 'Re-run IDE and integration selection' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'How updates work', content: `<ul>
-        <li><strong>Framework files</strong> (instructions, agent definitions, skills, workflow templates) are overwritten with the latest versions</li>
-        <li><strong>Customization files</strong> (lessons learned, known issues, project config, session logs) are preserved</li>
-        <li><strong>Skill matrix</strong> is updated when stack changes — new plugin skills are added, removed plugins are cleaned up</li>
-        <li><strong>MCP configs</strong> are rebuilt when the tool selection changes</li>
-      </ul>` },
-      { heading: 'Reconfigure mode', content: `<p>Use <code>--reconfigure</code> to add or remove tools without waiting for a new OpenCastle release. This re-shows the tech/team tool selection prompts and updates skill matrix + MCP configs accordingly.</p>` },
+      { heading: 'What is preserved', content: `<p>Your customizations in <code>.opencastle/</code> are never overwritten. Framework directories are regenerated wholesale so renamed or removed sources do not leave stale files behind.</p>` },
+      { heading: 'Previously called update', content: `<p><code>opencastle update</code> still works as an alias. The operation is a compile-and-sync rather than a version bump, so the name follows what it does.</p>` },
     ],
     examples: [
-      { cmd: 'npx opencastle update', desc: 'Update to latest version' },
-      { cmd: 'npx opencastle update --reconfigure', desc: 'Change stack selections' },
-      { cmd: 'npx opencastle update --dry-run', desc: 'Preview what would change' },
-      { cmd: 'npx opencastle update --force', desc: 'Re-apply even if already up to date' },
+      { cmd: 'npx opencastle sync', desc: 'Recompile all targets' },
+      { cmd: 'npx opencastle sync --dry-run', desc: 'See what would change' },
     ],
   },
   {
-    id: 'eject',
+    id: 'add',
     category: 'lifecycle',
-    name: 'eject',
-    summary: 'Remove dependency, keep all files standalone',
-    description: 'Removes the OpenCastle manifest (<code>.opencastle.json</code>) while keeping all generated files in place. After ejecting, the files become standalone and you can uninstall the opencastle package.',
-    usage: 'npx opencastle eject [options]',
+    name: 'add',
+    summary: 'Adopt an integration and recompile',
+    description: 'Adds one or more packs — a framework, database, CMS, deployment target, or team tool — to the project and recompiles so its skills and MCP configuration reach every target.',
+    usage: 'npx opencastle add <pack>...',
     options: [
-      { flag: '--dry-run', desc: 'Preview without removing the manifest' },
+      { flag: '--list', desc: 'Show every available pack' },
+      { flag: '--dry-run', desc: 'Preview without writing' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'What stays', content: `<ul>
-        <li>All instruction files (<code>.github/instructions/</code>)</li>
-        <li>All agent definitions and skills</li>
-        <li>All customization files</li>
-        <li>All MCP configs</li>
-        <li>All IDE-specific configs</li>
-      </ul>` },
-      { heading: 'What gets removed', content: `<ul>
-        <li><code>.opencastle.json</code> — the manifest file that tracks what OpenCastle manages</li>
-      </ul>
-      <p>After ejecting, <code>update</code> and <code>doctor</code> will no longer work since they depend on the manifest. You own the files outright.</p>` },
+      { heading: 'Why this exists', content: `<p>Adopting a tool after setup used to mean re-running the whole selection. This edits the stored stack and recompiles, so it is one command.</p>` },
     ],
     examples: [
-      { cmd: 'npx opencastle eject', desc: 'Eject and keep all files' },
-      { cmd: 'npx opencastle eject --dry-run', desc: 'Preview the eject process' },
-    ],
-  },
-  {
-    id: 'destroy',
-    category: 'lifecycle',
-    name: 'destroy',
-    summary: 'Remove ALL OpenCastle files (reverse of init)',
-    description: 'Completely removes every file and directory that OpenCastle created — framework files, customization files, the <code>.opencastle/</code> directory, and the managed block in <code>.gitignore</code>. Use this when you want a clean slate.',
-    usage: 'npx opencastle destroy [options]',
-    options: [
-      { flag: '--dry-run', desc: 'Preview what would be removed without deleting anything' },
-      { flag: '--help, -h', desc: 'Show help' },
-    ],
-    details: [
-      { heading: 'What gets removed', content: `<ul>
-        <li>All framework-managed paths (instructions, agents, skills, workflows)</li>
-        <li>All customizable paths (lessons, known issues, project config, logs)</li>
-        <li>The <code>.opencastle/</code> directory (including the manifest)</li>
-        <li>Legacy <code>.opencastle.json</code> manifest (if present)</li>
-        <li>The OpenCastle managed block in <code>.gitignore</code></li>
-      </ul>` },
-      { heading: 'Difference from eject', content: `<p><code>eject</code> keeps all generated files and only removes the manifest — you own the files outright. <code>destroy</code> removes <em>everything</em>, restoring the project to its pre-OpenCastle state.</p>` },
-    ],
-    examples: [
-      { cmd: 'npx opencastle destroy', desc: 'Remove all OpenCastle files' },
-      { cmd: 'npx opencastle destroy --dry-run', desc: 'Preview what would be removed' },
-    ],
-  },
-  {
-    id: 'start',
-    category: 'runtime',
-    name: 'start',
-    summary: 'Go from idea to convoy spec in one command',
-    description: 'The easiest way to create a convoy spec. Describe your goal in plain text and the start command generates a PRD, validates it (with auto-fix), assesses complexity, generates a task plan, validates the convoy spec, and auto-fixes any issues — all in one command.',
-    usage: 'npx opencastle start [options]',
-    options: [
-      { flag: '--text, -t <text>', desc: 'Your feature or task description in plain text (required, unless --prd is set)' },
-      { flag: '--prd <path>', desc: 'Skip PRD generation — use an existing PRD file as input' },
-      { flag: '--output-prd <path>', desc: 'Override output path for the generated PRD' },
-      { flag: '--output-spec <path>', desc: 'Override output path for the generated convoy spec' },
-      { flag: '--complexity <path>', desc: 'Skip complexity assessment — use an existing complexity assessment file' },
-      { flag: '--adapter, -a <name>', desc: 'Override agent runtime adapter (claude, copilot, cursor, opencode, windsurf, codex, antigravity)' },
-      { flag: '--verbose', desc: 'Show full agent output for each step' },
-      { flag: '--dry-run', desc: 'Generate and print the PRD prompt only, then stop' },
-      { flag: '--skip-validation', desc: 'Skip PRD and convoy validation (steps 2, 3, 6, 7)' },
-      { flag: '--help, -h', desc: 'Show help' },
-    ],
-    details: [
-      { heading: 'Start command steps', content: `<ol>
-        <li><strong>Generate PRD</strong> — converts your text into a structured Product Requirements Document</li>
-        <li><strong>Validate PRD</strong> — checks the PRD for completeness and correctness</li>
-        <li><strong>Fix PRD</strong> — if validation fails, attempts to auto-fix the PRD (up to 2 retries)</li>
-        <li><strong>Assess complexity</strong> — analyzes the PRD to determine whether to use a single convoy or a chain of convoys for complex multi-domain projects</li>
-        <li><strong>Generate task plan</strong> — converts the PRD into a structured task plan (JSON), then builds a <code>.convoy.yml</code> spec with tasks, dependencies, file partitions, and gates</li>
-        <li><strong>Validate convoy spec</strong> — runs both schema validation and semantic validation against the spec</li>
-        <li><strong>Fix convoy spec</strong> — if validation fails, applies patch-based fixes automatically (up to 2 retries)</li>
-      </ol>` },
-      { heading: 'After the start command completes', content: `<p>The start command outputs two files:</p>
-      <ul>
-        <li>A PRD (<code>.prd.md</code>) in <code>.opencastle/prds/</code></li>
-        <li>A convoy spec (<code>.convoy.yml</code>) in <code>.opencastle/convoys/</code></li>
-      </ul>
-      <p>Review the generated spec, then execute it:</p>
-      <pre><code>npx opencastle run -f .opencastle/convoys/your-spec.convoy.yml</code></pre>` },
-      { heading: 'Complexity assessment and chain strategy', content: `<p>After validating the PRD, the start command assesses the project's complexity to decide the optimal execution strategy:</p>
-<ul>
-  <li><strong>Single convoy</strong> (default) — all tasks run in one <code>.convoy.yml</code> spec. Used for low and medium complexity projects.</li>
-  <li><strong>Chain strategy</strong> — for high-complexity, multi-domain projects, the start command splits the work into multiple convoy groups (e.g., database setup → API integration → frontend/testing). Each group gets its own <code>.convoy.yml</code> file, plus a master pipeline spec that chains them with <code>depends_on_convoy</code> dependencies.</li>
-</ul>
-<p>Chain convoy files and the master pipeline spec are written to <code>.opencastle/convoys/</code>. Use <code>--complexity &lt;path&gt;</code> to skip the assessment and provide your own complexity file.</p>` },
-    ],
-    examples: [
-      { cmd: 'npx opencastle start -t "Add user authentication with login and signup pages"', desc: 'Generate a convoy spec from a text description' },
-      { cmd: 'npx opencastle start -t "Fix the broken search feature" --adapter claude', desc: 'Use a specific adapter' },
-      { cmd: 'npx opencastle start --prd existing-prd.md', desc: 'Skip PRD generation, use an existing PRD' },
-      { cmd: 'npx opencastle start -t "Refactor the API layer" --skip-validation', desc: 'Skip validation steps for faster generation' },
-      { cmd: 'npx opencastle start -t "Build a contact form" --dry-run', desc: 'Preview the assembled prompt without executing' },
-    ],
-  },
-  {
-    id: 'run',
-    category: 'runtime',
-    name: 'run',
-    summary: 'Run convoy specs — deterministic, crash-recoverable agent orchestration',
-    description: 'Reads a YAML convoy spec (<code>convoy.yml</code>), builds a dependency-aware execution plan, and runs tasks in isolated git worktrees. Each worker operates in its own worktree with SQLite-backed state persistence. Legacy <code>opencastle.tasks.yml</code> specs without <code>version: 1</code> still work via the legacy executor.',
-    usage: 'npx opencastle run [options]',
-    options: [
-      { flag: '--file, -f <path>', desc: 'Convoy spec file (default: convoy.yml if present)' },
-      { flag: '--formula <path>', desc: 'Use a formula template (alternative to --file)' },
-      { flag: '--set key=value', desc: 'Set a formula variable (repeatable)' },
-      { flag: '--dry-run', desc: 'Show execution plan without running tasks' },
-      { flag: '--concurrency, -c <n>', desc: 'Override max parallel tasks' },
-      { flag: '--adapter, -a <name>', desc: 'Override agent runtime adapter (claude, copilot, cursor, opencode, windsurf, codex, antigravity)' },
-      { flag: '--resume', desc: 'Resume the last interrupted convoy from SQLite state' },
-      { flag: '--retry-failed [task-id]', desc: 'Retry failed/gate-failed/timed-out tasks (optionally a specific task)' },
-      { flag: '--status', desc: 'Print convoy state summary from SQLite (branch, task breakdown)' },
-      { flag: '--dlq-list', desc: 'List dead letter queue entries' },
-      { flag: '--dlq-resolve <id>', desc: 'Resolve a DLQ entry (requires --resolution)' },
-      { flag: '--dlq-retry <id>', desc: 'Reset a DLQ task to pending for retry' },
-      { flag: '--convoy <id>', desc: 'Filter by convoy ID (used with --dlq-list)' },
-      { flag: '--resolution <text>', desc: 'Resolution text (used with --dlq-resolve)' },
-      { flag: '--report-dir <path>', desc: 'Where to write run reports (default: .opencastle/runs)' },
-      { flag: '--verbose', desc: 'Show full agent output' },
-      { flag: '--watch', desc: 'Keep running, re-triggering on file changes, cron, or git push' },
-      { flag: '--watch-config <path>', desc: 'Path to watch configuration file (overrides spec watch config)' },
-      { flag: '--clear-scratchpad', desc: 'Clear scratchpad data at watch start' },
-      { flag: '--help, -h', desc: 'Show help' },
-    ],
-    details: [
-      { heading: 'Convoy spec format', content: `<p>The convoy spec is a YAML file (<code>convoy.yml</code> by default, falling back to <code>opencastle.tasks.yml</code>) that supports:</p>
-      <ul>
-        <li><code>version: 1</code> — enables the Convoy Engine with full feature set</li>
-        <li><code>name</code> — convoy name for reports and state tracking</li>
-        <li><code>adapter</code> — which AI CLI to use (<code>claude</code>, <code>copilot</code>, <code>cursor</code>, <code>opencode</code>, or <code>auto</code>)</li>
-        <li><code>concurrency</code> — max parallel workers (default: 3)</li>
-        <li><code>branch</code> — base branch for worktree isolation</li>
-        <li><code>defaults</code> — default <code>timeout</code>, <code>model</code>, and <code>max_retries</code> for all tasks</li>
-        <li><code>tasks</code> — array of task objects with <code>id</code>, <code>prompt</code>, <code>dependsOn</code>, per-task <code>adapter</code>, etc.</li>
-        <li><code>gates</code> — validation gates that run between phases</li>
-      </ul>
-      <p>Legacy specs without <code>version: 1</code> are still supported via the legacy executor for backward compatibility.</p>` },
-      { heading: 'Execution model', content: `<ul>
-        <li><strong>Convoy Engine:</strong> <code>version: 1</code> specs use the Convoy Engine — a deterministic orchestrator with phase-based execution and crash recovery.</li>
-        <li><strong>SQLite persistence:</strong> State is stored in WAL-mode SQLite, enabling reliable crash recovery via <code>--resume</code>.</li>
-        <li><strong>Worktree isolation:</strong> Each worker runs in its own git worktree, preventing cross-task interference.</li>
-        <li><strong>Health monitoring:</strong> A background health monitor detects stuck and zombie workers and recovers automatically.</li>
-        <li><strong>Merge queue:</strong> Completed worktrees are merged back to the base branch via a serialized merge queue.</li>
-        <li><strong>Validation gates:</strong> Gates run between phases and can block promotion if checks fail.</li>
-      </ul>` },
-      { heading: 'Adapters', content: `<p>The <code>--adapter</code> flag selects which AI CLI to delegate work to. Convoys also support per-task adapter overrides and <code>adapter: auto</code> for auto-detection:</p>
-      <table class="plugin-table">
-        <thead><tr><th>Adapter</th><th>CLI Required</th><th>Install</th></tr></thead>
-        <tbody>
-          <tr><td><code>claude</code></td><td><code>claude</code></td><td><code>npm i -g @anthropic-ai/claude-code</code></td></tr>
-          <tr><td><code>copilot</code></td><td><code>copilot</code></td><td>Ships with GitHub Copilot CLI</td></tr>
-          <tr><td><code>cursor</code></td><td><code>cursor</code></td><td>Ships with Cursor editor (Install CLI from menu)</td></tr>
-          <tr><td><code>opencode</code></td><td><code>opencode</code></td><td>See <a href="https://opencode.ai">opencode.ai</a></td></tr>
-        </tbody>
-      </table>` },
-    ],
-    examples: [
-      { cmd: 'npx opencastle run', desc: 'Run the default convoy spec' },
-      { cmd: 'npx opencastle run -f auth.convoy.yml', desc: 'Run a specific convoy spec' },
-      { cmd: 'npx opencastle run --dry-run', desc: 'Preview execution plan' },
-      { cmd: 'npx opencastle run --resume', desc: 'Resume last interrupted convoy' },
-      { cmd: 'npx opencastle run --status', desc: 'Check convoy state' },
-      { cmd: 'npx opencastle run -c 5 -a claude', desc: 'Run with 5 parallel tasks using Claude Code' },
-    ],
-  },
-  {
-    id: 'plan',
-    category: 'runtime',
-    name: 'plan',
-    summary: 'Run a single prompt template step',
-    description: 'Lower-level command that runs a single prompt template step via an AI adapter. Use <code>start</code> instead for the full automated workflow. The <code>plan</code> command is useful when you want to run individual steps (generate a PRD, generate a convoy spec, validate, or fix) with full control over inputs and outputs.',
-    usage: 'npx opencastle plan [options]',
-    options: [
-      { flag: '--file, -f <path>', desc: 'Path to a text file (fills the {{goal}} placeholder in the template)' },
-      { flag: '--text, -t <text>', desc: 'Inline text to use as {{goal}} (alternative to --file)' },
-      { flag: '--template <name>', desc: 'Prompt template to use (default: generate-convoy). Built-in: generate-prd, validate-prd, fix-prd, assess-complexity, generate-convoy, validate-convoy, fix-convoy' },
-      { flag: '--context <path>', desc: 'Path to an additional context file (fills {{context}})' },
-      { flag: '--context-text <text>', desc: 'Inline text to fill {{context}} (alternative to --context)' },
-      { flag: '--output, -o <path>', desc: 'Output path for the generated file' },
-      { flag: '--adapter, -a <name>', desc: 'Override agent runtime adapter (claude, copilot, cursor, opencode)' },
-      { flag: '--verbose', desc: 'Show full agent output' },
-      { flag: '--dry-run', desc: 'Print the assembled prompt without executing' },
-      { flag: '--help, -h', desc: 'Show help' },
-    ],
-    details: [
-      { heading: 'Built-in templates', content: `<table class="plugin-table">
-        <thead><tr><th>Template</th><th>Description</th><th>Output</th></tr></thead>
-        <tbody>
-          <tr><td><code>generate-prd</code></td><td>Write a PRD from a feature prompt</td><td><code>.prd.md</code></td></tr>
-          <tr><td><code>validate-prd</code></td><td>Check a PRD for completeness</td><td>VALID / INVALID verdict</td></tr>
-          <tr><td><code>fix-prd</code></td><td>Fix validation errors in a PRD</td><td><code>.prd.md</code></td></tr>
-          <tr><td><code>assess-complexity</code></td><td>Assess PRD complexity for single vs chain strategy</td><td>JSON</td></tr>
-          <tr><td><code>generate-convoy</code></td><td>Generate a convoy spec from a PRD (default)</td><td><code>.convoy.yml</code></td></tr>
-          <tr><td><code>validate-convoy</code></td><td>Check a convoy spec for correctness</td><td>VALID / INVALID verdict</td></tr>
-          <tr><td><code>fix-convoy</code></td><td>Fix validation errors in a convoy spec</td><td><code>.convoy.yml</code></td></tr>
-        </tbody>
-      </table>` },
-      { heading: 'How it works', content: `<ol>
-        <li><strong>Loads the template</strong> — reads the prompt template specified by <code>--template</code></li>
-        <li><strong>Fills placeholders</strong> — substitutes <code>{{goal}}</code> from <code>--file</code> or <code>--text</code>, and <code>{{context}}</code> from <code>--context</code> or <code>--context-text</code></li>
-        <li><strong>Runs the AI adapter</strong> — sends the assembled prompt to the detected (or specified) AI CLI</li>
-        <li><strong>Extracts output</strong> — parses the response and writes to <code>.opencastle/convoys/</code> or the path specified by <code>--output</code></li>
-      </ol>` },
-    ],
-    examples: [
-      { cmd: 'npx opencastle plan -t "Add user reviews" --template generate-prd', desc: 'Generate a PRD from inline text' },
-      { cmd: 'npx opencastle plan -f my-prd.md', desc: 'Generate a convoy spec from a PRD file (default template)' },
-      { cmd: 'npx opencastle plan -f spec.convoy.yml --template validate-convoy', desc: 'Validate an existing convoy spec' },
-      { cmd: 'npx opencastle plan -f task.txt --context architecture.md', desc: 'Include additional context' },
-      { cmd: 'npx opencastle plan -t "Fix the auth bug" --dry-run', desc: 'Preview the assembled prompt' },
-    ],
-  },
-  {
-    id: 'validate',
-    category: 'runtime',
-    name: 'validate',
-    summary: 'Validate a convoy YAML spec file',
-    description: 'Validates a convoy spec file against the schema without executing it. Checks for required fields, valid task IDs, dependency cycles, file partition conflicts, and other structural issues.',
-    usage: 'npx opencastle validate <file>',
-    options: [
-      { flag: '<file>', desc: 'Path to the convoy YAML spec file (required)' },
-      { flag: '--help, -h', desc: 'Show help' },
-    ],
-    details: [
-      { heading: 'What it checks', content: `<ul>
-        <li>YAML syntax is valid</li>
-        <li>Required fields are present (<code>name</code>, <code>version</code>, <code>tasks</code>)</li>
-        <li>Each task has <code>id</code> and <code>prompt</code></li>
-        <li><code>depends_on</code> references point to existing task IDs</li>
-        <li>No dependency cycles exist</li>
-        <li>File partitions don't conflict between parallel tasks</li>
-      </ul>` },
-    ],
-    examples: [
-      { cmd: 'npx opencastle validate convoy.yml', desc: 'Validate a convoy spec' },
-      { cmd: 'npx opencastle validate .opencastle/convoys/auth.convoy.yml', desc: 'Validate a generated spec' },
-    ],
-  },
-  {
-    id: 'dashboard',
-    category: 'runtime',
-    name: 'dashboard',
-    summary: 'View agent observability dashboard in your browser',
-    description: 'Starts a local HTTP server that serves the OpenCastle dashboard — a visual overview of agent sessions, delegations, reviews, and panel votes from your project\'s NDJSON log files.',
-    usage: 'npx opencastle dashboard [options]',
-    options: [
-      { flag: '--port <number>', desc: 'Port to listen on (default: 4300, auto-increments if busy)' },
-      { flag: '--no-open', desc: 'Don\'t auto-open the browser' },
-      { flag: '--seed', desc: 'Show demo data instead of project logs' },
-      { flag: '--convoy <id>', desc: 'Filter dashboard to a specific convoy' },
-      { flag: '--help, -h', desc: 'Show help' },
-    ],
-    details: [
-      { heading: 'Data sources', content: `<p>The dashboard reads data from two locations:</p>
-      <ul>
-        <li><strong><code>.opencastle/logs/</code></strong> (primary) — <code>events.ndjson</code> (unified event log with sessions, delegations, reviews, panels), <code>convoys.ndjson</code>, <code>pipelines.ndjson</code></li>
-        <li><strong><code>.opencastle/convoy.db</code></strong> — SQLite database with convoy execution state, task results, and token usage</li>
-      </ul>
-      <p>If no log files exist, the dashboard shows empty charts. Use <code>--seed</code> to preview with demo data.</p>` },
-      { heading: 'Auto-port', content: `<p>If port 4300 is already in use, the dashboard automatically tries the next port (4301, 4302, etc.) up to 10 attempts.</p>` },
-    ],
-    examples: [
-      { cmd: 'npx opencastle dashboard', desc: 'Start dashboard and open browser' },
-      { cmd: 'npx opencastle dashboard --seed', desc: 'Preview with demo data' },
-      { cmd: 'npx opencastle dashboard --port 8080', desc: 'Start on a custom port' },
-      { cmd: 'npx opencastle dashboard --no-open', desc: 'Start without opening browser' },
+      { cmd: 'npx opencastle add supabase', desc: 'Add one integration' },
+      { cmd: 'npx opencastle add nextjs vercel sentry', desc: 'Add several at once' },
+      { cmd: 'npx opencastle add --list', desc: 'See what is available' },
     ],
   },
   {
     id: 'doctor',
     category: 'diagnostics',
     name: 'doctor',
-    summary: 'Validate your OpenCastle setup',
-    description: 'Runs a comprehensive health check on your OpenCastle installation. Verifies the manifest, instruction files, agent definitions, skills, logs, IDE configs, MCP configs, and environment variables.',
-    usage: 'npx opencastle doctor',
+    summary: 'Diagnose setup problems',
+    description: 'Checks the manifest, per-assistant generated files, the skill matrix, MCP configuration, and required environment variables, and pairs each finding with the command that fixes it.',
+    usage: 'npx opencastle doctor [options]',
     options: [
       { flag: '--help, -h', desc: 'Show help' },
     ],
-    details: [],
+    details: [
+      { heading: 'When to run it', content: `<p>After upgrading, after a merge that touched generated files, or whenever an assistant does not seem to be picking up the config. For a quick "is anything stale" answer, plain <code>opencastle</code> is faster.</p>` },
+    ],
     examples: [
-      { cmd: 'npx opencastle doctor', desc: 'Run all health checks' },
+      { cmd: 'npx opencastle doctor', desc: 'Run all checks' },
+    ],
+  },
+  {
+    id: 'remove',
+    category: 'lifecycle',
+    name: 'remove',
+    summary: 'Remove OpenCastle from this project',
+    description: 'Asks whether to keep the generated files — making them standalone so you can uninstall the package — or delete everything it created. Always previews before touching anything.',
+    usage: 'npx opencastle remove [options]',
+    options: [
+      { flag: '--keep-files', desc: 'Keep generated files; drop only the manifest' },
+      { flag: '--all', desc: 'Delete every generated file' },
+      { flag: '--dry-run', desc: 'Preview without changing anything' },
+      { flag: '--yes', desc: 'Skip the confirmation' },
+      { flag: '--help, -h', desc: 'Show help' },
+    ],
+    details: [
+      { heading: 'Replaces eject and destroy', content: `<p>Those two names gave no hint which one deleted your files. This asks, and the flags spell out the answer when you already know it: <code>--keep-files</code> is the old <code>eject</code>, <code>--all</code> is the old <code>destroy</code>.</p>` },
+    ],
+    examples: [
+      { cmd: 'npx opencastle remove', desc: 'Ask, then remove' },
+      { cmd: 'npx opencastle remove --keep-files', desc: 'Make the files standalone' },
+      { cmd: 'npx opencastle remove --all --dry-run', desc: 'See exactly what a full delete would remove' },
+    ],
+  },
+  {
+    id: 'convoy',
+    category: 'runtime',
+    name: 'convoy',
+    summary: 'Experimental: plan and run multi-step work',
+    description: 'Runs long multi-step work in dependency order across isolated git worktrees, with SQLite persistence so an interrupted run resumes rather than restarting. Give it a task description and it plans, executes, and runs your gates.',
+    usage: 'npx opencastle convoy [task] [options]',
+    options: [
+      { flag: '--dry-run', desc: 'Plan only; do not execute' },
+      { flag: '--verbose', desc: 'Stream agent output' },
+      { flag: '--json', desc: 'Machine-readable status' },
+      { flag: '--help, -h', desc: 'Show help' },
+    ],
+    details: [
+      { heading: 'Subcommands', content: `<ul>
+        <li><code>opencastle convoy</code> — where the last run got to, and the verb that fits its state</li>
+        <li><code>opencastle convoy "&lt;task&gt;"</code> — plan and execute a task</li>
+        <li><code>opencastle convoy resume</code> — continue an interrupted run</li>
+        <li><code>opencastle convoy retry</code> — re-run only the failed tasks</li>
+        <li><code>opencastle convoy run &lt;spec&gt;</code> — execute a spec you wrote by hand</li>
+        <li><code>opencastle convoy dashboard</code> — open the run viewer</li>
+      </ul>` },
+      { heading: 'Experimental', content: `<p>This namespace may change or be removed. The compiler does not depend on it. Native background and cloud agents now cover much of what it was built for, so treat it as a research surface rather than a stable one.</p>` },
+    ],
+    examples: [
+      { cmd: 'npx opencastle convoy "Add user reviews to the place detail page"', desc: 'Plan and run' },
+      { cmd: 'npx opencastle convoy', desc: 'Status of the last run' },
+      { cmd: 'npx opencastle convoy resume', desc: 'Continue after an interruption' },
     ],
   },
 ];
