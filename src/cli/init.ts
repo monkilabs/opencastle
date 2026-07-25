@@ -382,13 +382,24 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   if (totalSkipped > 0) {
     const noun = totalSkipped === 1 ? 'file' : 'files'
     console.log(`  ${c.dim('→')} Left ${totalSkipped} existing ${noun} untouched`)
-    // Name the ones the user is likely to care about — their own root config.
-    const notable = skippedPaths
-      .map((p) => relative(projectRoot, p))
-      .filter((p) => !p.includes('/') && !p.startsWith('.opencastle'))
-    for (const p of notable.slice(0, 4)) {
-      console.log(`    ${c.dim('•')} ${p} ${c.dim('(your version kept)')}`)
-    }
+  }
+
+  // Name the root files that already existed and were merged rather than replaced.
+  const mergedRoots: string[] = []
+  for (const p of allManagedPaths.framework) {
+    if (p.includes('/') || p.endsWith('/')) continue
+    const abs = resolve(projectRoot, p)
+    if (!existsSync(abs)) continue
+    try {
+      const { stripManagedBlock } = await import('./managed-block.js')
+      const { readFile: rf } = await import('node:fs/promises')
+      const text = await rf(abs, 'utf8')
+      if (stripManagedBlock(text).trim().length > 0) mergedRoots.push(p)
+    } catch { /* not readable — nothing to claim */ }
+  }
+  if (mergedRoots.length > 0) {
+    console.log(`  ${c.green('✓')} Merged into your existing ${mergedRoots.join(', ')}`)
+    console.log(`    ${c.dim('your content is above the managed block and is never overwritten')}`)
   }
 
   // ── Env var notice + .env file generation ────────────────────

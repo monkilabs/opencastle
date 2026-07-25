@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
+import { BLOCK_START, BLOCK_END, hasManagedBlock } from './managed-block.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeChoice, StackConfig } from './types.js'
 
@@ -47,12 +48,40 @@ function filesUnder(root: string): string[] {
   return out.sort()
 }
 
-function sameContent(a: string, b: string): boolean {
+/**
+ * Compare a generated file against a freshly compiled one.
+ *
+ * Root instruction files hold a managed block surrounded by the user's own
+ * writing, and a clean compile has no user content — so comparing whole files
+ * would report drift on every merged file forever. When both sides carry the
+ * block, only the block is compared; the surrounding prose is the user's and is
+ * none of the checker's business.
+ */
+function sameContent(freshPath: string, actualPath: string): boolean {
   try {
-    return readFileSync(a).equals(readFileSync(b))
+    const fresh = readFileSync(freshPath)
+    const actual = readFileSync(actualPath)
+    if (fresh.equals(actual)) return true
+
+    const freshText = fresh.toString('utf8')
+    const actualText = actual.toString('utf8')
+    if (!hasManagedBlock(freshText)) return false
+
+    const freshBlock = extractManagedBlock(freshText)
+    const actualBlock = extractManagedBlock(actualText)
+    return freshBlock !== null && freshBlock === actualBlock
   } catch {
     return false
   }
+}
+
+/** The managed block's contents, or null when the file has no block. */
+function extractManagedBlock(content: string): string | null {
+  const start = content.indexOf(BLOCK_START)
+  if (start === -1) return null
+  const end = content.indexOf(BLOCK_END, start)
+  if (end === -1) return null
+  return content.slice(start + BLOCK_START.length, end).trim()
 }
 
 /**

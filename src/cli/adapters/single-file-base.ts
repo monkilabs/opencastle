@@ -1,6 +1,7 @@
 import { resolve, basename } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { writeManagedBlock } from '../managed-block.js'
 import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfig } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
@@ -58,9 +59,11 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
     const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-    // 1. Build root instructions file
+    // 1. Build root instructions file.
+    // Always built: the content goes into a managed block, so a file the user
+    // already owns keeps its content and gains the generated section.
     const rootPath = resolve(projectRoot, config.rootFile)
-    if (!existsSync(rootPath)) {
+    {
       const sections: string[] = []
 
       sections.push(
@@ -145,10 +148,10 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         sections.push(skillLines.join('\n'))
       }
 
-      await writeFile(rootPath, sections.join('\n') + '\n')
-      results.created.push(rootPath)
-    } else {
-      results.skipped.push(rootPath)
+      const merge = await writeManagedBlock(rootPath, sections.join('\n'))
+      if (merge.action === 'created') results.created.push(rootPath)
+      else if (merge.action === 'unchanged') results.skipped.push(rootPath)
+      else results.copied.push(rootPath)
     }
 
     const dotDirPath = resolve(projectRoot, config.dotDir)
@@ -275,11 +278,9 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     const results: CopyResults = { copied: [], skipped: [], created: [] }
     const dotDirPath = resolve(projectRoot, config.dotDir)
 
-    // 1. Remove root instructions file so install() recreates it
-    const rootPath = resolve(projectRoot, config.rootFile)
-    if (existsSync(rootPath)) {
-      await unlink(rootPath)
-    }
+    // 1. Leave the root file in place. install() rewrites only the managed
+    // block inside it, so deleting it here would destroy whatever the user
+    // wrote around that block.
 
     // 2. Remove existing framework directories
     for (const dir of config.frameworkDirs) {

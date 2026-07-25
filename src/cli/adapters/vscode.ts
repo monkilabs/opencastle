@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { writeManagedBlock } from '../managed-block.js'
 import { copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfig } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getAgentTransform } from '../stack-config.js'
@@ -51,14 +52,15 @@ export async function install(
   const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
   const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-  // copilot-instructions.md
+  // copilot-instructions.md — merged, not replaced. A project that already has
+  // one keeps it; the generated content goes into a managed block below it.
   const copilotSrc = resolve(srcRoot, 'copilot-instructions.md')
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
-  if (!existsSync(copilotDest)) {
-    await writeFile(copilotDest, await readFile(copilotSrc, 'utf8'))
-    results.created.push(copilotDest)
-  } else {
-    results.skipped.push(copilotDest)
+  {
+    const merge = await writeManagedBlock(copilotDest, await readFile(copilotSrc, 'utf8'))
+    if (merge.action === 'created') results.created.push(copilotDest)
+    else if (merge.action === 'unchanged') results.skipped.push(copilotDest)
+    else results.copied.push(copilotDest)
   }
 
   // Framework directories
@@ -125,9 +127,9 @@ export async function update(
   const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
   const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-  // Overwrite copilot-instructions.md
+  // Refresh only the managed block, leaving any surrounding user content alone.
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
-  await writeFile(
+  await writeManagedBlock(
     copilotDest,
     await readFile(resolve(srcRoot, 'copilot-instructions.md'), 'utf8')
   )
