@@ -76,6 +76,27 @@ describe.each([
     expect(content).toContain(`${configDir}/rules/`)
   })
 
+  it('keeps a pre-existing root rules file and merges below it', async () => {
+    writeFileSync(join(projectRoot, rootFile), '# House rules\n\nUse pnpm.\n')
+    await adapter.install(pkgRoot, projectRoot)
+
+    const content = readFileSync(join(projectRoot, rootFile), 'utf8')
+    expect(content).toContain('# House rules')
+    expect(content).toContain('Use pnpm.')
+    expect(content).toContain(`${configDir}/rules/`)
+    expect(content.indexOf('# House rules')).toBeLessThan(content.indexOf('OpenCastle managed'))
+  })
+
+  it('does not duplicate the managed block across syncs', async () => {
+    writeFileSync(join(projectRoot, rootFile), '# House rules\n')
+    await adapter.install(pkgRoot, projectRoot)
+    await adapter.update(pkgRoot, projectRoot)
+
+    const content = readFileSync(join(projectRoot, rootFile), 'utf8')
+    expect(content.split('>>> OpenCastle managed')).toHaveLength(2)
+    expect(content).toContain('# House rules')
+  })
+
   it('converts every source category to the IDE extension', async () => {
     await adapter.install(pkgRoot, projectRoot)
     expect(existsSync(join(rules(), `general${ext}`))).toBe(true)

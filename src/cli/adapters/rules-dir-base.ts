@@ -6,6 +6,7 @@ import { scaffoldMcpConfig } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { splitFrontmatter, parseFrontmatterString } from './frontmatter.js'
+import { writeManagedBlock } from '../managed-block.js'
 
 /**
  * Shared implementation for IDEs that take a root rules file plus a directory of
@@ -237,12 +238,14 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
     const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
+    // Merged, not skipped: a project that already has a rules file keeps it and
+    // gains the generated pointer in a managed block below.
     const rootFile = resolve(projectRoot, rootRulesFile)
-    if (!existsSync(rootFile)) {
-      await writeFile(rootFile, rootIntro)
-      results.created.push(rootFile)
-    } else {
-      results.skipped.push(rootFile)
+    {
+      const merge = await writeManagedBlock(rootFile, rootIntro)
+      if (merge.action === 'created') results.created.push(rootFile)
+      else if (merge.action === 'unchanged') results.skipped.push(rootFile)
+      else results.copied.push(rootFile)
     }
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
@@ -282,7 +285,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
     const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-    await writeFile(resolve(projectRoot, rootRulesFile), rootIntro)
+    await writeManagedBlock(resolve(projectRoot, rootRulesFile), rootIntro)
     results.copied.push(rootRulesFile)
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
