@@ -54,7 +54,7 @@ export interface DashboardServerResult {
 }
 
 const DASHBOARD_HELP = `
-  opencastle dashboard [options]
+  opencastle convoy dashboard [options]
 
   Start the observability dashboard server.
 

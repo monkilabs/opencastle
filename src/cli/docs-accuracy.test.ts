@@ -90,6 +90,86 @@ describe('docs describe the current CLI', () => {
   })
 })
 
+/**
+ * The content in src/orchestrator/ is not documentation about the tool — it is
+ * the tool's output, compiled into every user's project and read by their agent.
+ * A removed command named here becomes an agent confidently running `opencastle
+ * run --status` and getting exit 1. Nothing scanned these files, so the suite
+ * passed while five of them instructed commands that no longer existed.
+ */
+describe('shipped content instructs only commands that exist', () => {
+  const orchestratorRoot = join(repoRoot, 'src', 'orchestrator')
+
+  function contentFiles(dir: string, out: string[] = []): string[] {
+    if (!existsSync(dir)) return out
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) contentFiles(p, out)
+      else if (entry.name.endsWith('.md')) out.push(p)
+    }
+    return out
+  }
+
+  const files = contentFiles(orchestratorRoot).map((p) => ({
+    rel: p.slice(repoRoot.length + 1),
+    text: readFileSync(p, 'utf8'),
+  }))
+
+  it('has content to check', () => {
+    expect(files.length).toBeGreaterThan(0)
+  })
+
+  it('names no removed command', () => {
+    const offenders: string[] = []
+    for (const cmd of replacedCommands()) {
+      const usage = new RegExp(`(?:npx )?opencastle ${cmd}(?![a-z-])`, 'g')
+      for (const file of files) {
+        for (const hit of file.text.matchAll(usage)) offenders.push(`${file.rel}: ${hit[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('names no model', () => {
+    const pattern = /\b(claude[- ](?:opus|sonnet|haiku)[- ]?[\d.]+|gpt-[\d.]+|gemini[- ][\d.]+)/i
+    const offenders = files
+      .map((f) => ({ rel: f.rel, hit: f.text.match(pattern)?.[0] }))
+      .filter((x) => x.hit)
+      .map((x) => `${x.rel}: ${x.hit}`)
+    expect(offenders).toEqual([])
+  })
+})
+
+/**
+ * The CLI's own output is the closest thing to documentation most people read.
+ * It shipped hints naming `opencastle start` and `opencastle plan`, both removed,
+ * one of them the banner printed at the top of every planner run.
+ */
+describe('the CLI never tells you to run a removed command', () => {
+  const cliDirPath = join(repoRoot, 'src', 'cli')
+
+  const sources = readdirSync(cliDirPath)
+    .filter((n) => n.endsWith('.ts') && !n.endsWith('.test.ts'))
+    .map((n) => ({ rel: `src/cli/${n}`, text: readFileSync(join(cliDirPath, n), 'utf8') }))
+
+  it('has sources to check', () => {
+    expect(sources.length).toBeGreaterThan(0)
+  })
+
+  it('prints no removed command', () => {
+    const offenders: string[] = []
+    for (const cmd of replacedCommands()) {
+      // `opencastle convoy run` is fine; a bare `opencastle run` is not. The
+      // lookbehind spares prose like "the opencastle package root".
+      const usage = new RegExp(`(?<!the )opencastle ${cmd}(?![a-z-])`, 'g')
+      for (const src of sources) {
+        for (const hit of src.text.matchAll(usage)) offenders.push(`${src.rel}: ${hit[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})
+
 describe('docs name no models', () => {
   const pattern = /\b(claude[- ](?:opus|sonnet|haiku)[- ]?[\d.]+|gpt-[\d.]+|gemini[- ][\d.]+)/i
 

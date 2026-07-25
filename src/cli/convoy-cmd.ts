@@ -22,6 +22,7 @@ const CONVOY_HELP = `
   Usage:
     opencastle convoy                    Show the last run and what to do next
     opencastle convoy "<task>"           Plan and execute a task
+    opencastle convoy plan --prd <path>  Resume from a PRD written earlier
     opencastle convoy resume             Continue the last interrupted run
     opencastle convoy retry              Re-run the failed tasks of the last run
     opencastle convoy dashboard          Open the run viewer
@@ -123,13 +124,20 @@ function renderStatus(last: LastRun | null, json: boolean): void {
 export default async function convoy(ctx: CliContext): Promise<void> {
   const { args } = ctx
 
-  if (args.includes('--help') || args.includes('-h')) {
+  const [sub, ...rest] = args
+
+  // `convoy --help` is ours; `convoy plan --help` belongs to the subcommand, which
+  // is where its flags are actually documented.
+  const wantsHelp = args.includes('--help') || args.includes('-h')
+  if (wantsHelp && (sub === undefined || sub === '--help' || sub === '-h')) {
     console.log(CONVOY_HELP)
     return
   }
 
-  const [sub, ...rest] = args
-  const passthrough = args.filter((a) => a.startsWith('--'))
+  // `--json` belongs to the status path; forwarding it to the planner would only
+  // earn an "Unknown option" from an arg parser that has never heard of it.
+  const PLANNER_FLAGS = new Set(['--dry-run', '--verbose'])
+  const passthrough = args.filter((a) => PLANNER_FLAGS.has(a))
 
   switch (sub) {
     case undefined:
@@ -149,8 +157,14 @@ export default async function convoy(ctx: CliContext): Promise<void> {
       return
 
     case 'run':
-      // Explicit spec execution, for a .convoy.yml written by hand or by `start`.
+      // Explicit spec execution, for a .convoy.yml written by hand or by the planner.
       await delegate('run', ctx, rest)
+      return
+
+    case 'plan':
+      // The planner writes a PRD before it writes a spec, and tells you where. Without
+      // this there was no command that would take that PRD back — the advice dead-ended.
+      await delegate('pipeline', ctx, rest)
       return
 
     default:
@@ -163,6 +177,8 @@ export default async function convoy(ctx: CliContext): Promise<void> {
     return
   }
 
-  // Anything else is a task description: plan it, then execute.
-  await delegate('pipeline', ctx, [sub, ...passthrough])
+  // Anything else is a task description: plan it, then execute. `pipeline` takes
+  // it as a flag value, so name it — passing it positionally made the one command
+  // this tool prints under "Start one:" fail with "Unknown option".
+  await delegate('pipeline', ctx, ['--text', sub, ...passthrough])
 }

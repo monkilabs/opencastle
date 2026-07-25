@@ -10,7 +10,7 @@ import type { Task } from './convoy/spec-types.js'
 import type { MCPServerConfig } from './convoy/types.js'
 
 const HELP = `
-  opencastle plan [options]
+  opencastle convoy plan [options]
 
   Generate a convoy spec (or other AI output) from a task description by running
   it through a prompt template via an AI adapter.
@@ -100,7 +100,7 @@ function printAdapterError(detectionFailed: boolean, adapterName: string): void 
         `    • opencode   — https://opencode.ai\n` +
         `    • codex      — npm install -g @openai/codex\n` +
         `\n` +
-        `    Or specify an adapter explicitly: opencastle plan --adapter <name>`
+        `    Or specify an adapter explicitly: opencastle convoy plan --adapter <name>`
     )
   } else {
     const hints: Record<string, string> = {
@@ -662,7 +662,7 @@ export default async function plan({ args, pkgRoot }: CliContext): Promise<void>
         ? result.outputPath!.slice(process.cwd().length + 1)
         : result.outputPath!
       console.log(c.green(`  ✓ PRD written to ${relPath}`))
-      console.log(`\n  ${c.dim('Next step:')} opencastle plan --file ${relPath} --template validate-prd`)
+      console.log(`\n  ${c.dim('Next step:')} opencastle convoy plan --prd ${relPath}`)
       break
     }
     case 'json': {
@@ -684,8 +684,8 @@ export default async function plan({ args, pkgRoot }: CliContext): Promise<void>
         console.log(c.yellow(`    (contains validation warnings — review before running)`))
       }
       console.log(`
-  ${c.dim('Preview:')} npx opencastle run -f ${relPath} --dry-run
-  ${c.dim('Execute:')} npx opencastle run -f ${relPath}
+  ${c.dim('Preview:')} npx opencastle convoy run -f ${relPath} --dry-run
+  ${c.dim('Execute:')} npx opencastle convoy run -f ${relPath}
 `)
     }
   }
