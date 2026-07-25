@@ -2,6 +2,7 @@ import { resolve, basename } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { writeManagedBlock } from '../managed-block.js'
+import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
 import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfig } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
@@ -46,6 +47,36 @@ export interface SingleFileAdapterConfig {
  *
  * The only differences are directory names and file naming conventions.
  */
+/**
+ * Targets that compile to the same root file, in resolution order.
+ *
+ * OpenCode and Codex both own AGENTS.md. With both selected, each adapter wrote
+ * the file pointing at its own directory and the last one to run won — so
+ * `sync --check` compared the project against two different expected files and
+ * reported drift that no amount of syncing could clear. When a root file is
+ * shared, every adapter that shares it generates the same block, referencing the
+ * first selected owner's directory. Both trees are still installed; the index
+ * names one of them, and says so.
+ */
+const SHARED_ROOT_OWNERS: Record<string, Array<{ ide: string; dotDir: string }>> = {
+  'AGENTS.md': [
+    { ide: 'opencode', dotDir: '.opencode' },
+    { ide: 'codex', dotDir: '.codex' },
+  ],
+}
+
+/** The directory the shared root file should point at, given what is selected. */
+function referenceDir(config: SingleFileAdapterConfig, stack?: StackConfig): {
+  dir: string
+  sharedWith: string[]
+} {
+  const owners = SHARED_ROOT_OWNERS[config.rootFile] ?? []
+  const selected = new Set<string>(stack?.ides ?? [])
+  const present = owners.filter((o) => selected.has(o.ide))
+  if (present.length < 2) return { dir: config.dotDir, sharedWith: [] }
+  return { dir: present[0].dotDir, sharedWith: present.map((o) => o.dotDir) }
+}
+
 export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAdapter {
   async function install(
     pkgRoot: string,
@@ -63,14 +94,21 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     // Always built: the content goes into a managed block, so a file the user
     // already owns keeps its content and gains the generated section.
     const rootPath = resolve(projectRoot, config.rootFile)
+    const { dir: refDir, sharedWith } = referenceDir(config, stack)
     {
       const sections: string[] = []
 
       sections.push(
         '# Project Instructions\n\n' +
         'All conventions, architecture, and project context are embedded below. ' +
-        `Skills are in \`${config.dotDir}/skills/\` — read them when a task matches. ` +
-        `Agent definitions are in \`${config.dotDir}/agents/\` — read the relevant file when adopting a persona.`
+        `Skills are in \`${refDir}/skills/\` — read them when a task matches. ` +
+        `Agent definitions are in \`${refDir}/agents/\` — read the relevant file when adopting a persona.` +
+        (sharedWith.length > 1
+          ? `\n\nThis file is shared by more than one assistant. The same content is also installed under ${sharedWith
+              .filter((d) => d !== refDir)
+              .map((d) => `\`${d}/\``)
+              .join(', ')}.`
+          : '')
       )
 
       // Always-loaded instruction files
@@ -92,6 +130,11 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         agentLines.push(
           'The following agent personas are available. Adopt the appropriate persona when asked.\n'
         )
+        agentLines.push(
+          'Each names a capability tier — what kind of model the work wants. Pick a ' +
+            'concrete model yourself; you know which ones this account can reach.\n'
+        )
+        const usedTiers = new Set<Tier>()
         for (const file of (await readdir(agentsDir)).sort()) {
           if (!file.endsWith('.md')) continue
           if (excludedAgents.has(file)) continue
@@ -100,10 +143,19 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
           )
           const name = meta['name'] ?? basename(file, '.agent.md')
           const desc = meta['description'] ?? ''
-          agentLines.push(`- **${name}**: ${desc}`)
+          const declared = meta['tier'] ?? ''
+          const tier = isTier(declared) ? declared : tierForAgent(basename(file, '.agent.md'))
+          usedTiers.add(tier)
+          agentLines.push(`- **${name}** *(${TIERS[tier].label})*: ${desc}`)
+        }
+        if (usedTiers.size > 0) {
+          agentLines.push('')
+          for (const id of TIER_IDS.filter((id) => usedTiers.has(id))) {
+            agentLines.push(`- **${TIERS[id].label}** — ${TIERS[id].purpose}`)
+          }
         }
         agentLines.push(
-          `\nFull agent definitions are in \`${config.dotDir}/agents/\`. Read the relevant file when adopting a persona.`
+          `\nFull agent definitions are in \`${refDir}/agents/\`. Read the relevant file when adopting a persona.`
         )
         sections.push(agentLines.join('\n'))
       }
@@ -119,7 +171,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
           await readdir(skillsDir, { withFileTypes: true })
         ).filter((e) => e.isDirectory())
         const skillRef = (name: string): string =>
-          `${config.dotDir}/skills/${name}/SKILL.md`
+          `${refDir}/skills/${name}/SKILL.md`
         for (const entry of subdirs.sort((a, b) =>
           a.name.localeCompare(b.name)
         )) {

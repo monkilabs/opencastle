@@ -6,7 +6,7 @@
  * package without recompiling. A stale rule file still loads fine, so nothing
  * else would notice.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, appendFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, appendFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -158,5 +158,56 @@ describe('drift detection', () => {
     })
     const report = await buildCheckReport(pkgRoot, projectRoot)
     expect(report.ides).toEqual(['vscode'])
+  })
+})
+
+/**
+ * OpenCode and Codex both compile to AGENTS.md. Each adapter used to write the
+ * file pointing at its own directory, so with both installed the last one to run
+ * won and the check compared the project against two different expected files —
+ * drift that no amount of syncing could clear.
+ */
+describe('two targets that share a root file', () => {
+  let projectRoot: string
+  const bothStack: StackConfig = { ides: ['opencode', 'codex'], techTools: [], teamTools: [] }
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(tmpdir(), 'check-shared-'))
+  })
+
+  afterEach(() => {
+    rmSync(projectRoot, { recursive: true, force: true })
+  })
+
+  it('reports no drift when both are installed', async () => {
+    for (const ide of ['opencode', 'codex'] as const) {
+      const adapter = await IDE_ADAPTERS[ide]()
+      await adapter.install(pkgRoot, projectRoot, bothStack, undefined)
+    }
+    await writeManifest(projectRoot, {
+      version: '9.9.9',
+      ide: 'opencode',
+      ides: ['opencode', 'codex'],
+      installedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      stack: bothStack,
+    })
+
+    const report = await buildCheckReport(pkgRoot, projectRoot)
+    expect(report.drift.filter((d) => d.path === 'AGENTS.md')).toEqual([])
+  })
+
+  it('installs both trees and says which one the index names', async () => {
+    for (const ide of ['opencode', 'codex'] as const) {
+      const adapter = await IDE_ADAPTERS[ide]()
+      await adapter.install(pkgRoot, projectRoot, bothStack, undefined)
+    }
+    const text = readFileSync(join(projectRoot, 'AGENTS.md'), 'utf8')
+    expect(text).toContain('shared by more than one assistant')
+    expect(text).toContain('.opencode/skills/')
+    expect(text).not.toContain('.codex/skills/')
+    // Both assistants still get their own files.
+    expect(existsSync(join(projectRoot, '.opencode', 'skills'))).toBe(true)
+    expect(existsSync(join(projectRoot, '.codex', 'skills'))).toBe(true)
   })
 })

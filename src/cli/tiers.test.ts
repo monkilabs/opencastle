@@ -220,3 +220,31 @@ describe('every copy of the tier table agrees with the agents', () => {
     expect(inDashboard).toEqual(economy)
   })
 })
+
+/**
+ * Before this the module was dead weight: a registry nothing in the product read,
+ * which is how the dashboard's copy of it kept four agents that had been retired.
+ * The compiled agent index is its consumer.
+ */
+describe('the compiled output carries the tier', () => {
+  it('names each agent tier and explains what the tiers mean', async () => {
+    const { IDE_ADAPTERS } = await import('./adapters/index.js')
+    const { mkdtempSync, rmSync, readFileSync: read } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+
+    const dir = mkdtempSync(join(tmpdir(), 'tier-index-'))
+    try {
+      const adapter = await IDE_ADAPTERS['claude-code']()
+      await adapter.install(repoRoot, dir, { ides: ['claude-code'], techTools: [], teamTools: [] }, undefined)
+      const text = read(join(dir, 'CLAUDE.md'), 'utf8')
+
+      expect(text).toContain('*(Premium)*')
+      expect(text).toContain('*(Economy)*')
+      for (const id of TIER_IDS) {
+        expect(text, `no legend entry for ${id}`).toContain(TIERS[id].purpose)
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
