@@ -7,7 +7,7 @@ Maps abstract technology capabilities to concrete skill implementations. The mat
 
 ## Data File
 
-The machine-readable bindings are in [`skill-matrix.json`](skill-matrix.json). The CLI (`opencastle init` and `opencastle update`) reads and writes this file directly. Agents should read the JSON to resolve capability slots.
+The machine-readable bindings are in [`skill-matrix.json`](skill-matrix.json). The CLI (`opencastle init` and `opencastle sync`) reads and writes this file directly. Agents should read the JSON to resolve capability slots.
 
 ## How It Works
 
@@ -97,8 +97,8 @@ When resolving a capability slot, two failure cases can occur:
 
 In both cases, **tell the user** that the capability is unavailable and why:
 
-- *"The `database` slot has no entries in `skill-matrix.json`. Install a database plugin (e.g., `supabase`, `prisma`) via `opencastle update`, or add entries manually."*
-- *"The `database` slot references skill `convex-database`, but no matching plugin was found. Install the Convex plugin or run `opencastle update` to fix the binding."*
+- *"The `database` slot has no entries in `skill-matrix.json`. Install a database plugin (e.g., `supabase`, `prisma`) via `opencastle add <plugin>`, or add entries manually."*
+- *"The `database` slot references skill `convex-database`, but no matching plugin was found. Install the Convex plugin or run `opencastle sync` to fix the binding."*
 
 **Do NOT silently skip the slot or proceed without the skill.** The agent should surface the gap clearly so the user can resolve it.
 

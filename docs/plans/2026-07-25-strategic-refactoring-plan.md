@@ -107,10 +107,13 @@ Net: **19 commands → 6 visible + 1 experimental namespace**; global flags stan
 
 ## 7. Execution plan
 
-### Phase 0 — Hygiene (days; do regardless of strategy)
-- Route all ledger/DB paths through an injected root, never `process.cwd()`; point tests at tmp dirs; purge the polluted `.opencastle/` ledgers.
-- Fix KI-003 (crashed convoys stuck `running`); fix peer-dep name; delete `export.ts`, `generate-seed-data.ts`, legacy sessions path, `dispute.ts` stub (and its help entry).
-- Deduplicate cursor/windsurf adapters (~350 LOC).
+### Phase 0 — Hygiene (days; do regardless of strategy) — ✅ DONE
+- ✅ Route all ledger/DB paths through an injected root, never `process.cwd()`; point tests at tmp dirs; purge the polluted `.opencastle/` ledgers. Also fixed unbounded blank-line growth in `consolidateLessons` and a dispute writer that never created its parent directory. Guard test added.
+- ✅ Fix KI-003 (crashed convoys stuck `running`) — `markConvoyCrashed` on both entry points, 4 tests.
+- ✅ **Deviation from plan:** the peer dep was not merely misnamed. `@anthropic-ai/agent-sdk` does not exist; the real `@anthropic-ai/claude-agent-sdk` exports `query()`, while the adapter called `AgentClient`/`approveAll`/`sendAndWait` — absent from the published types. Renaming would have converted a dead branch into a runtime crash, so the SDK path, its stubs, the peer dep, and its three mock-only tests were **removed**. A real SDK adapter against `query()` is Phase 4 work.
+- ✅ Delete `export.ts`, `generate-seed-data.ts`, legacy `.github/customizations/logs` path, `dispute.ts` stub (and its help entry). 627 lines removed.
+- ✅ Deduplicate cursor/windsurf adapters: 835 → 424 LOC via `createRulesDirAdapter`, verified byte-identical on 492 golden-manifest entries, plus 24 new tests (these adapters had none).
+- **Open finding for later:** instructions are written with `alwaysApply: true` even when the source declares a narrow `applyTo` glob, so on Cursor a scoped instruction widens to every file. Pinned by test; fix belongs with the canonical-source work in Phase 3.
 
 ### Phase 1 — Reposition (1 week)
 - Rewrite README + website around the compiler/sync pitch (§3). Remove all concrete model-name claims and stale counts; single source for numbers.

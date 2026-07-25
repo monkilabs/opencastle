@@ -11,91 +11,130 @@ const pkgRoot = resolve(__dirname, '..')
 
 const [, , command, ...args] = process.argv
 
+// node:sqlite is still flagged experimental and prints a warning on import. It is
+// an implementation detail of the convoy store, so it should not appear in the
+// output of a status or sync run. Other warnings pass through untouched.
+// Node installs its own warning printer at startup, so replace it rather than
+// adding a second listener.
+process.removeAllListeners('warning')
+process.on('warning', (warning) => {
+  if (warning.name === 'ExperimentalWarning' && /SQLite/i.test(warning.message)) return
+  console.error(`${warning.name}: ${warning.message}`)
+})
+
 const HELP = `
-  🏰 opencastle — Multi-agent orchestration framework
+  🏰 opencastle — compile your AI assistant config for every assistant
 
   Usage:
     npx opencastle <command> [options]
 
-  Project Commands:
-    init        Set up OpenCastle in your project
-    update      Update framework files (preserves customizations)
-    eject       Remove dependency, keep all files standalone
-    destroy     Remove ALL OpenCastle files (reverse of init)
-    doctor      Validate your OpenCastle setup
-    package     Package your OpenCastle project for IDE marketplaces
-    skills      Manage and analyze agent skills and failures
+  Commands:
+    (none)      Show project status and what to do next
+    init        Set up this project (detects your stack and existing config)
+    sync        Recompile the generated config for every target
+    add         Add an integration, e.g. "add supabase"
+    doctor      Diagnose setup problems
+    remove      Remove OpenCastle from this project
 
-  Convoy Commands:
-    start       Run the full generate PRD → validate PRD → auto-fix PRD
-                → assess complexity → generate convoy spec → validate spec
-                → auto-fix spec
-    plan        Generate a convoy spec (or PRD) from a task description
-    validate    Validate a convoy YAML spec file
-    run         Process a task queue from a spec file autonomously
-
-  Observability:
-    dashboard   View agent observability dashboard in your browser
-    agents      Manage persistent agent identities
-    baselines   Manage visual regression baselines
-    log         Append a structured event to the observability log
-    lesson      Append a structured lesson to LESSONS-LEARNED.md
-    artifacts   Manage filesystem artifact storage (prune old convoy artifacts)
-    insights    Analyze convoy execution history and generate recommendations
+  Experimental:
+    convoy      Run multi-step work through the convoy engine
 
   Options:
-    --dry-run        Preview what a command would change without writing files
-    --help, -h       Show this help message
+    --dry-run        Preview changes without writing files
+    --yes            Skip confirmation prompts
+    --json           Machine-readable output where supported
+    --help, -h       Show help for a command
     --version, -v    Show version number
+
+  Run "opencastle <command> --help" for command-specific options.
 `
 
-if (!command || command === '--help' || command === '-h') {
+/**
+ * Commands shown in help. Everything a human is expected to run lives here.
+ */
+const VISIBLE = {
+  init: () => import('../dist/cli/init.js'),
+  sync: () => import('../dist/cli/sync.js'),
+  add: () => import('../dist/cli/add.js'),
+  doctor: () => import('../dist/cli/doctor.js'),
+  remove: () => import('../dist/cli/remove.js'),
+  convoy: () => import('../dist/cli/convoy-cmd.js'),
+}
+
+/**
+ * Reachable but deliberately absent from help.
+ *
+ * `log` and `lesson` are called by agents from generated instructions, not by
+ * people — listing them taught users a vocabulary they never needed. `update`
+ * is the pre-rename name of `sync`, kept so existing scripts keep working.
+ */
+const HIDDEN = {
+  log: () => import('../dist/cli/log.js'),
+  lesson: () => import('../dist/cli/lesson.js'),
+  update: () => import('../dist/cli/sync.js'),
+}
+
+/**
+ * Commands that were removed, mapped to what replaces them. Kept as a lookup so
+ * anyone with the old command in a script gets a pointer instead of "unknown".
+ */
+const REPLACED = {
+  eject: 'opencastle remove --keep-files',
+  destroy: 'opencastle remove --all',
+  run: 'opencastle convoy run',
+  plan: 'opencastle convoy "<task>"',
+  start: 'opencastle convoy "<task>"',
+  validate: 'opencastle convoy run  (validation is automatic)',
+  dashboard: 'opencastle convoy dashboard',
+  insights: null,
+  artifacts: null,
+  agents: null,
+  baselines: null,
+  skills: null,
+  package: null,
+  dispute: null,
+}
+
+const commands = { ...VISIBLE, ...HIDDEN }
+
+if (!command) {
+  // No arguments is a real command: report state and the next step.
+  const mod = await import('../dist/cli/status.js')
+  await mod.default({ pkgRoot, args: [] })
+  process.exit(0)
+}
+
+if (command === '--help' || command === '-h' || command === 'help') {
   console.log(HELP)
   process.exit(0)
 }
 
 if (command === '--version' || command === '-v') {
-  const pkg = JSON.parse(
-    await readFile(resolve(pkgRoot, 'package.json'), 'utf8')
-  )
+  const pkg = JSON.parse(await readFile(resolve(pkgRoot, 'package.json'), 'utf8'))
   console.log(pkg.version)
   process.exit(0)
 }
 
-// Handle --version anywhere in args (e.g., "opencastle init --version")
+// Handle --version anywhere in args (e.g. "opencastle init --version")
 if (args.includes('--version') || args.includes('-v')) {
-  const pkg = JSON.parse(
-    await readFile(resolve(pkgRoot, 'package.json'), 'utf8')
-  )
+  const pkg = JSON.parse(await readFile(resolve(pkgRoot, 'package.json'), 'utf8'))
   console.log(pkg.version)
   process.exit(0)
-}
-
-const commands = {
-  init: () => import('../dist/cli/init.js'),
-  update: () => import('../dist/cli/update.js'),
-  eject: () => import('../dist/cli/eject.js'),
-  destroy: () => import('../dist/cli/destroy.js'),
-  run: () => import('../dist/cli/run.js'),
-  plan: () => import('../dist/cli/plan.js'),
-  start: () => import('../dist/cli/pipeline.js'),
-  dashboard: () => import('../dist/cli/dashboard.js'),
-  doctor: () => import('../dist/cli/doctor.js'),
-  log: () => import('../dist/cli/log.js'),
-  lesson: () => import('../dist/cli/lesson.js'),
-  agents: () => import('../dist/cli/agents.js'),
-  baselines: () => import('../dist/cli/baselines.js'),
-  validate: () => import('../dist/cli/validate.js'),
-  artifacts: () => import('../dist/cli/artifacts-cli.js'),
-  insights: () => import('../dist/cli/insights.js'),
-  skills: () => import('../dist/cli/skills.js'),
-  package: () => import('../dist/cli/package.js'),
 }
 
 if (!commands[command]) {
-  console.error(
-    `  Unknown command: ${command}\n  Run "opencastle --help" for usage.`
-  )
+  if (command in REPLACED) {
+    const replacement = REPLACED[command]
+    console.error(`\n  "${command}" has been removed.`)
+    if (replacement) {
+      console.error(`  Use instead: ${replacement}\n`)
+    } else {
+      console.error(`  Run "opencastle --help" to see the current commands.\n`)
+    }
+    process.exit(1)
+  }
+  console.error(`\n  Unknown command: ${command}`)
+  console.error(`  Run "opencastle --help" for usage.\n`)
   process.exit(1)
 }
 

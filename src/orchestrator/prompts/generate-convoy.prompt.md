@@ -256,7 +256,7 @@ Before outputting JSON, verify **every item** below. Downstream validator will r
 
 ## Historical Performance Context
 
-When historical execution data available (via `opencastle insights --json`), Team Lead should include compact summary in context. Example:
+When historical execution data available (via convoy history in `.opencastle/convoy.db`), Team Lead should include compact summary in context. Example:
 
 ### Historical Performance (auto-generated)
 Based on {N} past convoys:

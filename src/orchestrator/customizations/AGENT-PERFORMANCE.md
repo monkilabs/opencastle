@@ -7,7 +7,7 @@ Tracks agent success rates across panel reviews and delegated tasks to inform mo
 
 Performance data is collected automatically via NDJSON session logs:
 - **All events:** `.opencastle/logs/events.ndjson` — unified log for all event types (sessions, delegations, reviews, panels, disputes), appended via `opencastle log`
-- **Dashboard:** Run `npx opencastle dashboard` to visualize agent performance
+- **Dashboard:** Run `npx opencastle convoy dashboard` to visualize agent performance
 
 ## Quick Queries
 
