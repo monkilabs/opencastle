@@ -19,7 +19,7 @@ export const config: PluginConfig = {
     'developer': [
       'astro-docs/search_astro_docs',
     ],
-    'documentation-writer': [
+    'writer': [
       'astro-docs/search_astro_docs',
     ],
   },

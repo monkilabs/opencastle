@@ -34,7 +34,7 @@ export const config: PluginConfig = {
       'resend_create_webhook', 'resend_list_webhooks', 'resend_get_webhook',
       'resend_update_webhook', 'resend_remove_webhook',
     ],
-    'data-expert': [
+    'data-engineer': [
       'resend_create_contact', 'resend_list_contacts', 'resend_get_contact',
       'resend_update_contact', 'resend_remove_contact',
       'resend_create_broadcast', 'resend_list_broadcasts', 'resend_get_broadcast',

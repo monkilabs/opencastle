@@ -53,7 +53,7 @@ Load on-demand **only when the phase is reached**.
 
 ## Specialist Agents
 
-Developer | UI/UX Expert | Content Engineer | Database Engineer | Testing Expert | Security Expert | Performance Expert | DevOps Expert | Data Expert | Architect | Documentation Writer | Researcher | Copywriter | SEO Specialist | API Designer | Release Manager | Reviewer | Session Guard.
+Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | Security Expert | Performance Expert | DevOps Expert | Data Engineer | Architect | Writer | Researcher | Writer | Writer | Developer | DevOps & Release | Reviewer | Reviewer.
 
 > **⛔ Developer is LAST resort.** Load **agent-routing** before assigning. Decompose multi-domain tasks across agent boundaries.
 
@@ -86,13 +86,13 @@ Developer | UI/UX Expert | Content Engineer | Database Engineer | Testing Expert
 
 **Step 4 — Execute:** Per task: move → In Progress → delegate → log delegation ⛔ → monitor → verify (partition, lint/test/build, fast review PASS, UI browser-verified, high-stakes → panel, issues tracked, lessons captured) → log review ⛔ → Done. FAIL → re-delegate (max 3 → DLQ). Auto-PASS: research/docs-only, or ≤10 lines/≤2 files with gates passing.
 
-**Step 5 — Deliver:** See [shared-delivery-phase.md](../agent-workflows/shared-delivery-phase.md). Verify all Done → build/lint/test → commit feature branch → `GH_PAGER=cat gh pr create` — do NOT merge → link PR → clean checkpoint → call **Session Guard**.
+**Step 5 — Deliver:** See [shared-delivery-phase.md](../agent-workflows/shared-delivery-phase.md). Verify all Done → build/lint/test → commit feature branch → `GH_PAGER=cat gh pr create` — do NOT merge → link PR → clean checkpoint → call **Reviewer**.
 
 **On Resume:** Read `SESSION-CHECKPOINT.md`. Check `AGENT-FAILURES.md`, `DISPUTES.md`. List In Progress / Todo → continue.
 
 ## Observability
 
-> **⛔ HARD GATE.** Load **observability-logging** for schemas, commands, pre-response quality gate. Before Session Guard: delegation count + review count = records written.
+> **⛔ HARD GATE.** Load **observability-logging** for schemas, commands, pre-response quality gate. Before Reviewer: delegation count + review count = records written.
 
 ## Rules
 

@@ -111,7 +111,7 @@ in whichever shape it expects.
 
 ## What gets compiled
 
-**Agents** — 19 role definitions (Developer, UI/UX, Database, Security, Testing,
+**Agents** — 13 role definitions (Developer, UI/UX, Data, Security, Testing,
 Reviewer, and others), each with a defined scope and output contract.
 
 **Skills** — 28 domain skills plus 30 tool integrations, loaded on demand so

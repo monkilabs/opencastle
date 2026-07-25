@@ -85,7 +85,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 | A: Bundle | Performance Expert | Code splitting, tree shaking, dynamic imports | `app/`, `libs/` |
 | B: Images | UI/UX Expert | Image optimization, lazy loading, srcset | `components/`, `public/` |
 | C: Queries | Developer | Query optimization, caching | Query library, framework config |
-| D: Database | Database Engineer | Index optimization, query planning | Database migrations |
+| D: Database | Data Engineer | Index optimization, query planning | Database migrations |
 
 ### Exit Criteria (per track)
 

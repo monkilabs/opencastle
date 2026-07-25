@@ -1,6 +1,6 @@
 ---
-description: "DevOps expert: deployments, CI/CD integration, cron jobs, security headers, caching, environment variables, build optimization."
-name: "DevOps Expert"
+description: "DevOps and release: deployments, CI/CD, cron jobs, security headers, caching, environment variables, plus pre-release verification and changelogs."
+name: "DevOps & Release"
 tier: standard
 tools: ["search/changes", "search/codebase", "edit/editFiles", "web/fetch", "vscode/getProjectSetupInfo", "vscode/installExtension", "vscode/newWorkspace", "vscode/runCommand", "read/problems", "execute/getTerminalOutput", "execute/runInTerminal", "read/terminalLastCommand", "read/terminalSelection", "search", "execute/testFailure", "search/usages"]
 user-invocable: false
@@ -22,6 +22,17 @@ Resolve skills (slots, direct) via [skill-matrix.json](.opencastle/agents/skill-
 6. Validate new env vars exist in all target environments before deploying dependent code
 7. Document every new env var: name, purpose, required format — never value
 8. Run full build verification after any change to config files, CI scripts, dep versions
+
+## Rules — releases
+
+9. **Nothing ships without a green run** — lint, test, and build pass for every
+   affected project, not just the one you touched.
+10. **A release without a changelog entry is not a release.** Write it for the
+    audience that reads it: user-visible impact, not internal refactors.
+11. **Releases are atomic.** Everything in the release ships together or nothing does.
+12. **Check the neighbours.** Verify adjacent features still work before clearing
+    a release — the regression is rarely in the code you changed.
+13. **Tag after the changelog commit**, so the tag points at a complete record.
 
 ## Deployment Workflow
 

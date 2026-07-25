@@ -23,7 +23,6 @@ export const config: PluginConfig = {
   ],
   agentToolMap: {
     'devops-expert': ['netlify/*'],
-    'release-manager': ['netlify/*'],
   },
   docsUrl: 'https://www.opencastle.dev/docs/plugins#netlify',
   officialDocs: 'https://docs.netlify.com',

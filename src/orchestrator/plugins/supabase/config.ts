@@ -16,7 +16,7 @@ export const config: PluginConfig = {
   authType: 'oauth',
   envVars: [],
   agentToolMap: {
-    'database-engineer': [
+    'data-engineer': [
       'supabase/apply_migration', 'supabase/execute_sql', 'supabase/list_tables',
       'supabase/list_migrations', 'supabase/list_extensions', 'supabase/get_logs',
       'supabase/get_project', 'supabase/get_project_url', 'supabase/list_projects',

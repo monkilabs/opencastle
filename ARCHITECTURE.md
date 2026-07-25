@@ -17,38 +17,29 @@ work in dependency order. The compiler does not depend on it.
 graph TB
     TL["🏰 Team Lead<br/><sub>Premium tier</sub><br/><sub>Analyze → Decompose → Delegate → Verify</sub>"]
 
-    subgraph Standard["Standard Tier"]
+    subgraph Premium["Premium"]
+        ARCH[Architect]
+        SEC[Security Expert]
+    end
+
+    subgraph Standard["Standard"]
         DEV[Developer]
         UI[UI/UX Expert]
+        DATA[Data Engineer]
         CE[Content Engineer]
-        DB[Database Engineer]
-        PERF[Perf Expert]
-        API[API Designer]
-    end
-
-    subgraph Premium["Premium Tier"]
-        SEC[Security Expert]
-        ARCH[Architect]
-    end
-
-    subgraph Utility["Utility Tier"]
         TEST[Testing Expert]
-        DATA[Data Expert]
-        DEVOPS[DevOps Expert]
-        RM[Release Manager]
-    end
-
-    subgraph Economy["Economy Tier"]
-        DOCS[Docs Writer]
+        PERF[Performance Expert]
+        OPS[DevOps &amp; Release]
         RES[Researcher]
-        REV[Reviewer]
-        COPY[Copywriter]
-        SEO[SEO Specialist]
     end
 
-    TL --> Standard
+    subgraph Economy["Economy"]
+        WRITE[Writer]
+        REV[Reviewer]
+    end
+
     TL --> Premium
-    TL --> Utility
+    TL --> Standard
     TL --> Economy
 
     KB["📚 Instructions · Skills · Workflows · Prompts"]
@@ -91,29 +82,23 @@ The Team Lead operates in two modes depending on task complexity:
 
 ## Agents
 
-19 specialist agents, each with a defined scope, output contract, and file partition boundary.
+13 specialist agents, each with a defined scope, output contract, and file partition boundary.
 
 | Agent | Domain |
 |-------|--------|
 | Team Lead | Orchestration — never writes code |
-| Developer | Pages, components, routing, API routes, server logic |
-| UI/UX Expert | Accessible, consistent UI components and design system |
 | Architect | Strategic architecture decisions, ADRs, system design |
-| Security Expert | Auth, authorization, RLS, security headers, input validation |
-| Testing Expert | E2E tests, integration tests, browser validation |
-| Database Engineer | Migrations, access policies, schema changes |
+| Security Expert | Auth, authorization, access policies, security headers, input validation |
+| Developer | Pages, components, routing, API routes and their contracts, server logic |
+| UI/UX Expert | Accessible, consistent UI components and design system |
+| Data Engineer | Migrations, access policies, query performance, ETL pipelines, imports |
 | Content Engineer | CMS schemas, content types, queries |
-| Data Expert | ETL pipelines, scrapers, CLI tools, data import |
-| DevOps Expert | Deployments, CI/CD, cron jobs, environment variables |
-| Performance Expert | Frontend/backend/build performance optimization |
-| API Designer | Route architecture, endpoint conventions, API docs |
-| Release Manager | Pre-release verification, changelogs, version management |
-| Documentation Writer | Project docs, roadmaps, technical guides |
+| Testing Expert | E2E tests, integration tests, browser validation |
+| Performance Expert | Frontend, backend, and build performance |
+| DevOps & Release | Deployments, CI/CD, cron jobs, pre-release verification, changelogs |
 | Researcher | Deep codebase exploration, pattern discovery, git archaeology |
-| Reviewer | Mandatory fast validation after every delegation |
-| Copywriter | UI microcopy, marketing text, error messages |
-| SEO Specialist | Meta tags, structured data, sitemaps, crawlability |
-| Session Guard | Compliance check — verifies logs, lessons, quality gates |
+| Writer | UI copy, error messages, docs, roadmaps, meta tags, structured data |
+| Reviewer | Fast validation after every delegation |
 
 ---
 

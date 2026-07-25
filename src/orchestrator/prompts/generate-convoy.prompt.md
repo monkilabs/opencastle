@@ -62,7 +62,7 @@ If no pre-computed data available, assess complexity yourself: `1` (trivial), `2
 
 ### Agent Roster
 
-`api-designer` · `architect` · `content-engineer` · `copywriter` · `data-expert` · `database-engineer` · `developer` · `devops-expert` · `documentation-writer` · `performance-expert` · `release-manager` · `researcher` · `security-expert` · `seo-specialist` · `team-lead` · `testing-expert` · `ui-ux-expert`
+`developer` · `architect` · `content-engineer` · `writer` · `data-engineer` · `data-engineer` · `developer` · `devops-expert` · `writer` · `performance-expert` · `devops-expert` · `researcher` · `security-expert` · `writer` · `team-lead` · `testing-expert` · `ui-ux-expert`
 
 ---
 
@@ -103,7 +103,7 @@ For each workstream, break down into smallest meaningful unit. Follow these rule
 
    > **Common mistake:** multiple tasks depending on single `setup` task will run in parallel, conflict if sharing directory like `components/`, `app/globals.css`, or `app/layout.tsx`. Always use specific file paths or sequence conflicting tasks.
 
-5. **Appropriate agent** — pick agent whose speciality matches task (e.g. `testing-expert` for tests, `database-engineer` for migrations).
+5. **Appropriate agent** — pick agent whose speciality matches task (e.g. `testing-expert` for tests, `data-engineer` for migrations).
 6. **Realistic timeouts** — `30m` for most tasks; `1h` for large refactors; `10m` for small docs or config.
 
 ### 2.5 Foundation Phase for Multi-Page Projects
@@ -248,7 +248,7 @@ Before outputting JSON, verify **every item** below. Downstream validator will r
 - [ ] **File-specific**: Names exact files to create or modify — no vague references ("the frontend", "the codebase").
 - [ ] **Substantive**: At least 2 meaningful sentences; no stubs (`...`), no placeholders.
 - [ ] **Verifiable**: Contains acceptance criteria or explicit verification steps.
-- [ ] **Agent domain matching**: Each task's `agent` matches domain — `developer` for code, `testing-expert` for tests, `documentation-writer` for docs, `copywriter` for marketing copy, `ui-ux-expert` for UI, `database-engineer` for migrations, `security-expert` for auth/security, `data-expert` for ETL/scraping.
+- [ ] **Agent domain matching**: Each task's `agent` matches domain — `developer` for code, `testing-expert` for tests, `writer` for docs, `writer` for marketing copy, `ui-ux-expert` for UI, `data-engineer` for migrations, `security-expert` for auth/security, `data-engineer` for ETL/scraping.
 - [ ] **Content research compliance**: If prompt concerns real people, places, or organisations, includes research instruction.
 - [ ] **Foundation phase present** (multi-page only): If 2+ pages/UI sections, `foundation-setup` task exists; all page tasks depend on it with 5 mandatory Foundation References.
 

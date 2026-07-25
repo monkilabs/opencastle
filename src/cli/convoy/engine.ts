@@ -358,8 +358,8 @@ export function evaluateReviewLevel(
   allGatesPassed?: boolean,
 ): ReviewLevel {
   const panelPaths = heuristics?.panel_paths ?? ['auth/', 'security/', 'migrations/', 'rls/']
-  const panelAgents = heuristics?.panel_agents ?? ['security-expert', 'database-engineer']
-  const autoPassAgents = heuristics?.auto_pass_agents ?? ['documentation-writer']
+  const panelAgents = heuristics?.panel_agents ?? ['security-expert', 'data-engineer']
+  const autoPassAgents = heuristics?.auto_pass_agents ?? ['writer']
   const autoPassMaxLines = heuristics?.auto_pass_max_lines ?? 10
   const autoPassMaxFiles = heuristics?.auto_pass_max_files ?? 2
 

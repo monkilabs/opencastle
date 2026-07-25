@@ -17,7 +17,7 @@ export const config: PluginConfig = {
   authType: 'none',
   envVars: [],
   agentToolMap: {
-    'database-engineer': [
+    'data-engineer': [
       'convex/status', 'convex/data', 'convex/tables', 'convex/functionSpec',
       'convex/run', 'convex/envList', 'convex/envGet', 'convex/envSet',
       'convex/envRemove', 'convex/runOneoffQuery', 'convex/logs', 'convex/insights',

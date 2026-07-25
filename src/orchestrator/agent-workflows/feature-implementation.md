@@ -133,7 +133,7 @@ If there are no open questions, explicitly state: "No open questions — plan is
 | Track | Agent | Files | Purpose |
 |-------|-------|-------|----------|
 | A: Schema | Content Engineer | CMS schema directory | CMS schema changes |
-| B: Database | Database Engineer | Database migrations directory | Migration + RLS policies |
+| B: Database | Data Engineer | Database migrations directory | Migration + RLS policies |
 | C: Components | UI/UX Expert | Shared component library | New UI components |
 
 ### Exit Criteria (per track)
@@ -170,7 +170,7 @@ If there are no open questions, explicitly state: "No open questions — plan is
 
 ## Phase 4: Validation (Parallel)
 
-**Agents:** Testing Expert, Security Expert, Documentation Writer
+**Agents:** Testing Expert, Security Expert, Writer
 **Type:** Background agents (parallel)
 
 ### Tracks
@@ -179,7 +179,7 @@ If there are no open questions, explicitly state: "No open questions — plan is
 |-------|-------|-------|
 | A: Tests | Testing Expert | Unit tests, E2E browser tests |
 | B: Security | Security Expert | RLS audit, input validation, auth check |
-| C: Docs | Documentation Writer | Roadmap, ADRs, known issues |
+| C: Docs | Writer | Roadmap, ADRs, known issues |
 
 ### Exit Criteria (per track)
 

@@ -22,10 +22,6 @@ export const config: PluginConfig = {
       'vercel/list_projects', 'vercel/list_teams', 'vercel/search_vercel_documentation',
       'vercel/check_domain_availability_and_price',
     ],
-    'release-manager': [
-      'vercel/get_deployment', 'vercel/get_deployment_build_logs',
-      'vercel/get_runtime_logs', 'vercel/list_deployments', 'vercel/list_projects',
-    ],
   },
   docsUrl: 'https://www.opencastle.dev/docs/plugins#vercel',
   officialDocs: 'https://vercel.com/docs',

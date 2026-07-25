@@ -85,7 +85,7 @@ export function getIncludedPluginIds(stack: StackConfig): Set<string> {
 }
 
 /**
- * Agents to EXCLUDE — content-engineer if no CMS, database-engineer if no DB.
+ * Agents to EXCLUDE — content-engineer if no CMS, data-engineer if no DB.
  */
 export function getExcludedAgents(stack: StackConfig): Set<string> {
   const excluded = new Set<string>();
@@ -93,7 +93,7 @@ export function getExcludedAgents(stack: StackConfig): Set<string> {
   const hasDb = stack.techTools.some((t) => (DB_TOOLS as readonly string[]).includes(t));
 
   if (!hasCms) excluded.add('content-engineer.agent.md');
-  if (!hasDb) excluded.add('database-engineer.agent.md');
+  if (!hasDb) excluded.add('data-engineer.agent.md');
 
   return excluded;
 }

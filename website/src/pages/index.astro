@@ -8,24 +8,18 @@ const DEMO_URL = 'https://www.opencastle.dev/dashboard';
 
 const agents = [
   { name: 'Team Lead', tier: 'premium' },
-  { name: 'Developer', tier: 'quality' },
-  { name: 'UI/UX Expert', tier: 'quality' },
-  { name: 'Security Expert', tier: 'quality' },
-  { name: 'Architect', tier: 'quality' },
+  { name: 'Architect', tier: 'premium' },
+  { name: 'Security Expert', tier: 'premium' },
+  { name: 'Developer', tier: 'standard' },
+  { name: 'UI/UX Expert', tier: 'standard' },
+  { name: 'Data Engineer', tier: 'standard' },
   { name: 'Content Engineer', tier: 'standard' },
-  { name: 'Database Engineer', tier: 'standard' },
+  { name: 'Testing Expert', tier: 'standard' },
   { name: 'Performance Expert', tier: 'standard' },
-  { name: 'API Designer', tier: 'standard' },
+  { name: 'DevOps & Release', tier: 'standard' },
   { name: 'Researcher', tier: 'standard' },
-  { name: 'Testing Expert', tier: 'fast' },
-  { name: 'Data Expert', tier: 'fast' },
-  { name: 'DevOps Expert', tier: 'fast' },
-  { name: 'Release Manager', tier: 'fast' },
-  { name: 'Documentation Writer', tier: 'economy' },
+  { name: 'Writer', tier: 'economy' },
   { name: 'Reviewer', tier: 'economy' },
-  { name: 'Copywriter', tier: 'economy' },
-  { name: 'SEO Specialist', tier: 'economy' },
-  { name: 'Session Guard', tier: 'economy' },
 ];
 
 const features = [
@@ -39,7 +33,7 @@ const features = [
     icon: 'agents',
     title: 'Specialist Agents',
     description:
-      'From frontend developer to security expert, each with curated tools, model tiers, and domain-specific skills.',
+      'From frontend developer to security expert, each with curated tools, a capability tier, and domain-specific skills.',
   },
   {
     icon: 'skills',
@@ -417,7 +411,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 
 <span class="code-key">tasks:</span>
   - <span class="code-key">id:</span> migrate-db
-    <span class="code-key">agent:</span> database-engineer
+    <span class="code-key">agent:</span> data-engineer
     <span class="code-key">prompt:</span> <span class="code-string">|
       Create a new migration for a reviews table.</span>
     <span class="code-key">timeout:</span> 10m
@@ -905,7 +899,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         </p>
         <div class="stats-row" style="margin-top: 32px">
           <div class="stat">
-            <div class="stat__value">19</div>
+            <div class="stat__value">13</div>
             <div class="stat__label">Specialist Agents</div>
           </div>
           <div class="stat">
@@ -913,8 +907,8 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             <div class="stat__label">IDE Adapters</div>
           </div>
           <div class="stat">
-            <div class="stat__value">50+</div>
-            <div class="stat__label">On-Demand Skills</div>
+            <div class="stat__value">58</div>
+            <div class="stat__label">Skills &amp; Integrations</div>
           </div>
           <div class="stat">
             <a href="https://tessl.io/registry?q=opencastle" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">

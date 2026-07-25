@@ -14,7 +14,7 @@ export const DEFAULT_TDD_CONFIG: TDDGateConfig = {
     '**/schemas.ts',
   ],
   mode: 'block',
-  exempt_agents: ['documentation-writer', 'copywriter', 'seo-specialist', 'researcher'],
+  exempt_agents: ['writer', 'researcher'],
 }
 
 export interface TDDCheckResult {

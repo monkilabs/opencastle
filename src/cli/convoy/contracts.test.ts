@@ -12,9 +12,9 @@ describe('AGENT_CONTRACTS registry', () => {
   it('has entries for all expected agents', () => {
     const expectedAgents = [
       'developer', 'ui-ux-expert', 'testing-expert', 'security-expert',
-      'architect', 'researcher', 'reviewer', 'documentation-writer',
-      'copywriter', 'performance-expert', 'database-engineer', 'devops-expert',
-      'api-designer', 'data-expert', 'seo-specialist', 'release-manager',
+      'architect', 'researcher', 'reviewer', 'writer',
+      'writer', 'performance-expert', 'data-engineer', 'devops-expert',
+      'developer', 'data-engineer', 'writer', 'devops-expert',
     ]
     for (const agent of expectedAgents) {
       expect(AGENT_CONTRACTS).toHaveProperty(agent)
@@ -52,9 +52,20 @@ describe('AGENT_CONTRACTS registry', () => {
     }
   })
 
-  it('all optional_fields arrays are empty', () => {
+  it('describes every optional field in the schema', () => {
+    // Merged agents carry specialty fields as optional: a documentation change
+    // has no word count, a copy change has no migration list.
     for (const [key, contract] of Object.entries(AGENT_CONTRACTS)) {
-      expect(contract.optional_fields, `${key} should have empty optional_fields`).toHaveLength(0)
+      for (const field of contract.optional_fields) {
+        expect(contract.schema[field], `${key} lists optional "${field}" with no schema entry`).toBeDefined()
+      }
+    }
+  })
+
+  it('never lists a field as both required and optional', () => {
+    for (const [key, contract] of Object.entries(AGENT_CONTRACTS)) {
+      const overlap = contract.required_fields.filter((f) => contract.optional_fields.includes(f))
+      expect(overlap, `${key} lists ${overlap.join(', ')} twice`).toEqual([])
     }
   })
 })
@@ -123,15 +134,10 @@ Some work done here.
       'architect': { decision: 'use microservices', alternatives_considered: 'monolith', risks: 'complexity', summary: 'done' },
       'researcher': { findings: 'found stuff', sources: ['https://example.com'], confidence: 'high', summary: 'done' },
       'reviewer': { verdict: 'pass', issues: [], summary: 'done' },
-      'documentation-writer': { files_changed: ['docs/readme.md'], summary: 'done' },
-      'copywriter': { content: 'some content', word_count: 50, summary: 'done' },
+      'writer': { files_changed: ['docs/readme.md'], summary: 'done' },
       'performance-expert': { metrics_before: {}, metrics_after: {}, files_changed: [], summary: 'done' },
-      'database-engineer': { migrations: [], rls_policies: [], rollback_plan: 'delete rows', summary: 'done' },
+      'data-engineer': { files_changed: ['db/001.sql'], summary: 'done' },
       'devops-expert': { files_changed: [], env_vars_added: [], summary: 'done' },
-      'api-designer': { endpoints: ['/api/v1/resource'], schemas: ['ResourceSchema'], summary: 'done' },
-      'data-expert': { pipeline_steps: ['extract', 'transform'], files_changed: [], summary: 'done' },
-      'seo-specialist': { files_changed: [], tags_added: ['og:title'], summary: 'done' },
-      'release-manager': { version: '1.0.0', changelog_entries: ['feat: new thing'], checks_passed: true, summary: 'done' },
     }
     for (const [agent, data] of Object.entries(minimalData)) {
       const output = `<!-- OUTPUT_CONTRACT\n${JSON.stringify(data)}\n-->`
@@ -179,29 +185,29 @@ describe('validateOutput validation rules', () => {
   })
 
   it('positive-int rejects zero for word_count', () => {
-    const output = '<!-- OUTPUT_CONTRACT\n{ "content": "text", "word_count": 0, "summary": "done" }\n-->'
-    const result = validateOutput('copywriter', output)
+    const output = '<!-- OUTPUT_CONTRACT\n{ "files_changed": ["docs/a.md"], "content": "text", "word_count": 0, "summary": "done" }\n-->'
+    const result = validateOutput('writer', output)
     expect(result.valid).toBe(false)
     expect(result.missing).toContain('word_count')
   })
 
   it('positive-int rejects negative number for word_count', () => {
-    const output = '<!-- OUTPUT_CONTRACT\n{ "content": "text", "word_count": -5, "summary": "done" }\n-->'
-    const result = validateOutput('copywriter', output)
+    const output = '<!-- OUTPUT_CONTRACT\n{ "files_changed": ["docs/a.md"], "content": "text", "word_count": -5, "summary": "done" }\n-->'
+    const result = validateOutput('writer', output)
     expect(result.valid).toBe(false)
     expect(result.missing).toContain('word_count')
   })
 
   it('positive-int rejects non-number for word_count', () => {
-    const output = '<!-- OUTPUT_CONTRACT\n{ "content": "text", "word_count": "fifty", "summary": "done" }\n-->'
-    const result = validateOutput('copywriter', output)
+    const output = '<!-- OUTPUT_CONTRACT\n{ "files_changed": ["docs/a.md"], "content": "text", "word_count": "fifty", "summary": "done" }\n-->'
+    const result = validateOutput('writer', output)
     expect(result.valid).toBe(false)
     expect(result.missing).toContain('word_count')
   })
 
   it('positive-int accepts valid positive number for word_count', () => {
-    const output = '<!-- OUTPUT_CONTRACT\n{ "content": "text", "word_count": 100, "summary": "done" }\n-->'
-    const result = validateOutput('copywriter', output)
+    const output = '<!-- OUTPUT_CONTRACT\n{ "files_changed": ["docs/a.md"], "content": "text", "word_count": 100, "summary": "done" }\n-->'
+    const result = validateOutput('writer', output)
     expect(result.valid).toBe(true)
   })
 })

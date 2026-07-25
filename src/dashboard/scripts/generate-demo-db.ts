@@ -96,7 +96,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   store.insertConvoy({ id: 'demo-api-v2', name: 'REST API v2 Migration', spec_hash: 'h3', status: 'gate_failed', branch: 'feat/api-v2', created_at: C3, spec_yaml: 'name: api-v2' })
   store.updateConvoyStatus('demo-api-v2', 'gate_failed', { started_at: C3, finished_at: iso(C3, min(28)), total_tokens: 24600, total_cost_usd: 0.1968 })
   const apiTasks = [
-    { id: 'api-t1', phase: 1, prompt: 'Design RESTful v2 route contracts', agent: 'API Designer', status: 'done' as const, eventType: 'task_done', retries: 0, tokens: 7200, cost: calcCost(7200, 'claude-sonnet-4-6'), start: iso(C3, sec(5)), end: iso(C3, min(11)) },
+    { id: 'api-t1', phase: 1, prompt: 'Design RESTful v2 route contracts', agent: 'Developer', status: 'done' as const, eventType: 'task_done', retries: 0, tokens: 7200, cost: calcCost(7200, 'claude-sonnet-4-6'), start: iso(C3, sec(5)), end: iso(C3, min(11)) },
     { id: 'api-t2', phase: 2, prompt: 'Implement rate limiting middleware', agent: 'Developer', status: 'done' as const, eventType: 'task_done', retries: 2, tokens: 11400, cost: calcCost(11400, 'claude-sonnet-4-6'), start: iso(C3, min(12)), end: iso(C3, min(23)) },
     { id: 'api-t3', phase: 3, prompt: 'Security gate – injection vulnerability scan', agent: 'Security Expert', status: 'gate_failed' as const, eventType: 'task_gate_failed', retries: 0, tokens: 6000, cost: calcCost(6000, 'claude-sonnet-4-6'), start: iso(C3, min(24)), end: iso(C3, min(27)) },
   ]
@@ -129,8 +129,8 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   store.insertConvoy({ id: 'demo-data-pipeline', name: 'Analytics ETL Pipeline', spec_hash: 'h5', status: 'done', branch: 'feat/etl-v2', created_at: C5, spec_yaml: 'name: data-pipeline' })
   store.updateConvoyStatus('demo-data-pipeline', 'done', { started_at: C5, finished_at: iso(C5, min(38)), total_tokens: 28900, total_cost_usd: 0.2312 })
   const etlTasks = [
-    { id: 'etl-t1', phase: 1, prompt: 'Design ndjson processing schema', agent: 'Data Expert', status: 'done' as const, retries: 0, tokens: 7800, cost: calcCost(7800, 'claude-sonnet-4-6'), start: iso(C5, sec(5)), end: iso(C5, min(11)) },
-    { id: 'etl-t2', phase: 2, prompt: 'Implement incremental ETL with deduplication', agent: 'Data Expert', status: 'done' as const, retries: 1, tokens: 12400, cost: calcCost(12400, 'claude-sonnet-4-6'), start: iso(C5, min(12)), end: iso(C5, min(30)) },
+    { id: 'etl-t1', phase: 1, prompt: 'Design ndjson processing schema', agent: 'Data Engineer', status: 'done' as const, retries: 0, tokens: 7800, cost: calcCost(7800, 'claude-sonnet-4-6'), start: iso(C5, sec(5)), end: iso(C5, min(11)) },
+    { id: 'etl-t2', phase: 2, prompt: 'Implement incremental ETL with deduplication', agent: 'Data Engineer', status: 'done' as const, retries: 1, tokens: 12400, cost: calcCost(12400, 'claude-sonnet-4-6'), start: iso(C5, min(12)), end: iso(C5, min(30)) },
     { id: 'etl-t3', phase: 3, prompt: 'Write ETL test suite', agent: 'Testing Expert', status: 'done' as const, retries: 0, tokens: 8700, cost: calcCost(8700, 'claude-sonnet-4-6'), start: iso(C5, min(31)), end: iso(C5, min(37)) },
   ]
   for (const t of etlTasks) {
@@ -166,8 +166,8 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
   store.insertConvoy({ id: 'demo-docs-update', name: 'Documentation Refresh', spec_hash: 'h7', status: 'done', branch: 'docs/update-march', created_at: C7, spec_yaml: 'name: docs-update' })
   store.updateConvoyStatus('demo-docs-update', 'done', { started_at: C7, finished_at: iso(C7, min(22)), total_tokens: 14800, total_cost_usd: 0.0296 })
   const docTasks = [
-    { id: 'docs-t1', phase: 1, prompt: 'Update README and ARCHITECTURE docs', agent: 'Documentation Writer', status: 'done' as const, retries: 0, tokens: 8200, cost: calcCost(8200, 'claude-haiku-3-5'), start: iso(C7, sec(5)), end: iso(C7, min(14)) },
-    { id: 'docs-t2', phase: 2, prompt: 'Generate API reference from source', agent: 'Documentation Writer', status: 'done' as const, retries: 0, tokens: 6600, cost: calcCost(6600, 'claude-haiku-3-5'), start: iso(C7, min(15)), end: iso(C7, min(21)) },
+    { id: 'docs-t1', phase: 1, prompt: 'Update README and ARCHITECTURE docs', agent: 'Writer', status: 'done' as const, retries: 0, tokens: 8200, cost: calcCost(8200, 'claude-haiku-3-5'), start: iso(C7, sec(5)), end: iso(C7, min(14)) },
+    { id: 'docs-t2', phase: 2, prompt: 'Generate API reference from source', agent: 'Writer', status: 'done' as const, retries: 0, tokens: 6600, cost: calcCost(6600, 'claude-haiku-3-5'), start: iso(C7, min(15)), end: iso(C7, min(21)) },
   ]
   for (const t of docTasks) {
     store.insertTask({ id: t.id, convoy_id: 'demo-docs-update', phase: t.phase, prompt: t.prompt, agent: t.agent, adapter: 'vscode', model: 'claude-haiku-3-5', timeout_ms: 120000, status: t.status, retries: t.retries, max_retries: 3, files: null, depends_on: null, gates: null, outputs: JSON.stringify({ result: 'done' }), inputs: null })
@@ -332,10 +332,10 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
     { dayIdx: 7, hour: 9, agent: 'UI/UX Expert', model: 'claude-opus-4-6', task: 'Accessibility audit and ARIA labels', outcome: 'success', duration_min: 13, files_changed: 6, retries: 0, convoy_id: 'demo-dashboard-ui', tracker_issue: 'TASK-16' },
     { dayIdx: 7, hour: 9, agent: 'Testing Expert', model: 'claude-sonnet-4-6', task: 'Cross-browser visual regression tests', outcome: 'success', duration_min: 17, files_changed: 4, retries: 0, convoy_id: 'demo-dashboard-ui', tracker_issue: 'TASK-17' },
     { dayIdx: 7, hour: 11, agent: 'Reviewer', model: 'claude-sonnet-4-6', task: 'Panel review – dashboard UI', outcome: 'success', duration_min: 34, files_changed: 0, retries: 0, convoy_id: 'demo-dashboard-ui', tracker_issue: 'TASK-18' },
-    { dayIdx: 8, hour: 10, agent: 'Copywriter', model: 'claude-sonnet-4-6', task: 'Write dashboard empty state copy', outcome: 'success', duration_min: 5, files_changed: 1, retries: 0, tracker_issue: 'TASK-19' },
+    { dayIdx: 8, hour: 10, agent: 'Writer', model: 'claude-sonnet-4-6', task: 'Write dashboard empty state copy', outcome: 'success', duration_min: 5, files_changed: 1, retries: 0, tracker_issue: 'TASK-19' },
     // Day 9-13: API work
     { dayIdx: 9, hour: 10, agent: 'Team Lead (OpenCastle)', model: 'claude-opus-4-6', task: 'Plan REST API v2 migration', outcome: 'success', duration_min: 7, files_changed: 1, retries: 0, convoy_id: 'demo-api-v2', tracker_issue: 'TASK-20' },
-    { dayIdx: 10, hour: 11, agent: 'API Designer', model: 'claude-sonnet-4-6', task: 'Design RESTful v2 route contracts', outcome: 'success', duration_min: 11, files_changed: 4, retries: 0, convoy_id: 'demo-api-v2', tracker_issue: 'TASK-21' },
+    { dayIdx: 10, hour: 11, agent: 'Developer', model: 'claude-sonnet-4-6', task: 'Design RESTful v2 route contracts', outcome: 'success', duration_min: 11, files_changed: 4, retries: 0, convoy_id: 'demo-api-v2', tracker_issue: 'TASK-21' },
     { dayIdx: 11, hour: 16, agent: 'Team Lead (OpenCastle)', model: 'claude-opus-4-6', task: 'Orchestrate API v2 convoy', outcome: 'failed', duration_min: 28, files_changed: 0, retries: 0, convoy_id: 'demo-api-v2', tracker_issue: 'TASK-22' },
     { dayIdx: 11, hour: 16, agent: 'Developer', model: 'claude-sonnet-4-6', task: 'Implement rate limiting middleware', outcome: 'partial', duration_min: 11, files_changed: 5, retries: 2, convoy_id: 'demo-api-v2', tracker_issue: 'TASK-23' },
     { dayIdx: 11, hour: 17, agent: 'Security Expert', model: 'claude-sonnet-4-6', task: 'Security gate – injection vulnerability scan', outcome: 'failed', duration_min: 3, files_changed: 0, retries: 0, convoy_id: 'demo-api-v2', tracker_issue: 'TASK-24', discoveries: ['SQL injection risk in query builder', 'Missing input sanitization on user endpoint'] },
@@ -352,19 +352,19 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
     { dayIdx: 18, hour: 9, agent: 'Developer', model: 'claude-sonnet-4-6', task: 'Fix LCP regression on mobile', outcome: 'success', duration_min: 9, files_changed: 3, retries: 1, tracker_issue: 'TASK-34', lessons_added: ['Always check mobile viewport when optimizing LCP'] },
     // Day 19-23: Data pipeline
     { dayIdx: 19, hour: 13, agent: 'Team Lead (OpenCastle)', model: 'claude-opus-4-6', task: 'Plan analytics ETL pipeline', outcome: 'success', duration_min: 6, files_changed: 1, retries: 0, convoy_id: 'demo-data-pipeline', tracker_issue: 'TASK-35' },
-    { dayIdx: 20, hour: 11, agent: 'Data Expert', model: 'claude-sonnet-4-6', task: 'Design ndjson processing schema', outcome: 'success', duration_min: 11, files_changed: 3, retries: 0, convoy_id: 'demo-data-pipeline', tracker_issue: 'TASK-36' },
+    { dayIdx: 20, hour: 11, agent: 'Data Engineer', model: 'claude-sonnet-4-6', task: 'Design ndjson processing schema', outcome: 'success', duration_min: 11, files_changed: 3, retries: 0, convoy_id: 'demo-data-pipeline', tracker_issue: 'TASK-36' },
     { dayIdx: 21, hour: 13, agent: 'Team Lead (OpenCastle)', model: 'claude-opus-4-6', task: 'Orchestrate data pipeline convoy', outcome: 'success', duration_min: 38, files_changed: 0, retries: 0, convoy_id: 'demo-data-pipeline', tracker_issue: 'TASK-37' },
-    { dayIdx: 21, hour: 13, agent: 'Data Expert', model: 'claude-sonnet-4-6', task: 'Implement incremental ETL with deduplication', outcome: 'success', duration_min: 18, files_changed: 7, retries: 1, convoy_id: 'demo-data-pipeline', tracker_issue: 'TASK-38' },
+    { dayIdx: 21, hour: 13, agent: 'Data Engineer', model: 'claude-sonnet-4-6', task: 'Implement incremental ETL with deduplication', outcome: 'success', duration_min: 18, files_changed: 7, retries: 1, convoy_id: 'demo-data-pipeline', tracker_issue: 'TASK-38' },
     { dayIdx: 21, hour: 14, agent: 'Testing Expert', model: 'claude-haiku-3-5', task: 'Write ETL test suite', outcome: 'success', duration_min: 6, files_changed: 4, retries: 0, convoy_id: 'demo-data-pipeline', tracker_issue: 'TASK-39' },
     { dayIdx: 22, hour: 15, agent: 'Reviewer', model: 'claude-haiku-3-5', task: 'Fast review – data pipeline', outcome: 'success', duration_min: 5, files_changed: 0, retries: 0, tracker_issue: 'TASK-40' },
-    { dayIdx: 23, hour: 10, agent: 'Documentation Writer', model: 'claude-haiku-3-5', task: 'Document ETL schema and configuration', outcome: 'success', duration_min: 8, files_changed: 2, retries: 0, tracker_issue: 'TASK-41' },
+    { dayIdx: 23, hour: 10, agent: 'Writer', model: 'claude-haiku-3-5', task: 'Document ETL schema and configuration', outcome: 'success', duration_min: 8, files_changed: 2, retries: 0, tracker_issue: 'TASK-41' },
     // Day 24-29: Docs
     { dayIdx: 25, hour: 10, agent: 'Team Lead (OpenCastle)', model: 'claude-opus-4-6', task: 'Plan documentation refresh', outcome: 'success', duration_min: 4, files_changed: 0, retries: 0, convoy_id: 'demo-docs-update', tracker_issue: 'TASK-42' },
     { dayIdx: 27, hour: 15, agent: 'Team Lead (OpenCastle)', model: 'claude-opus-4-6', task: 'Orchestrate documentation update convoy', outcome: 'success', duration_min: 22, files_changed: 0, retries: 0, convoy_id: 'demo-docs-update', tracker_issue: 'TASK-43' },
-    { dayIdx: 27, hour: 15, agent: 'Documentation Writer', model: 'claude-haiku-3-5', task: 'Update README and ARCHITECTURE docs', outcome: 'success', duration_min: 14, files_changed: 5, retries: 0, convoy_id: 'demo-docs-update', tracker_issue: 'TASK-44' },
-    { dayIdx: 27, hour: 16, agent: 'Documentation Writer', model: 'claude-haiku-3-5', task: 'Generate API reference from source', outcome: 'success', duration_min: 6, files_changed: 3, retries: 0, convoy_id: 'demo-docs-update', tracker_issue: 'TASK-45' },
-    { dayIdx: 28, hour: 11, agent: 'Copywriter', model: 'claude-haiku-3-5', task: 'Update marketing copy for v2 features', outcome: 'success', duration_min: 7, files_changed: 2, retries: 0, tracker_issue: 'TASK-46' },
-    { dayIdx: 29, hour: 14, agent: 'SEO Specialist', model: 'claude-haiku-3-5', task: 'Add structured data and meta tags', outcome: 'success', duration_min: 9, files_changed: 4, retries: 0, tracker_issue: 'TASK-47' },
+    { dayIdx: 27, hour: 15, agent: 'Writer', model: 'claude-haiku-3-5', task: 'Update README and ARCHITECTURE docs', outcome: 'success', duration_min: 14, files_changed: 5, retries: 0, convoy_id: 'demo-docs-update', tracker_issue: 'TASK-44' },
+    { dayIdx: 27, hour: 16, agent: 'Writer', model: 'claude-haiku-3-5', task: 'Generate API reference from source', outcome: 'success', duration_min: 6, files_changed: 3, retries: 0, convoy_id: 'demo-docs-update', tracker_issue: 'TASK-45' },
+    { dayIdx: 28, hour: 11, agent: 'Writer', model: 'claude-haiku-3-5', task: 'Update marketing copy for v2 features', outcome: 'success', duration_min: 7, files_changed: 2, retries: 0, tracker_issue: 'TASK-46' },
+    { dayIdx: 29, hour: 14, agent: 'Writer', model: 'claude-haiku-3-5', task: 'Add structured data and meta tags', outcome: 'success', duration_min: 9, files_changed: 4, retries: 0, tracker_issue: 'TASK-47' },
     // Day 30-35: CI/CD
     { dayIdx: 30, hour: 9, agent: 'Team Lead (OpenCastle)', model: 'claude-opus-4-6', task: 'Plan CI/CD pipeline setup', outcome: 'success', duration_min: 5, files_changed: 1, retries: 0, convoy_id: 'demo-deploy-ci', tracker_issue: 'TASK-48' },
     { dayIdx: 31, hour: 10, agent: 'DevOps Expert', model: 'claude-sonnet-4-6', task: 'Design GitHub Actions workflow matrix', outcome: 'success', duration_min: 12, files_changed: 4, retries: 0, convoy_id: 'demo-deploy-ci', tracker_issue: 'TASK-49' },
@@ -415,7 +415,7 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
     { dayIdx: 7, hour: 9, agent: 'UI/UX Expert', task: 'Accessibility audit', outcome: 'success', tier: 'premium', mechanism: 'sub-agent', phase: 3, convoy_id: 'demo-dashboard-ui', model: 'claude-opus-4-6' },
     { dayIdx: 7, hour: 9, agent: 'Testing Expert', task: 'Visual regression tests', outcome: 'success', tier: 'standard', mechanism: 'background', phase: 3, convoy_id: 'demo-dashboard-ui', model: 'claude-sonnet-4-6' },
     { dayIdx: 7, hour: 11, agent: 'Reviewer', task: 'Panel review – dashboard', outcome: 'success', tier: 'economy', mechanism: 'sub-agent', phase: 4, convoy_id: 'demo-dashboard-ui', model: 'claude-haiku-3-5' },
-    { dayIdx: 10, hour: 11, agent: 'API Designer', task: 'REST v2 route design', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 1, convoy_id: 'demo-api-v2', model: 'claude-sonnet-4-6' },
+    { dayIdx: 10, hour: 11, agent: 'Developer', task: 'REST v2 route design', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 1, convoy_id: 'demo-api-v2', model: 'claude-sonnet-4-6' },
     { dayIdx: 11, hour: 16, agent: 'Developer', task: 'Rate limiting middleware', outcome: 'partial', tier: 'standard', mechanism: 'background', phase: 2, convoy_id: 'demo-api-v2', model: 'claude-sonnet-4-6' },
     { dayIdx: 11, hour: 17, agent: 'Security Expert', task: 'Injection vulnerability scan', outcome: 'failed', tier: 'standard', mechanism: 'sub-agent', phase: 3, convoy_id: 'demo-api-v2', model: 'claude-sonnet-4-6' },
     { dayIdx: 12, hour: 9, agent: 'Developer', task: 'Patch SQL injection', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 2, model: 'claude-sonnet-4-6' },
@@ -424,11 +424,11 @@ export async function createDemoDb(outPath: string, eventsOutPath?: string): Pro
     { dayIdx: 16, hour: 10, agent: 'Developer', task: 'Image lazy-loading', outcome: 'success', tier: 'standard', mechanism: 'background', phase: 2, convoy_id: 'demo-perf-opt', model: 'claude-sonnet-4-6' },
     { dayIdx: 16, hour: 11, agent: 'Performance Expert', task: 'Core Web Vitals validation', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 3, convoy_id: 'demo-perf-opt', model: 'claude-sonnet-4-6' },
     { dayIdx: 17, hour: 14, agent: 'Reviewer', task: 'Performance PR review', outcome: 'success', tier: 'utility', mechanism: 'sub-agent', phase: 4, model: 'claude-haiku-3-5' },
-    { dayIdx: 20, hour: 11, agent: 'Data Expert', task: 'ndjson schema design', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 1, convoy_id: 'demo-data-pipeline', model: 'claude-sonnet-4-6' },
-    { dayIdx: 21, hour: 13, agent: 'Data Expert', task: 'ETL implementation', outcome: 'success', tier: 'standard', mechanism: 'background', phase: 2, convoy_id: 'demo-data-pipeline', model: 'claude-sonnet-4-6' },
+    { dayIdx: 20, hour: 11, agent: 'Data Engineer', task: 'ndjson schema design', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 1, convoy_id: 'demo-data-pipeline', model: 'claude-sonnet-4-6' },
+    { dayIdx: 21, hour: 13, agent: 'Data Engineer', task: 'ETL implementation', outcome: 'success', tier: 'standard', mechanism: 'background', phase: 2, convoy_id: 'demo-data-pipeline', model: 'claude-sonnet-4-6' },
     { dayIdx: 21, hour: 14, agent: 'Testing Expert', task: 'ETL test suite', outcome: 'success', tier: 'economy', mechanism: 'background', phase: 3, convoy_id: 'demo-data-pipeline', model: 'claude-haiku-3-5' },
-    { dayIdx: 27, hour: 15, agent: 'Documentation Writer', task: 'README and ARCHITECTURE update', outcome: 'success', tier: 'economy', mechanism: 'sub-agent', phase: 1, convoy_id: 'demo-docs-update', model: 'claude-haiku-3-5' },
-    { dayIdx: 27, hour: 16, agent: 'Documentation Writer', task: 'API reference generation', outcome: 'success', tier: 'economy', mechanism: 'sub-agent', phase: 2, convoy_id: 'demo-docs-update', model: 'claude-haiku-3-5' },
+    { dayIdx: 27, hour: 15, agent: 'Writer', task: 'README and ARCHITECTURE update', outcome: 'success', tier: 'economy', mechanism: 'sub-agent', phase: 1, convoy_id: 'demo-docs-update', model: 'claude-haiku-3-5' },
+    { dayIdx: 27, hour: 16, agent: 'Writer', task: 'API reference generation', outcome: 'success', tier: 'economy', mechanism: 'sub-agent', phase: 2, convoy_id: 'demo-docs-update', model: 'claude-haiku-3-5' },
     { dayIdx: 31, hour: 10, agent: 'DevOps Expert', task: 'GitHub Actions workflow', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 1, convoy_id: 'demo-deploy-ci', model: 'claude-sonnet-4-6' },
     { dayIdx: 33, hour: 15, agent: 'Security Expert', task: 'Deployment security headers review', outcome: 'success', tier: 'standard', mechanism: 'sub-agent', phase: 2, model: 'claude-sonnet-4-6' },
     { dayIdx: 35, hour: 10, agent: 'Reviewer', task: 'CI config security review', outcome: 'success', tier: 'utility', mechanism: 'sub-agent', phase: 3, model: 'claude-haiku-3-5' },

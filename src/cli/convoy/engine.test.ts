@@ -2001,25 +2001,25 @@ describe('evaluateReviewLevel', () => {
     expect(level).toBe('panel')
   })
 
-  it('routes to panel for database-engineer agent', () => {
+  it('routes to panel for data-engineer agent', () => {
     const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'database-engineer' }),
+      makeTaskRecord({ agent: 'data-engineer' }),
       makeDiffStats(),
     )
     expect(level).toBe('panel')
   })
 
-  it('routes to auto-pass for documentation-writer agent', () => {
+  it('routes to auto-pass for writer agent', () => {
     const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'documentation-writer' }),
+      makeTaskRecord({ agent: 'writer' }),
       makeDiffStats(),
     )
     expect(level).toBe('auto-pass')
   })
 
-  it('routes to auto-pass for copywriter agent', () => {
+  it('routes to auto-pass for writer agent', () => {
     const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'copywriter' }),
+      makeTaskRecord({ agent: 'writer' }),
       makeDiffStats(),
     )
     expect(level).toBe('auto-pass')

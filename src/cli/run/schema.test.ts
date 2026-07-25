@@ -667,9 +667,9 @@ describe('applyDefaults — convoy spec (version: 1)', () => {
       name: 'test',
       version: 1,
       defaults: { agent: 'ui-ux-expert' },
-      tasks: [{ id: 'a', prompt: 'x', agent: 'api-designer' }],
+      tasks: [{ id: 'a', prompt: 'x', agent: 'developer' }],
     })
-    expect(spec.tasks![0].agent).toBe('api-designer')
+    expect(spec.tasks![0].agent).toBe('developer')
   })
 
   it('merges defaults.timeout into tasks', () => {
@@ -1223,7 +1223,7 @@ describe('guard config', () => {
   it('accepts a valid guard config', () => {
     const result = validateSpec({
       ...baseSpec,
-      guard: { enabled: true, agent: 'session-guard', checks: ['observability', 'cleanup'] },
+      guard: { enabled: true, agent: 'reviewer', checks: ['observability', 'cleanup'] },
     })
     expect(result.valid).toBe(true)
     expect(result.errors).toHaveLength(0)
@@ -1339,7 +1339,7 @@ describe('review defaults validation', () => {
         review_heuristics: {
           panel_paths: ['auth/', 'security/'],
           panel_agents: ['security-expert'],
-          auto_pass_agents: ['copywriter'],
+          auto_pass_agents: ['writer'],
           auto_pass_max_lines: 20,
           auto_pass_max_files: 3,
         },

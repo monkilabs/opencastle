@@ -32,12 +32,12 @@ export const config: PluginConfig = {
       'contentful/update_locale', 'contentful/delete_locale', 'contentful/list_tags',
       'contentful/create_tag', 'contentful/list_orgs', 'contentful/get_org',
     ],
-    'copywriter': [
+    'writer': [
       'contentful/get_initial_context', 'contentful/list_content_types', 'contentful/get_content_type',
       'contentful/search_entries', 'contentful/get_entry', 'contentful/update_entry',
       'contentful/publish_entry', 'contentful/list_spaces', 'contentful/get_space',
     ],
-    'data-expert': [
+    'data-engineer': [
       'contentful/get_initial_context', 'contentful/list_content_types', 'contentful/get_content_type',
       'contentful/search_entries', 'contentful/get_entry', 'contentful/create_entry',
       'contentful/update_entry', 'contentful/list_spaces', 'contentful/get_space',

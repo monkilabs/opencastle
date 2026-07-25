@@ -29,7 +29,7 @@ export const config: PluginConfig = {
       'Notion/append_block_children',
       'Notion/query_database',
     ],
-    'documentation-writer': [
+    'writer': [
       'Notion/search',
       'Notion/create_page',
       'Notion/update_page',

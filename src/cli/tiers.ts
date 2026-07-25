@@ -55,10 +55,7 @@ const AGENT_TIERS: Record<string, Tier> = {
   architect: 'premium',
   'security-expert': 'premium',
   reviewer: 'economy',
-  'documentation-writer': 'economy',
-  copywriter: 'economy',
-  'seo-specialist': 'economy',
-  'session-guard': 'economy',
+  writer: 'economy',
 }
 
 export function tierForAgent(agent: string): Tier {

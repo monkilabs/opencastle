@@ -3,7 +3,7 @@
  * correct files based on stack selections (tech tools, team tools, IDEs).
  *
  * Tests the dynamic parts:
- *   - Excluded agents (no CMS → no content-engineer, no DB → no database-engineer)
+ *   - Excluded agents (no CMS → no content-engineer, no DB → no data-engineer)
  *   - Excluded skills (only selected plugin skills are installed)
  *   - Plugin skills (SKILL.md from plugin dirs)
  *   - MCP config generation per IDE format
@@ -111,19 +111,19 @@ describe('stack-config: getExcludedAgents', () => {
   it('excludes content-engineer when no CMS tool is selected', () => {
     const excluded = getExcludedAgents(STACK_EMPTY)
     expect(excluded.has('content-engineer.agent.md')).toBe(true)
-    expect(excluded.has('database-engineer.agent.md')).toBe(true)
+    expect(excluded.has('data-engineer.agent.md')).toBe(true)
   })
 
   it('includes content-engineer when a CMS tool is selected', () => {
     const excluded = getExcludedAgents(STACK_SANITY_LINEAR)
     expect(excluded.has('content-engineer.agent.md')).toBe(false)
-    // No DB selected → database-engineer still excluded
-    expect(excluded.has('database-engineer.agent.md')).toBe(true)
+    // No DB selected → data-engineer still excluded
+    expect(excluded.has('data-engineer.agent.md')).toBe(true)
   })
 
-  it('includes database-engineer when a DB tool is selected', () => {
+  it('includes data-engineer when a DB tool is selected', () => {
     const excluded = getExcludedAgents(STACK_SUPABASE_SLACK)
-    expect(excluded.has('database-engineer.agent.md')).toBe(false)
+    expect(excluded.has('data-engineer.agent.md')).toBe(false)
     // No CMS selected → content-engineer still excluded
     expect(excluded.has('content-engineer.agent.md')).toBe(true)
   })
@@ -131,7 +131,7 @@ describe('stack-config: getExcludedAgents', () => {
   it('includes both when CMS and DB are selected', () => {
     const excluded = getExcludedAgents(STACK_FULL)
     expect(excluded.has('content-engineer.agent.md')).toBe(false)
-    expect(excluded.has('database-engineer.agent.md')).toBe(false)
+    expect(excluded.has('data-engineer.agent.md')).toBe(false)
   })
 })
 
@@ -255,9 +255,9 @@ describe('stack-config: getAgentToolInjections', () => {
     expect(teamLeadTools).toContain('linear/list_issues')
   })
 
-  it('injects supabase tools into database-engineer when supabase selected', () => {
+  it('injects supabase tools into data-engineer when supabase selected', () => {
     const injections = getAgentToolInjections(STACK_SUPABASE_SLACK)
-    const dbTools = injections.get('database-engineer')
+    const dbTools = injections.get('data-engineer')
     expect(dbTools).toBeDefined()
     expect(dbTools).toContain('supabase/apply_migration')
     expect(dbTools).toContain('supabase/execute_sql')
@@ -428,7 +428,7 @@ describe('VS Code adapter install', () => {
     }
   })
 
-  it('excludes content-engineer and database-engineer agents when no CMS/DB', async () => {
+  it('excludes content-engineer and data-engineer agents when no CMS/DB', async () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
 
@@ -436,7 +436,7 @@ describe('VS Code adapter install', () => {
     const agents = await readdir(agentsDir)
 
     expect(agents).not.toContain('content-engineer.agent.md')
-    expect(agents).not.toContain('database-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
     // Others should still be present
     expect(agents).toContain('developer.agent.md')
     expect(agents).toContain('team-lead.agent.md')
@@ -449,15 +449,15 @@ describe('VS Code adapter install', () => {
 
     const agents = await readdir(join(tempDir, '.github', 'agents'))
     expect(agents).toContain('content-engineer.agent.md')
-    expect(agents).not.toContain('database-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
   })
 
-  it('includes database-engineer when DB tool is selected', async () => {
+  it('includes data-engineer when DB tool is selected', async () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(PKG_ROOT, tempDir, STACK_SUPABASE_SLACK, EMPTY_REPO_INFO)
 
     const agents = await readdir(join(tempDir, '.github', 'agents'))
-    expect(agents).toContain('database-engineer.agent.md')
+    expect(agents).toContain('data-engineer.agent.md')
     expect(agents).not.toContain('content-engineer.agent.md')
   })
 
@@ -667,7 +667,7 @@ describe('Cursor adapter install', () => {
     expect(agents).toContain('developer.mdc')
     expect(agents).toContain('team-lead.mdc')
     expect(agents).not.toContain('content-engineer.mdc') // no CMS
-    expect(agents).not.toContain('database-engineer.mdc') // no DB
+    expect(agents).not.toContain('data-engineer.mdc') // no DB
 
     // Validate .mdc structure
     const devAgent = await readFile(join(agentsDir, 'developer.mdc'), 'utf8')
@@ -783,7 +783,7 @@ describe('Claude Code adapter install', () => {
     expect(content).toContain('**Team Lead (OpenCastle)**')
     // Should NOT list excluded agents
     expect(content).not.toContain('**Content Engineer**')
-    expect(content).not.toContain('**Database Engineer**')
+    expect(content).not.toContain('**Data Engineer**')
   })
 
   it('CLAUDE.md includes content engineer when CMS selected', async () => {
@@ -792,7 +792,7 @@ describe('Claude Code adapter install', () => {
 
     const content = await readFile(join(tempDir, 'CLAUDE.md'), 'utf8')
     expect(content).toContain('**Content Engineer**')
-    expect(content).not.toContain('**Database Engineer**')
+    expect(content).not.toContain('**Data Engineer**')
   })
 
   it('CLAUDE.md lists available skills (including selected plugins)', async () => {
@@ -816,7 +816,7 @@ describe('Claude Code adapter install', () => {
     const agents = await readdir(agentsDir)
     expect(agents).toContain('developer.agent.md')
     expect(agents).not.toContain('content-engineer.agent.md')
-    expect(agents).not.toContain('database-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
 
     const devAgent = await readFile(join(agentsDir, 'developer.agent.md'), 'utf8')
     // Should NOT start with frontmatter
@@ -1329,7 +1329,7 @@ describe('full stack configuration', () => {
     // Both conditional agents should be included
     const agents = await readdir(join(tempDir, '.github', 'agents'))
     expect(agents).toContain('content-engineer.agent.md')
-    expect(agents).toContain('database-engineer.agent.md')
+    expect(agents).toContain('data-engineer.agent.md')
 
     // All 5 plugin skills should be installed
     const skills = await readdir(join(tempDir, '.github', 'skills'))
@@ -1355,9 +1355,9 @@ describe('full stack configuration', () => {
     )
     expect(ceContent).toContain("'sanity/get_schema'")
 
-    // Agent tool injection — database-engineer should have supabase tools
+    // Agent tool injection — data-engineer should have supabase tools
     const deContent = await readFile(
-      join(tempDir, '.github', 'agents', 'database-engineer.agent.md'),
+      join(tempDir, '.github', 'agents', 'data-engineer.agent.md'),
       'utf8'
     )
     expect(deContent).toContain("'supabase/apply_migration'")

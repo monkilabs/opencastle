@@ -27,12 +27,12 @@ export const config: PluginConfig = {
       'sanity/migration_guide', 'sanity/create_version', 'sanity/generate_image',
       'sanity/transform_image', 'sanity/add_cors_origin',
     ],
-    'copywriter': [
+    'writer': [
       'sanity/get_schema', 'sanity/query_documents', 'sanity/get_document',
       'sanity/patch_document_from_json', 'sanity/patch_document_from_markdown',
       'sanity/list_datasets', 'sanity/list_projects',
     ],
-    'data-expert': [
+    'data-engineer': [
       'sanity/get_schema', 'sanity/query_documents', 'sanity/create_documents_from_json',
       'sanity/patch_document_from_json', 'sanity/get_document', 'sanity/list_datasets',
       'sanity/list_projects',

@@ -23,7 +23,7 @@ export const config: PluginConfig = {
       'finalize_invoice', 'list_invoices', 'create_refund',
       'list_payment_intents', 'search_stripe_documentation',
     ],
-    'database-engineer': [
+    'data-engineer': [
       'list_customers', 'list_products', 'list_prices',
       'list_invoices', 'list_subscriptions', 'list_payment_intents',
       'search_stripe_resources', 'fetch_stripe_resources',

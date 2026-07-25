@@ -93,23 +93,17 @@ export const AGENT_CONTRACTS: Record<string, OutputContract> = {
       summary: { type: 'string', description: 'Brief review summary', validation: 'non-empty' },
     },
   },
-  'documentation-writer': {
-    agent: 'documentation-writer',
+  'writer': {
+    agent: 'writer',
     required_fields: ['files_changed', 'summary'],
-    optional_fields: [],
+    // Specialty fields: copy work reports counts, metadata work reports tags.
+    optional_fields: ['content', 'word_count', 'tags_added'],
     schema: {
-      files_changed: { type: 'string[]', description: 'List of documentation file paths created or modified', validation: 'file-paths' },
-      summary: { type: 'string', description: 'Brief description of documentation changes', validation: 'non-empty' },
-    },
-  },
-  'copywriter': {
-    agent: 'copywriter',
-    required_fields: ['content', 'word_count', 'summary'],
-    optional_fields: [],
-    schema: {
-      content: { type: 'string', description: 'The written content or key excerpts', validation: 'non-empty' },
-      word_count: { type: 'number', description: 'Total word count of written content', validation: 'positive-int' },
-      summary: { type: 'string', description: 'Brief summary of content created', validation: 'non-empty' },
+      files_changed: { type: 'string[]', description: 'Files created or modified', validation: 'file-paths' },
+      summary: { type: 'string', description: 'What was written and why', validation: 'non-empty' },
+      content: { type: 'string', description: 'The written content or key excerpts' },
+      word_count: { type: 'number', description: 'Word count of written content', validation: 'positive-int' },
+      tags_added: { type: 'string[]', description: 'Meta tags or structured-data items added' },
     },
   },
   'performance-expert': {
@@ -123,66 +117,32 @@ export const AGENT_CONTRACTS: Record<string, OutputContract> = {
       summary: { type: 'string', description: 'Summary of performance improvements', validation: 'non-empty' },
     },
   },
-  'database-engineer': {
-    agent: 'database-engineer',
-    required_fields: ['migrations', 'rls_policies', 'rollback_plan', 'summary'],
-    optional_fields: [],
+  'data-engineer': {
+    agent: 'data-engineer',
+    required_fields: ['files_changed', 'summary'],
+    // Schema work reports migrations and a rollback; pipeline work reports stages.
+    optional_fields: ['migrations', 'rls_policies', 'rollback_plan', 'pipeline_steps'],
     schema: {
-      migrations: { type: 'string[]', description: 'List of migration file paths applied', validation: 'file-paths' },
-      rls_policies: { type: 'string[]', description: 'List of RLS policy names added or modified' },
-      rollback_plan: { type: 'string', description: 'Steps to roll back the changes if needed', validation: 'non-empty' },
-      summary: { type: 'string', description: 'Summary of database changes', validation: 'non-empty' },
+      files_changed: { type: 'string[]', description: 'Files created or modified', validation: 'file-paths' },
+      summary: { type: 'string', description: 'Summary of the data changes', validation: 'non-empty' },
+      migrations: { type: 'string[]', description: 'Migration file paths applied', validation: 'file-paths' },
+      rls_policies: { type: 'string[]', description: 'Access policies added or modified' },
+      rollback_plan: { type: 'string', description: 'Steps to roll the change back' },
+      pipeline_steps: { type: 'string[]', description: 'Pipeline stages implemented' },
     },
   },
   'devops-expert': {
     agent: 'devops-expert',
     required_fields: ['files_changed', 'env_vars_added', 'summary'],
-    optional_fields: [],
+    // Release work additionally reports the version and its changelog.
+    optional_fields: ['version', 'changelog_entries', 'checks_passed'],
     schema: {
       files_changed: { type: 'string[]', description: 'List of file paths created or modified', validation: 'file-paths' },
       env_vars_added: { type: 'string[]', description: 'List of environment variable names added' },
       summary: { type: 'string', description: 'Summary of DevOps changes', validation: 'non-empty' },
-    },
-  },
-  'api-designer': {
-    agent: 'api-designer',
-    required_fields: ['endpoints', 'schemas', 'summary'],
-    optional_fields: [],
-    schema: {
-      endpoints: { type: 'string[]', description: 'List of API endpoints designed or modified' },
-      schemas: { type: 'string[]', description: 'List of request/response schema names' },
-      summary: { type: 'string', description: 'Summary of API design decisions', validation: 'non-empty' },
-    },
-  },
-  'data-expert': {
-    agent: 'data-expert',
-    required_fields: ['pipeline_steps', 'files_changed', 'summary'],
-    optional_fields: [],
-    schema: {
-      pipeline_steps: { type: 'string[]', description: 'List of data pipeline steps implemented' },
-      files_changed: { type: 'string[]', description: 'List of file paths created or modified', validation: 'file-paths' },
-      summary: { type: 'string', description: 'Summary of data engineering work', validation: 'non-empty' },
-    },
-  },
-  'seo-specialist': {
-    agent: 'seo-specialist',
-    required_fields: ['files_changed', 'tags_added', 'summary'],
-    optional_fields: [],
-    schema: {
-      files_changed: { type: 'string[]', description: 'List of file paths created or modified', validation: 'file-paths' },
-      tags_added: { type: 'string[]', description: 'List of SEO tags or structured data items added' },
-      summary: { type: 'string', description: 'Summary of SEO changes', validation: 'non-empty' },
-    },
-  },
-  'release-manager': {
-    agent: 'release-manager',
-    required_fields: ['version', 'changelog_entries', 'checks_passed', 'summary'],
-    optional_fields: [],
-    schema: {
-      version: { type: 'string', description: 'The version string being released (e.g. 1.2.3)', validation: 'non-empty' },
-      changelog_entries: { type: 'string[]', description: 'List of changelog entries for this release' },
-      checks_passed: { type: 'boolean', description: 'Whether all release checks passed' },
-      summary: { type: 'string', description: 'Summary of the release', validation: 'non-empty' },
+      version: { type: 'string', description: 'Version being released' },
+      changelog_entries: { type: 'string[]', description: 'Changelog entries for this release' },
+      checks_passed: { type: 'boolean', description: 'Whether every release check passed' },
     },
   },
 }
@@ -233,6 +193,17 @@ export function validateOutput(agent: string, output: string): ContractResult {
       missing.push(field)
       continue
     }
+    const fieldSpec = contract.schema[field]
+    if (fieldSpec?.validation) {
+      applyValidation(field, data[field], fieldSpec, missing)
+    }
+  }
+
+  // Optional fields are not required, but a declared validation still applies to
+  // whatever was supplied. Merged agents report specialty fields this way — a
+  // documentation change has no word count, but a supplied one of -5 is wrong.
+  for (const field of contract.optional_fields) {
+    if (!(field in data) || data[field] === null || data[field] === undefined) continue
     const fieldSpec = contract.schema[field]
     if (fieldSpec?.validation) {
       applyValidation(field, data[field], fieldSpec, missing)
