@@ -115,14 +115,19 @@ Net: **19 commands → 6 visible + 1 experimental namespace**; global flags stan
 - ✅ Deduplicate cursor/windsurf adapters: 835 → 424 LOC via `createRulesDirAdapter`, verified byte-identical on 492 golden-manifest entries, plus 24 new tests (these adapters had none).
 - **Open finding for later:** instructions are written with `alwaysApply: true` even when the source declares a narrow `applyTo` glob, so on Cursor a scoped instruction widens to every file. Pinned by test; fix belongs with the canonical-source work in Phase 3.
 
-### Phase 1 — Reposition (1 week)
-- Rewrite README + website around the compiler/sync pitch (§3). Remove all concrete model-name claims and stale counts; single source for numbers.
-- Implement the CLI simplification (§6): 19 commands → 6 visible + `convoy` experimental namespace; state-aware no-arg `opencastle`; one-confirm `init`; delete the cut commands and their flags.
+### Phase 1 — Reposition — ✅ DONE
+- ✅ CLI simplification (§6): 19 commands → 6 visible + `convoy` namespace. Bare `opencastle` and bare `opencastle convoy` read state and name the next command, replacing the `--status`/`--resume`/`--retry-failed`/`--dlq-*` flag families. `remove` merges eject+destroy; `sync` renames `update` (alias kept); `add <pack>` is new. Removed commands print their replacement. Tests: status (8), dispatcher (12), remove (13).
+- ✅ One-confirm `init`: detection replaces an IDE picker plus nine multiselects. Measured ~1s on a repo with CLAUDE.md + next/supabase/vitest, correct detection, user's CLAUDE.md untouched. `--customize` keeps the old flow, `--yes` for CI. Tests: 11.
+- ✅ Model pinning removed from all five locations; `src/cli/tiers.ts` is the single registry. Tests: 12, including a scan that no shipped file names a model.
+- ✅ README + ARCHITECTURE rewritten around the compiler pitch; dropped the false "51 skills" claim and the init gif (it shows the flow that no longer exists — **a replacement recording is needed for relaunch**). Tests: 12, counts read from the tree.
+- ✅ Website: hero, tier cards, agent list, stats, and the whole CLI reference page rewritten. Guard extended to the website — it caught two stragglers.
 
-### Phase 2 — Content diet (1–2 weeks)
-- Agents 19 → ~10 (merge Copywriter+SEO+Docs → Writer; API Designer → Developer/Architect; Release Manager → DevOps; Data → Database; drop Session Guard with the logging regime it polices).
-- Strip generic advice; keep protocol wiring (contracts, gates, thresholds). Target: ~95K → ~30K words.
-- Remove model pinning (tiers only, one registry); inline the 4 snippets; slim plugin SKILL.md files to non-obvious content.
+### Phase 2 — Content diet (in progress)
+- ✅ **2a:** Agents 19 → 13. Merges: Copywriter+SEO+Docs → Writer; Data Expert+Database Engineer → Data Engineer; Release Manager → DevOps & Release; API Designer → Developer; Session Guard dropped. **Deviation:** the plan said "~10"; 13 is where the real seams are. Performance Expert, Content Engineer, and Researcher were kept because their scopes do not overlap anything else — over-merging would have destroyed genuine specialisation to hit a number. Surfaced and fixed a real bug: optional contract fields were never validated. Tests: 16.
+
+- **2b:** Strip generic advice; keep protocol wiring. Target ~95K → ~30K words.
+- **2c:** Inline the 4 snippets, delete the Inherits layer.
+- **2d:** Slim plugin SKILL.md files to non-obvious content.
 
 ### Phase 3 — Product work (2–4 weeks)
 - Build the config-lift step inside `init` (§5's import, starting with Claude Code + Cursor formats), `sync --check` + GitHub Action, `add` (rename of plugin install), `lint` v1.
