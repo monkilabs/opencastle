@@ -37,6 +37,13 @@ function visibleCommands(): string[] {
   return [...body.matchAll(/^\s{2}(?:'([^']+)'|([a-zA-Z_][\w-]*)):/gm)].map((m) => m[1] ?? m[2])
 }
 
+/** Commands the dispatcher exposes but does not advertise. */
+function hiddenCommands(): string[] {
+  const start = cliSource.indexOf('const HIDDEN = {')
+  const body = cliSource.slice(start, cliSource.indexOf('}', start))
+  return [...body.matchAll(/^\s{2}(?:'([^']+)'|([a-zA-Z_][\w-]*)):/gm)].map((m) => m[1] ?? m[2])
+}
+
 /** Commands the dispatcher reports as removed. */
 function replacedCommands(): string[] {
   const start = cliSource.indexOf('const REPLACED = {')
@@ -125,6 +132,25 @@ describe('shipped content instructs only commands that exist', () => {
       const usage = new RegExp(`(?:npx )?opencastle ${cmd}(?![a-z-])`, 'g')
       for (const file of files) {
         for (const hit of file.text.matchAll(usage)) offenders.push(`${file.rel}: ${hit[0]}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('names no command that does not exist at all', () => {
+    // Checking only the removed list catches names that used to work and misses
+    // names that never did. `opencastle context-map` shipped to every user's
+    // project this way, and exits 1. A positive list is the only shape that
+    // catches an invention.
+    const real = new Set([...visibleCommands(), ...hiddenCommands()])
+    // Subcommands of `convoy`, which the dispatcher never sees directly.
+    const subcommands = new Set(['resume', 'retry', 'dashboard', 'run', 'plan'])
+    const offenders: string[] = []
+    for (const file of files) {
+      for (const hit of file.text.matchAll(/opencastle ([a-z][a-z-]{2,})/g)) {
+        const word = hit[1]
+        if (real.has(word) || subcommands.has(word) || replacedCommands().includes(word)) continue
+        offenders.push(`${file.rel}: opencastle ${word}`)
       }
     }
     expect(offenders).toEqual([])

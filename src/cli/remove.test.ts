@@ -358,3 +358,119 @@ describe('the removal preview distinguishes deleted from edited', () => {
     expect(text.slice(deletedAt, editedAt)).toContain('.claude/agents/')
   })
 })
+
+/**
+ * The preview is a promise. This runs it twice — once as `--dry-run` to capture
+ * what was promised, once for real — and holds the second to the first. Three
+ * separate preview bugs got through review because each was checked by reading
+ * the code rather than by comparing the two.
+ */
+describe('the preview matches what removal actually does', () => {
+  let dir: string
+  let cwdSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'oc-promise-'))
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    vi.mocked(confirm).mockResolvedValue(true)
+  })
+
+  afterEach(async () => {
+    cwdSpy.mockRestore()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  async function capture(args: string[]): Promise<string> {
+    const lines: string[] = []
+    const logSpy = vi.spyOn(console, 'log').mockImplementation((...a) => void lines.push(a.join(' ')))
+    try {
+      await remove({ pkgRoot: dir, args })
+    } finally {
+      logSpy.mockRestore()
+    }
+    // Strip ANSI so the assertions read the text, not the colouring.
+    return lines.join('\n').replace(/\u001b\[[0-9;]*m/g, '')
+  }
+
+  /** Paths listed under a heading, in order, until the next heading. */
+  function section(text: string, heading: string): string[] {
+    const start = text.indexOf(heading)
+    if (start === -1) return []
+    const rest = text.slice(start + heading.length)
+    const end = rest.search(/\n\s{2}[A-Z]/)
+    return [...(end === -1 ? rest : rest.slice(0, end)).matchAll(/^\s*[-~]\s+(\S+)/gm)].map((m) => m[1])
+  }
+
+  it('keeps every file it lists as edited, and deletes every file it lists as deleted', async () => {
+    await writeManifestFile(dir, {
+      ide: 'claude-code',
+      ides: ['claude-code'],
+      managedPaths: {
+        framework: ['.claude/agents/'],
+        customizable: [],
+        merged: ['CLAUDE.md'],
+      },
+    })
+    await mkdir(join(dir, '.claude', 'agents'), { recursive: true })
+    await writeFile(join(dir, '.claude', 'agents', 'a.md'), 'generated\n')
+    // A root file with the user's own writing: must be kept.
+    await writeFile(join(dir, 'CLAUDE.md'), '# Mine\n\nKEEP_THIS\n')
+    await writeGitignoreWithBlock(dir)
+
+    const promised = await capture(['--all', '--dry-run'])
+    const willDelete = section(promised, 'Deleted')
+    const willEdit = section(promised, 'Edited, not deleted')
+
+    expect(willEdit, 'CLAUDE.md not promised as kept').toContain('CLAUDE.md')
+    expect(willDelete.length).toBeGreaterThan(0)
+
+    await capture(['--all', '--yes'])
+
+    for (const p of willEdit) {
+      if (p === '.gitignore') continue
+      expect(existsSync(join(dir, p)), `promised to keep ${p}, but it is gone`).toBe(true)
+    }
+    for (const p of willDelete) {
+      expect(existsSync(join(dir, p)), `promised to delete ${p}, but it is still there`).toBe(false)
+    }
+    expect(await readFileText(join(dir, 'CLAUDE.md'), 'utf8')).toContain('KEEP_THIS')
+  })
+
+  it('lists a root file holding only our block as deleted, not edited', async () => {
+    await writeManifestFile(dir, {
+      ide: 'claude-code',
+      ides: ['claude-code'],
+      managedPaths: { framework: [], customizable: [], merged: ['CLAUDE.md'] },
+    })
+    await writeManagedBlock(join(dir, 'CLAUDE.md'), 'compiled')
+
+    const promised = await capture(['--all', '--dry-run'])
+    expect(section(promised, 'Deleted')).toContain('CLAUDE.md')
+    expect(section(promised, 'Edited, not deleted')).not.toContain('CLAUDE.md')
+
+    await capture(['--all', '--yes'])
+    expect(existsSync(join(dir, 'CLAUDE.md'))).toBe(false)
+  })
+
+  it('names each path exactly once', async () => {
+    await writeManifestFile(dir, {
+      ide: 'claude-code',
+      ides: ['claude-code'],
+      managedPaths: { framework: [], customizable: ['.opencastle/'], merged: [] },
+    })
+
+    const promised = await capture(['--all', '--dry-run'])
+    const listed = [...promised.matchAll(/^\s*[-~]\s+(\S+)/gm)].map((m) => m[1])
+    expect(new Set(listed).size, `duplicate in ${JSON.stringify(listed)}`).toBe(listed.length)
+  })
+
+  it('does not mention .gitignore when the project has none', async () => {
+    await writeManifestFile(dir, {
+      ide: 'claude-code',
+      ides: ['claude-code'],
+      managedPaths: { framework: [], customizable: [], merged: [] },
+    })
+    const promised = await capture(['--all', '--dry-run'])
+    expect(promised).not.toContain('.gitignore')
+  })
+})

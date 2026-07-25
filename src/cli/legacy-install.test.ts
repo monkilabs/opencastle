@@ -171,3 +171,69 @@ describe('replacing a pre-marker root file leaves a way back', () => {
     expect(results.adopted ?? []).toContain(join(dir, 'CLAUDE.md'))
   })
 })
+
+/**
+ * Three commands, one input, one judgement.
+ *
+ * The fixture above is a *hand-written* root file, which only ever exercises the
+ * strip path. What a real 0.35.2 install has is a file the tool generated in
+ * full — and on that input `sync` backed it up while `init` and `remove --all`
+ * deleted it without one, the second of them one line after printing "your own
+ * writing stays". Anything appended to a legacy root file must survive, or be
+ * recoverable, under all three.
+ */
+describe('a genuinely pre-marker root file, with the user text appended', () => {
+  const LEGACY_ROOT =
+    '# Project Instructions\n\n' +
+    'All conventions, architecture, and project context are embedded below.\n\n' +
+    '## Our team additions\n\nNEVER_TOUCH_PAYMENTS\n'
+
+  let dir: string
+  let cwdSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'legacy-generated-'))
+    mkdirSync(join(dir, '.opencastle'), { recursive: true })
+    writeFileSync(join(dir, '.opencastle', 'manifest.json'), JSON.stringify(legacyManifest(), null, 2))
+    writeFileSync(join(dir, 'CLAUDE.md'), LEGACY_ROOT)
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+  })
+
+  afterEach(() => {
+    cwdSpy.mockRestore()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  /** The appended text is either still in the file, or in a backup beside it. */
+  function stillRecoverable(): boolean {
+    const file = join(dir, 'CLAUDE.md')
+    const backup = `${file}.opencastle-backup`
+    const inFile = existsSync(file) && readFileSync(file, 'utf8').includes('NEVER_TOUCH_PAYMENTS')
+    const inBackup = existsSync(backup) && readFileSync(backup, 'utf8').includes('NEVER_TOUCH_PAYMENTS')
+    return inFile || inBackup
+  }
+
+  it('survives writeManagedBlock — the path `sync` takes', async () => {
+    const { writeManagedBlock } = await import('./managed-block.js')
+    await writeManagedBlock(join(dir, 'CLAUDE.md'), 'fresh')
+    expect(stillRecoverable(), 'lost by sync').toBe(true)
+  })
+
+  it('survives stripManagedBlockFromFile — the path `init` and `remove` take', async () => {
+    const { stripManagedBlockFromFile } = await import('./managed-block.js')
+    expect(await stripManagedBlockFromFile(join(dir, 'CLAUDE.md'))).toBe('deleted')
+    expect(stillRecoverable(), 'lost by init/remove').toBe(true)
+  })
+
+  it('survives remove --all end to end', async () => {
+    await remove({ pkgRoot, args: ['--all', '--yes'] })
+    expect(stillRecoverable(), 'lost by remove --all').toBe(true)
+  })
+
+  it('is predicted as deleted, so the preview does not promise otherwise', async () => {
+    const { predictStrip } = await import('./managed-block.js')
+    const prediction = predictStrip(LEGACY_ROOT)
+    expect(prediction.outcome).toBe('deleted')
+    expect(prediction.legacyGenerated).toBe(true)
+  })
+})

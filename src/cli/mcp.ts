@@ -237,10 +237,49 @@ export function getMcpConfigRelPath(ide: IdeChoice): string {
  *
  * Returns 'deleted' only when nothing of the user's was left in it.
  */
+/**
+ * Strip our servers from a parsed MCP config, in place, and say whether anything
+ * of the user's is left. Shared with `remove`'s preview so the two agree.
+ */
+export function willKeepSomethingAfterStrip(
+  parsed: Record<string, unknown>,
+  ide?: IdeChoice,
+): boolean {
+  const containerKeys = ide
+    ? [ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers']
+    : ['mcp', 'servers', 'mcpServers']
+
+  const ourServerKeys = new Set(
+    Object.values(PLUGINS)
+      .filter((p) => p.mcpServerKey)
+      .map((p) => p.mcpServerKey!),
+  );
+  const ourInputIds = new Set(
+    Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id)),
+  );
+
+  for (const containerKey of containerKeys) {
+    const servers = (parsed[containerKey] ?? {}) as Record<string, unknown>;
+    for (const key of Object.keys(servers)) {
+      if (ourServerKeys.has(key)) delete servers[key];
+    }
+    if (Object.keys(servers).length === 0) delete parsed[containerKey];
+    else parsed[containerKey] = servers;
+  }
+
+  if (Array.isArray(parsed.inputs)) {
+    const kept = (parsed.inputs as McpInput[]).filter((i) => !ourInputIds.has(i.id));
+    if (kept.length > 0) parsed.inputs = kept;
+    else delete parsed.inputs;
+  }
+
+  return Object.keys(parsed).length > 0;
+}
+
 export async function stripManagedMcpServers(
   projectRoot: string,
   ide: IdeChoice,
-): Promise<'deleted' | 'stripped' | 'absent'> {
+): Promise<'deleted' | 'stripped' | 'absent' | 'unreadable'> {
   const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
   if (!existsSync(destPath)) return 'absent';
 
@@ -248,35 +287,13 @@ export async function stripManagedMcpServers(
   try {
     parsed = JSON.parse(await readFile(destPath, 'utf8')) as Record<string, unknown>;
   } catch {
-    // Not ours to repair. Leaving it alone beats deleting something unreadable.
-    return 'stripped';
+    // Not ours to repair. Leaving it alone beats deleting something unreadable,
+    // but 'stripped' would have removal report "kept your content in N file(s)"
+    // for a file it never opened successfully.
+    return 'unreadable';
   }
 
-  const containerKey =
-    ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers';
-  const servers = (parsed[containerKey] ?? {}) as Record<string, unknown>;
-
-  const ourServerKeys = new Set(
-    Object.values(PLUGINS)
-      .filter((p) => p.mcpServerKey)
-      .map((p) => p.mcpServerKey!),
-  );
-  for (const key of Object.keys(servers)) {
-    if (ourServerKeys.has(key)) delete servers[key];
-  }
-  if (Object.keys(servers).length === 0) delete parsed[containerKey];
-  else parsed[containerKey] = servers;
-
-  const ourInputIds = new Set(
-    Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id)),
-  );
-  if (Array.isArray(parsed.inputs)) {
-    const kept = (parsed.inputs as McpInput[]).filter((i) => !ourInputIds.has(i.id));
-    if (kept.length > 0) parsed.inputs = kept;
-    else delete parsed.inputs;
-  }
-
-  if (Object.keys(parsed).length === 0) {
+  if (!willKeepSomethingAfterStrip(parsed, ide)) {
     await rm(destPath, { force: true });
     return 'deleted';
   }

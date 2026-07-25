@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { TechTool, TeamTool, StackConfig, CopyDirOptions, RepoInfo } from './types.js';
+import { isLegacyStack, migrateStackConfig } from './types.js';
 import {
   PLUGINS,
   TECH_PLUGINS,
@@ -91,10 +92,26 @@ export function resolveStack(manifest: {
   const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter(
     (id): id is string => Boolean(id),
   )
-  if (manifest.stack) {
-    return { ...manifest.stack, ides: (manifest.stack.ides?.length ? manifest.stack.ides : ides) as StackConfig['ides'] }
+  if (!manifest.stack) {
+    return { ides: ides as StackConfig['ides'], techTools: [], teamTools: [] }
   }
-  return { ides: ides as StackConfig['ides'], techTools: [], teamTools: [] }
+
+  // A v1 manifest stores `{ cms, db, pm, notifications }` and has no
+  // `techTools`. `update` migrated it in memory and everything downstream was
+  // fine; `buildCheckReport` re-reads the manifest from disk, so it handed the
+  // v1 object straight to a consumer that spreads `stack.techTools` and got
+  // "stack.techTools is not iterable" — a crash in the command this branch
+  // makes the CI entry point. Migration belongs at the read, not at one caller.
+  const stack = isLegacyStack(manifest.stack)
+    ? migrateStackConfig(manifest.stack, ides[0])
+    : manifest.stack
+
+  return {
+    ...stack,
+    techTools: stack.techTools ?? [],
+    teamTools: stack.teamTools ?? [],
+    ides: (stack.ides?.length ? stack.ides : ides) as StackConfig['ides'],
+  }
 }
 
 export function getExcludedSkills(stack: StackConfig): Set<string> {

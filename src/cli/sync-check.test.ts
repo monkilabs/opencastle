@@ -211,3 +211,106 @@ describe('two targets that share a root file', () => {
     expect(existsSync(join(projectRoot, '.codex', 'skills'))).toBe(true)
   })
 })
+
+/**
+ * The report says "deleted on the next sync" and prints "Fix: opencastle sync".
+ * That is a claim about what the sweeper does, and it was false at three
+ * different depths — a foreign extension at the rules root, and anything inside
+ * a subdirectory the user made. CI could never go green, and `needsSync` was
+ * permanently true so every `sync` did the work twice.
+ */
+describe('every reported extra is one that sync actually removes', () => {
+  let projectRoot: string
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(tmpdir(), 'check-converge-'))
+  })
+
+  afterEach(() => {
+    rmSync(projectRoot, { recursive: true, force: true })
+  })
+
+  const cases: Array<[string, string[]]> = [
+    ['vscode', ['.github/agents/mine.agent.md', '.github/agents/notes.txt', '.github/agents/sub/deep.md']],
+    ['cursor', ['.cursor/rules/team-conventions.mdc', '.cursor/rules/NOTES.md', '.cursor/rules/team/mine.mdc']],
+    ['windsurf', ['.windsurf/rules/mine.md', '.windsurf/rules/NOTES.txt', '.windsurf/rules/team/mine.md']],
+    ['claude-code', ['.claude/agents/mine.md', '.claude/skills/team/SKILL.md']],
+  ]
+
+  for (const [ide, foreign] of cases) {
+    it(`converges for ${ide}`, async () => {
+      const adapter = await IDE_ADAPTERS[ide]()
+      const ideStack = { ides: [ide], techTools: [], teamTools: [] } as unknown as StackConfig
+      await adapter.install(pkgRoot, projectRoot, ideStack, undefined)
+      await writeManifest(projectRoot, {
+        version: '9.9.9',
+        ide,
+        ides: [ide],
+        installedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        stack: ideStack,
+      })
+
+      for (const rel of foreign) {
+        mkdirSync(resolve(projectRoot, rel, '..'), { recursive: true })
+        writeFileSync(join(projectRoot, rel), 'mine\n')
+      }
+
+      const before = await buildCheckReport(pkgRoot, projectRoot)
+      const reportedExtra = before.drift.filter((d) => d.kind === 'extra').map((d) => d.path)
+      expect(reportedExtra.length, `${ide} reported no extras at all`).toBeGreaterThan(0)
+
+      // Do what the report tells the user to do.
+      await adapter.update(pkgRoot, projectRoot, ideStack)
+
+      for (const p of reportedExtra) {
+        expect(
+          existsSync(join(projectRoot, p)),
+          `${ide}: reported "${p}" as deleted on the next sync, but sync left it`,
+        ).toBe(false)
+      }
+
+      const after = await buildCheckReport(pkgRoot, projectRoot)
+      expect(after.drift.filter((d) => d.kind === 'extra')).toEqual([])
+    })
+  }
+})
+
+/**
+ * Git for Windows converts committed files to CRLF on checkout while the
+ * compiler always writes LF. Byte comparison therefore called every generated
+ * file drifted, on every run, with no way to make it pass — new exposure, since
+ * until the config was committed git never touched it.
+ */
+describe('line endings are git\'s business, not the checker\'s', () => {
+  let projectRoot: string
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(tmpdir(), 'check-crlf-'))
+  })
+
+  afterEach(() => {
+    rmSync(projectRoot, { recursive: true, force: true })
+  })
+
+  it('reports no drift on a CRLF checkout', async () => {
+    const adapter = await IDE_ADAPTERS['vscode']()
+    await adapter.install(pkgRoot, projectRoot, stack, undefined)
+    await writeManifest(projectRoot, {
+      version: '9.9.9',
+      ide: 'vscode',
+      ides: ['vscode'],
+      installedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      stack,
+    })
+
+    for (const rel of ['.github/copilot-instructions.md', '.github/agents/developer.agent.md']) {
+      const p = join(projectRoot, rel)
+      writeFileSync(p, readFileSync(p, 'utf8').replace(/\n/g, '\r\n'))
+    }
+
+    const report = await buildCheckReport(pkgRoot, projectRoot)
+    expect(report.drift).toEqual([])
+  })
+})

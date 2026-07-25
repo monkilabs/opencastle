@@ -20,7 +20,7 @@ In addition to the four checks in SKILL.md:
 | 3 | Upstream deps | Verify upstream tasks are marked Done in tracker |
 | 4 | Paths + AC | Include exact file paths (not globs) and acceptance criteria in prompt |
 | 5 | Self-improvement | Add `Read .opencastle/LESSONS-LEARNED.md` to prompt text |
-| 6 | Context map | `opencastle context-map` — load **context-map** skill for 5+ files |
+| 6 | Context map | Load the **context-map** skill for 5+ files |
 
 Log delegation: `opencastle log --type=delegation --issue=TAS-123 --status=started --details "spawned subagent for feature X"`
 

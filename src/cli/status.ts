@@ -115,24 +115,35 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     targets.push({ ide, missing, present: missing.length === 0 })
   }
 
-  // Drift: any generated target older than the newest framework source.
-  const sourceMtime = await newestMtime(resolve(pkgRoot, 'src', 'orchestrator'))
+  // Drift, decided the same way `sync --check` decides it: by compiling to a
+  // scratch directory and comparing. The old answer here was an mtime heuristic,
+  // which said "1/1 target in sync — up to date" on a project where the check
+  // reported four differing files, three of them about to be deleted. The bare
+  // command is the front door; reassuring someone right before `sync` removes
+  // their file is worse than saying nothing.
   let stale = false
-  for (const { ide, adapter } of adapters) {
-    const paths = adapter.getManagedPaths().framework
-    for (const p of paths) {
-      const abs = resolve(projectRoot, p)
-      if (!existsSync(abs)) continue
-      try {
-        const m = statSync(abs).isDirectory() ? await newestMtime(abs, 2) : statSync(abs).mtimeMs
-        if (sourceMtime > 0 && m > 0 && m < sourceMtime) {
-          stale = true
-          break
-        }
-      } catch { /* ignore */ }
+  try {
+    const { buildCheckReport } = await import('./sync-check.js')
+    const report = await buildCheckReport(pkgRoot, projectRoot)
+    stale = report.drift.length > 0
+  } catch {
+    // Falls back to the mtime heuristic rather than claiming health it cannot
+    // establish — a manifest we cannot compile from is itself worth a nudge.
+    const sourceMtime = await newestMtime(resolve(pkgRoot, 'src', 'orchestrator'))
+    for (const { adapter } of adapters) {
+      for (const p of adapter.getManagedPaths().framework) {
+        const abs = resolve(projectRoot, p)
+        if (!existsSync(abs)) continue
+        try {
+          const m = statSync(abs).isDirectory() ? await newestMtime(abs, 2) : statSync(abs).mtimeMs
+          if (sourceMtime > 0 && m > 0 && m < sourceMtime) {
+            stale = true
+            break
+          }
+        } catch { /* ignore */ }
+      }
+      if (stale) break
     }
-    if (stale) break
-    void ide
   }
 
   // Assistants configured in the repo that this install does not compile for.
@@ -149,7 +160,7 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     nextReason = `${incomplete.length} target${incomplete.length === 1 ? '' : 's'} missing generated files`
   } else if (stale) {
     nextCommand = 'opencastle sync'
-    nextReason = 'generated files are older than the framework sources'
+    nextReason = 'generated files no longer match their sources'
   } else if (unmanaged.length > 0) {
     nextCommand = 'opencastle init --customize'
     nextReason = `${unmanaged.join(', ')} config exists but is not being compiled`

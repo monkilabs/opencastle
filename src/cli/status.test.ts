@@ -5,7 +5,7 @@
  * cases below are about what it infers: not-installed vs installed, missing
  * targets, assistant config it is not compiling, and which command it names next.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, utimesSync, appendFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -127,7 +127,7 @@ describe('status report', () => {
     const report = await buildStatusReport(pkgRoot, projectRoot)
     expect(report.stale).toBe(true)
     expect(report.nextCommand).toBe('opencastle sync')
-    expect(report.nextReason).toMatch(/older than the framework sources/)
+    expect(report.nextReason).toMatch(/no longer match their sources/)
   })
 
   it('lists assistant config it is not compiling for', async () => {
@@ -151,5 +151,75 @@ describe('status report', () => {
     await installManifest(projectRoot, { ide: 'vscode', ides: ['vscode', 'not-a-real-ide'] })
     const report = await buildStatusReport(pkgRoot, projectRoot)
     expect(report.ides).toEqual(['vscode'])
+  })
+})
+
+/**
+ * The bare command is the front door, and it used to answer a different question
+ * from `sync --check`: path existence plus mtimes, versus an actual compile. On a
+ * project with a hand-edited generated file it printed "up to date" while the
+ * check reported four differing files — reassurance issued immediately before
+ * `sync` deleted one of them.
+ */
+describe('status and sync --check give the same answer', () => {
+  const pkgRoot = resolve(import.meta.dirname, '..', '..')
+  let projectRoot: string
+
+  beforeEach(() => {
+    projectRoot = mkdtempSync(join(tmpdir(), 'status-agree-'))
+  })
+
+  afterEach(() => {
+    rmSync(projectRoot, { recursive: true, force: true })
+  })
+
+  async function installVscode(): Promise<void> {
+    const { IDE_ADAPTERS } = await import('./adapters/index.js')
+    const { writeManifest } = await import('./manifest.js')
+    const stack = { ides: ['vscode'] as const, techTools: [], teamTools: [] }
+    const adapter = await IDE_ADAPTERS['vscode']()
+    await adapter.install(pkgRoot, projectRoot, stack as never, undefined)
+    await writeManifest(projectRoot, {
+      version: '9.9.9',
+      ide: 'vscode',
+      ides: ['vscode'],
+      installedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      stack: stack as never,
+    })
+  }
+
+  it('agrees that a freshly compiled project is clean', async () => {
+    await installVscode()
+    const { buildCheckReport } = await import('./sync-check.js')
+    const status = await buildStatusReport(pkgRoot, projectRoot)
+    const check = await buildCheckReport(pkgRoot, projectRoot)
+
+    expect(check.drift).toEqual([])
+    expect(status.stale).toBe(false)
+  })
+
+  it('agrees that a hand-edited generated file is drift', async () => {
+    await installVscode()
+    appendFileSync(join(projectRoot, '.github', 'agents', 'developer.agent.md'), '\nedited\n')
+
+    const { buildCheckReport } = await import('./sync-check.js')
+    const status = await buildStatusReport(pkgRoot, projectRoot)
+    const check = await buildCheckReport(pkgRoot, projectRoot)
+
+    expect(check.drift.length).toBeGreaterThan(0)
+    expect(status.stale, 'status called a drifted project up to date').toBe(true)
+  })
+
+  it('agrees that a hand-added file under a generated directory is drift', async () => {
+    await installVscode()
+    writeFileSync(join(projectRoot, '.github', 'agents', 'mine.agent.md'), 'my own\n')
+
+    const { buildCheckReport } = await import('./sync-check.js')
+    const status = await buildStatusReport(pkgRoot, projectRoot)
+    const check = await buildCheckReport(pkgRoot, projectRoot)
+
+    expect(check.drift.some((d) => d.kind === 'extra')).toBe(true)
+    expect(status.stale, 'status reassured the user before sync deletes the file').toBe(true)
   })
 })

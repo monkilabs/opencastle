@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { readManifest } from './manifest.js';
-import { getRequiredMcpEnvVars } from './stack-config.js';
+import { getRequiredMcpEnvVars, resolveStack } from './stack-config.js';
 import { IDE_ADAPTERS } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
@@ -66,7 +66,15 @@ async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
 async function checkLogs(projectRoot: string): Promise<CheckResult> {
   const dir = resolve(projectRoot, '.opencastle', 'logs');
   if (!existsSync(dir)) {
-    return { ok: false, label: 'Observability logs', detail: 'logs/ directory not found — dashboard will be empty' };
+    // A local run artefact, not part of the project, so a fresh clone has none —
+    // and calling that a failure made `doctor` exit 1 on every clone. `sync`
+    // creates it; until then "no runs yet" is the honest reading, not a fault.
+    return {
+      ok: true,
+      warning: true,
+      label: 'Observability logs',
+      detail: 'no logs yet — created on the next sync',
+    };
   }
   const required = ['sessions.ndjson', 'delegations.ndjson', 'reviews.ndjson', 'panels.ndjson', 'disputes.ndjson'];
   const missing = required.filter((f) => !existsSync(resolve(dir, f)));
@@ -83,7 +91,10 @@ function checkMcpEnvVars(manifest: Manifest | null): CheckResult {
   if (!manifest?.stack) {
     return { ok: true, label: 'MCP environment variables', detail: 'No stack config (skipped)' };
   }
-  const required = getRequiredMcpEnvVars(manifest.stack, manifest.repoInfo);
+  // Through the resolver: a v1 manifest stores `{ cms, db }` with no
+  // `techTools`, and handing that straight on threw "stack.techTools is not
+  // iterable" — a crash where a diagnosis was the whole point of the command.
+  const required = getRequiredMcpEnvVars(resolveStack(manifest), manifest.repoInfo);
   if (required.length === 0) {
     return { ok: true, label: 'MCP environment variables', detail: 'No env vars required' };
   }
@@ -99,7 +110,7 @@ async function checkDotEnv(projectRoot: string, manifest: Manifest | null): Prom
   const envPath = resolve(projectRoot, '.env');
   if (!existsSync(envPath)) {
     if (manifest?.stack) {
-      const required = getRequiredMcpEnvVars(manifest.stack, manifest.repoInfo);
+      const required = getRequiredMcpEnvVars(resolveStack(manifest), manifest.repoInfo);
       if (required.length > 0) {
         return { ok: true, label: '.env file', detail: 'Not found — consider creating one for MCP secrets', warning: true };
       }

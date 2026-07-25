@@ -6,9 +6,15 @@ import { multiselect, confirm, closePrompts, c } from './prompt.js'
 import { isLegacyStack, migrateStackConfig, IDE_LABELS } from './types.js'
 import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js'
-import { getRequiredMcpEnvVars, updateSkillMatrixFile, resolveStack } from './stack-config.js'
+import { copyDir, getOrchestratorRoot } from './copy.js'
+import {
+  getRequiredMcpEnvVars,
+  updateSkillMatrixFile,
+  resolveStack,
+  getCustomizationsTransform,
+} from './stack-config.js'
 import { rebuildMcpConfig } from './mcp.js'
-import { updateGitignore } from './gitignore.js'
+import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
@@ -48,11 +54,21 @@ export default async function update({
   }
 
   // Determine list of IDEs to update (support legacy single-IDE manifests)
-  const ides = manifest.ides?.length ? manifest.ides : [manifest.ide]
-  const invalidIdes = ides.filter((id) => !VALID_IDES.includes(id))
+  const recordedIdes = manifest.ides?.length ? manifest.ides : [manifest.ide]
+  const invalidIdes = recordedIdes.filter((id) => !VALID_IDES.includes(id))
+  // Skipped, not fatal. `sync --check` already filters these, so refusing to run
+  // here meant the same manifest passed the check and could not be synced — and
+  // an id we no longer recognise is a reason to compile the other six targets,
+  // not to compile none of them.
   if (invalidIdes.length > 0) {
+    console.log(
+      `  ${c.yellow('!')} Skipping unknown target(s) "${invalidIdes.join(', ')}" from the manifest.`,
+    )
+  }
+  const ides = recordedIdes.filter((id): id is string => Boolean(id) && VALID_IDES.includes(id))
+  if (ides.length === 0) {
     console.error(
-      `  ${c.red('✗')} Invalid IDE(s) "${invalidIdes.join(', ')}" in .opencastle.json. Valid: ${VALID_IDES.join(', ')}`
+      `  ${c.red('✗')} No known targets in the manifest. Valid: ${VALID_IDES.join(', ')}`,
     )
     process.exit(1)
   }
@@ -66,6 +82,17 @@ export default async function update({
   const pkg = JSON.parse(
     await readFile(resolve(pkgRoot, 'package.json'), 'utf8')
   ) as { version: string }
+
+  // ── Recreate the local-only directories ─────────────────────────
+  // Deliberately gitignored, so a fresh clone has none of them, and only `init`
+  // used to create them: `doctor` failed on every clone and told the user to run
+  // `sync`, which did not fix it. Done before the up-to-date short-circuit,
+  // because a clean clone is precisely the case that short-circuits.
+  if (!args.includes('--dry-run') && !args.includes('--dryRun')) {
+    for (const dir of LOCAL_DIRS) {
+      await mkdir(resolve(projectRoot, dir), { recursive: true })
+    }
+  }
 
   const dryRun = args.includes('--dry-run') || args.includes('--dryRun')
   const forceFlag = args.includes('--force')
@@ -229,14 +256,24 @@ export default async function update({
 
   // ── Dry run ─────────────────────────────────────────────────────
   if (dryRun) {
+    // The resolved classification, not the stored one — a pre-0.36 manifest lists
+    // CLAUDE.md under `framework`, so the dry run was previewing the very
+    // mislabelling the rest of this command exists to correct.
+    const preview = await resolveManagedPaths({ ...manifest, ides })
     console.log(`  ${c.dim('[dry-run]')} Framework files that would be updated:\n`)
-    for (const p of manifest.managedPaths?.framework ?? []) {
+    for (const p of preview.framework) {
       console.log(`    ${c.yellow('↻')} ${p}`)
+    }
+    if (preview.merged.length > 0) {
+      console.log(`\n  ${c.dim('[dry-run]')} Files where only the managed block changes:\n`)
+      for (const p of preview.merged) {
+        console.log(`    ${c.yellow('~')} ${p}`)
+      }
     }
     console.log(
       `\n  ${c.dim('[dry-run]')} Customization files that would be preserved:\n`
     )
-    for (const p of manifest.managedPaths?.customizable ?? []) {
+    for (const p of preview.customizable) {
       console.log(`    ${c.green('✓')} ${p}`)
     }
     if (stackChanged) {
@@ -274,12 +311,14 @@ export default async function update({
   let totalCopied = 0
   let totalCreated = 0
   const adoptedRoots: string[] = []
+  const staleRoots: string[] = []
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
     const results = await adapter.update(pkgRoot, projectRoot, newStack)
     totalCopied += results.copied.length
     totalCreated += results.created.length
     adoptedRoots.push(...(results.adopted ?? []))
+    staleRoots.push(...(results.staleRoots ?? []))
   }
 
   // Deduplicated, and re-sorted by what the adapters declare today — two targets
@@ -296,6 +335,26 @@ export default async function update({
     for (const ide of ides) {
       await updateSkillMatrixFile(projectRoot, ide, newStack)
       await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo)
+    }
+  }
+
+  // ── Restore any missing .opencastle/ scaffolding ────────────────
+  // `copyDir` never overwrites here, so this only fills gaps: a customization
+  // the user deleted, or a file a release added after they installed. Only
+  // `init` used to do it, which left `doctor` reporting a missing skill matrix
+  // and prescribing `sync` — a command that could not create it. A compile step
+  // that cannot produce a working project is not a compile step.
+  const custSrcDir = resolve(getOrchestratorRoot(pkgRoot), 'customizations')
+  if (existsSync(custSrcDir)) {
+    const restored = await copyDir(custSrcDir, resolve(projectRoot, '.opencastle'), {
+      transform: getCustomizationsTransform(newStack),
+    })
+    if (restored.created.length > 0) {
+      console.log(`  ${c.green('+')} Restored ${restored.created.length} missing customization file(s)`)
+    }
+    // Newly scaffolded matrices still need the stack applied to them.
+    for (const ide of ides) {
+      await updateSkillMatrixFile(projectRoot, ide, newStack)
     }
   }
 
@@ -343,6 +402,20 @@ export default async function update({
     for (const p of adoptedRoots) {
       console.log(`     ${c.bold(relative(projectRoot, p))}`)
       console.log(`     ${c.dim('└')} ${c.dim(`previous contents kept as ${relative(projectRoot, p)}.opencastle-backup`)}\n`)
+    }
+  }
+  if (staleRoots.length > 0) {
+    // We could not adopt these: the user's own writing comes first in the file,
+    // so the older release's output is stranded above our block where it still
+    // names agents and skills that no longer exist. The assistant reads both
+    // halves, so silence here is worse than the mess.
+    console.log(`\n  ${c.yellow('⚠')}  ${staleRoots.length} file(s) still contain output from an earlier version:\n`)
+    for (const p of new Set(staleRoots)) {
+      console.log(`     ${c.bold(relative(projectRoot, p))}`)
+      console.log(
+        `     ${c.dim('└')} ${c.dim('your own writing comes first, so it was not replaced. Delete everything')}`,
+      )
+      console.log(`     ${c.dim(' ')} ${c.dim('above the OpenCastle block that you did not write.')}\n`)
     }
   }
   if (gitignoreResult !== 'unchanged') {

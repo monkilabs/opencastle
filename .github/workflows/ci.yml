@@ -62,3 +62,42 @@ jobs:
           # the sentinel still somewhere in it.
           node "$GITHUB_WORKSPACE/bin/cli.mjs" remove --all --yes
           diff /tmp/before CLAUDE.md
+
+      # Three review rounds found the same gap: every fixture was in the shape
+      # the current code writes, so nothing exercised what an install that
+      # already exists actually has on disk. This starts from that shape.
+      - name: Upgrade from a pre-0.36 install
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          git -C "$scratch" init -q
+          cd "$scratch"
+          mkdir -p .opencastle .claude/agents
+
+          # A root file the released version generated in full, with team notes
+          # appended below it — the case that has no marker to separate them.
+          printf '# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n\n## Our team additions\n\nNEVER_TOUCH_PAYMENTS\n' > CLAUDE.md
+          printf 'retired\n' > .claude/agents/copywriter.agent.md
+          cat > .opencastle/manifest.json <<'JSON'
+          {"version":"0.35.2","ide":"claude-code","ides":["claude-code"],
+           "installedAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z",
+           "stack":{"ides":["claude-code"],"techTools":[],"teamTools":[]},
+           "managedPaths":{"framework":["CLAUDE.md",".claude/agents/"],"customizable":[".opencastle/"]}}
+          JSON
+          printf 'node_modules\n\n# >>> OpenCastle managed (do not edit) >>>\nCLAUDE.md\n.claude/agents/\n# <<< OpenCastle managed <<<\n' > .gitignore
+
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --yes
+
+          # The appended notes are recoverable, the block is not doubled, the
+          # generated config is no longer hidden, and the check is clean.
+          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md.opencastle-backup
+          test "$(grep -c 'OpenCastle managed — regenerated' CLAUDE.md)" = "1"
+          ! git check-ignore -q CLAUDE.md
+          ! git check-ignore -q .claude/agents/architect.agent.md
+          git check-ignore -q .opencastle/logs
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --check
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" doctor
+
+          # And the destructive commands keep it recoverable too.
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" remove --all --yes
+          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md.opencastle-backup

@@ -338,3 +338,90 @@ describe('adoption only claims a file that is generated all the way through', ()
     expect(readFileSync(file, 'utf8')).toContain('NEVER_TOUCH_PAYMENTS')
   })
 })
+
+/**
+ * A lost end marker is the one corruption the merge cannot reason about: with no
+ * closing marker, our stale body and the user's own text below it are the same
+ * bytes. Inserting a fresh block and leaving the old one produced a permanently
+ * doubled file — two full copies of the instructions, the stale half still
+ * naming deleted agents, read by the assistant as equally current — which
+ * `sync --check` then certified, because it only compares the block.
+ */
+describe('a file whose end marker was lost', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-torn-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  async function tear(): Promise<void> {
+    writeFileSync(file, '# Mine\n\nkeep me\n')
+    await writeManagedBlock(file, 'first generation')
+    writeFileSync(file, readFileSync(file, 'utf8').replace(BLOCK_END, ''))
+  }
+
+  it('rebuilds one block instead of doubling the file', async () => {
+    await tear()
+    const result = await writeManagedBlock(file, 'second generation')
+    expect(result.action).toBe('repaired')
+
+    const text = readFileSync(file, 'utf8')
+    expect(text.split(BLOCK_START)).toHaveLength(2)
+    expect(text.split(BLOCK_END)).toHaveLength(2)
+    expect(text).toContain('second generation')
+    expect(text).not.toContain('first generation')
+    expect(text).toContain('# Mine')
+  })
+
+  it('keeps the torn file recoverable', async () => {
+    await tear()
+    await writeManagedBlock(file, 'second generation')
+    const backup = `${file}.opencastle-backup`
+    expect(existsSync(backup)).toBe(true)
+    expect(readFileSync(backup, 'utf8')).toContain('first generation')
+  })
+
+  it('is a fixed point — repairing twice changes nothing', async () => {
+    await tear()
+    await writeManagedBlock(file, 'stable')
+    const once = readFileSync(file, 'utf8')
+    const second = await writeManagedBlock(file, 'stable')
+    expect(second.action).toBe('unchanged')
+    expect(readFileSync(file, 'utf8')).toBe(once)
+  })
+})
+
+/**
+ * `hasManagedBlock` was a substring test, and `docs/quickstart.md` shows readers
+ * the marker verbatim — so a CLAUDE.md documenting the convention had the
+ * generated block written inside its own code fence.
+ */
+describe('a marker quoted inside a code fence is not a block', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-fence-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('appends below rather than writing into the fence', async () => {
+    const documented = `# Our conventions\n\nOpenCastle writes a block like this:\n\n\`\`\`markdown\n${BLOCK_START}\n...generated...\n${BLOCK_END}\n\`\`\`\n\nDo not edit inside it.\n`
+    writeFileSync(file, documented)
+
+    const result = await writeManagedBlock(file, 'generated body')
+    expect(result.action).toBe('appended')
+
+    const text = readFileSync(file, 'utf8')
+    expect(text.startsWith(documented)).toBe(true)
+    expect(text).toContain('generated body')
+    // The real block sits after the fenced example, not inside it.
+    expect(text.lastIndexOf(BLOCK_START)).toBeGreaterThan(text.indexOf('Do not edit inside it.'))
+  })
+})

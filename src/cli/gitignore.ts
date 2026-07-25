@@ -18,21 +18,34 @@ const END_MARKER = '# <<< OpenCastle managed <<<'
  * Generated config is committed, like a lockfile. What stays out is the genuinely
  * local: secrets and run artefacts.
  */
+/**
+ * Run artefacts, recreated by every `sync`.
+ *
+ * Listed here rather than inline so the ignore rules and the directories the
+ * compiler creates cannot disagree — they did, and `doctor` failed on every
+ * fresh clone as a result.
+ */
+export const LOCAL_DIRS = [
+  '.opencastle/logs',
+  '.opencastle/runs',
+  '.opencastle/worktrees',
+  '.opencastle/artifacts',
+  '.opencastle/baselines',
+]
+
 const LOCAL_ONLY = [
   '.env',
-  // Written once, when an upgrade replaces a root file an older release
-  // generated. Yours to read and delete; not part of the project.
-  '*.opencastle-backup',
-  '.opencastle/logs/',
-  '.opencastle/runs/',
-  '.opencastle/worktrees/',
-  '.opencastle/artifacts/',
-  '.opencastle/baselines/',
+  ...LOCAL_DIRS.map((d) => `${d}/`),
   '.opencastle/*.db',
   '.opencastle/*.db-wal',
   '.opencastle/*.db-shm',
   '.opencastle/*.ndjson',
 ]
+
+// Deliberately NOT ignored: `<root>.opencastle-backup`. It is written when an
+// upgrade replaces a root file an older release generated, and it is sometimes
+// the only surviving copy of something the user wrote. Ignoring it hid it from
+// `git status`, which left it one `git clean -xdf` from gone.
 
 function buildBlock(): string {
   return [

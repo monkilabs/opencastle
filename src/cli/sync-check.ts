@@ -64,8 +64,10 @@ function sameContent(freshPath: string, actualPath: string): boolean {
     const actual = readFileSync(actualPath)
     if (fresh.equals(actual)) return true
 
-    const freshText = fresh.toString('utf8')
-    const actualText = actual.toString('utf8')
+    const freshText = normaliseEndings(fresh.toString('utf8'))
+    const actualText = normaliseEndings(actual.toString('utf8'))
+    if (freshText === actualText) return true
+
     if (!hasManagedBlock(freshText)) return false
 
     const freshBlock = extractManagedBlock(freshText)
@@ -74,6 +76,19 @@ function sameContent(freshPath: string, actualPath: string): boolean {
   } catch {
     return false
   }
+}
+
+/**
+ * Line endings are git's business, not the compiler's.
+ *
+ * Git for Windows defaults to `core.autocrlf=true`, so a checkout there converts
+ * every committed file to CRLF while the compiler always writes LF. Byte
+ * comparison therefore reported every single generated file as drifted, on every
+ * run, with no way to make it pass. This is new exposure: until the generated
+ * config was committed, git never touched it.
+ */
+function normaliseEndings(text: string): string {
+  return text.replace(/\r\n/g, '\n')
 }
 
 /** The managed block's contents, or null when the file has no block. */

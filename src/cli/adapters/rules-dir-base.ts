@@ -62,9 +62,6 @@ export interface RulesDirAdapter {
   getDoctorChecks(): DoctorCheck[]
 }
 
-/** Directories under rules/ that are regenerated wholesale on update. */
-const FRAMEWORK_RULE_DIRS = ['agents', 'skills', 'agent-workflows', 'prompts']
-
 export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   const { ideId, ideLabel, rootRulesFile, configDir, ruleExt, renderFrontmatter } = config
   const rulesPrefix = `${configDir}/rules`
@@ -252,7 +249,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const rootFile = resolve(projectRoot, rootRulesFile)
     {
       const merge = await writeManagedBlock(rootFile, rootIntro)
-      if (merge.action === 'adopted') {
+      if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(rootFile)
+    if (merge.action === 'adopted' || merge.action === 'repaired') {
         results.created.push(rootFile)
         ;(results.adopted ??= []).push(rootFile)
       } else if (merge.action === 'created') {
@@ -303,19 +301,19 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const rootPath = resolve(projectRoot, rootRulesFile)
     const rootMerge = await writeManagedBlock(rootPath, rootIntro)
     results.copied.push(rootRulesFile)
-    if (rootMerge.action === 'adopted') (results.adopted ??= []).push(rootPath)
+    if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(rootPath)
+    if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
 
-    // Clear stale framework output before regenerating.
-    for (const dir of FRAMEWORK_RULE_DIRS) {
-      await removeDirIfExists(resolve(rulesRoot, dir))
-    }
-    if (existsSync(rulesRoot)) {
-      for (const file of await readdir(rulesRoot)) {
-        if (file.endsWith(ruleExt)) await unlink(resolve(rulesRoot, file))
-      }
-    }
+    // Clear the whole rules directory, which is what `getManagedPaths` declares
+    // and what the drift checker compares. Sweeping only the four known
+    // subdirectories plus root-level rule files meant `sync --check` reported
+    // `.cursor/rules/NOTES.md` and `.cursor/rules/team/mine.mdc` as "added by
+    // hand (deleted on the next sync)" and then `sync` left them there — a
+    // report that could never be cleared, so CI stayed red and `needsSync`
+    // stayed true forever. Whatever the checker warns about, this removes.
+    await removeDirIfExists(rulesRoot)
 
     await convertDir(srcRoot, 'instructions', rulesRoot, results, {
       alwaysApply: true,

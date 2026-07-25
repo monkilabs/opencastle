@@ -284,11 +284,17 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   // ── Clean up previous installation on re-init ────────────────
   if (isReinit && existing) {
-    const oldIde = existing.stack?.ides?.[0]
+    // Which previously-installed targets are being dropped — by membership, not
+    // by comparing first elements. Adding Cursor to a Claude Code install asked
+    // "Remove Claude Code files?" while Claude Code was still selected, which
+    // reads as an offer to destroy the thing you just kept.
+    const previousIdes: string[] =
+      existing.stack?.ides ?? existing.ides ?? (existing.ide ? [existing.ide] : [])
+    const dropped = previousIdes.filter((id) => !(ides as string[]).includes(id))
     let removeOldFiles = true
-    if (oldIde && oldIde !== ides[0]) {
-      const oldIdeLabel = IDE_LABELS[oldIde]
-      removeOldFiles = await confirm(`Remove ${oldIdeLabel} files from previous installation?`, false)
+    if (dropped.length > 0) {
+      const labels = dropped.map((id) => IDE_LABELS[id as IdeChoice] ?? id).join(', ')
+      removeOldFiles = await confirm(`Remove ${labels} files from previous installation?`, false)
     }
     if (removeOldFiles) {
       // Resolved against today's adapters, not read off the manifest: manifests

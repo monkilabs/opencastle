@@ -47,6 +47,8 @@ export interface CopyResults {
   created: string[];
   /** Root files replaced wholesale on upgrade; each has a `.opencastle-backup`. */
   adopted?: string[];
+  /** Root files that still carry an older release's output above our block. */
+  staleRoots?: string[];
 }
 
 /** Options for the copyDir utility. */

@@ -30,7 +30,7 @@ When redirecting, state *why* + *how*:
 Run autonomously in isolated Git worktrees. Reserve for well-scoped tasks >5 min with clear acceptance criteria.
 
 - **Spawn:** Delegate Session → Background → Select agent → Enter prompt
-- **Auto-compaction:** At 95% token limit; use `--resume` to continue
+- **Interrupted:** `opencastle convoy resume` picks up where the run stopped
 
 ## Parallel Research Protocol
 
