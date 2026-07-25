@@ -18,7 +18,7 @@ import type { CliContext, IdeChoice, StackConfig } from './types.js'
  * compile is the only honest answer.
  */
 
-export type DriftKind = 'missing' | 'changed'
+export type DriftKind = 'missing' | 'changed' | 'extra'
 
 export interface Drift {
   ide: string
@@ -103,13 +103,22 @@ function comparePath(
 
   if (statSync(fresh).isDirectory()) {
     let checked = 0
-    for (const rel of filesUnder(fresh)) {
+    const generated = filesUnder(fresh)
+    for (const rel of generated) {
       const f = join(fresh, rel)
       const a = join(actual, rel)
       const shown = `${managedPath.replace(/\/$/, '')}/${rel}`
       checked++
       if (!existsSync(a)) drift.push({ ide, path: shown, kind: 'missing' })
       else if (!sameContent(f, a)) drift.push({ ide, path: shown, kind: 'changed' })
+    }
+    // `update` deletes each framework directory before recompiling, so a file
+    // someone dropped in by hand disappears on the next sync with no warning.
+    // Reporting it as drift is the warning.
+    const expected = new Set(generated)
+    for (const rel of filesUnder(actual)) {
+      if (expected.has(rel)) continue
+      drift.push({ ide, path: `${managedPath.replace(/\/$/, '')}/${rel}`, kind: 'extra' })
     }
     return checked
   }
@@ -142,9 +151,12 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
     const scratch = mkdtempSync(join(tmpdir(), `opencastle-check-${ide}-`))
     try {
       await adapter.install(pkgRoot, scratch, stack, repoInfo)
-      // Only framework paths are compared. Customizable paths are the user's by
-      // design — reporting those as drift would make the check useless.
-      for (const managedPath of adapter.getManagedPaths().framework) {
+      // Framework and merged paths are compared. Customizable paths are the
+      // user's by design — reporting those as drift would make the check useless.
+      // Merged paths must be included or the root instruction file, the one file
+      // most likely to be edited by hand, would be the only thing never checked.
+      const managed = adapter.getManagedPaths()
+      for (const managedPath of [...managed.framework, ...(managed.merged ?? [])]) {
         checked += comparePath(managedPath, scratch, projectRoot, ide, drift)
       }
     } finally {
@@ -172,6 +184,7 @@ function render(report: CheckReport): void {
 
   const missing = report.drift.filter((d) => d.kind === 'missing')
   const changed = report.drift.filter((d) => d.kind === 'changed')
+  const extra = report.drift.filter((d) => d.kind === 'extra')
 
   console.log(`\n  ${c.red('✗')} ${report.drift.length} file(s) differ from their sources.\n`)
 
@@ -183,6 +196,11 @@ function render(report: CheckReport): void {
   if (missing.length > 0) {
     console.log(`  ${c.bold('Never generated')}`)
     for (const d of missing) console.log(`    ${c.red('-')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+    console.log('')
+  }
+  if (extra.length > 0) {
+    console.log(`  ${c.bold('Added by hand')} ${c.dim('(deleted on the next sync)')}`)
+    for (const d of extra) console.log(`    ${c.red('+')} ${d.path} ${c.dim(`(${d.ide})`)}`)
     console.log('')
   }
 

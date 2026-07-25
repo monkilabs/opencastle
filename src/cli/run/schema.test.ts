@@ -2027,3 +2027,38 @@ describe('validateSpec — browser_test config', () => {
     expect(result.errors).toContainEqual(expect.stringContaining('baselines_dir'))
   })
 })
+
+/**
+ * Keys the engine used to honour and no longer does.
+ *
+ * Before this, `defaults.compaction` simply stopped being validated: a spec
+ * carrying it passed, ran, and quietly did none of what it asked for. A spec
+ * author has no way to tell that apart from success.
+ */
+describe('retired spec keys', () => {
+  const base = {
+    name: 'test-convoy',
+    tasks: [{ id: 't1', agent: 'developer', prompt: 'do the thing' }],
+  }
+
+  it('warns rather than failing on a retired key', () => {
+    const result = validateSpec({ ...base, defaults: { compaction: { enabled: true } } })
+    expect(result.valid).toBe(true)
+    expect(result.warnings?.join('\n')).toContain('defaults.compaction')
+    expect(result.warnings?.join('\n')).toContain('ignored')
+  })
+
+  it('warns for each retired key present', () => {
+    const result = validateSpec({
+      ...base,
+      defaults: { compaction: {}, inject_lessons: true, snippets: ['a'] },
+    })
+    expect(result.warnings).toHaveLength(3)
+  })
+
+  it('says nothing about keys the spec does not use', () => {
+    const result = validateSpec({ ...base, defaults: { timeout: '10m' } })
+    expect(result.valid).toBe(true)
+    expect(result.warnings ?? []).toEqual([])
+  })
+})

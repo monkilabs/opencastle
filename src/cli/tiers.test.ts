@@ -145,3 +145,78 @@ describe('framework content is free of model names', () => {
     expect(offenders).toEqual([])
   })
 })
+
+/**
+ * A tier is one fact about an agent, and it is written down in four places: the
+ * agent's own frontmatter, the map in tiers.ts, the registry table that ships to
+ * users, and the dashboard's colouring. That is exactly the shape of duplication
+ * this module was created to end, so the copies are checked against the source.
+ */
+const agentNames = new Map<string, string>()
+
+describe('every copy of the tier table agrees with the agents', () => {
+  const agentsDir = resolve(import.meta.dirname, '..', 'orchestrator', 'agents')
+
+  /** agent id → declared tier, read from the frontmatter that ships. */
+  const declared = new Map<string, string>()
+  for (const file of readdirSync(agentsDir).filter((n) => n.endsWith('.agent.md'))) {
+    const text = readFileSync(join(agentsDir, file), 'utf8')
+    const tier = /^tier:\s*(\w+)/m.exec(text)?.[1]
+    const name = /^name:\s*['"](.+?)['"]/m.exec(text)?.[1]
+    if (tier && name) declared.set(file.replace('.agent.md', ''), tier)
+    if (name) agentNames.set(file.replace('.agent.md', ''), name)
+  }
+
+  it('every agent declares a tier the registry knows', () => {
+    expect(declared.size).toBeGreaterThan(0)
+    for (const [agent, tier] of declared) {
+      expect(isTier(tier), `${agent} declares unknown tier "${tier}"`).toBe(true)
+    }
+  })
+
+  it('tierForAgent returns what the agent file declares', () => {
+    for (const [agent, tier] of declared) {
+      expect(tierForAgent(agent), `tiers.ts disagrees with ${agent}.agent.md`).toBe(tier)
+    }
+  })
+
+  it('the registry table that ships names the same tier', () => {
+    const registry = readFileSync(
+      resolve(import.meta.dirname, '..', 'orchestrator', 'customizations', 'agents', 'agent-registry.md'),
+      'utf8',
+    )
+    // Rows look like: | **Architect** | Premium | ... |
+    const rows = new Map<string, string>()
+    for (const line of registry.split('\n')) {
+      const cells = line.split('|').map((s) => s.trim())
+      if (cells.length < 4) continue
+      const label = cells[1].replace(/\*\*/g, '')
+      if (!label || !isTier(cells[2].toLowerCase())) continue
+      rows.set(label, cells[2].toLowerCase())
+    }
+
+    // "Team Lead (OpenCastle)" is listed as "Team Lead".
+    const base = (label: string): string => label.replace(/\s*\(.*\)$/, '')
+    const shipped = new Set([...agentNames.values()].map(base))
+
+    for (const [agent, tier] of declared) {
+      const label = base(agentNames.get(agent)!)
+      expect(rows.get(label), `agent-registry.md row for ${label}`).toBe(tier)
+    }
+    // And no row for an agent that no longer ships.
+    for (const label of rows.keys()) {
+      expect(shipped, `agent-registry.md lists retired ${label}`).toContain(label)
+    }
+  })
+
+  it('the dashboard colours the same agents as economy', () => {
+    const dashboard = readFileSync(
+      resolve(import.meta.dirname, '..', 'dashboard', 'src', 'pages', 'index.astro'),
+      'utf8',
+    )
+    const listed = /var ECONOMY_AGENTS = \[(.*?)\]/s.exec(dashboard)?.[1] ?? ''
+    const inDashboard = [...listed.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort()
+    const economy = [...declared].filter(([, t]) => t === 'economy').map(([a]) => a).sort()
+    expect(inDashboard).toEqual(economy)
+  })
+})

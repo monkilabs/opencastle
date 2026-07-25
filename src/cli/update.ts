@@ -245,11 +245,15 @@ export default async function update({
     return
   }
 
-  const proceed = await confirm('Proceed?')
-  if (!proceed) {
-    console.log('  Aborted.')
-    closePrompts()
-    return
+  // `opencastle add sentry` already said what to do. Asking again is a keystroke
+  // charged for nothing.
+  if (!args.includes('--yes')) {
+    const proceed = await confirm('Proceed?')
+    if (!proceed) {
+      console.log('  Aborted.')
+      closePrompts()
+      return
+    }
   }
 
   // ── Update each IDE ─────────────────────────────────────────────
@@ -258,6 +262,7 @@ export default async function update({
   const allManagedPaths = {
     framework: [] as string[],
     customizable: [] as string[],
+    merged: [] as string[],
   }
 
   for (const ide of ides) {
@@ -269,17 +274,17 @@ export default async function update({
     const managed = adapter.getManagedPaths()
     allManagedPaths.framework.push(...managed.framework)
     allManagedPaths.customizable.push(...managed.customizable)
+    allManagedPaths.merged.push(...(managed.merged ?? []))
   }
 
-  // ── Handle stack changes ────────────────────────────────────────
-  if (stackChanged && newStack) {
-    // Update skill matrix for each IDE
+  // The skill matrix and the MCP config are compiled output like everything else,
+  // so they are regenerated whenever we recompile. Gating them on `stackChanged`
+  // — a flag only ever set inside the interactive reconfigure branch — meant
+  // `opencastle add supabase` edited the manifest, recompiled, and left the skill
+  // matrix and MCP config describing the stack from before the pack was added.
+  if (newStack) {
     for (const ide of ides) {
       await updateSkillMatrixFile(projectRoot, ide, newStack)
-    }
-
-    // Rebuild MCP configs for each IDE
-    for (const ide of ides) {
       await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo)
     }
   }
@@ -307,27 +312,26 @@ export default async function update({
       `  ${c.green('+')} Created ${c.bold(String(totalCreated))} new files`
     )
   }
-  if (stackChanged) {
+  if (newStack) {
     console.log(`  ${c.green('✓')} Updated skill matrix`)
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
   }
 
-  // ── Env var notice for new tools ────────────────────────────────
-  if (stackChanged && newStack) {
+  // ── Env var notice ──────────────────────────────────────────────
+  // Reported by what is actually missing rather than by what changed this run.
+  // The old diff-against-previous-stack version was inside the `stackChanged`
+  // gate, so `opencastle add sentry` never mentioned the token it now needs.
+  if (newStack) {
     const envVars = getRequiredMcpEnvVars(newStack, repoInfo)
-    if (envVars.length > 0) {
-      const oldEnvVars = oldStack
-        ? new Set(
-            getRequiredMcpEnvVars(oldStack, repoInfo).map((e) => e.envVar)
-          )
-        : new Set<string>()
-      const newEnvVars = envVars.filter((e) => !oldEnvVars.has(e.envVar))
-      if (newEnvVars.length > 0) {
-        console.log(`\n  ${c.yellow('⚠')}  New environment variables needed:\n`)
-        for (const { envVar, hint } of newEnvVars) {
-          console.log(`     ${c.bold(envVar)}`)
-          console.log(`     ${c.dim('└')} ${c.dim(hint)}\n`)
-        }
+    const envFile = await readFile(resolve(projectRoot, '.env'), 'utf8').catch(() => '')
+    const missing = envVars.filter(
+      ({ envVar }) => !process.env[envVar] && !new RegExp(`^${envVar}=.+`, 'm').test(envFile),
+    )
+    if (missing.length > 0) {
+      console.log(`\n  ${c.yellow('⚠')}  Environment variables still needed:\n`)
+      for (const { envVar, hint } of missing) {
+        console.log(`     ${c.bold(envVar)}`)
+        console.log(`     ${c.dim('└')} ${c.dim(hint)}\n`)
       }
     }
 

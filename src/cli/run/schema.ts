@@ -122,11 +122,25 @@ function validateBrowserTestConfig(value: unknown, prefix: string, errors: strin
 /**
  * Validate a parsed spec object.
  */
+/**
+ * Keys an earlier build honoured and this one does not.
+ *
+ * Silently accepting them is worse than rejecting them: the spec looks valid, the
+ * run proceeds, and the behaviour the author asked for never happens. Rejecting
+ * them outright would break specs that are otherwise fine, so they warn.
+ */
+const RETIRED_DEFAULTS: Record<string, string> = {
+  compaction: 'context compaction was removed; the adapter manages its own context',
+  inject_lessons: 'lessons are read from .opencastle/LESSONS-LEARNED.md by the agent itself',
+  snippets: 'snippets were folded into skills',
+}
+
 export function validateSpec(spec: unknown): ValidationResult {
   const errors: string[] = []
+  const warnings: string[] = []
 
   if (!spec || typeof spec !== 'object') {
-    return { valid: false, errors: ['Spec must be a YAML object'] }
+    return { valid: false, errors: ['Spec must be a YAML object'], warnings }
   }
 
   const s = spec as RawSpec
@@ -185,6 +199,9 @@ export function validateSpec(spec: unknown): ValidationResult {
       errors.push('`defaults` must be an object')
     } else {
       const d = s.defaults as Record<string, unknown>
+      for (const [key, why] of Object.entries(RETIRED_DEFAULTS)) {
+        if (d[key] !== undefined) warnings.push(`\`defaults.${key}\` is ignored — ${why}`)
+      }
       if (d.timeout !== undefined && isNaN(parseTimeout(d.timeout as string))) {
         errors.push(
           '`defaults.timeout` must be in format: <number><s|m|h> (e.g. "10m")'
@@ -423,17 +440,17 @@ export function validateSpec(spec: unknown): ValidationResult {
   if (!isPipeline) {
     if (!s.tasks || !Array.isArray(s.tasks) || s.tasks.length === 0) {
       errors.push('`tasks` is required and must be a non-empty array')
-      return { valid: false, errors }
+      return { valid: false, errors, warnings }
     }
   } else if (s.tasks !== undefined && (!Array.isArray(s.tasks) || s.tasks.length === 0)) {
     // Pipeline spec may omit tasks entirely, but if present they must be non-empty
     errors.push('`tasks`, when provided, must be a non-empty array')
-    return { valid: false, errors }
+    return { valid: false, errors, warnings }
   }
 
   // Skip per-task validation when pipeline spec has no tasks
   if (isPipeline && !s.tasks) {
-    return { valid: errors.length === 0, errors }
+    return { valid: errors.length === 0, errors, warnings }
   }
 
   const taskIds = new Set<string>()
@@ -552,7 +569,7 @@ export function validateSpec(spec: unknown): ValidationResult {
     if (cycleErr) errors.push(cycleErr)
   }
 
-  return { valid: errors.length === 0, errors }
+  return { valid: errors.length === 0, errors, warnings }
 }
 
 /**
@@ -685,9 +702,12 @@ export function parseTaskSpecText(text: string): TaskSpec {
     throw new Error(`YAML parse error: ${(err as Error).message}`)
   }
 
-  const { valid, errors } = validateSpec(spec)
+  const { valid, errors, warnings } = validateSpec(spec)
   if (!valid) {
     throw new Error(`Invalid task spec:\n  • ${errors.join('\n  • ')}`)
+  }
+  for (const warning of warnings ?? []) {
+    console.warn(`  ⚠ ${warning}`)
   }
 
   return applyDefaults(spec)

@@ -245,6 +245,8 @@ export interface RunOptions {
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+  /** Accepted, but ignored — a retired key, or one this build does not honour. */
+  warnings?: string[];
 }
 
 /** Timeout promise with cancel ability. */

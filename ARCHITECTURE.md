@@ -107,9 +107,8 @@ The Team Lead operates in two modes depending on task complexity:
 ```
 src/orchestrator/
 ├── agents/          # Agent definitions (.agent.md)
-├── skills/          # Reusable domain expertise (28 skills)
+├── skills/          # Reusable domain expertise
 ├── instructions/    # Cross-cutting guidelines
-├── snippets/        # Canonical rules (DRY — referenced via Inherits:)
 ├── agent-workflows/ # Multi-step workflow templates
 ├── prompts/         # Prompt templates
 ├── plugins/         # IDE marketplace plugins
@@ -266,15 +265,6 @@ Each agent type has a defined output contract with required fields:
 - `security-expert` → `findings[]`, `severity`, `files_reviewed[]`, `summary`
 - After task completion, output is validated against the contract schema
 - Invalid output triggers a retry with a corrected prompt
-
-### Compaction
-
-When a task's token usage approaches the model context window limit:
-
-1. Agent produces a `COMPACTION_SUMMARY` (phase, completed/pending steps, key decisions, files modified)
-2. Engine saves the summary as an artifact
-3. Agent resumes from pending steps via a continuation prompt
-4. Maximum 3 compactions per task; exceeding this fails the task
 
 ### Artifacts
 

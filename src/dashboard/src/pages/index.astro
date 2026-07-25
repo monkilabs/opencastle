@@ -1313,7 +1313,9 @@ try {
 
   // Agent tiers. Kept in step with src/cli/tiers.ts, which is the source of truth.
   var PREMIUM_AGENTS = ['team-lead', 'architect', 'security-expert'];
-  var ECONOMY_AGENTS = ['reviewer', 'documentation-writer', 'copywriter', 'seo-specialist', 'session-guard'];
+  // Kept in step with the agents' own frontmatter by tiers.test.ts — four of the
+  // names here outlived the agents they referred to.
+  var ECONOMY_AGENTS = ['reviewer', 'writer'];
 
   function normalizeAgent(agent) {
     return (typeof agent === 'string' ? agent : '').toLowerCase().replace(/[\s\/]+/g, '-');

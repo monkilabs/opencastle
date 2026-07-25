@@ -78,6 +78,37 @@ describe('drift detection', () => {
     expect(hit!.kind).toBe('missing')
   })
 
+  it('catches a file added by hand under a generated directory', async () => {
+    await install()
+    // `update` deletes each framework directory before recompiling, so this file
+    // is gone after the next sync. Silence here would be the check lying.
+    writeFileSync(join(projectRoot, '.github', 'agents', 'my-own.agent.md'), 'mine\n')
+
+    const report = await buildCheckReport(pkgRoot, projectRoot)
+    const hit = report.drift.find((d) => d.path.endsWith('my-own.agent.md'))
+    expect(hit, 'hand-added file not reported').toBeDefined()
+    expect(hit!.kind).toBe('extra')
+  })
+
+  it('checks the co-owned root file, comparing only the managed block', async () => {
+    await install()
+    const root = join(projectRoot, '.github', 'copilot-instructions.md')
+
+    // The user's own prose around the block is theirs — not drift.
+    writeFileSync(root, '# House rules\n\nUse pnpm.\n\n' + readFileSync(root, 'utf8'))
+    let report = await buildCheckReport(pkgRoot, projectRoot)
+    expect(report.drift.filter((d) => d.path.endsWith('copilot-instructions.md'))).toEqual([])
+
+    // An edit inside the block is drift, and it is the one file most likely to
+    // be hand-edited — leaving merged paths out of the walk made it unwatched.
+    const text = readFileSync(root, 'utf8')
+    writeFileSync(root, text.replace('# Copilot Instructions', '# Edited In Place'))
+    report = await buildCheckReport(pkgRoot, projectRoot)
+    const hit = report.drift.find((d) => d.path.endsWith('copilot-instructions.md'))
+    expect(hit, 'edit inside the managed block not reported').toBeDefined()
+    expect(hit!.kind).toBe('changed')
+  })
+
   it('ignores files the user owns', async () => {
     await install()
     // .opencastle/ is customizable by design — editing it is the supported way to

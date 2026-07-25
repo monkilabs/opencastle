@@ -21,6 +21,7 @@ const SYNC_HELP = `
     --dry-run         Preview what would change
     --force           Sync even when versions match
     --reconfigure     Re-run IDE and stack selection
+    --yes             Skip the confirmation prompt
     --json            Machine-readable output (with --check)
     --help, -h        Show this help
 `

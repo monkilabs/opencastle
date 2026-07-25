@@ -121,5 +121,5 @@ export default async function add({ pkgRoot, args }: CliContext): Promise<void> 
   // Recompile so the new pack's skills and MCP config reach every target.
   console.log(`\n  ${c.dim('Recompiling targets…')}`)
   const { default: sync } = await import('./sync.js')
-  await sync({ pkgRoot, args: [] })
+  await sync({ pkgRoot, args: ['--yes'] })
 }
