@@ -71,7 +71,7 @@ When resolving, load **all** skills listed in the slot's entries.
 | `framework` | SSR/SSG, routing, layouts | Developer, Writer |
 | `database` | Schema, migrations, auth flow | Data Engineer, Security Expert |
 | `cms` | Document types, queries | Content Engineer, Writer |
-| `deployment` | Hosting, cron, env vars | DevOps & Release, DevOps & Release |
+| `deployment` | Hosting, cron, env vars | DevOps & Release |
 | `codebase-tool` | Task running, linting, testing | Architect, DevOps & Release |
 | `testing` | Unit testing frameworks | Testing Expert |
 | `e2e-testing` | Browser automation | UI/UX Expert, Testing Expert |

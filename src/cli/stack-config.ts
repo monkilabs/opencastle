@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { TechTool, TeamTool, StackConfig, CopyDirOptions, RepoInfo } from './types.js';
-import { isLegacyStack, migrateStackConfig } from './types.js';
+import { isLegacyStack, migrateStackConfig, UnreadableConfigError } from './types.js';
 import {
   PLUGINS,
   TECH_PLUGINS,
@@ -358,7 +358,14 @@ const PLUGIN_SKILL_NAMES = new Set(
 );
 
 export function updateSkillMatrixContent(content: string, stack: StackConfig): string {
-  const data: SkillMatrixData = JSON.parse(content);
+  let data: SkillMatrixData;
+  try {
+    data = JSON.parse(content) as SkillMatrixData;
+  } catch {
+    // Same reasoning as the MCP config: this file is committed, so it is a merge
+    // conflict candidate, and dying here left the sync half applied.
+    throw new UnreadableConfigError('.opencastle/agents/skill-matrix.json');
+  }
   const allTools = [...stack.techTools, ...stack.teamTools] as string[];
 
   for (const [subCategory, slotName] of Object.entries(SUBCATEGORY_TO_SLOT)) {

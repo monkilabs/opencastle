@@ -21,6 +21,7 @@ import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig, RepoInfo } from './types.js'
+import { UnreadableConfigError } from './types.js'
 
 const UPDATE_HELP = `
   opencastle update [options]
@@ -398,10 +399,20 @@ export default async function update({
   // — a flag only ever set inside the interactive reconfigure branch — meant
   // `opencastle add supabase` edited the manifest, recompiled, and left the skill
   // matrix and MCP config describing the stack from before the pack was added.
+  const unreadable: string[] = []
   if (newStack) {
     for (const ide of ides) {
-      await updateSkillMatrixFile(projectRoot, ide, newStack)
-      await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo)
+      for (const step of [
+        () => updateSkillMatrixFile(projectRoot, ide, newStack),
+        () => rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo),
+      ]) {
+        try {
+          await step()
+        } catch (err) {
+          if (!(err instanceof UnreadableConfigError)) throw err
+          if (!unreadable.includes(err.file)) unreadable.push(err.file)
+        }
+      }
     }
   }
 
@@ -450,6 +461,10 @@ export default async function update({
   if (newStack) {
     console.log(`  ${c.green('✓')} Updated skill matrix`)
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
+  }
+  for (const file of unreadable) {
+    console.log(`  ${c.yellow('!')} Left ${file} alone — it is not valid JSON.`)
+    console.log(`     ${c.dim('Merge conflict? Fix the file and run sync again.')}`)
   }
   if (adoptedRoots.length > 0) {
     // Loud, because this is the one place the tool replaces a file it did not

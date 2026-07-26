@@ -5,7 +5,7 @@ import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { resolveStack } from './stack-config.js'
-import { hasManagedBlock, extractManagedBlock } from './managed-block.js'
+import { hasManagedBlock, extractManagedBlock, countManagedBlocks } from './managed-block.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeChoice, StackConfig } from './types.js'
 
@@ -69,6 +69,14 @@ function sameContent(freshPath: string, actualPath: string): boolean {
     if (freshText === actualText) return true
 
     if (!hasManagedBlock(freshText)) return false
+
+    // More than one block is drift even when the one we maintain is correct.
+    // Comparing only the last let a duplicate — the shape a "keep both sides"
+    // merge produces, now that generated config is committed — sit in the file
+    // forever: the check was green, so `sync` short-circuited, so the collapse
+    // that would have healed it never ran. The invariant has to be visible to
+    // the command, not just enforced inside the writer.
+    if (countManagedBlocks(actualText) !== countManagedBlocks(freshText)) return false
 
     const freshBlock = extractManagedBlock(freshText)
     const actualBlock = extractManagedBlock(actualText)

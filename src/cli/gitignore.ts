@@ -126,15 +126,20 @@ export async function removeGitignoreBlock(
   const before = existing.slice(0, startIdx)
   const after = existing.slice(endIdx + END_MARKER.length)
 
-  // Collapse consecutive blank lines left by removal
-  const updated = (before + after).replace(/\n{3,}/g, '\n\n').trimEnd()
+  // Only the seam the block left, not the whole file. Collapsing every run of
+  // three newlines — which this used to do — reflowed groups the tool never
+  // wrote. One newline from each side is exactly what the append path inserted,
+  // and it is the same rule the root-file merge uses.
+  const updated = before.replace(/\r?\n$/, '') + after.replace(/^\r?\n/, '')
 
-  if (!updated) {
+  if (!updated.trim()) {
     const { unlink } = await import('node:fs/promises')
     await unlink(gitignorePath)
     return 'removed'
   }
 
-  await writeFile(gitignorePath, updated + '\n', 'utf8')
+  // No trailing newline of our own: `before` already carries whatever the user's
+  // last line ended with, so adding one grew the file by a byte on every cycle.
+  await writeFile(gitignorePath, updated, 'utf8')
   return 'removed'
 }

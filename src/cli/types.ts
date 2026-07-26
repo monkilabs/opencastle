@@ -156,3 +156,18 @@ export const IDE_LABELS: Record<IdeChoice, string> = {
 };
 
 // ── Run command types ──────────────────────────────────────────
+
+/**
+ * A generated file we could not parse.
+ *
+ * Named, so the command can say which file and carry on. Committed generated
+ * JSON is exactly what a merge conflicts on, and an unguarded `JSON.parse`
+ * turned that into an abort with no filename — after the adapters had rewritten
+ * the framework directories and before the manifest was written.
+ */
+export class UnreadableConfigError extends Error {
+  constructor(public readonly file: string) {
+    super(`${file} is not valid JSON`);
+    this.name = 'UnreadableConfigError';
+  }
+}

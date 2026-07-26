@@ -38,6 +38,8 @@ export interface TargetStatus {
 }
 
 export interface StatusReport {
+  /** Required files absent from `.opencastle/`; non-empty means unhealthy. */
+  missingRequired?: string[]
   installed: boolean
   version?: string
   ides: string[]
@@ -184,6 +186,7 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
 
   return {
     installed: true,
+    missingRequired,
     version: manifest.version,
     ides: adapters.map((a) => a.ide),
     targets,
@@ -216,7 +219,11 @@ function render(report: StatusReport): void {
   // "in sync" is a claim about content, and `present` only counts paths. Saying
   // "1/1 target in sync (sources are newer)" was two answers in one line — the
   // headline reassuring while the parenthesis contradicted it.
-  const healthy = inSync === total && !report.stale
+  // `nextCommand` is set for every condition that makes the install
+  // unhealthy, including the required files `doctor` fails on. Recomputing
+  // health from a subset of those facts is how the front door came to print
+  // a green headline on a project `doctor` was exiting 1 over.
+  const healthy = inSync === total && !report.stale && !report.nextCommand
   console.log(
     healthy
       ? `  ${c.green('✓')} ${total} target${total === 1 ? '' : 's'} in sync`
@@ -225,7 +232,7 @@ function render(report: StatusReport): void {
   )
 
   for (const t of report.targets) {
-    const targetStale = t.drifted ?? report.stale
+    const targetStale = (t.drifted ?? report.stale) || Boolean(report.nextCommand)
     const mark = t.present && !targetStale ? c.green('✓') : c.yellow('!')
     const detail = !t.present
       ? c.yellow(`${t.missing.length} path${t.missing.length === 1 ? '' : 's'} missing`)

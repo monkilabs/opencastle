@@ -37,6 +37,8 @@ export interface MergeResult {
    * not safely remove because the user's own writing came first.
    */
   staleGeneratedContent?: boolean
+  /** The file carries a start marker that opens no block. */
+  orphanMarker?: boolean
 }
 
 /**
@@ -92,14 +94,7 @@ function looksLikeLegacyGenerated(content: string): boolean {
 
 /** Extract whatever sits outside the managed block. */
 export function stripManagedBlock(content: string): string {
-  const start = findBlockStart(content)
-  if (start === -1) return content
-  const end = content.indexOf(BLOCK_END, start)
-  // A hand edit or a merge conflict can lose the end marker. Dropping everything
-  // after the start marker in that case would delete whatever the user had written
-  // below the block, so keep it: only the marker line itself is removed.
-  if (end === -1) return content.slice(0, start) + content.slice(start + BLOCK_START.length)
-  return content.slice(0, start) + content.slice(end + BLOCK_END.length)
+  return stripAllBlocks(content)
 }
 
 /** Line-start offsets of every occurrence of `marker`, at column 0. */
@@ -117,158 +112,161 @@ function markerOffsets(content: string, marker: string): number[] {
 export interface BlockRegion {
   /** Offset of BLOCK_START. */
   start: number
-  /** Offset just past BLOCK_END, or -1 when the end marker is missing. */
+  /** Offset just past BLOCK_END. */
   end: number
 }
 
 /**
- * Every complete block in the file, in order.
+ * Every *complete* block in the file, in order.
  *
- * No markdown analysis. Four review rounds went into trying to decide, from the
- * prose around a marker, whether that marker was ours or something the user had
- * quoted — fence parity, then closed-fence pairing, then fences on the adjacent
- * lines. Each version mistook a real block for a quotation under some input, and
- * each mistake had the same consequence: the writer concluded there was no block,
- * appended another, and the file grew by 20KB on every sync while the drift check
- * called it clean and uninstall left the leftovers behind.
+ * Complete means a start marker with an end marker after it and no second start
+ * marker in between. A lone start marker is not a block and is deliberately not
+ * treated as one: two readers disagreed about what it meant — the writer took
+ * everything below it as ours and discarded it, the remover took only the marker
+ * line — so one deleted line could either weld a stale 20KB body into the user's
+ * file forever or delete prose the user had written below a marker they had
+ * merely quoted. Neither reading is safe when we cannot tell which is true, so
+ * the ambiguity is reported by `orphanMarkers` and acted on by nobody.
  *
- * The invariant is enforced instead of inferred. A file has exactly one managed
- * block, always: `writeManagedBlock` rewrites the last one and deletes any
- * others, and `stripManagedBlockFromFile` removes all of them. A file that
- * somehow acquires two — a "keep both sides" merge resolution is the realistic
- * way, now that generated config is committed — heals on the next sync instead
- * of carrying a stale copy forever.
- *
- * The cost is that a file quoting the marker verbatim, with no real block, has
- * that quotation adopted. It is bounded, visible, and recoverable; unbounded
- * growth was none of those.
+ * No markdown analysis. Four rounds went into guessing, from the prose around a
+ * marker, whether it was ours; each guess was wrong somewhere, and every mistake
+ * ended the same way — conclude there is no block, append another, grow by 20KB
+ * a sync. The invariant is enforced instead: exactly one complete block per file.
  */
 export function blockRegions(content: string): BlockRegion[] {
   const starts = markerOffsets(content, BLOCK_START)
   const ends = markerOffsets(content, BLOCK_END)
   const regions: BlockRegion[] = []
 
-  let cursor = 0
   for (const [i, start] of starts.entries()) {
-    if (start < cursor) continue
     const next = starts[i + 1] ?? Infinity
-    // The end marker that closes this block: the first one after it, and before
-    // the next start marker (otherwise this block has no end of its own).
     const end = ends.find((e) => e > start && e < next)
-    if (end === undefined) {
-      regions.push({ start, end: -1 })
-      cursor = start + BLOCK_START.length
-    } else {
-      regions.push({ start, end: end + BLOCK_END.length })
-      cursor = end + BLOCK_END.length
-    }
+    if (end !== undefined) regions.push({ start, end: end + BLOCK_END.length })
   }
   return regions
 }
 
-/** Where the block we maintain lives: the last complete one, else a torn one. */
+/** Start markers that open no block — damage, reported rather than interpreted. */
+export function orphanMarkers(content: string): number[] {
+  const complete = new Set(blockRegions(content).map((r) => r.start))
+  return markerOffsets(content, BLOCK_START).filter((at) => !complete.has(at))
+}
+
+/** Where the block we maintain lives: the last complete one. */
 function findBlockStart(content: string): number {
   const regions = blockRegions(content)
-  if (regions.length === 0) return -1
-  const complete = regions.filter((r) => r.end !== -1)
-  return (complete.length > 0 ? complete[complete.length - 1] : regions[regions.length - 1]).start
+  return regions.length === 0 ? -1 : regions[regions.length - 1].start
+}
+
+/**
+ * Cut a block out, taking back the newline the append path put on each side.
+ *
+ * The block is written as `<user content>\n` + `\n` + block-ending-in-`\n`, so
+ * one newline before and one after belong to us.
+ */
+function cutBlock(content: string, start: number, end: number): string {
+  const before = content.slice(0, start).replace(/\r?\n$/, '')
+  const after = content.slice(end).replace(/^\r?\n/, '')
+  return before + after
+}
+
+/**
+ * Cut a stray marker line out, taking back only the newline that terminates it.
+ *
+ * Removing one from each side, as for a block, welded the user's surrounding
+ * lines together — the marker sits on its own line between two lines of theirs,
+ * and only its own terminator is ours.
+ */
+function cutLine(content: string, start: number, end: number): string {
+  return content.slice(0, start) + content.slice(end).replace(/^\r?\n/, '')
 }
 
 export function hasManagedBlock(content: string): boolean {
-  return findBlockStart(content) !== -1
+  return blockRegions(content).length > 0
 }
 
 /**
  * The managed block's body, or null when the file has none.
  *
- * Exported because the drift checker needs exactly this and used to compute it
- * with a plain `indexOf`. Two readers of one format is the mistake this codebase
- * keeps making: the writer maintained the real block while the checker compared
- * a quoted example, so the check reported drift that no sync could clear.
+ * The one reader. The drift checker used to compute this itself with a plain
+ * `indexOf`, and the two diverged — the writer maintaining one region while the
+ * checker compared another.
  */
 export function extractManagedBlock(content: string): string | null {
-  const start = findBlockStart(content)
-  if (start === -1) return null
-  const end = content.indexOf(BLOCK_END, start)
-  if (end === -1) return null
-  return content.slice(start + BLOCK_START.length, end).trim()
+  const regions = blockRegions(content)
+  if (regions.length === 0) return null
+  const { start, end } = regions[regions.length - 1]
+  return content.slice(start + BLOCK_START.length, end - BLOCK_END.length).trim()
+}
+
+/** How many complete blocks the file holds — more than one is drift. */
+export function countManagedBlocks(content: string): number {
+  return blockRegions(content).length
 }
 
 function wrap(body: string): string {
   return `${BLOCK_START}\n\n${body.trim()}\n\n${BLOCK_END}\n`
 }
 
-/**
- * Everything outside the block, exactly as the user left it.
- *
- * There used to be two edits here, and both were mistakes. Collapsing runs of
- * three or more newlines reflowed prose the tool never wrote, including the
- * blank lines inside a fenced code block. Stripping a trailing `---` deleted a
- * horizontal rule the user may well have written themselves — indistinguishable,
- * once the block is gone, from the separator we used to insert. So we no longer
- * insert one: `BLOCK_START` is already a visible delimiter, and not writing the
- * rule is the only way to be sure we never delete someone else's.
- *
- * The one byte that is not round-tripped: a file that did not end in a newline
- * gains one, because the block has to start on its own line.
- */
-function outsideTheBlock(content: string): string {
-  const start = findBlockStart(content)
-  if (start === -1) return content
-
-  const endIdx = content.indexOf(BLOCK_END, start)
-  const end = endIdx === -1 ? start + BLOCK_START.length : endIdx + BLOCK_END.length
-
-  // Exactly the inverse of what the append path writes: it puts one newline
-  // between the user's content and BLOCK_START, and one after BLOCK_END. Take
-  // back those two and nothing else, positionally, so no regex has to guess
-  // which blank line belonged to whom.
-  // `\r?\n`, because a CRLF checkout otherwise left the carriage return behind
-  // and `remove --all` handed back a file three bytes longer than it found.
-  const before = content.slice(0, start).replace(/\r?\n$/, '')
-  const after = content.slice(end).replace(/^\r?\n/, '')
-  return before + after
-}
-
 export const BACKUP_SUFFIX = '.opencastle-backup'
 
 /**
- * Keep the previous contents beside a file we are about to replace or delete.
- *
- * Used by both paths that act on a root file generated before the markers
- * existed. They used to make the same judgement — "a previous release wrote all
- * of this" — and only one of them kept a copy.
+ * Keep the previous contents beside a file we are about to change destructively.
+ * Taken at most once per run, so a second call cannot discard what the first saved.
  */
 async function backUp(path: string, contents: string): Promise<void> {
-  await writeFile(`${path}${BACKUP_SUFFIX}`, contents)
+  const at = `${path}${BACKUP_SUFFIX}`
+  if (existsSync(at)) return
+  await writeFile(at, contents)
 }
 
-/** Everything outside *every* managed block. */
+/** Everything outside the block we maintain, plus any stray marker lines. */
+function outsideTheBlock(content: string): string {
+  const regions = blockRegions(content)
+  if (regions.length === 0) return removeOrphanMarkers(content)
+  const { start, end } = regions[regions.length - 1]
+  return removeOrphanMarkers(cutBlock(content, start, end))
+}
+
+/** Everything outside *every* block. */
 function stripAllBlocks(content: string): string {
   let text = content
   for (;;) {
-    const before = text
-    text = outsideTheBlock(text)
-    if (text === before) return text
+    const regions = blockRegions(text)
+    if (regions.length === 0) return removeOrphanMarkers(text)
+    const { start, end } = regions[regions.length - 1]
+    text = cutBlock(text, start, end)
   }
 }
 
-/** Remove every managed block but the last, closing the gap they leave. */
-function collapseExtraBlocks(content: string): string {
-  const regions = blockRegions(content)
-  if (regions.length < 2) return content
-  const doomed = regions.slice(0, -1).filter((r) => r.end !== -1)
-  if (doomed.length === 0) return content
-
-  let out = ''
-  let cursor = 0
-  for (const r of doomed) {
-    out += content.slice(cursor, r.start)
-    cursor = r.end
-    // Take the newline the block occupied so the seam does not gain blank lines.
-    if (content[cursor] === '\n') cursor += 1
+/**
+ * Drop stray start markers, and nothing around them.
+ *
+ * The marker line is unambiguously ours; whatever sits below it is not, so it
+ * stays. That is the whole of what we are entitled to do with damage we cannot
+ * interpret.
+ */
+function removeOrphanMarkers(content: string): string {
+  let text = content
+  for (const at of orphanMarkers(text).reverse()) {
+    text = cutLine(text, at, at + BLOCK_START.length)
   }
-  return out + content.slice(cursor)
+  return text
+}
+
+/** Remove every managed block but the last, and any stray start markers. */
+function collapseExtraBlocks(content: string): string {
+  // Orphan markers are left alone on purpose. They are damage we will not
+  // interpret while writing — and they are the only evidence `remove` has that
+  // the body below them was ours, so erasing them here would make an uninstall
+  // leave that body behind for good.
+  let text = content
+  for (;;) {
+    const regions = blockRegions(text)
+    if (regions.length < 2) return text
+    const r = regions[0]
+    text = cutBlock(text, r.start, r.end)
+  }
 }
 
 /**
@@ -300,25 +298,7 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
     }
 
     const current = collapsed
-    const start = findBlockStart(current)
-    const endIdx = current.indexOf(BLOCK_END, start)
-
-    // With the end marker gone we cannot tell our stale body from anything the
-    // user wrote below it. Keep the remainder, but move it into a backup rather
-    // than leaving it to rot inline.
-    if (endIdx === -1) {
-      await backUp(path, current)
-      const below = current.slice(start + BLOCK_START.length)
-      const above = current.slice(0, start).replace(/\n$/, '')
-      const preamble = above.length > 0 ? `${above}\n\n` : ''
-      await writeFile(path, preamble + block)
-      return {
-        action: 'repaired',
-        preservedUserContent: above.trim().length > 0 || below.trim().length > 0,
-      }
-    }
-
-    const end = endIdx + BLOCK_END.length
+    const { start, end } = blockRegions(current)[blockRegions(current).length - 1]
     const next = current.slice(0, start) + block.trimEnd() + current.slice(end)
     const hadUserContent = outsideTheBlock(current).trim().length > 0
     if (next === existing) {
@@ -349,6 +329,10 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
   return {
     action: 'appended',
     preservedUserContent: existing.trim().length > 0,
+    // A start marker with no partner. We will not guess what it delimits, but
+    // the user should know their file has one, because the tool cannot maintain
+    // whatever sits below it and will not remove it on uninstall.
+    ...(orphanMarkers(existing).length > 0 && { orphanMarker: true }),
     // Their own writing came first, so we appended rather than adopting — but
     // the file also carries our old output somewhere below, and that stale half
     // still names agents and skills that no longer exist. The agent reads both.
@@ -381,10 +365,17 @@ export function predictStrip(content: string): {
   if (!hasManagedBlock(content) && looksLikeLegacyGenerated(content)) {
     return { outcome: 'deleted', legacyGenerated: true }
   }
-  const remainder = outsideTheBlock(content)
+  // The same reading `stripManagedBlockFromFile` will take, computed the same
+  // way — the preview and the action diverged once already when one of them
+  // learned about multiple blocks and the other did not.
+  const orphans = orphanMarkers(content)
+  const torn = orphans.length > 0 && blockRegions(content).length === 0
+  const remainder = torn
+    ? content.slice(0, orphans[0])
+    : stripAllBlocks(content)
   return {
     outcome: remainder.trim().length === 0 ? 'deleted' : 'stripped',
-    legacyGenerated: false,
+    legacyGenerated: torn,
   }
 }
 
@@ -392,7 +383,20 @@ export async function stripManagedBlockFromFile(
   path: string,
 ): Promise<'deleted' | 'stripped' | 'absent'> {
   if (!existsSync(path)) return 'absent'
-  const existing = await readFile(path, 'utf8')
+  let existing = await readFile(path, 'utf8')
+
+  // A start marker with no partner, in a file that has no complete block either.
+  // Uninstalling should not leave 20KB of generated instructions behind, and
+  // here the ambiguity resolves: `remove` only runs on an install, so a file
+  // holding our marker and no block is our block with its end marker lost —
+  // not someone quoting the convention, which would leave the real block intact.
+  // Everything below the marker was ours when we wrote it; back the file up in
+  // case anything was added since, then take it.
+  const orphans = orphanMarkers(existing)
+  if (orphans.length > 0 && blockRegions(existing).length === 0) {
+    await backUp(path, existing)
+    existing = existing.slice(0, orphans[0]).replace(/\r?\n$/, '')
+  }
   if (!hasManagedBlock(existing) && looksLikeLegacyGenerated(existing)) {
     // Identical input, identical judgement, so identical care as the adopt path:
     // this file has no marker to say where anything appended below the generated

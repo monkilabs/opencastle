@@ -102,7 +102,6 @@ describe('framework content is free of model names', () => {
   const ALLOWED = new Set([
     // Lookup tables keyed on what an assistant reports at runtime, not defaults.
     'src/cli/convoy/pricing.ts',
-    'src/cli/convoy/compaction.ts',
     // Explains why the pinning was removed.
     'src/cli/tiers.ts',
     'src/cli/tiers.test.ts',

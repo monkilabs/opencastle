@@ -86,15 +86,16 @@ async function checkLogs(projectRoot: string): Promise<CheckResult> {
       detail: 'no logs yet — created on the next sync',
     };
   }
-  const required = ['sessions.ndjson', 'delegations.ndjson', 'reviews.ndjson', 'panels.ndjson', 'disputes.ndjson'];
-  const missing = required.filter((f) => !existsSync(resolve(dir, f)));
-  if (missing.length > 0) {
-    for (const file of missing) {
-      await writeFile(resolve(dir, file), '', { flag: 'wx' }).catch(() => {/* already exists */});
-    }
-    return { ok: true, label: 'Observability logs', detail: `Created missing: ${missing.join(', ')}` };
-  }
-  return { ok: true, label: 'Observability logs', detail: 'All log files present' };
+  // A diagnostic does not write. This used to create five empty `.ndjson` files
+  // as a side effect — files nothing on this branch reads, and exactly the ones
+  // `migrateLegacyLogs` exists to move aside.
+  const entries = existsSync(dir) ? await readdir(dir) : [];
+  const events = entries.filter((f) => f.endsWith('.ndjson'));
+  return {
+    ok: true,
+    label: 'Observability logs',
+    detail: events.length > 0 ? `${events.length} log file(s)` : 'no runs recorded yet',
+  };
 }
 
 async function checkMcpEnvVars(

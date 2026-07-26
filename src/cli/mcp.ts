@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { getIncludedMcpServers } from './stack-config.js';
 import { PLUGINS } from '../orchestrator/plugins/index.js';
+import { UnreadableConfigError } from './types.js';
 import type { McpInput } from '../orchestrator/plugins/types.js';
 import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice } from './types.js';
 
@@ -317,8 +318,17 @@ export async function rebuildMcpConfig(
     return;
   }
 
-  // Read existing config
-  const existing = JSON.parse(await readFile(destPath, 'utf8')) as Record<string, unknown>;
+  // Read existing config. Committed generated JSON is exactly what a merge
+  // conflicts on, and an unguarded parse turned that into an abort with no
+  // filename — after the adapters had already rewritten the framework
+  // directories and before the manifest was written, so the sync was half
+  // applied. `remove` already names the file and carries on; so does this.
+  let existing: Record<string, unknown>;
+  try {
+    existing = JSON.parse(await readFile(destPath, 'utf8')) as Record<string, unknown>;
+  } catch {
+    throw new UnreadableConfigError(destRelPath);
+  }
   const containerKey =
     ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers';
 

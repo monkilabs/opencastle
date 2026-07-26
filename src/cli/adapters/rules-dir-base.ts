@@ -250,6 +250,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     {
       const merge = await writeManagedBlock(rootFile, rootIntro)
       if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(rootFile)
+      if (merge.orphanMarker) (results.staleRoots ??= []).push(rootFile)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
         results.created.push(rootFile)
         ;(results.adopted ??= []).push(rootFile)

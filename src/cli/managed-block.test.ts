@@ -15,6 +15,7 @@ import {
   writeManagedBlock,
   stripManagedBlock,
   stripManagedBlockFromFile,
+  predictStrip,
   hasManagedBlock,
   extractManagedBlock,
   BLOCK_START,
@@ -126,9 +127,10 @@ describe('stripManagedBlock', () => {
     expect(stripped).not.toContain('generated')
   })
 
-  it('keeps text below the block when the end marker was lost', () => {
-    // A hand edit or a merge resolution can delete the closing marker. Treating
-    // "no end marker" as "block runs to EOF" silently ate everything below it.
+  it('keeps text below a marker that opens no block', () => {
+    // A start marker with no partner is damage we cannot interpret: it may be
+    // our block with its end lost, or a line the user quoted. Only the marker
+    // itself is unambiguously ours, so only the marker goes.
     const text = `# Mine\n\n${BLOCK_START}\n\n## Written after\n\nstill mine\n`
     const stripped = stripManagedBlock(text)
     expect(stripped).toContain('# Mine')
@@ -362,37 +364,50 @@ describe('a file whose end marker was lost', () => {
   async function tear(): Promise<void> {
     writeFileSync(file, '# Mine\n\nkeep me\n')
     await writeManagedBlock(file, 'first generation')
-    writeFileSync(file, readFileSync(file, 'utf8').replace(BLOCK_END, ''))
+    writeFileSync(file, readFileSync(file, 'utf8').replace(`${BLOCK_END}\n`, ''))
   }
 
-  it('rebuilds one block instead of doubling the file', async () => {
+  it('does not treat the orphan as a block to rebuild', async () => {
+    // Two readers used to disagree about a torn marker: the writer took
+    // everything below it as ours and discarded it, the remover took only the
+    // marker line. One deleted line could therefore either weld a stale 20KB
+    // body into the file forever or delete prose written below a marker the
+    // user had merely quoted. Neither reading is safe, so neither is taken.
     await tear()
     const result = await writeManagedBlock(file, 'second generation')
-    expect(result.action).toBe('repaired')
-
-    const text = readFileSync(file, 'utf8')
-    expect(text.split(BLOCK_START)).toHaveLength(2)
-    expect(text.split(BLOCK_END)).toHaveLength(2)
-    expect(text).toContain('second generation')
-    expect(text).not.toContain('first generation')
-    expect(text).toContain('# Mine')
+    expect(result.action).toBe('appended')
+    expect(result.orphanMarker, 'the damage was not reported').toBe(true)
   })
 
-  it('keeps the torn file recoverable', async () => {
+  it('does not grow on repeated syncs', async () => {
     await tear()
     await writeManagedBlock(file, 'second generation')
-    const backup = `${file}.opencastle-backup`
-    expect(existsSync(backup)).toBe(true)
-    expect(readFileSync(backup, 'utf8')).toContain('first generation')
+    const once = readFileSync(file, 'utf8')
+    await writeManagedBlock(file, 'second generation')
+    expect(readFileSync(file, 'utf8')).toBe(once)
+    expect(once.split(BLOCK_END)).toHaveLength(2)
   })
 
-  it('is a fixed point — repairing twice changes nothing', async () => {
+  it('uninstalls completely, because removal can tell what the marker was', async () => {
+    // `remove` only runs on an install, so a file holding our marker and no
+    // complete block is our block with its end lost — not a quotation, which
+    // would leave the real block intact. Everything below it was ours; the file
+    // is backed up in case anything was added since.
     await tear()
-    await writeManagedBlock(file, 'stable')
-    const once = readFileSync(file, 'utf8')
-    const second = await writeManagedBlock(file, 'stable')
-    expect(second.action).toBe('unchanged')
-    expect(readFileSync(file, 'utf8')).toBe(once)
+    expect(await stripManagedBlockFromFile(file)).toBe('stripped')
+
+    const left = readFileSync(file, 'utf8')
+    expect(left).not.toContain('first generation')
+    expect(left).not.toContain(BLOCK_START)
+    expect(left).toContain('keep me')
+    expect(existsSync(`${file}.opencastle-backup`), 'no way back').toBe(true)
+  })
+
+  it('agrees with what the preview predicted', async () => {
+    await tear()
+    const predicted = predictStrip(readFileSync(file, 'utf8'))
+    const actual = await stripManagedBlockFromFile(file)
+    expect(actual).toBe(predicted.outcome)
   })
 })
 
@@ -547,7 +562,10 @@ describe('the merge is a fixed point, whatever the prose looks like', () => {
           // Exactly one, always. A file that quotes the marker has its quotation
           // adopted rather than gaining a second block — the documented trade,
           // because the alternative was unbounded growth.
-          expect(text.split(BLOCK_START).length - 1, 'not exactly one block').toBe(1)
+          // One *complete* block. A fixture that already quoted a bare start
+          // marker keeps that marker — it is damage, not a block, and removing
+          // more than the marker line is not ours to do.
+          expect(text.split(BLOCK_END).length - 1, 'not exactly one block').toBe(1)
           expect(hasManagedBlock(text), 'the block it just wrote is unfindable').toBe(true)
 
           // And uninstalling leaves none of our body behind.

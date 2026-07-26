@@ -202,6 +202,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
 
       const merge = await writeManagedBlock(rootPath, sections.join('\n'))
       if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
+      if (merge.orphanMarker) (results.staleRoots ??= []).push(rootPath)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
         results.created.push(rootPath)
         ;(results.adopted ??= []).push(rootPath)

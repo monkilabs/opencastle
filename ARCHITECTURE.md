@@ -117,7 +117,6 @@ src/orchestrator/
 
 **Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `react-development`, `security-hardening`, `testing-workflow`, `observability-logging`.
 
-**Snippets** are canonical rule definitions (e.g., secret scanning, output contracts, discovered-issues policy). Agents and skills reference them via `> Inherits: [rule-name](path)` pointers instead of duplicating content.
 
 ---
 

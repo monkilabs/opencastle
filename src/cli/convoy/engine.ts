@@ -2547,8 +2547,6 @@ async function runConvoy(
         store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
       })
       // ── Intelligence: record failure in expertise (Phase 18.2) ──────────
-      try {
-      } catch { /* non-critical */ }
       // ── Circuit breaker: record failure ────────────────────────────────────
       if (circuitBreakerConfig) {
         const { tripped } = circuitBreaker.recordFailure(taskRecord.agent)
