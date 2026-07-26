@@ -197,17 +197,24 @@ function render(report: StatusReport): void {
   const inSync = report.targets.filter((t) => t.present).length
   const total = report.targets.length
   console.log(`\n  🏰 ${c.bold('OpenCastle')} ${c.dim(`v${report.version ?? '?'}`)}\n`)
+  // "in sync" is a claim about content, and `present` only counts paths. Saying
+  // "1/1 target in sync (sources are newer)" was two answers in one line — the
+  // headline reassuring while the parenthesis contradicted it.
+  const healthy = inSync === total && !report.stale
   console.log(
-    `  ${inSync === total && !report.stale ? c.green('✓') : c.yellow('!')} ` +
-      `${inSync}/${total} target${total === 1 ? '' : 's'} in sync` +
-      (report.stale ? c.yellow(' (sources are newer)') : ''),
+    healthy
+      ? `  ${c.green('✓')} ${total} target${total === 1 ? '' : 's'} in sync`
+      : `  ${c.yellow('!')} ${inSync}/${total} target${total === 1 ? '' : 's'} installed` +
+          (report.stale ? c.yellow(' — generated files no longer match their sources') : ''),
   )
 
   for (const t of report.targets) {
-    const mark = t.present ? c.green('✓') : c.yellow('!')
-    const detail = t.present
-      ? c.dim('up to date')
-      : c.yellow(`${t.missing.length} path${t.missing.length === 1 ? '' : 's'} missing`)
+    const mark = t.present && !report.stale ? c.green('✓') : c.yellow('!')
+    const detail = !t.present
+      ? c.yellow(`${t.missing.length} path${t.missing.length === 1 ? '' : 's'} missing`)
+      : report.stale
+        ? c.yellow('needs a sync')
+        : c.dim('up to date')
     console.log(`    ${mark} ${t.ide.padEnd(14)} ${detail}`)
   }
 
