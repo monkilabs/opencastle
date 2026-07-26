@@ -97,11 +97,20 @@ const REPLACED = {
 
 const commands = { ...VISIBLE, ...HIDDEN }
 
-if (!command) {
-  // No arguments is a real command: report state and the next step.
-  const mod = await import('../dist/cli/status.js')
-  await mod.default({ pkgRoot, args: [] })
-  process.exit(0)
+// No command is itself a command: report state and the next step. A leading flag
+// belongs to it too — `opencastle --json` is documented in the help text, in
+// status's own help, and on the website, and used to answer "Unknown command".
+if (!command || command.startsWith('-')) {
+  const bare = ['--json', '--help', '-h']
+  if (!command || bare.includes(command)) {
+    if (command === '--help' || command === '-h') {
+      console.log(HELP)
+      process.exit(0)
+    }
+    const mod = await import('../dist/cli/status.js')
+    await mod.default({ pkgRoot, args: command ? [command, ...args] : [] })
+    process.exit(0)
+  }
 }
 
 if (command === '--help' || command === '-h' || command === 'help') {

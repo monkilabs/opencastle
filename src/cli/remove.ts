@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { resolve, relative } from 'node:path'
 import { unlink, readFile, rename } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readManifest } from './manifest.js'
@@ -55,6 +55,11 @@ async function previewCoOwned(
   projectRoot: string,
   mergedPaths: string[],
   mcpPaths: Set<string>,
+  // Which target owns each MCP path. Without it the preview scanned all three
+  // container keys while removal scanned one, so the two could disagree about
+  // whether a file survives — in the pair of functions whose whole purpose is
+  // agreeing.
+  ideFor: Map<string, IdeChoice>,
 ): Promise<CoOwnedPreview[]> {
   const out: CoOwnedPreview[] = []
 
@@ -81,7 +86,7 @@ async function previewCoOwned(
     let keepsSomething = true
     try {
       const parsed = JSON.parse(await readFile(abs, 'utf8')) as Record<string, unknown>
-      keepsSomething = willKeepSomethingAfterStrip(parsed)
+      keepsSomething = willKeepSomethingAfterStrip(parsed, ideFor.get(p))
     } catch {
       // Unreadable JSON is left alone entirely, so it certainly survives.
       out.push({ path: p, outcome: 'stripped', note: 'nothing — the file could not be parsed' })
@@ -140,7 +145,8 @@ export default async function remove({ args }: CliContext): Promise<void> {
   const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter(
     (id): id is IdeChoice => Boolean(id) && id in IDE_ADAPTERS,
   )
-  const mcpPaths = new Set(ides.map((ide) => getMcpConfigRelPath(ide)))
+  const mcpOwner = new Map(ides.map((ide) => [getMcpConfigRelPath(ide), ide]))
+  const mcpPaths = new Set(mcpOwner.keys())
   const frameworkPaths = managed.framework.filter((p) => !mcpPaths.has(p))
   // `.opencastle/` is handled explicitly below, so drop it here — listing it in
   // both places printed it twice and counted it twice in "Removed N path(s)".
@@ -175,7 +181,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
     // block is deleted. Announcing "your own writing stays" over a file about to
     // disappear is the preview lying, so each outcome is predicted rather than
     // assumed. `previewCoOwned` reads the same files the strip functions will.
-    const coOwned = await previewCoOwned(projectRoot, mergedPaths, mcpPaths)
+    const coOwned = await previewCoOwned(projectRoot, mergedPaths, mcpPaths, mcpOwner)
     const alsoDeleted = coOwned.filter((e) => e.outcome === 'deleted')
     const kept = coOwned.filter((e) => e.outcome === 'stripped')
 
@@ -189,9 +195,19 @@ export default async function remove({ args }: CliContext): Promise<void> {
         console.log(`    ${c.yellow('~')} ${c.dim(e.path)} ${c.dim(`— removes ${e.note}`)}`)
       }
     }
-    if (existsSync(resolve(projectRoot, '.gitignore'))) {
-      if (kept.length === 0) console.log(`\n  ${c.bold('Edited, not deleted')}\n`)
-      console.log(`    ${c.yellow('~')} ${c.dim('.gitignore')} ${c.dim('— removes the OpenCastle block')}`)
+    const gitignorePath = resolve(projectRoot, '.gitignore')
+    if (existsSync(gitignorePath)) {
+      // Deleted outright when our block was the only thing in it, which the
+      // preview used to describe as an edit.
+      const rest = (await readFile(gitignorePath, 'utf8'))
+        .replace(/# >>> OpenCastle managed[\s\S]*?# <<< OpenCastle managed <<</, '')
+        .trim()
+      if (rest.length === 0) {
+        console.log(`    ${c.red('-')} ${c.dim('.gitignore')} ${c.dim('— it holds nothing but our block')}`)
+      } else {
+        if (kept.length === 0) console.log(`\n  ${c.bold('Edited, not deleted')}\n`)
+        console.log(`    ${c.yellow('~')} ${c.dim('.gitignore')} ${c.dim('— removes the OpenCastle block')}`)
+      }
     }
     console.log()
   }
@@ -268,12 +284,15 @@ export default async function remove({ args }: CliContext): Promise<void> {
   const opencastleDir = resolve(projectRoot, '.opencastle')
   let keptDir: string | undefined
   if (existsSync(opencastleDir)) {
-    const parked = resolve(projectRoot, '.opencastle.removed')
-    await removeDirIfExists(parked)
+    // A second uninstall used to delete the first one's rescue copy, which is
+    // the one thing this parking is for. Suffix instead.
+    let parked = resolve(projectRoot, '.opencastle.removed')
+    let suffix = 2
+    while (existsSync(parked)) parked = resolve(projectRoot, `.opencastle.removed.${suffix++}`)
     await rename(opencastleDir, parked)
-    keptDir = '.opencastle.removed'
+    keptDir = relative(projectRoot, parked)
+    removed++
   }
-  removed++
 
   if (hasLegacy) {
     await unlink(legacyManifestPath)

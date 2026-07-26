@@ -37,6 +37,7 @@ const LOCAL_ONLY = [
   '.env',
   // Where `remove --all` parks your .opencastle/ so an uninstall is reversible.
   '.opencastle.removed/',
+  '.opencastle.removed.*/',
   ...LOCAL_DIRS.map((d) => `${d}/`),
   '.opencastle/*.db',
   '.opencastle/*.db-wal',

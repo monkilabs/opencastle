@@ -117,7 +117,13 @@ describe('removed commands', () => {
 
 describe('global behavior', () => {
   it('treats no arguments as the status command', () => {
-    expect(source).toMatch(/if \(!command\) \{[\s\S]*status\.js/)
+    expect(source).toMatch(/if \(!command \|\| command\.startsWith\('-'\)\)[\s\S]*status\.js/)
+  })
+
+  it('routes the flags status documents to status, not to "unknown command"', () => {
+    // `opencastle --json` is documented in this file's own help text, in
+    // status's help, and on the website, and answered "Unknown command".
+    expect(source).toMatch(/bare = \['--json'/)
   })
 
   it('silences only the sqlite experimental warning', () => {

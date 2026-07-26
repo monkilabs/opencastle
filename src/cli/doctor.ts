@@ -21,6 +21,16 @@ interface CheckResult {
   label: string;
   detail?: string;
   warning?: boolean;
+  /**
+   * What actually clears this failure.
+   *
+   * The summary used to print one blanket "Run opencastle sync to fix" under
+   * every failure, including two that `sync` cannot touch: an env var it has no
+   * way to set, and a `.gitignore` rule outside the block it rewrites. A
+   * diagnosis that prescribes something incapable of fixing it is worse than no
+   * diagnosis, because the user runs it and learns nothing.
+   */
+  fix?: string;
 }
 
 // ── Individual checks ─────────────────────────────────────────
@@ -105,7 +115,13 @@ async function checkMcpEnvVars(
   const missing = required.filter((r) => !isEnvVarSatisfied(r.envVar, envFile));
   if (missing.length > 0) {
     const names = missing.map((m) => m.envVar).join(', ');
-    return { ok: false, label: 'MCP environment variables', detail: `Missing: ${names}` };
+    return {
+      ok: true,
+      warning: true,
+      label: 'MCP environment variables',
+      detail: `Not set: ${names}`,
+      fix: 'add them to .env or your shell',
+    };
   }
   return { ok: true, label: 'MCP environment variables', detail: `${required.length} var(s) set` };
 }
@@ -199,34 +215,56 @@ async function checkGitignoredOutput(
   projectRoot: string,
   manifest: Manifest | null,
 ): Promise<CheckResult> {
-  if (!manifest) return { label: 'Generated config is committed', ok: true, warning: false };
-
-  const gitignorePath = resolve(projectRoot, '.gitignore');
-  if (!existsSync(gitignorePath)) {
-    return { label: 'Generated config is committed', ok: true, warning: false };
-  }
+  const label = 'Generated config is committed'
+  if (!manifest) return { label, ok: true, warning: false };
 
   const managed = await resolveManagedPaths(manifest);
-  const candidates = [...managed.framework, ...managed.merged];
-  const content = await readFile(gitignorePath, 'utf8');
-  const rules = new Set(
-    content
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l && !l.startsWith('#') && !l.startsWith('!')),
-  );
+  const candidates = [...managed.framework, ...managed.merged].map((p) => p.replace(/\/$/, ''));
+  if (candidates.length === 0) return { label, ok: true, warning: false };
 
-  const hidden = candidates.filter((p) => rules.has(p) || rules.has(p.replace(/\/$/, '')));
-  if (hidden.length === 0) {
-    return { label: 'Generated config is committed', ok: true, warning: false };
-  }
+  // Asked of git, not of a hand-rolled reading of `.gitignore`. The first
+  // version matched trimmed lines against paths, which is a second and much
+  // weaker interpreter of a format git already owns: a repository whose own
+  // ignore file said `.claude/` hid every generated file while this check
+  // reported everything fine — the exact shape of defect the managed-block
+  // reader kept producing.
+  const hidden = await gitIgnoredPaths(projectRoot, candidates);
+  if (hidden === null) return { label, ok: true, warning: false }; // not a git repo
+  if (hidden.length === 0) return { label, ok: true, warning: false };
 
   return {
-    label: 'Generated config is committed',
+    label,
     ok: false,
     warning: false,
-    detail: `${hidden.length} generated path(s) are gitignored — run "opencastle sync" to update the block`,
+    detail:
+      `${hidden.length} generated path(s) are gitignored (${hidden[0]}${hidden.length > 1 ? ', …' : ''})` +
+      ' — a teammate\'s clone would have no rules',
+    fix: 'remove those entries from .gitignore; OpenCastle only ignores .env and run artefacts',
   };
+}
+
+/**
+ * Which of `paths` git ignores, or null when this is not a git repository.
+ *
+ * `git check-ignore` is the only implementation that agrees with git, including
+ * negations, nested `.gitignore` files, and the global excludes file.
+ */
+async function gitIgnoredPaths(projectRoot: string, paths: string[]): Promise<string[] | null> {
+  if (!existsSync(resolve(projectRoot, '.git'))) return null;
+  const { execFile } = await import('node:child_process');
+  return new Promise((done) => {
+    const child = execFile(
+      'git',
+      ['-C', projectRoot, 'check-ignore', '--stdin'],
+      (err, stdout) => {
+        // Exit 1 simply means "none ignored"; anything else, stay quiet rather
+        // than inventing a failure from a tool that did not answer.
+        if (err && (err as { code?: number }).code !== 1 && stdout === '') return done(null);
+        done(stdout.split('\n').map((l) => l.trim()).filter(Boolean));
+      },
+    );
+    child.stdin?.end(paths.join('\n') + '\n');
+  });
 }
 
 /**
@@ -335,9 +373,12 @@ export default async function doctor({ args }: CliContext): Promise<void> {
   const warnings = allResults.filter((r) => r.ok && r.warning);
 
   if (failures.length > 0) {
-    // Not `init`: that re-runs setup, and for most failures here `sync` is both
-    // sufficient and the one that cannot surprise you.
-    console.log(`  ${BOLD(`${failures.length} issue(s) found.`)} Run "npx opencastle sync" to fix.\n`);
+    console.log(`  ${BOLD(`${failures.length} issue(s) found.`)}\n`);
+    // Per failure, because they do not share a remedy.
+    for (const f of failures) {
+      console.log(`    ${f.label}: ${DIM(f.fix ?? 'run "npx opencastle sync"')}`);
+    }
+    console.log('');
     process.exit(1);
   } else if (warnings.length > 0) {
     console.log(`  ${BOLD('All checks passed')} with ${warnings.length} warning(s).\n`);

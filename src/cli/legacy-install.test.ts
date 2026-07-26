@@ -9,7 +9,7 @@
  * that would have caught it: root file under `framework`, no `merged` key, and
  * the old path-listing gitignore block.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -235,5 +235,90 @@ describe('a genuinely pre-marker root file, with the user text appended', () => 
     const prediction = predictStrip(LEGACY_ROOT)
     expect(prediction.outcome).toBe('deleted')
     expect(prediction.legacyGenerated).toBe(true)
+  })
+})
+
+/**
+ * `.opencastle/` is the directory the drift checker tells people is theirs, and
+ * for two rounds `sync` was rewriting it. The first fix ran `bootstrapCustomizations`
+ * against the real project — bootstrap was written to run once, and its rename
+ * and prune steps are unconditional, so a user's `supabase-config.md` was
+ * overwritten by a template on every sync.
+ *
+ * A sentinel in every file is the assertion that generalises: whatever `sync`
+ * does in there, it must not touch what it did not write.
+ */
+describe('sync never edits what the user wrote in .opencastle/', () => {
+  const stacks: Array<[string, Record<string, unknown>]> = [
+    ['no stack', { name: 'p', version: '1.0.0' }],
+    ['a database', { name: 'p', version: '1.0.0', dependencies: { '@supabase/supabase-js': '^2' } }],
+    ['a cms', { name: 'p', version: '1.0.0', dependencies: { '@sanity/client': '^6' } }],
+    ['a deployment target', { name: 'p', version: '1.0.0', devDependencies: { vercel: '^32' } }],
+  ]
+
+  for (const [name, pkg] of stacks) {
+    it(`preserves every hand edit with ${name}`, async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'oc-preserve-'))
+      const cwd = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+      try {
+        writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg))
+        const init = (await import('./init.js')).default
+        await init({ pkgRoot, args: ['--yes'] })
+
+        // Sentinel every file, and remember the exact bytes.
+        const before = new Map<string, string>()
+        const walk = (d: string): string[] =>
+          readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+            e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)],
+          )
+        for (const f of walk(join(dir, '.opencastle'))) {
+          if (!f.endsWith('.md')) continue
+          const text = `${readFileSync(f, 'utf8')}\n<!-- SENTINEL -->\n`
+          writeFileSync(f, text)
+          before.set(f, text)
+        }
+        expect(before.size).toBeGreaterThan(0)
+
+        const update = (await import('./update.js')).default
+        await update({ pkgRoot, args: ['--yes', '--force'] })
+        await update({ pkgRoot, args: ['--yes', '--force'] })
+
+        for (const [f, text] of before) {
+          expect(existsSync(f), `sync deleted ${f.slice(dir.length + 1)}`).toBe(true)
+          expect(readFileSync(f, 'utf8'), `sync rewrote ${f.slice(dir.length + 1)}`).toBe(text)
+        }
+      } finally {
+        cwd.mockRestore()
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+  }
+
+  it('leaves the same file set init produced', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-same-'))
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    try {
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'p', version: '1.0.0' }))
+      const init = (await import('./init.js')).default
+      await init({ pkgRoot, args: ['--yes'] })
+
+      const list = (): string[] => {
+        const walk = (d: string): string[] =>
+          readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+            e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name).slice(dir.length + 1)],
+          )
+        return walk(join(dir, '.opencastle')).sort()
+      }
+      const afterInit = list()
+
+      const update = (await import('./update.js')).default
+      await update({ pkgRoot, args: ['--yes', '--force'] })
+
+      // No template `init` pruned may come back.
+      expect(list()).toEqual(afterInit)
+    } finally {
+      cwd.mockRestore()
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })

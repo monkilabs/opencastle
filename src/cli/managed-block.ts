@@ -102,66 +102,67 @@ export function stripManagedBlock(content: string): string {
   return content.slice(0, start) + content.slice(end + BLOCK_END.length)
 }
 
-/**
- * Byte ranges covered by a *closed* fenced code block.
- *
- * Only closed fences count. An opening fence with no partner is far more likely
- * to be prose the user never terminated than a region that swallows the rest of
- * the file — and treating it as a region is what made the marker we wrote look
- * quoted, so every sync appended another block. Matching pairs by their fence
- * character and length, the way CommonMark does, also handles a four-backtick
- * fence wrapping three-backtick ones.
- */
-function closedFenceRanges(content: string): Array<[number, number]> {
-  const ranges: Array<[number, number]> = []
-  let open: { at: number; char: string; len: number } | null = null
-  let offset = 0
-
-  for (const line of content.split('\n')) {
-    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)
-    if (fence) {
-      const char = fence[1][0]
-      const len = fence[1].length
-      if (!open) {
-        open = { at: offset, char, len }
-      } else if (char === open.char && len >= open.len) {
-        ranges.push([open.at, offset + line.length])
-        open = null
-      }
-    }
-    offset += line.length + 1
+/** Line-start offsets of every occurrence of `marker`, at column 0. */
+function markerOffsets(content: string, marker: string): number[] {
+  const out: number[] = []
+  let from = 0
+  for (;;) {
+    const at = content.indexOf(marker, from)
+    if (at === -1) return out
+    if (at === 0 || content[at - 1] === '\n') out.push(at)
+    from = at + marker.length
   }
-  // `open` left dangling is an unclosed fence: deliberately not a range.
-  return ranges
 }
+
+/** The line immediately before `at`, and the one immediately after `endOfLine`. */
+function neighbourLines(content: string, at: number, after: number): [string, string] {
+  const beforeStart = content.lastIndexOf('\n', Math.max(0, at - 2))
+  const before = content.slice(beforeStart + 1, at).trim()
+  const nextBreak = content.indexOf('\n', after)
+  const rest = nextBreak === -1 ? '' : content.slice(nextBreak + 1)
+  const following = rest.slice(0, rest.indexOf('\n') === -1 ? rest.length : rest.indexOf('\n')).trim()
+  return [before, following]
+}
+
+const FENCE = /^(?:`{3,}|~{3,})/
 
 /**
  * Index of the marker that really delimits our block, or -1.
  *
- * Two rules, both learned the hard way. Occurrences inside a closed fence are
- * quoted prose — `docs/quickstart.md` shows readers this exact string, so a
- * CLAUDE.md documenting the convention must not have a block written into its
- * own example. And when several qualify, the last wins: we always append at the
- * end, so the newest occurrence is ours, and preferring it means a file that
- * both documents the marker and carries a real block resolves to the real one.
+ * Deciding this by analysing code fences was wrong twice, in both directions,
+ * and the second attempt shipped. Markdown says an unclosed fence swallows
+ * everything after it, so a single stray ``` in someone's prose makes the marker
+ * *we just wrote* look quoted — and answering "no block here" sends the writer
+ * down the append path, which is unbounded growth: 20KB, 41KB, 62KB, with the
+ * drift check certifying each one and uninstall leaving it all behind.
  *
- * Never returning -1 when an unfenced marker exists is the load-bearing part.
- * Answering "no block here" to a file that has one sends `writeManagedBlock`
- * down the append path, and appending to a file that already has a block is
- * unbounded growth.
+ * So fences no longer decide whether a block exists. Structure does: a candidate
+ * is a `BLOCK_START` at column 0 with a `BLOCK_END` at column 0 after it, and
+ * the last candidate wins, because we always append at the end. When a marker
+ * exists, one of them is always chosen — never -1.
+ *
+ * The single narrow exception is the shape that is unambiguously a quotation:
+ * a fence delimiter on the line directly above the start marker and another
+ * directly below the end marker. That is what `docs/quickstart.md` shows
+ * readers, and it is not a shape this tool ever writes.
  */
 function findBlockStart(content: string): number {
-  const fenced = closedFenceRanges(content)
-  const isQuoted = (at: number): boolean => fenced.some(([s, e]) => at >= s && at < e)
-
+  const ends = markerOffsets(content, BLOCK_END)
+  let torn = -1
   let best = -1
-  let from = 0
-  for (;;) {
-    const at = content.indexOf(BLOCK_START, from)
-    if (at === -1) return best
-    if (!isQuoted(at)) best = at
-    from = at + BLOCK_START.length
+
+  for (const at of markerOffsets(content, BLOCK_START)) {
+    const end = ends.find((e) => e > at)
+    if (end === undefined) {
+      torn = at
+      continue
+    }
+    const [above, below] = neighbourLines(content, at, end + BLOCK_END.length)
+    if (FENCE.test(above) && FENCE.test(below)) continue // a quoted example
+    best = at
   }
+
+  return best !== -1 ? best : torn
 }
 
 export function hasManagedBlock(content: string): boolean {

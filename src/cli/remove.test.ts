@@ -511,7 +511,11 @@ describe('uninstalling does not destroy what the user wrote in .opencastle/', ()
     expect(await readFileText(parked, 'utf8')).toContain('NEVER_FORCE_PUSH')
   })
 
-  it('replaces an older parked copy rather than failing', async () => {
+  it('keeps an earlier rescue copy instead of overwriting it', async () => {
+    // This test used to assert the opposite. Discarding the previous copy
+    // defeats the one purpose of parking the directory: a user who uninstalls,
+    // reinstalls, and uninstalls again lost the writing from the first round,
+    // silently, while the closing message told them it was safe to look later.
     await writeManifestFile(dir, { managedPaths: { framework: [], customizable: [], merged: [] } })
     await mkdir(join(dir, '.opencastle.removed'), { recursive: true })
     await writeFile(join(dir, '.opencastle.removed', 'stale.md'), 'from last time\n')
@@ -520,7 +524,7 @@ describe('uninstalling does not destroy what the user wrote in .opencastle/', ()
 
     await remove({ pkgRoot: dir, args: ['--all', '--yes'] })
 
-    expect(existsSync(join(dir, '.opencastle.removed', 'fresh.md'))).toBe(true)
-    expect(existsSync(join(dir, '.opencastle.removed', 'stale.md'))).toBe(false)
+    expect(existsSync(join(dir, '.opencastle.removed', 'stale.md')), 'first rescue lost').toBe(true)
+    expect(existsSync(join(dir, '.opencastle.removed.2', 'fresh.md')), 'second not parked').toBe(true)
   })
 })

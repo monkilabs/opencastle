@@ -446,7 +446,10 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     // Offer to create .env if it doesn't exist
     const envPath = resolve(projectRoot, '.env')
     if (!dryRun && !existsSync(envPath)) {
-      const createEnv = await confirm('Create a .env file with placeholders for these variables?', true)
+      // `--yes` means every question, not most of them. This one blocked a TTY
+      // run and any CI runner that keeps stdin open.
+      const createEnv =
+        assumeYes || (await confirm('Create a .env file with placeholders for these variables?', true))
       if (createEnv) {
         const { writeFile: writeEnvFile } = await import('node:fs/promises')
         const lines = envVars.map(({ envVar, hint }) => `# ${hint}\n${envVar}=\n`)

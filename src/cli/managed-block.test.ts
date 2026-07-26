@@ -461,6 +461,45 @@ describe('the merge is a fixed point, whatever the prose looks like', () => {
     ['CRLF with a fence', '# A\r\n\r\n```sh\r\nmake ship\r\n```\r\n'],
   ]
 
+  // The second axis: prose the user adds *below* the block, and a generated body
+  // that itself contains a fence. Every fixture used to have the block last and
+  // a fence-free body, so the pairing bug — a dangling fence above pairing with
+  // any fence below — could not be reached. Three reviewers found it anyway.
+  const BELOW = ['', '\n## Extra\n\n```js\nconsole.log(1)\n```\n', '\n## Extra\n\n```sh\nunclosed\n']
+  const BODIES = ['generated body', 'generated body\n\n```bash\nnpm run build\n```\n']
+
+  for (const [name, original] of prose) {
+    for (const [bi, below] of BELOW.entries()) {
+      for (const [yi, body] of BODIES.entries()) {
+        it(`stays one block: ${name}, below#${bi}, body#${yi}`, async () => {
+          writeFileSync(file, original)
+          await writeManagedBlock(file, body)
+          // The user edits underneath, then syncs again, twice.
+          if (below) writeFileSync(file, readFileSync(file, 'utf8') + below)
+          await writeManagedBlock(file, body)
+          const once = readFileSync(file, 'utf8')
+          await writeManagedBlock(file, body)
+
+          const text = readFileSync(file, 'utf8')
+          expect(text, 'the third write changed the file').toBe(once)
+          // A complete quoted example survives alongside our block; a marker
+          // with no partner is torn, and repair folds it into one.
+          const quotedExample = original.includes(BLOCK_START) && original.includes(BLOCK_END)
+          expect(text.split(BLOCK_START).length - 1, 'more than one block').toBe(
+            quotedExample ? 2 : 1,
+          )
+          expect(hasManagedBlock(text), 'the block it just wrote is unfindable').toBe(true)
+
+          // And uninstalling leaves none of our body behind.
+          await stripManagedBlockFromFile(file)
+          const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+          expect(left).not.toContain('npm run build\n```')
+          expect(left).not.toContain('generated body')
+        })
+      }
+    }
+  }
+
   for (const [name, original] of prose) {
     it(`writes exactly one block into a file with ${name}`, async () => {
       writeFileSync(file, original)

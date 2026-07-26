@@ -32,6 +32,8 @@ export interface TargetStatus {
   missing: string[]
   /** True when every expected path is present. */
   present: boolean
+  /** True when this target's files no longer match their sources. */
+  drifted?: boolean
 }
 
 export interface StatusReport {
@@ -122,10 +124,14 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   // command is the front door; reassuring someone right before `sync` removes
   // their file is worse than saying nothing.
   let stale = false
+  // Per target, because the report already knows which one drifted. Collapsing
+  // it to one boolean made every target read "needs a sync" when one had.
+  const drifted = new Set<string>()
   try {
     const { buildCheckReport } = await import('./sync-check.js')
     const report = await buildCheckReport(pkgRoot, projectRoot)
     stale = report.drift.length > 0
+    for (const d of report.drift) drifted.add(d.ide)
   } catch {
     // Falls back to the mtime heuristic rather than claiming health it cannot
     // establish — a manifest we cannot compile from is itself worth a nudge.
@@ -145,6 +151,8 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
       if (stale) break
     }
   }
+
+  for (const target of targets) target.drifted = drifted.has(target.ide)
 
   // Assistants configured in the repo that this install does not compile for.
   const managedIdes = new Set(adapters.map((a) => a.ide))
@@ -209,10 +217,11 @@ function render(report: StatusReport): void {
   )
 
   for (const t of report.targets) {
-    const mark = t.present && !report.stale ? c.green('✓') : c.yellow('!')
+    const targetStale = t.drifted ?? report.stale
+    const mark = t.present && !targetStale ? c.green('✓') : c.yellow('!')
     const detail = !t.present
       ? c.yellow(`${t.missing.length} path${t.missing.length === 1 ? '' : 's'} missing`)
-      : report.stale
+      : targetStale
         ? c.yellow('needs a sync')
         : c.dim('up to date')
     console.log(`    ${mark} ${t.ide.padEnd(14)} ${detail}`)

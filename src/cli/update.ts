@@ -1,5 +1,6 @@
-import { resolve, relative, sep } from 'node:path'
-import { existsSync } from 'node:fs'
+import { resolve, relative, join, dirname } from 'node:path'
+import { existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { readFile, appendFile, rename, mkdir, writeFile, unlink, copyFile, readdir, rm } from 'node:fs/promises'
 import { readManifest, writeManifest } from './manifest.js'
 import { multiselect, confirm, closePrompts, c } from './prompt.js'
@@ -19,7 +20,7 @@ import { rebuildMcpConfig } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
-import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
+import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig, RepoInfo } from './types.js'
 
 const UPDATE_HELP = `
   opencastle update [options]
@@ -34,6 +35,58 @@ const UPDATE_HELP = `
     --help, -h        Show this help
 `
 
+/**
+ * Add back the `.opencastle/` files a working install cannot do without.
+ *
+ * Deliberately narrow. The first attempt restored every template and then ran
+ * `bootstrapCustomizations` over the real project to prune the ones it did not
+ * need — and bootstrap, written to run exactly once, renamed and deleted on
+ * every sync, eating the user's own writing in the directory the drift checker
+ * calls theirs. The second attempt moved that to a scratch copy, which was safe
+ * but could not reproduce `init`'s pruning, so it handed back the seven
+ * templates `init` had just removed.
+ *
+ * Templates are `init`'s business. What `sync` owes is the handful of files the
+ * tool itself requires — the agent registry and the skill matrix, which a
+ * pre-0.36 install never had, and whose absence made `doctor` fail while
+ * prescribing this very command. Nothing that exists is touched.
+ */
+const REQUIRED_CUSTOMIZATIONS = [
+  join('agents', 'skill-matrix.json'),
+  join('agents', 'skill-matrix.md'),
+  join('agents', 'agent-registry.md'),
+]
+
+async function restoreMissingCustomizations(
+  pkgRoot: string,
+  projectRoot: string,
+  stack: StackConfig,
+  ides: string[],
+): Promise<void> {
+  const src = resolve(getOrchestratorRoot(pkgRoot), 'customizations')
+  if (!existsSync(src)) return
+
+  const transform = getCustomizationsTransform(stack)
+  const restored: string[] = []
+  for (const rel of REQUIRED_CUSTOMIZATIONS) {
+    const from = resolve(src, rel)
+    const to = resolve(projectRoot, '.opencastle', rel)
+    if (!existsSync(from) || existsSync(to)) continue
+    await mkdir(dirname(to), { recursive: true })
+    const body = await readFile(from, 'utf8')
+    const out = transform ? await transform(body, from) : body
+    // A transform returning null means "do not install this file".
+    if (out === null) continue
+    await writeFile(to, out)
+    restored.push(rel)
+  }
+
+  if (restored.length > 0) {
+    console.log(`  ${c.green('+')} Restored ${restored.length} missing customization file(s)`)
+    for (const ide of ides) await updateSkillMatrixFile(projectRoot, ide, stack)
+  }
+}
+
 export default async function update({
   pkgRoot,
   args,
@@ -45,7 +98,11 @@ export default async function update({
 
   const projectRoot = process.cwd()
 
-  await migrateCustomizationsDir(projectRoot)
+  // Deliberately after the dry-run flag is known: this writes and deletes, and
+  // `--dry-run` closes by printing "No files were written". It ran first, so
+  // that promise was false on exactly the installs the migration exists for.
+  const isDryRun = args.includes('--dry-run') || args.includes('--dryRun')
+  if (!isDryRun) await migrateCustomizationsDir(projectRoot)
 
   const manifest = await readManifest(projectRoot)
   if (!manifest) {
@@ -341,42 +398,18 @@ export default async function update({
   }
 
   // ── Restore any missing .opencastle/ scaffolding ────────────────
-  // `copyDir` never overwrites here, so this only fills gaps: a customization
-  // the user deleted, or a file a release added after they installed. Only
-  // `init` used to do it, which left `doctor` reporting a missing skill matrix
-  // and prescribing `sync` — a command that could not create it. A compile step
-  // that cannot produce a working project is not a compile step.
-  const custSrcDir = resolve(getOrchestratorRoot(pkgRoot), 'customizations')
-  if (existsSync(custSrcDir)) {
-    const restored = await copyDir(custSrcDir, resolve(projectRoot, '.opencastle'), {
-      transform: getCustomizationsTransform(newStack),
-    })
-
-    // Then the same bootstrap `init` runs, which prunes the templates this
-    // project has no use for. Restoring without pruning meant `sync` handed back
-    // the seven templates `init` had just deleted — and `.opencastle/` is the
-    // directory the drift checker tells people is theirs, so a deletion they
-    // made there must not be silently undone. The populate steps are guarded on
-    // their own placeholder text, so a file the user has edited is left alone.
-    // The same repo info `init` bootstraps with — the stack merged in. Passing
-    // the raw detection instead made `sync` prune a template `init` had kept.
-    const bootstrapped = await bootstrapCustomizations(
-      projectRoot,
-      mergeStackIntoRepoInfo(repoInfo, newStack),
-      newStack,
-    )
-    const netNew = restored.created.filter(
-      (p) => !bootstrapped.removed.some((r) => p.endsWith(r.split('/').join(sep))),
-    )
-    if (netNew.length > 0) {
-      console.log(`  ${c.green('+')} Restored ${netNew.length} missing customization file(s)`)
-    }
-
-    // Newly scaffolded matrices still need the stack applied to them.
-    for (const ide of ides) {
-      await updateSkillMatrixFile(projectRoot, ide, newStack)
-    }
-  }
+  // Only what is *absent*. The first version of this called `copyDir` and then
+  // `bootstrapCustomizations` directly against the project, which was wrong in a
+  // way review caught and I had not: bootstrap was written to run once, and its
+  // rename and prune steps are unconditional. Restoring `database-config.md`
+  // handed bootstrap a template to rename, and the rename overwrote the user's
+  // own `supabase-config.md` — on every sync, in the directory the drift checker
+  // tells people is theirs.
+  //
+  // So the scaffolding is built somewhere else and only the missing files are
+  // copied in. Nothing that already exists is read, written, renamed, or
+  // deleted.
+  await restoreMissingCustomizations(pkgRoot, projectRoot, newStack, ides)
 
   // ── Rewrite the .gitignore block ────────────────────────────────
   // Not just an init-time concern. Releases before this one ignored every
@@ -524,13 +557,18 @@ async function migrateCustomizationsDir(projectRoot: string): Promise<void> {
     resolve(projectRoot, '.opencode', 'customizations'),
   ]
 
-  // Copy from the first found old location (content is the same across IDEs)
+  // Copy from every old location, not just the first. The loop below deletes
+  // all four, so stopping at the first meant an empty `.github/customizations/`
+  // could shadow a populated `.claude/customizations/` — whose contents were
+  // then deleted having been copied nowhere. `copyDirMigrate` does not
+  // overwrite, so the earlier directory still wins where they overlap.
+  let migrated = false
   for (const oldDir of oldCustDirs) {
     if (!existsSync(oldDir)) continue
     await copyDirMigrate(oldDir, newOpencastleDir)
-    console.log(`  ${c.green('✓')} Migrated customizations to .opencastle/`)
-    break
+    migrated = true
   }
+  if (migrated) console.log(`  ${c.green('✓')} Migrated customizations to .opencastle/`)
 
   // Remove all old customizations directories
   for (const oldDir of oldCustDirs) {
