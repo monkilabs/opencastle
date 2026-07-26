@@ -166,3 +166,56 @@ describe('root instruction files are co-owned, never framework', () => {
     }
   })
 })
+
+/**
+ * One reader per format.
+ *
+ * Four review rounds found the same class of defect, three times in code I had
+ * just written: a format or a record gains a second interpreter, the two
+ * disagree, and the disagreement is invisible because each is individually
+ * correct. The managed block was parsed by `managed-block.ts` with fence
+ * awareness and by `sync-check.ts` with a plain `indexOf`, so the writer
+ * maintained one region while the checker compared another — in one direction
+ * unbounded file growth, in the other permanent unclearable CI failure.
+ *
+ * The markers are exported for composing content, not for locating a block.
+ * Anything that needs to know where the block *is* must ask the module that
+ * owns the format.
+ */
+describe('only one module knows how to find the managed block', () => {
+  const OWNER = 'managed-block.ts'
+
+  function cliSources(dir: string, out: string[] = []): string[] {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'convoy' || entry.name === 'run') continue
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) cliSources(p, out)
+      else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.test.ts')) out.push(p)
+    }
+    return out
+  }
+
+  it('nobody else searches for the markers', () => {
+    const offenders: string[] = []
+    for (const file of cliSources(cliDir)) {
+      if (file.endsWith(OWNER)) continue
+      const text = readFileSync(file, 'utf8')
+      for (const [i, line] of text.split('\n').entries()) {
+        // Using a marker to *locate* something is the parsing that must not be
+        // duplicated. Importing the constants to render content is fine.
+        if (/BLOCK_(START|END)/.test(line) && /indexOf|lastIndexOf|includes|match|search|split|slice/.test(line)) {
+          offenders.push(`${file.slice(cliDir.length + 1)}:${i + 1}: ${line.trim()}`)
+        }
+      }
+    }
+    expect(offenders, 'parse the block via managed-block.ts instead').toEqual([])
+  })
+
+  it('the drift checker uses the shared reader', () => {
+    const text = readFileSync(join(cliDir, 'sync-check.ts'), 'utf8')
+    expect(text).toContain("from './managed-block.js'")
+    expect(text).toContain('extractManagedBlock')
+    // Its own copy of the extraction is what diverged.
+    expect(text).not.toMatch(/function extractManagedBlock/)
+  })
+})
