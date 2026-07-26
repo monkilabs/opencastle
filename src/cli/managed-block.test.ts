@@ -401,7 +401,7 @@ describe('a file whose end marker was lost', () => {
  * the marker verbatim — so a CLAUDE.md documenting the convention had the
  * generated block written inside its own code fence.
  */
-describe('a marker quoted inside a code fence is not a block', () => {
+describe('a file that quotes the marker', () => {
   let dir: string
   let file: string
 
@@ -412,18 +412,80 @@ describe('a marker quoted inside a code fence is not a block', () => {
 
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it('appends below rather than writing into the fence', async () => {
-    const documented = `# Our conventions\n\nOpenCastle writes a block like this:\n\n\`\`\`markdown\n${BLOCK_START}\n...generated...\n${BLOCK_END}\n\`\`\`\n\nDo not edit inside it.\n`
+  it('has the quotation adopted rather than gaining a second block', async () => {
+    // The trade recorded in `blockRegions`: four rounds of trying to tell a
+    // quoted marker from a real one by reading the surrounding markdown each
+    // produced a version that mistook a real block for a quotation and doubled
+    // the file. One block per file, always, is the property worth keeping; a
+    // documented example being claimed is bounded, visible, and reversible.
+    const documented = `# Our conventions\n\nOpenCastle writes a block like this:\n\n\`\`\`markdown\n${BLOCK_START}\n...generated...\n${BLOCK_END}\n\`\`\`\n`
     writeFileSync(file, documented)
 
-    const result = await writeManagedBlock(file, 'generated body')
-    expect(result.action).toBe('appended')
+    await writeManagedBlock(file, 'generated body')
+    const once = readFileSync(file, 'utf8')
+    expect(once.split(BLOCK_START)).toHaveLength(2)
 
+    // And it is stable: no growth on subsequent syncs.
+    await writeManagedBlock(file, 'generated body')
+    expect(readFileSync(file, 'utf8')).toBe(once)
+  })
+
+  it('keeps the prose around the quotation', async () => {
+    const documented = `# Our conventions\n\nBefore.\n\n\`\`\`markdown\n${BLOCK_START}\nx\n${BLOCK_END}\n\`\`\`\n\nAfter.\n`
+    writeFileSync(file, documented)
+    await writeManagedBlock(file, 'generated body')
     const text = readFileSync(file, 'utf8')
-    expect(text.startsWith(documented)).toBe(true)
-    expect(text).toContain('generated body')
-    // The real block sits after the fenced example, not inside it.
-    expect(text.lastIndexOf(BLOCK_START)).toBeGreaterThan(text.indexOf('Do not edit inside it.'))
+    expect(text).toContain('# Our conventions')
+    expect(text).toContain('Before.')
+    expect(text).toContain('After.')
+  })
+})
+
+/**
+ * The shape a "keep both sides" merge resolution produces — realistic now that
+ * generated config is committed. The tool used to maintain only the last block,
+ * so the first was never updated again, `sync --check` compared the good one and
+ * reported clean, and `remove --all` left a complete set of instructions behind.
+ */
+describe('a file that ends up with two real blocks', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-dupe-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  async function duplicate(): Promise<void> {
+    writeFileSync(file, '# Mine\n\nkeep me\n')
+    await writeManagedBlock(file, 'first generation')
+    const text = readFileSync(file, 'utf8')
+    const from = text.indexOf(BLOCK_START)
+    writeFileSync(file, text + '\n' + text.slice(from))
+  }
+
+  it('collapses to one block on the next write', async () => {
+    await duplicate()
+    expect(readFileSync(file, 'utf8').split(BLOCK_START)).toHaveLength(3)
+
+    await writeManagedBlock(file, 'second generation')
+    const text = readFileSync(file, 'utf8')
+    expect(text.split(BLOCK_START), 'still doubled').toHaveLength(2)
+    expect(text).toContain('second generation')
+    expect(text).not.toContain('first generation')
+    expect(text).toContain('# Mine')
+  })
+
+  it('leaves nothing of ours behind on uninstall', async () => {
+    await duplicate()
+    await stripManagedBlockFromFile(file)
+    const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    expect(left).not.toContain(BLOCK_START)
+    expect(left).not.toContain(BLOCK_END)
+    expect(left).not.toContain('first generation')
+    expect(left).toContain('keep me')
   })
 })
 
@@ -482,12 +544,10 @@ describe('the merge is a fixed point, whatever the prose looks like', () => {
 
           const text = readFileSync(file, 'utf8')
           expect(text, 'the third write changed the file').toBe(once)
-          // A complete quoted example survives alongside our block; a marker
-          // with no partner is torn, and repair folds it into one.
-          const quotedExample = original.includes(BLOCK_START) && original.includes(BLOCK_END)
-          expect(text.split(BLOCK_START).length - 1, 'more than one block').toBe(
-            quotedExample ? 2 : 1,
-          )
+          // Exactly one, always. A file that quotes the marker has its quotation
+          // adopted rather than gaining a second block — the documented trade,
+          // because the alternative was unbounded growth.
+          expect(text.split(BLOCK_START).length - 1, 'not exactly one block').toBe(1)
           expect(hasManagedBlock(text), 'the block it just wrote is unfindable').toBe(true)
 
           // And uninstalling leaves none of our body behind.

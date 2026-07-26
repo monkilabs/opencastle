@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import type { ManagedPaths, Manifest } from './types.js'
 
@@ -91,4 +93,25 @@ export async function resolveManagedPaths(manifest: Manifest): Promise<Required<
       ...(stored?.customizable ?? []).filter(isMerged),
     ]),
   }
+}
+
+/**
+ * Files an install is not complete without.
+ *
+ * `sync` restores them, `doctor` fails without them, and `status` must not call
+ * an install "current" while they are missing — three commands that each used to
+ * decide this for themselves, which is how the front door came to report health
+ * on a project `doctor` was failing.
+ */
+export const REQUIRED_CUSTOMIZATIONS = [
+  'agents/skill-matrix.json',
+  'agents/skill-matrix.md',
+  'agents/agent-registry.md',
+] as const
+
+/** Which required files this project is missing, relative to `.opencastle/`. */
+export function missingRequiredCustomizations(projectRoot: string): string[] {
+  return REQUIRED_CUSTOMIZATIONS.filter(
+    (rel) => !existsSync(resolve(projectRoot, '.opencastle', ...rel.split('/'))),
+  )
 }

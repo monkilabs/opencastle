@@ -18,7 +18,7 @@ import {
 } from './stack-config.js'
 import { rebuildMcpConfig } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
-import { resolveManagedPaths } from './managed-paths.js'
+import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig, RepoInfo } from './types.js'
 
@@ -51,12 +51,6 @@ const UPDATE_HELP = `
  * pre-0.36 install never had, and whose absence made `doctor` fail while
  * prescribing this very command. Nothing that exists is touched.
  */
-const REQUIRED_CUSTOMIZATIONS = [
-  join('agents', 'skill-matrix.json'),
-  join('agents', 'skill-matrix.md'),
-  join('agents', 'agent-registry.md'),
-]
-
 async function restoreMissingCustomizations(
   pkgRoot: string,
   projectRoot: string,
@@ -68,7 +62,7 @@ async function restoreMissingCustomizations(
 
   const transform = getCustomizationsTransform(stack)
   const restored: string[] = []
-  for (const rel of REQUIRED_CUSTOMIZATIONS) {
+  for (const rel of REQUIRED_CUSTOMIZATIONS.map((r) => join(...r.split('/')))) {
     const from = resolve(src, rel)
     const to = resolve(projectRoot, '.opencastle', rel)
     if (!existsSync(from) || existsSync(to)) continue
@@ -178,6 +172,20 @@ export default async function update({
   })()
 
   const assumeYes = args.includes('--yes')
+
+  // Before the short-circuit, not after. `.opencastle/` is a customizable path,
+  // so a missing skill matrix is not drift and `needsSync` is false — which left
+  // `doctor` failing, prescribing this command, and this command reporting
+  // health while doing nothing. `--force` fixed it, which is a flag the
+  // diagnosis never named. The LOCAL_DIRS loop above was hoisted for exactly
+  // this reason; these belong beside it.
+  if (!dryRun) {
+    const stackNow = resolveStack({ ...manifest, ides })
+    await restoreMissingCustomizations(pkgRoot, projectRoot, stackNow, ides)
+    if ((await updateGitignore(projectRoot)) !== 'unchanged') {
+      console.log(`  ${c.green('✓')} Updated .gitignore ${c.dim('(generated config is committed)')}`)
+    }
+  }
 
   if (!needsSync && !dryRun) {
     console.log(`  ${c.green('✓')} Everything matches its sources (v${pkg.version}).`)
@@ -409,7 +417,6 @@ export default async function update({
   // So the scaffolding is built somewhere else and only the missing files are
   // copied in. Nothing that already exists is read, written, renamed, or
   // deleted.
-  await restoreMissingCustomizations(pkgRoot, projectRoot, newStack, ides)
 
   // ── Rewrite the .gitignore block ────────────────────────────────
   // Not just an init-time concern. Releases before this one ignored every
@@ -418,7 +425,6 @@ export default async function update({
   // file as "never generated" on a clean checkout — with a suggested fix that
   // cannot fix it. The population that most needs the new block is the one that
   // never runs `init` again.
-  const gitignoreResult = await updateGitignore(projectRoot)
 
   // ── Migrate legacy log files ────────────────────────────────────
   await migrateLegacyLogs(projectRoot)
@@ -470,9 +476,6 @@ export default async function update({
       )
       console.log(`     ${c.dim(' ')} ${c.dim('above the OpenCastle block that you did not write.')}\n`)
     }
-  }
-  if (gitignoreResult !== 'unchanged') {
-    console.log(`  ${c.green('✓')} Updated .gitignore ${c.dim('(generated config is committed)')}`)
   }
 
   // ── Env var notice ──────────────────────────────────────────────

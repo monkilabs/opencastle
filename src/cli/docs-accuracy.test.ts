@@ -306,6 +306,20 @@ describe('website matches the shipped CLI', () => {
       expect(b.n, `${b.rel} claims ${b.n} ${b.kind}, tree has ${expected}`).toBe(expected)
     }
     const prose = pages.flatMap((p) => [...p.text.matchAll(/ships with (\d+)\+? plugins/g)].map((m) => ({ rel: p.rel, n: Number(m[1]) })))
+    // The word-count claim drifted by 30,000 words when the content pass landed,
+    // because the guard only knew about commands and plugins.
+    const actualWords = readdirSync(orchestrator, { recursive: true, withFileTypes: true })
+      .filter((e) => e.isFile() && e.name.endsWith('.md'))
+      .reduce((n, e) => n + readFileSync(join(e.parentPath ?? orchestrator, e.name), 'utf8').split(/\s+/).filter(Boolean).length, 0)
+    for (const page of pages) {
+      for (const m of page.text.matchAll(/(\d+)K\+? words/g)) {
+        const claimed = Number(m[1]) * 1000
+        expect(
+          Math.abs(claimed - actualWords) / actualWords,
+          `${page.rel} claims ${m[0]}, tree has ~${Math.round(actualWords / 1000)}K`,
+        ).toBeLessThan(0.1)
+      }
+    }
     for (const c of prose) {
       expect(c.n, `${c.rel} claims ${c.n} plugins, tree has ${actual.plugins}`).toBe(actual.plugins)
     }

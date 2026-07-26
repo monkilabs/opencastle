@@ -11,6 +11,7 @@ import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { buildStatusReport } from './status.js'
 import { writeManifest } from './manifest.js'
+import { REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import type { Manifest } from './types.js'
 
 /** A pkgRoot with a framework source tree, used for the drift comparison. */
@@ -23,6 +24,13 @@ function makePkgRoot(): string {
 }
 
 async function installManifest(projectRoot: string, over: Partial<Manifest> = {}): Promise<void> {
+  // A complete install, which is what these cases are about. Status now reports
+  // an install missing the files the tool requires, so a fixture that skipped
+  // them was asserting against a state no real project reaches.
+  mkdirSync(join(projectRoot, '.opencastle', 'agents'), { recursive: true })
+  for (const f of REQUIRED_CUSTOMIZATIONS) {
+    writeFileSync(join(projectRoot, '.opencastle', ...f.split('/')), '{}\n')
+  }
   await writeManifest(projectRoot, {
     version: '9.9.9',
     ide: 'vscode',
@@ -179,6 +187,10 @@ describe('status and sync --check give the same answer', () => {
     const stack = { ides: ['vscode'] as const, techTools: [], teamTools: [] }
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(pkgRoot, projectRoot, stack as never, undefined)
+    mkdirSync(join(projectRoot, '.opencastle', 'agents'), { recursive: true })
+    for (const f of REQUIRED_CUSTOMIZATIONS) {
+      writeFileSync(join(projectRoot, '.opencastle', ...f.split('/')), '{}\n')
+    }
     await writeManifest(projectRoot, {
       version: '9.9.9',
       ide: 'vscode',

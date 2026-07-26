@@ -68,10 +68,10 @@ When resolving, load **all** skills listed in the slot's entries.
 
 | Slot | Description | Agents That Use It |
 |------|-------------|-------------------|
-| `framework` | SSR/SSG, routing, layouts | Developer, Writer, Developer |
+| `framework` | SSR/SSG, routing, layouts | Developer, Writer |
 | `database` | Schema, migrations, auth flow | Data Engineer, Security Expert |
-| `cms` | Document types, queries | Content Engineer, Writer, Writer |
-| `deployment` | Hosting, cron, env vars | DevOps Expert, DevOps & Release |
+| `cms` | Document types, queries | Content Engineer, Writer |
+| `deployment` | Hosting, cron, env vars | DevOps & Release, DevOps & Release |
 | `codebase-tool` | Task running, linting, testing | Architect, DevOps & Release |
 | `testing` | Unit testing frameworks | Testing Expert |
 | `e2e-testing` | Browser automation | UI/UX Expert, Testing Expert |
@@ -80,7 +80,7 @@ When resolving, load **all** skills listed in the slot's entries.
 | `design` | Design tokens, component inspection, asset export | UI/UX Expert |
 | `email` | Transactional email, templates, delivery | Developer |
 | `payments` | Payment processing, subscriptions, webhooks | Developer |
-| `observability` | Error tracking, performance monitoring, tracing | DevOps Expert, Performance Expert |
+| `observability` | Error tracking, performance monitoring, tracing | DevOps & Release, Performance Expert |
 | `notifications` | Team messaging, alerts, bot integrations | Developer |
 
 ### Example: Add a second plugin

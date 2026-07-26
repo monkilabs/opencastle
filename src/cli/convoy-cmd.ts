@@ -177,6 +177,15 @@ export default async function convoy(ctx: CliContext): Promise<void> {
     return
   }
 
+  // Words that plainly mean "tell me where things stand" are a status query, not
+  // a feature request. `convoy status` used to spend 95 seconds generating a PRD
+  // for a feature called "status" — and it is the obvious thing to type, since
+  // the bare command prints a status report.
+  if (['status', 'state', 'info', 'ls', 'list'].includes(sub)) {
+    renderStatus(readLastRun(process.cwd()), args.includes('--json'))
+    return
+  }
+
   // Anything else is a task description: plan it, then execute. `pipeline` takes
   // it as a flag value, so name it — passing it positionally made the one command
   // this tool prints under "Start one:" fail with "Unknown option".

@@ -65,6 +65,7 @@ export function computeVisibleWindow(
 let _rl: Interface | null = null;
 const _lineBuffer: string[] = [];
 let _lineResolver: ((_line: string) => void) | null = null;
+let _stdinEnded = false;
 
 function ensureRL(): void {
   if (_rl) return;
@@ -80,6 +81,7 @@ function ensureRL(): void {
   });
   _rl.on('close', () => {
     _rl = null;
+    _stdinEnded = true;
     // Resolve any pending prompt with empty string → triggers defaults
     if (_lineResolver) {
       const resolve = _lineResolver;
@@ -95,6 +97,15 @@ function ensureRL(): void {
  * multiple lines in a single chunk.
  */
 async function nextLine(prompt: string): Promise<string> {
+  // Once stdin has ended, every further question answers itself with the
+  // default. Re-creating a readline interface over an ended stream never emits
+  // `close` again, so the promise never settled: the *second* prompt in a
+  // non-interactive run hung until node gave up with "Detected unsettled
+  // top-level await" and exit 13. One prompt worked, which is why it was missed.
+  if (_stdinEnded) {
+    stdout.write(prompt + '\n');
+    return '';
+  }
   ensureRL();
   stdout.write(prompt);
   if (_lineBuffer.length > 0) {

@@ -4,6 +4,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectAssistantConfigs } from './detect.js'
+import { missingRequiredCustomizations } from './managed-paths.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeAdapter, Manifest } from './types.js'
 
@@ -160,10 +161,17 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     .filter((a) => !managedIdes.has(a.ide))
     .map((a) => a.label)
 
+  // An install missing the files the tool itself requires is incomplete, whatever
+  // the compiled targets look like.
+  const missingRequired = missingRequiredCustomizations(projectRoot)
+
   const incomplete = targets.filter((t) => !t.present)
   let nextCommand: string | undefined
   let nextReason: string | undefined
-  if (incomplete.length > 0) {
+  if (missingRequired.length > 0) {
+    nextCommand = 'opencastle sync'
+    nextReason = `${missingRequired.length} required file(s) missing from .opencastle/`
+  } else if (incomplete.length > 0) {
     nextCommand = 'opencastle sync'
     nextReason = `${incomplete.length} target${incomplete.length === 1 ? '' : 's'} missing generated files`
   } else if (stale) {

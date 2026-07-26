@@ -114,55 +114,64 @@ function markerOffsets(content: string, marker: string): number[] {
   }
 }
 
-/** The line immediately before `at`, and the one immediately after `endOfLine`. */
-function neighbourLines(content: string, at: number, after: number): [string, string] {
-  const beforeStart = content.lastIndexOf('\n', Math.max(0, at - 2))
-  const before = content.slice(beforeStart + 1, at).trim()
-  const nextBreak = content.indexOf('\n', after)
-  const rest = nextBreak === -1 ? '' : content.slice(nextBreak + 1)
-  const following = rest.slice(0, rest.indexOf('\n') === -1 ? rest.length : rest.indexOf('\n')).trim()
-  return [before, following]
+export interface BlockRegion {
+  /** Offset of BLOCK_START. */
+  start: number
+  /** Offset just past BLOCK_END, or -1 when the end marker is missing. */
+  end: number
 }
 
-const FENCE = /^(?:`{3,}|~{3,})/
-
 /**
- * Index of the marker that really delimits our block, or -1.
+ * Every complete block in the file, in order.
  *
- * Deciding this by analysing code fences was wrong twice, in both directions,
- * and the second attempt shipped. Markdown says an unclosed fence swallows
- * everything after it, so a single stray ``` in someone's prose makes the marker
- * *we just wrote* look quoted — and answering "no block here" sends the writer
- * down the append path, which is unbounded growth: 20KB, 41KB, 62KB, with the
- * drift check certifying each one and uninstall leaving it all behind.
+ * No markdown analysis. Four review rounds went into trying to decide, from the
+ * prose around a marker, whether that marker was ours or something the user had
+ * quoted — fence parity, then closed-fence pairing, then fences on the adjacent
+ * lines. Each version mistook a real block for a quotation under some input, and
+ * each mistake had the same consequence: the writer concluded there was no block,
+ * appended another, and the file grew by 20KB on every sync while the drift check
+ * called it clean and uninstall left the leftovers behind.
  *
- * So fences no longer decide whether a block exists. Structure does: a candidate
- * is a `BLOCK_START` at column 0 with a `BLOCK_END` at column 0 after it, and
- * the last candidate wins, because we always append at the end. When a marker
- * exists, one of them is always chosen — never -1.
+ * The invariant is enforced instead of inferred. A file has exactly one managed
+ * block, always: `writeManagedBlock` rewrites the last one and deletes any
+ * others, and `stripManagedBlockFromFile` removes all of them. A file that
+ * somehow acquires two — a "keep both sides" merge resolution is the realistic
+ * way, now that generated config is committed — heals on the next sync instead
+ * of carrying a stale copy forever.
  *
- * The single narrow exception is the shape that is unambiguously a quotation:
- * a fence delimiter on the line directly above the start marker and another
- * directly below the end marker. That is what `docs/quickstart.md` shows
- * readers, and it is not a shape this tool ever writes.
+ * The cost is that a file quoting the marker verbatim, with no real block, has
+ * that quotation adopted. It is bounded, visible, and recoverable; unbounded
+ * growth was none of those.
  */
-function findBlockStart(content: string): number {
+export function blockRegions(content: string): BlockRegion[] {
+  const starts = markerOffsets(content, BLOCK_START)
   const ends = markerOffsets(content, BLOCK_END)
-  let torn = -1
-  let best = -1
+  const regions: BlockRegion[] = []
 
-  for (const at of markerOffsets(content, BLOCK_START)) {
-    const end = ends.find((e) => e > at)
+  let cursor = 0
+  for (const [i, start] of starts.entries()) {
+    if (start < cursor) continue
+    const next = starts[i + 1] ?? Infinity
+    // The end marker that closes this block: the first one after it, and before
+    // the next start marker (otherwise this block has no end of its own).
+    const end = ends.find((e) => e > start && e < next)
     if (end === undefined) {
-      torn = at
-      continue
+      regions.push({ start, end: -1 })
+      cursor = start + BLOCK_START.length
+    } else {
+      regions.push({ start, end: end + BLOCK_END.length })
+      cursor = end + BLOCK_END.length
     }
-    const [above, below] = neighbourLines(content, at, end + BLOCK_END.length)
-    if (FENCE.test(above) && FENCE.test(below)) continue // a quoted example
-    best = at
   }
+  return regions
+}
 
-  return best !== -1 ? best : torn
+/** Where the block we maintain lives: the last complete one, else a torn one. */
+function findBlockStart(content: string): number {
+  const regions = blockRegions(content)
+  if (regions.length === 0) return -1
+  const complete = regions.filter((r) => r.end !== -1)
+  return (complete.length > 0 ? complete[complete.length - 1] : regions[regions.length - 1]).start
 }
 
 export function hasManagedBlock(content: string): boolean {
@@ -214,8 +223,10 @@ function outsideTheBlock(content: string): string {
   // between the user's content and BLOCK_START, and one after BLOCK_END. Take
   // back those two and nothing else, positionally, so no regex has to guess
   // which blank line belonged to whom.
-  const before = content.slice(0, start).replace(/\n$/, '')
-  const after = content.slice(end).replace(/^\n/, '')
+  // `\r?\n`, because a CRLF checkout otherwise left the carriage return behind
+  // and `remove --all` handed back a file three bytes longer than it found.
+  const before = content.slice(0, start).replace(/\r?\n$/, '')
+  const after = content.slice(end).replace(/^\r?\n/, '')
   return before + after
 }
 
@@ -230,6 +241,34 @@ export const BACKUP_SUFFIX = '.opencastle-backup'
  */
 async function backUp(path: string, contents: string): Promise<void> {
   await writeFile(`${path}${BACKUP_SUFFIX}`, contents)
+}
+
+/** Everything outside *every* managed block. */
+function stripAllBlocks(content: string): string {
+  let text = content
+  for (;;) {
+    const before = text
+    text = outsideTheBlock(text)
+    if (text === before) return text
+  }
+}
+
+/** Remove every managed block but the last, closing the gap they leave. */
+function collapseExtraBlocks(content: string): string {
+  const regions = blockRegions(content)
+  if (regions.length < 2) return content
+  const doomed = regions.slice(0, -1).filter((r) => r.end !== -1)
+  if (doomed.length === 0) return content
+
+  let out = ''
+  let cursor = 0
+  for (const r of doomed) {
+    out += content.slice(cursor, r.start)
+    cursor = r.end
+    // Take the newline the block occupied so the seam does not gain blank lines.
+    if (content[cursor] === '\n') cursor += 1
+  }
+  return out + content.slice(cursor)
 }
 
 /**
@@ -251,19 +290,26 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
   const existing = await readFile(path, 'utf8')
 
   if (hasManagedBlock(existing)) {
-    const start = findBlockStart(existing)
-    const endIdx = existing.indexOf(BLOCK_END, start)
+    // Collapse first: any block other than the one we maintain is a duplicate,
+    // and leaving it produced a file with two sets of instructions where the
+    // stale one named agents that no longer ship.
+    const collapsed = collapseExtraBlocks(existing)
+    if (collapsed !== existing) {
+      await backUp(path, existing)
+      await writeFile(path, collapsed)
+    }
+
+    const current = collapsed
+    const start = findBlockStart(current)
+    const endIdx = current.indexOf(BLOCK_END, start)
 
     // With the end marker gone we cannot tell our stale body from anything the
-    // user wrote below it. Inserting a fresh block and leaving the old one in
-    // place doubled the file permanently — two full copies of the instructions,
-    // the stale half still naming deleted agents — and `sync --check` then
-    // certified it, because it only ever compares the block. So: keep the
-    // remainder, but move it into a backup rather than leaving it to rot inline.
+    // user wrote below it. Keep the remainder, but move it into a backup rather
+    // than leaving it to rot inline.
     if (endIdx === -1) {
-      await backUp(path, existing)
-      const below = existing.slice(start + BLOCK_START.length)
-      const above = existing.slice(0, start).replace(/\n$/, '')
+      await backUp(path, current)
+      const below = current.slice(start + BLOCK_START.length)
+      const above = current.slice(0, start).replace(/\n$/, '')
       const preamble = above.length > 0 ? `${above}\n\n` : ''
       await writeFile(path, preamble + block)
       return {
@@ -273,13 +319,16 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
     }
 
     const end = endIdx + BLOCK_END.length
-    const next = existing.slice(0, start) + block.trimEnd() + existing.slice(end)
-    const hadUserContent = outsideTheBlock(existing).trim().length > 0
+    const next = current.slice(0, start) + block.trimEnd() + current.slice(end)
+    const hadUserContent = outsideTheBlock(current).trim().length > 0
     if (next === existing) {
       return { action: 'unchanged', preservedUserContent: hadUserContent }
     }
     await writeFile(path, next)
-    return { action: 'updated', preservedUserContent: hadUserContent }
+    return {
+      action: collapsed !== existing ? 'repaired' : 'updated',
+      preservedUserContent: hadUserContent,
+    }
   }
 
   if (looksLikeLegacyGenerated(existing)) {
@@ -354,7 +403,10 @@ export async function stripManagedBlockFromFile(
     await rm(path, { force: true })
     return 'deleted'
   }
-  const remainder = outsideTheBlock(existing)
+  // Every block, not just the one we maintain: a file that acquired a second one
+  // used to keep it forever, so an uninstall left a complete set of generated
+  // instructions in a file the user owns.
+  const remainder = stripAllBlocks(existing)
   if (remainder.trim().length === 0) {
     await rm(path, { force: true })
     return 'deleted'

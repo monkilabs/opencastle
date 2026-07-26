@@ -37,7 +37,7 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for extended startup checks (approv
 
 | # | Action |
 |---|--------|
-| 1 | `opencastle doctor --fix` (session guard) |
+| 1 | `opencastle doctor` (session guard) |
 | 2 | `opencastle log --type session ...` |
 | 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if work is incomplete |
 | 4 | Flag for memory merge if 5+ new lessons |

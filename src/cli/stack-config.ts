@@ -350,6 +350,13 @@ export async function updateSkillMatrixFile(
  * Pure function — sets slot entries for all plugin-mapped subcategories.
  * Supports multiple plugins per slot (e.g. multiple databases).
  */
+/** Every skill name a plugin owns — the entries the compiler is allowed to replace. */
+const PLUGIN_SKILL_NAMES = new Set(
+  Object.values(PLUGINS)
+    .map((p) => p.skillName)
+    .filter((s): s is string => Boolean(s)),
+);
+
 export function updateSkillMatrixContent(content: string, stack: StackConfig): string {
   const data: SkillMatrixData = JSON.parse(content);
   const allTools = [...stack.techTools, ...stack.teamTools] as string[];
@@ -370,7 +377,17 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
       .filter((e): e is SkillMatrixEntry => e !== null);
 
     if (data.bindings[slotName]) {
-      data.bindings[slotName].entries = entries;
+      // Merge, not replace. `skill-matrix.md` tells users "to switch tech, update
+      // only the binding entries", and this ran on every sync, so the edit the
+      // documentation asks for was erased by the next recompile — in the
+      // directory the drift checker calls theirs.
+      //
+      // Ownership is decidable without asking: an entry is ours exactly when its
+      // skill is one a plugin ships. Anything else the user wrote, and it stays.
+      const theirs = (data.bindings[slotName].entries ?? []).filter(
+        (e) => !PLUGIN_SKILL_NAMES.has(e.skill),
+      );
+      data.bindings[slotName].entries = [...entries, ...theirs];
     }
   }
 
