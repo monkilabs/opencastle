@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { unlink, readFile } from 'node:fs/promises'
+import { unlink, readFile, rename } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readManifest } from './manifest.js'
 import { removeDirIfExists } from './copy.js'
@@ -166,7 +166,9 @@ export default async function remove({ args }: CliContext): Promise<void> {
     // Named plainly: this is the one path in the list that holds writing of the
     // user's own, and the command spends the rest of its effort preserving
     // exactly that kind of content elsewhere.
-    console.log(`    ${c.red('-')} ${c.dim('.opencastle/')} ${c.yellow('including any conventions and lessons you edited')}`)
+    console.log(
+      `    ${c.yellow('→')} ${c.dim('.opencastle/')} ${c.yellow('moved to .opencastle.removed/ — your conventions and lessons')}`,
+    )
     if (hasLegacy) console.log(`    ${c.red('-')} ${c.dim('.opencastle.json')}`)
 
     // Co-owned files are only *sometimes* kept: one holding nothing but our
@@ -258,7 +260,19 @@ export default async function remove({ args }: CliContext): Promise<void> {
     else if (outcome === 'unreadable') unreadable.push(getMcpConfigRelPath(ide))
   }
 
-  await removeDirIfExists(resolve(projectRoot, '.opencastle'))
+  // `.opencastle/` holds prose the user wrote — conventions, decisions, lessons —
+  // and this same command writes a backup for a root file it merely replaces.
+  // `--yes` skips the confirmation, so "previewed and confirmed" is not a
+  // standard that actually holds here: `remove --all --yes` is what the help
+  // text and CI both use. Renamed rather than deleted, so it is one `mv` back.
+  const opencastleDir = resolve(projectRoot, '.opencastle')
+  let keptDir: string | undefined
+  if (existsSync(opencastleDir)) {
+    const parked = resolve(projectRoot, '.opencastle.removed')
+    await removeDirIfExists(parked)
+    await rename(opencastleDir, parked)
+    keptDir = '.opencastle.removed'
+  }
   removed++
 
   if (hasLegacy) {
@@ -275,6 +289,11 @@ export default async function remove({ args }: CliContext): Promise<void> {
   )
   for (const p of unreadable) {
     console.log(`  ${c.yellow('!')} Left ${p} alone — it is not valid JSON.`)
+  }
+  if (keptDir) {
+    console.log(
+      `  ${c.dim('Your conventions and lessons are in')} ${c.bold(keptDir)}${c.dim(' — delete it when you are sure.')}`,
+    )
   }
   console.log(`  You can uninstall: ${c.bold('npm uninstall opencastle')}\n`)
 

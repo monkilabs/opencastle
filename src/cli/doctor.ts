@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { readManifest } from './manifest.js';
-import { getRequiredMcpEnvVars, resolveStack } from './stack-config.js';
+import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
 import { IDE_ADAPTERS } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
@@ -87,7 +87,10 @@ async function checkLogs(projectRoot: string): Promise<CheckResult> {
   return { ok: true, label: 'Observability logs', detail: 'All log files present' };
 }
 
-function checkMcpEnvVars(manifest: Manifest | null): CheckResult {
+async function checkMcpEnvVars(
+  projectRoot: string,
+  manifest: Manifest | null,
+): Promise<CheckResult> {
   if (!manifest?.stack) {
     return { ok: true, label: 'MCP environment variables', detail: 'No stack config (skipped)' };
   }
@@ -98,7 +101,8 @@ function checkMcpEnvVars(manifest: Manifest | null): CheckResult {
   if (required.length === 0) {
     return { ok: true, label: 'MCP environment variables', detail: 'No env vars required' };
   }
-  const missing = required.filter((r) => !process.env[r.envVar]);
+  const envFile = await readFile(resolve(projectRoot, '.env'), 'utf8').catch(() => '');
+  const missing = required.filter((r) => !isEnvVarSatisfied(r.envVar, envFile));
   if (missing.length > 0) {
     const names = missing.map((m) => m.envVar).join(', ');
     return { ok: false, label: 'MCP environment variables', detail: `Missing: ${names}` };
@@ -269,7 +273,7 @@ export default async function doctor({ args }: CliContext): Promise<void> {
     await checkCustomizations(projectRoot),
     await checkSkillMatrix(projectRoot),
     await checkLogs(projectRoot),
-    checkMcpEnvVars(manifest),
+    await checkMcpEnvVars(projectRoot, manifest),
     await checkDotEnv(projectRoot, manifest),
     await checkGitignoredOutput(projectRoot, manifest),
     checkRootFileClassification(manifest),

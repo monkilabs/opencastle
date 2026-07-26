@@ -103,26 +103,85 @@ export function stripManagedBlock(content: string): string {
 }
 
 /**
- * Index of the real start marker, or -1.
+ * Byte ranges covered by a *closed* fenced code block.
  *
- * A plain `includes` matched the marker wherever it appeared, including inside a
- * fenced code block — and `docs/quickstart.md` shows readers that exact string,
- * so a CLAUDE.md documenting the convention had the generated block written
- * inside its own code fence.
+ * Only closed fences count. An opening fence with no partner is far more likely
+ * to be prose the user never terminated than a region that swallows the rest of
+ * the file — and treating it as a region is what made the marker we wrote look
+ * quoted, so every sync appended another block. Matching pairs by their fence
+ * character and length, the way CommonMark does, also handles a four-backtick
+ * fence wrapping three-backtick ones.
+ */
+function closedFenceRanges(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = []
+  let open: { at: number; char: string; len: number } | null = null
+  let offset = 0
+
+  for (const line of content.split('\n')) {
+    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    if (fence) {
+      const char = fence[1][0]
+      const len = fence[1].length
+      if (!open) {
+        open = { at: offset, char, len }
+      } else if (char === open.char && len >= open.len) {
+        ranges.push([open.at, offset + line.length])
+        open = null
+      }
+    }
+    offset += line.length + 1
+  }
+  // `open` left dangling is an unclosed fence: deliberately not a range.
+  return ranges
+}
+
+/**
+ * Index of the marker that really delimits our block, or -1.
+ *
+ * Two rules, both learned the hard way. Occurrences inside a closed fence are
+ * quoted prose — `docs/quickstart.md` shows readers this exact string, so a
+ * CLAUDE.md documenting the convention must not have a block written into its
+ * own example. And when several qualify, the last wins: we always append at the
+ * end, so the newest occurrence is ours, and preferring it means a file that
+ * both documents the marker and carries a real block resolves to the real one.
+ *
+ * Never returning -1 when an unfenced marker exists is the load-bearing part.
+ * Answering "no block here" to a file that has one sends `writeManagedBlock`
+ * down the append path, and appending to a file that already has a block is
+ * unbounded growth.
  */
 function findBlockStart(content: string): number {
+  const fenced = closedFenceRanges(content)
+  const isQuoted = (at: number): boolean => fenced.some(([s, e]) => at >= s && at < e)
+
+  let best = -1
   let from = 0
   for (;;) {
     const at = content.indexOf(BLOCK_START, from)
-    if (at === -1) return -1
-    const fencesBefore = (content.slice(0, at).match(/^\s*```/gm) ?? []).length
-    if (fencesBefore % 2 === 0) return at
+    if (at === -1) return best
+    if (!isQuoted(at)) best = at
     from = at + BLOCK_START.length
   }
 }
 
 export function hasManagedBlock(content: string): boolean {
   return findBlockStart(content) !== -1
+}
+
+/**
+ * The managed block's body, or null when the file has none.
+ *
+ * Exported because the drift checker needs exactly this and used to compute it
+ * with a plain `indexOf`. Two readers of one format is the mistake this codebase
+ * keeps making: the writer maintained the real block while the checker compared
+ * a quoted example, so the check reported drift that no sync could clear.
+ */
+export function extractManagedBlock(content: string): string | null {
+  const start = findBlockStart(content)
+  if (start === -1) return null
+  const end = content.indexOf(BLOCK_END, start)
+  if (end === -1) return null
+  return content.slice(start + BLOCK_START.length, end).trim()
 }
 
 function wrap(body: string): string {

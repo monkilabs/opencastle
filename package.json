@@ -35,7 +35,7 @@
   "author": "Filip Mares",
   "scripts": {
     "build": "npm run cli:build && npm run dashboard:etl:empty && npm run dashboard:build",
-    "cli:build": "tsc",
+    "cli:build": "rm -rf dist && tsc",
     "test": "vitest run",
     "dashboard:generate-demo-db": "tsx src/dashboard/scripts/generate-demo-db.ts --out .opencastle/convoy-demo.db --events-out .opencastle/convoy-demo.events.ndjson",
     "dashboard:etl": "tsx src/dashboard/scripts/etl.ts --db .opencastle/convoy-demo.db --out src/dashboard/public/data --events .opencastle/convoy-demo.events.ndjson",

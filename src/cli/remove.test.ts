@@ -474,3 +474,53 @@ describe('the preview matches what removal actually does', () => {
     expect(promised).not.toContain('.gitignore')
   })
 })
+
+/**
+ * `--all --yes` is the form the help text and CI both use, so "previewed and
+ * confirmed" is not a standard that holds for it — the confirmation is exactly
+ * what `--yes` skips. `.opencastle/` holds prose the user wrote, and the same
+ * command writes a backup for a root file it merely replaces.
+ */
+describe('uninstalling does not destroy what the user wrote in .opencastle/', () => {
+  let dir: string
+  let cwdSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'oc-park-'))
+    cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(dir)
+    vi.mocked(confirm).mockResolvedValue(true)
+  })
+
+  afterEach(async () => {
+    cwdSpy.mockRestore()
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('parks the directory instead of deleting it', async () => {
+    await writeManifestFile(dir, {
+      managedPaths: { framework: [], customizable: [], merged: [] },
+    })
+    await mkdir(join(dir, '.opencastle', 'project'), { recursive: true })
+    await writeFile(join(dir, '.opencastle', 'project', 'decisions.md'), 'NEVER_FORCE_PUSH\n')
+
+    await remove({ pkgRoot: dir, args: ['--all', '--yes'] })
+
+    expect(existsSync(join(dir, '.opencastle')), 'the install is still here').toBe(false)
+    const parked = join(dir, '.opencastle.removed', 'project', 'decisions.md')
+    expect(existsSync(parked), 'nothing parked').toBe(true)
+    expect(await readFileText(parked, 'utf8')).toContain('NEVER_FORCE_PUSH')
+  })
+
+  it('replaces an older parked copy rather than failing', async () => {
+    await writeManifestFile(dir, { managedPaths: { framework: [], customizable: [], merged: [] } })
+    await mkdir(join(dir, '.opencastle.removed'), { recursive: true })
+    await writeFile(join(dir, '.opencastle.removed', 'stale.md'), 'from last time\n')
+    await mkdir(join(dir, '.opencastle'), { recursive: true })
+    await writeFile(join(dir, '.opencastle', 'fresh.md'), 'this time\n')
+
+    await remove({ pkgRoot: dir, args: ['--all', '--yes'] })
+
+    expect(existsSync(join(dir, '.opencastle.removed', 'fresh.md'))).toBe(true)
+    expect(existsSync(join(dir, '.opencastle.removed', 'stale.md'))).toBe(false)
+  })
+})

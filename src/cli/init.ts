@@ -338,7 +338,9 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // If all files were skipped (orphaned install — no manifest but files exist)
   if (totalCreated === 0 && totalSkipped > 0 && !isReinit) {
     console.log(`  ${c.yellow('⚠')}  Found ${totalSkipped} existing files from a previous installation.`)
-    const overwrite = await confirm('Overwrite existing files?', true)
+    // `--yes` is documented as "accept the detected setup without asking", and
+    // this was the one question it did not cover. On a TTY it still asked.
+    const overwrite = assumeYes || (await confirm('Overwrite existing files?', true))
     if (overwrite) {
       // Delete framework paths and re-run install
       for (const ide of ides) {

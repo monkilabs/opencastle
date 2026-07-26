@@ -16,6 +16,7 @@ import {
   stripManagedBlock,
   stripManagedBlockFromFile,
   hasManagedBlock,
+  extractManagedBlock,
   BLOCK_START,
   BLOCK_END,
 } from './managed-block.js'
@@ -423,5 +424,106 @@ describe('a marker quoted inside a code fence is not a block', () => {
     expect(text).toContain('generated body')
     // The real block sits after the fenced example, not inside it.
     expect(text.lastIndexOf(BLOCK_START)).toBeGreaterThan(text.indexOf('Do not edit inside it.'))
+  })
+})
+
+/**
+ * The fixture table that matters, run through the merge twice.
+ *
+ * Every earlier fence test stopped after one write, which is exactly why a
+ * heuristic that duplicated on the *second* call shipped. One unclosed fence in
+ * the user's prose made the marker we had just written look quoted, so every
+ * sync appended another 20KB block, `sync --check` certified it — it compared
+ * only the first copy — and `remove --all` left all of it behind. Uninstall did
+ * not uninstall.
+ */
+describe('the merge is a fixed point, whatever the prose looks like', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-fixed-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const prose: Array<[string, string]> = [
+    ['no fences', '# House rules\n\nShip fast.\n'],
+    ['an unclosed fence', '# House rules\n\n```sh\nmake ship\n\n(that is all)\n'],
+    ['a closed fence', '# House rules\n\n```sh\nmake ship\n```\n\nDone.\n'],
+    ['two closed fences', '# A\n\n```sh\none\n```\n\n```sh\ntwo\n```\n'],
+    ['a tilde fence', '# A\n\n~~~sh\nmake ship\n~~~\n'],
+    ['an indented fence', '# A\n\n  ```sh\n  make ship\n  ```\n'],
+    ['four backticks wrapping three', '# A\n\n````md\n```sh\nnested\n```\n````\n'],
+    ['the marker quoted in a fence', `# A\n\n\`\`\`md\n${BLOCK_START}\nbody\n${BLOCK_END}\n\`\`\`\n`],
+    ['the marker quoted, fence unclosed', `# A\n\n\`\`\`md\n${BLOCK_START}\nbody\n`],
+    ['CRLF with a fence', '# A\r\n\r\n```sh\r\nmake ship\r\n```\r\n'],
+  ]
+
+  for (const [name, original] of prose) {
+    it(`writes exactly one block into a file with ${name}`, async () => {
+      writeFileSync(file, original)
+
+      await writeManagedBlock(file, 'generated body')
+      const afterFirst = readFileSync(file, 'utf8')
+
+      const second = await writeManagedBlock(file, 'generated body')
+      const afterSecond = readFileSync(file, 'utf8')
+
+      // Byte-identical on the second pass: no growth, ever.
+      expect(afterSecond, 'the second write changed the file').toBe(afterFirst)
+      expect(second.action).toBe('unchanged')
+
+      // And the user's own text is still all there, in front.
+      const quotedMarker = original.includes(BLOCK_START)
+      if (!quotedMarker) {
+        expect(afterSecond.startsWith(original.endsWith('\n') ? original : `${original}\n`)).toBe(true)
+      }
+    })
+
+    it(`removes cleanly from a file with ${name}`, async () => {
+      writeFileSync(file, original)
+      await writeManagedBlock(file, 'generated body')
+      await stripManagedBlockFromFile(file)
+
+      // Nothing of ours may survive an uninstall.
+      const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+      expect(left).not.toContain('generated body')
+      if (!original.includes(BLOCK_START)) {
+        expect(left).toBe(original.endsWith('\n') || original === '' ? original : `${original}\n`)
+      }
+    })
+  }
+})
+
+/**
+ * Two readers of one format is the mistake this codebase keeps making. The
+ * writer's idea of "where the block is" and the checker's must never differ.
+ */
+describe('hasManagedBlock and extractManagedBlock agree', () => {
+  const samples = [
+    '# Nothing here\n',
+    `${BLOCK_START}\nbody\n${BLOCK_END}\n`,
+    `# A\n\n\`\`\`md\n${BLOCK_START}\nquoted\n${BLOCK_END}\n\`\`\`\n`,
+    `# A\n\n\`\`\`md\n${BLOCK_START}\nquoted\n${BLOCK_END}\n\`\`\`\n\n${BLOCK_START}\nreal\n${BLOCK_END}\n`,
+    `# A\n\n\`\`\`sh\nunclosed\n\n${BLOCK_START}\nreal\n${BLOCK_END}\n`,
+    `${BLOCK_START}\ntorn, no end marker\n`,
+  ]
+
+  for (const [i, sample] of samples.entries()) {
+    it(`sample ${i} gets one answer, not two`, () => {
+      const has = hasManagedBlock(sample)
+      const extracted = extractManagedBlock(sample)
+      // The one legitimate difference: a block whose end marker was lost is
+      // present but not extractable. Everything else must line up.
+      const torn = has && !sample.includes(BLOCK_END)
+      if (!torn) expect(extracted !== null).toBe(has)
+    })
+  }
+
+  it('prefers the real block over one quoted above it', () => {
+    const text = `# A\n\n\`\`\`md\n${BLOCK_START}\nQUOTED\n${BLOCK_END}\n\`\`\`\n\n${BLOCK_START}\nREAL\n${BLOCK_END}\n`
+    expect(extractManagedBlock(text)).toBe('REAL')
   })
 })

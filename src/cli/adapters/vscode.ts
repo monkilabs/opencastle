@@ -36,6 +36,34 @@ const FRAMEWORK_DIRS = [
 /** Directories scaffolded once and never overwritten. */
 const CUSTOMIZABLE_DIRS: string[] = []
 
+/**
+ * What to copy out of a framework source directory.
+ *
+ * Shared by `install` and `update`, which each had their own copy of this and
+ * promptly disagreed: the workflow README was filtered on install and restored
+ * on update, so a project drifted the moment it synced.
+ */
+function copyRulesFor(
+  dir: string,
+  excludedSkills: Set<string>,
+  excludedAgents: Set<string>,
+  stack?: StackConfig,
+): { filter?: (_name: string, _srcPath: string) => boolean; transform?: CopyDirOptions['transform'] } {
+  if (dir === 'skills') return { filter: (name) => !excludedSkills.has(name) }
+  if (dir === 'agents') {
+    return {
+      filter: (name) => !excludedAgents.has(name),
+      transform: stack ? getAgentTransform(stack) : undefined,
+    }
+  }
+  if (dir === 'agent-workflows') {
+    // The directory's own README documents the templates for contributors; it is
+    // not one of them, and no other adapter installs it.
+    return { filter: (name) => name !== 'README.md' }
+  }
+  return {}
+}
+
 export async function install(
   pkgRoot: string,
   projectRoot: string,
@@ -76,15 +104,7 @@ export async function install(
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    // Build filter based on directory type
-    let filter: ((_name: string, _srcPath: string) => boolean) | undefined
-    let transform: CopyDirOptions['transform'] | undefined
-    if (dir === 'skills') {
-      filter = (name) => !excludedSkills.has(name)
-    } else if (dir === 'agents') {
-      filter = (name) => !excludedAgents.has(name)
-      transform = stack ? getAgentTransform(stack) : undefined
-    }
+    const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
 
     const sub = await copyDir(srcDir, destDir, { filter, transform })
     results.copied.push(...sub.copied)
@@ -159,14 +179,7 @@ export async function update(
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    let filter: ((_name: string, _srcPath: string) => boolean) | undefined
-    let transform: CopyDirOptions['transform'] | undefined
-    if (dir === 'skills') {
-      filter = (name) => !excludedSkills.has(name)
-    } else if (dir === 'agents') {
-      filter = (name) => !excludedAgents.has(name)
-      transform = stack ? getAgentTransform(stack) : undefined
-    }
+    const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
 
     const sub = await copyDir(srcDir, destDir, { overwrite: true, filter, transform })
     // All re-installed framework files count as "updated" (copied), not "created"

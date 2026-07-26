@@ -5,7 +5,7 @@ import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { resolveStack } from './stack-config.js'
-import { BLOCK_START, BLOCK_END, hasManagedBlock } from './managed-block.js'
+import { hasManagedBlock, extractManagedBlock } from './managed-block.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeChoice, StackConfig } from './types.js'
 
@@ -89,15 +89,6 @@ function sameContent(freshPath: string, actualPath: string): boolean {
  */
 function normaliseEndings(text: string): string {
   return text.replace(/\r\n/g, '\n')
-}
-
-/** The managed block's contents, or null when the file has no block. */
-function extractManagedBlock(content: string): string | null {
-  const start = content.indexOf(BLOCK_START)
-  if (start === -1) return null
-  const end = content.indexOf(BLOCK_END, start)
-  if (end === -1) return null
-  return content.slice(start + BLOCK_START.length, end).trim()
 }
 
 /**

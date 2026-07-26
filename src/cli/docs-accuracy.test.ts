@@ -27,7 +27,12 @@ const actual = {
   agents: countDirEntries(join(orchestrator, 'agents'), (n) => n.endsWith('.agent.md')),
   skills: countDirEntries(join(orchestrator, 'skills'), () => true),
   plugins: countDirEntries(join(orchestrator, 'plugins'), (n) => !n.endsWith('.ts')),
-  workflows: countDirEntries(join(orchestrator, 'agent-workflows'), (n) => n.endsWith('.md')),
+  // README.md documents the directory for contributors; it is not a template,
+  // and no adapter installs it.
+  workflows: countDirEntries(
+    join(orchestrator, 'agent-workflows'),
+    (n) => n.endsWith('.md') && n !== 'README.md',
+  ),
 }
 
 /** Commands the dispatcher actually exposes in help. */
@@ -276,6 +281,34 @@ describe('website matches the shipped CLI', () => {
       }
     }
     expect(offenders).toEqual([])
+  })
+
+  it('names no removed command in prose, not just in invocations', () => {
+    // The CLI reference page described "every opencastle command — init, update,
+    // eject, destroy, run, plan, dashboard, and doctor", five of which exit 1.
+    // The invocation check walks past a comma-separated list of bare names.
+    const offenders: string[] = []
+    for (const page of pages) {
+      for (const m of page.text.matchAll(/every opencastle command[^.]*\./g)) {
+        for (const cmd of replacedCommands()) {
+          if (new RegExp(`\\b${cmd}\\b`).test(m[0])) offenders.push(`${page.rel}: ${cmd}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('states plugin and command counts that match the tree', () => {
+    const commands = visibleCommands().length
+    const badges = pages.flatMap((p) => [...p.text.matchAll(/badge: '(\d+) (commands|plugins)'/g)].map((m) => ({ rel: p.rel, n: Number(m[1]), kind: m[2] })))
+    for (const b of badges) {
+      const expected = b.kind === 'commands' ? commands : actual.plugins
+      expect(b.n, `${b.rel} claims ${b.n} ${b.kind}, tree has ${expected}`).toBe(expected)
+    }
+    const prose = pages.flatMap((p) => [...p.text.matchAll(/ships with (\d+)\+? plugins/g)].map((m) => ({ rel: p.rel, n: Number(m[1]) })))
+    for (const c of prose) {
+      expect(c.n, `${c.rel} claims ${c.n} plugins, tree has ${actual.plugins}`).toBe(actual.plugins)
+    }
   })
 
   it('names no retired agent', () => {

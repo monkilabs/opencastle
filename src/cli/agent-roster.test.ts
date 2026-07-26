@@ -152,3 +152,58 @@ describe('references resolve to real agents', () => {
     expect(offenders).toEqual([])
   })
 })
+
+/**
+ * The dashboard's seed data ships in the package and is served verbatim by
+ * `convoy dashboard --seed`. It named eight agents that had been retired for a
+ * release and pinned concrete model ids that the rest of the project forbids
+ * everywhere else — invisible to every guard, because nothing scanned it.
+ */
+describe('the dashboard seed data matches the shipped roster', () => {
+  const seedDir = resolve(import.meta.dirname, '..', 'dashboard', 'seed-data')
+
+  function seedRecords(): Array<Record<string, unknown>> {
+    if (!existsSync(seedDir)) return []
+    return readdirSync(seedDir)
+      .filter((n) => n.endsWith('.ndjson'))
+      .flatMap((n) =>
+        readFileSync(join(seedDir, n), 'utf8')
+          .split('\n')
+          .filter((l) => l.trim())
+          .map((l) => JSON.parse(l) as Record<string, unknown>),
+      )
+  }
+
+  const AGENT_FIELDS = ['agent', 'from_agent', 'to_agent', 'reviewer']
+
+  it('has records to check', () => {
+    expect(seedRecords().length).toBeGreaterThan(0)
+  })
+
+  it('names only agents that ship', () => {
+    const shipped = new Set(
+      readdirSync(agentsDir)
+        .filter((n) => n.endsWith('.agent.md'))
+        .map((n) => /^name:\s*['"](.+?)['"]/m.exec(readFileSync(join(agentsDir, n), 'utf8'))?.[1])
+        .filter((n): n is string => Boolean(n)),
+    )
+    const offenders = new Set<string>()
+    for (const rec of seedRecords()) {
+      for (const f of AGENT_FIELDS) {
+        const v = rec[f]
+        if (typeof v === 'string' && !shipped.has(v)) offenders.add(`${f}=${v}`)
+      }
+    }
+    expect([...offenders]).toEqual([])
+  })
+
+  it('pins no model name', () => {
+    const pattern = /\b(claude[- ](?:opus|sonnet|haiku)[- ]?[\d.]+|gpt-[\d.]+|gemini[- ][\d.]+)/i
+    const offenders = new Set<string>()
+    for (const rec of seedRecords()) {
+      const model = rec.model
+      if (typeof model === 'string' && pattern.test(model)) offenders.add(model)
+    }
+    expect([...offenders]).toEqual([])
+  })
+})

@@ -84,6 +84,19 @@ const MCP_ENV_REQUIREMENTS: McpEnvRequirement[] = Object.values(PLUGINS)
  * and running `sync` again changed nothing. Absorbing states like that are worth
  * more than the one line it takes to avoid them.
  */
+/**
+ * Is this variable set, from the shell or from the project's `.env`?
+ *
+ * `sync` counted a value in `.env` as satisfied while `doctor` looked only at
+ * `process.env`, so a correctly configured project failed the check and was told
+ * to run `sync` — a command that cannot set an environment variable. A diagnosis
+ * that prescribes something incapable of fixing it is worse than no diagnosis.
+ */
+export function isEnvVarSatisfied(envVar: string, envFileContents: string): boolean {
+  if (process.env[envVar]) return true
+  return new RegExp(`^\\s*(?:export\\s+)?${envVar}\\s*=\\s*\\S`, 'm').test(envFileContents)
+}
+
 export function resolveStack(manifest: {
   ide?: string
   ides?: string[]

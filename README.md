@@ -145,7 +145,7 @@ Reviewer, and others), each with a defined scope and output contract.
 they don't sit in the context window. Selected during init from what your
 repository actually uses.
 
-**Workflows** — 10 templates for recurring work: features, bug fixes, data
+**Workflows** — 9 templates for recurring work: features, bug fixes, data
 pipelines, security audits, migrations.
 
 **Quality gates** — a review pass after each step, panel review for high-stakes

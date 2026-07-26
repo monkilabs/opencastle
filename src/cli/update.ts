@@ -1,4 +1,4 @@
-import { resolve, relative } from 'node:path'
+import { resolve, relative, sep } from 'node:path'
 import { existsSync } from 'node:fs'
 import { readFile, appendFile, rename, mkdir, writeFile, unlink, copyFile, readdir, rm } from 'node:fs/promises'
 import { readManifest, writeManifest } from './manifest.js'
@@ -7,11 +7,13 @@ import { isLegacyStack, migrateStackConfig, IDE_LABELS } from './types.js'
 import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js'
 import { copyDir, getOrchestratorRoot } from './copy.js'
+import { bootstrapCustomizations } from './bootstrap.js'
 import {
   getRequiredMcpEnvVars,
   updateSkillMatrixFile,
   resolveStack,
   getCustomizationsTransform,
+  isEnvVarSatisfied,
 } from './stack-config.js'
 import { rebuildMcpConfig } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
@@ -349,9 +351,27 @@ export default async function update({
     const restored = await copyDir(custSrcDir, resolve(projectRoot, '.opencastle'), {
       transform: getCustomizationsTransform(newStack),
     })
-    if (restored.created.length > 0) {
-      console.log(`  ${c.green('+')} Restored ${restored.created.length} missing customization file(s)`)
+
+    // Then the same bootstrap `init` runs, which prunes the templates this
+    // project has no use for. Restoring without pruning meant `sync` handed back
+    // the seven templates `init` had just deleted — and `.opencastle/` is the
+    // directory the drift checker tells people is theirs, so a deletion they
+    // made there must not be silently undone. The populate steps are guarded on
+    // their own placeholder text, so a file the user has edited is left alone.
+    // The same repo info `init` bootstraps with — the stack merged in. Passing
+    // the raw detection instead made `sync` prune a template `init` had kept.
+    const bootstrapped = await bootstrapCustomizations(
+      projectRoot,
+      mergeStackIntoRepoInfo(repoInfo, newStack),
+      newStack,
+    )
+    const netNew = restored.created.filter(
+      (p) => !bootstrapped.removed.some((r) => p.endsWith(r.split('/').join(sep))),
+    )
+    if (netNew.length > 0) {
+      console.log(`  ${c.green('+')} Restored ${netNew.length} missing customization file(s)`)
     }
+
     // Newly scaffolded matrices still need the stack applied to them.
     for (const ide of ides) {
       await updateSkillMatrixFile(projectRoot, ide, newStack)
@@ -429,9 +449,7 @@ export default async function update({
   if (newStack) {
     const envVars = getRequiredMcpEnvVars(newStack, repoInfo)
     const envFile = await readFile(resolve(projectRoot, '.env'), 'utf8').catch(() => '')
-    const missing = envVars.filter(
-      ({ envVar }) => !process.env[envVar] && !new RegExp(`^${envVar}=.+`, 'm').test(envFile),
-    )
+    const missing = envVars.filter(({ envVar }) => !isEnvVarSatisfied(envVar, envFile))
     if (missing.length > 0) {
       console.log(`\n  ${c.yellow('⚠')}  Environment variables still needed:\n`)
       for (const { envVar, hint } of missing) {
