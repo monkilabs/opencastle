@@ -458,7 +458,7 @@ export default async function update({
       `  ${c.green('+')} Created ${c.bold(String(totalCreated))} new files`
     )
   }
-  if (newStack) {
+  if (newStack && unreadable.length === 0) {
     console.log(`  ${c.green('✓')} Updated skill matrix`)
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
   }
@@ -483,7 +483,7 @@ export default async function update({
     // so the older release's output is stranded above our block where it still
     // names agents and skills that no longer exist. The assistant reads both
     // halves, so silence here is worse than the mess.
-    console.log(`\n  ${c.yellow('⚠')}  ${staleRoots.length} file(s) still contain output from an earlier version:\n`)
+    console.log(`\n  ${c.yellow('⚠')}  ${new Set(staleRoots).size} file(s) still contain output from an earlier version:\n`)
     for (const p of new Set(staleRoots)) {
       console.log(`     ${c.bold(relative(projectRoot, p))}`)
       console.log(

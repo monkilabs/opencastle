@@ -78,6 +78,8 @@ function sameContent(freshPath: string, actualPath: string): boolean {
     // the command, not just enforced inside the writer.
     if (countManagedBlocks(actualText) !== countManagedBlocks(freshText)) return false
 
+
+
     const freshBlock = extractManagedBlock(freshText)
     const actualBlock = extractManagedBlock(actualText)
     return freshBlock !== null && freshBlock === actualBlock

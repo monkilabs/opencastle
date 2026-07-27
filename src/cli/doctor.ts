@@ -5,6 +5,7 @@ import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
 import { IDE_ADAPTERS } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
+import { orphanMarkers } from './managed-block.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
 
@@ -69,7 +70,14 @@ async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
     }
     return { ok: true, label: 'Skill matrix', detail: 'All capability slots populated' };
   } catch {
-    return { ok: false, label: 'Skill matrix', detail: 'Invalid JSON in skill-matrix.json' };
+    return {
+      ok: false,
+      label: 'Skill matrix',
+      detail: 'Invalid JSON in skill-matrix.json',
+      // Not `sync`: it cannot parse the file either, so it would report success
+      // and leave this failing. A merge conflict needs a person.
+      fix: 'fix the JSON by hand — a merge conflict, most likely — then run "npx opencastle sync"',
+    };
   }
 }
 
@@ -269,6 +277,44 @@ async function gitIgnoredPaths(projectRoot: string, paths: string[]): Promise<st
 }
 
 /**
+ * A root file carrying a start marker with no end marker.
+ *
+ * The tool will not guess what such a marker delimits — every version that tried
+ * destroyed something — so the file needs a person. Naming it here is the whole
+ * remedy: `sync` cannot fix it and should not pretend to.
+ */
+async function checkTornBlocks(
+  projectRoot: string,
+  manifest: Manifest | null,
+): Promise<CheckResult> {
+  const label = 'Root files are intact'
+  if (!manifest) return { label, ok: true, warning: false }
+
+  const managed = await resolveManagedPaths(manifest)
+  const torn: string[] = []
+  for (const rel of managed.merged) {
+    const abs = resolve(projectRoot, rel)
+    if (!existsSync(abs)) continue
+    if (orphanMarkers(await readFile(abs, 'utf8')).length > 0) torn.push(rel)
+  }
+
+  if (torn.length === 0) return { label, ok: true, warning: false }
+  // A warning, not a failure. The same shape is a torn block of ours *or* a
+  // marker the user quoted in their own documentation, and we cannot tell —
+  // failing would hand the second user a red check they can never clear, which
+  // is the unclearable-CI defect from an earlier round wearing a new hat.
+  return {
+    label,
+    ok: true,
+    warning: true,
+    detail: `${torn.join(', ')} has an OpenCastle start marker with no end marker`,
+    fix:
+      'text below that marker may be stale generated output — delete it, or restore the' +
+      ' end marker, then run "npx opencastle sync"',
+  }
+}
+
+/**
  * Does the manifest still file a co-owned root file as wholly generated?
  *
  * `framework` licenses deletion. A stale record saying CLAUDE.md belongs there
@@ -293,6 +339,32 @@ function checkRootFileClassification(manifest: Manifest | null): CheckResult {
   };
 }
 
+/**
+ * The checks that do not depend on a particular target.
+ *
+ * Exported because `status` needs the same verdict. It used to derive health
+ * from a subset of these facts and print "Everything is current" on projects
+ * `doctor` was exiting 1 over — a gitignored output tree, an unparseable skill
+ * matrix. One fact, two interpreters, which is the defect this codebase keeps
+ * producing; the cure is a call, not a second implementation.
+ */
+export async function runSharedChecks(
+  projectRoot: string,
+  manifest: Manifest | null,
+): Promise<CheckResult[]> {
+  return [
+    checkManifest(manifest),
+    await checkCustomizations(projectRoot),
+    await checkSkillMatrix(projectRoot),
+    await checkLogs(projectRoot),
+    await checkMcpEnvVars(projectRoot, manifest),
+    await checkDotEnv(projectRoot, manifest),
+    await checkGitignoredOutput(projectRoot, manifest),
+    await checkTornBlocks(projectRoot, manifest),
+    checkRootFileClassification(manifest),
+  ];
+}
+
 export default async function doctor({ args }: CliContext): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(DOCTOR_HELP)
@@ -307,16 +379,7 @@ export default async function doctor({ args }: CliContext): Promise<void> {
   const manifest = await readManifest(projectRoot);
 
   // Shared checks (not IDE-specific)
-  const sharedResults: CheckResult[] = [
-    checkManifest(manifest),
-    await checkCustomizations(projectRoot),
-    await checkSkillMatrix(projectRoot),
-    await checkLogs(projectRoot),
-    await checkMcpEnvVars(projectRoot, manifest),
-    await checkDotEnv(projectRoot, manifest),
-    await checkGitignoredOutput(projectRoot, manifest),
-    checkRootFileClassification(manifest),
-  ];
+  const sharedResults = await runSharedChecks(projectRoot, manifest);
 
   // IDE-specific checks derived from each adapter
   type IdeGroup = { label: string; results: CheckResult[] };

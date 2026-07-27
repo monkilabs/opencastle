@@ -167,10 +167,27 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   // the compiled targets look like.
   const missingRequired = missingRequiredCustomizations(projectRoot)
 
+  // The same checks `doctor` exits on, asked of `doctor`. Approximating them
+  // here is how the front door came to call a project current while `doctor`
+  // was failing it.
+  let failing: string[] = []
+  try {
+    const { runSharedChecks } = await import('./doctor.js')
+    failing = (await runSharedChecks(projectRoot, manifest))
+      .filter((r) => !r.ok)
+      .map((r) => r.label)
+  } catch {
+    // A diagnosis we could not run is not evidence of health, but it is also
+    // not a finding; the drift report still stands on its own.
+  }
+
   const incomplete = targets.filter((t) => !t.present)
   let nextCommand: string | undefined
   let nextReason: string | undefined
-  if (missingRequired.length > 0) {
+  if (failing.length > 0) {
+    nextCommand = 'opencastle doctor'
+    nextReason = `${failing.length} check(s) failing: ${failing.join(', ')}`
+  } else if (missingRequired.length > 0) {
     nextCommand = 'opencastle sync'
     nextReason = `${missingRequired.length} required file(s) missing from .opencastle/`
   } else if (incomplete.length > 0) {

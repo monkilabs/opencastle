@@ -279,14 +279,13 @@ describe("the user's half survives a round trip byte for byte", () => {
 
       // Still all there, in order, while the block is present.
       const merged = readFileSync(file, 'utf8')
-      expect(merged.startsWith(original.endsWith('\n') ? original : `${original}\n`)).toBe(true)
+      expect(merged.startsWith(original)).toBe(true)
 
-      // And handed back on the way out. A file with no trailing newline gains
-      // one — the block has to start on its own line — and that is the only
-      // byte this is allowed to change.
+      // And handed back on the way out, byte for byte — including a file that
+      // never ended in a newline, which an earlier version normalised on the way
+      // in and could therefore never restore.
       await stripManagedBlockFromFile(file)
-      const after = readFileSync(file, 'utf8')
-      expect(after).toBe(original.endsWith('\n') ? original : `${original}\n`)
+      expect(readFileSync(file, 'utf8')).toBe(original)
     })
   }
 
@@ -388,40 +387,41 @@ describe('a file whose end marker was lost', () => {
     expect(once.split(BLOCK_END)).toHaveLength(2)
   })
 
-  it('uninstalls completely, because removal can tell what the marker was', async () => {
-    // `remove` only runs on an install, so a file holding our marker and no
-    // complete block is our block with its end lost — not a quotation, which
-    // would leave the real block intact. Everything below it was ours; the file
-    // is backed up in case anything was added since.
+  it('takes the marker line and leaves everything else alone', async () => {
+    // Three interpretations of a lone marker have shipped and all three
+    // destroyed something: the body below it (prose under a quoted marker), the
+    // whole span to our block (the user's rules), and — with the orderings
+    // reversed — their paragraphs duplicated. Only the marker line is certainly
+    // ours, so only the marker line goes.
     await tear()
+    const before = readFileSync(file, 'utf8')
     expect(await stripManagedBlockFromFile(file)).toBe('stripped')
 
     const left = readFileSync(file, 'utf8')
-    expect(left).not.toContain('first generation')
-    expect(left).not.toContain(BLOCK_START)
-    expect(left).toContain('keep me')
-    expect(existsSync(`${file}.opencastle-backup`), 'no way back').toBe(true)
+    expect(left, 'the user half must survive').toContain('keep me')
+    expect(left, 'the marker is ours').not.toContain(BLOCK_START)
+    // The stale body stays: we cannot tell it from their writing, and guessing
+    // is what caused the losses. `doctor` names the file instead.
+    expect(before).toContain('first generation')
   })
 
-  it('uninstalls completely even after the torn file has been synced', async () => {
-    // The case my first fix missed: after a sync the file reads prose, orphan
-    // marker, stale body, current block. Handling only "torn and never synced"
-    // left the stale body as permanent residue — an uninstall that does not
-    // uninstall. Everything from the orphan to the end of our last block was
-    // ours; anything below it is the user's and stays.
-    await tear()
-    await writeManagedBlock(file, 'second generation')
-    writeFileSync(file, readFileSync(file, 'utf8') + '\n## Added later\n\nMINE-BELOW\n')
+  it('does not duplicate or drop user text, whichever side the marker is on', async () => {
+    for (const below of [true, false]) {
+      writeFileSync(file, '# Mine\n\nBEFORE\n')
+      await writeManagedBlock(file, 'generated')
+      const withOrphan = below
+        ? `${readFileSync(file, 'utf8')}\nMIDDLE\n\n${BLOCK_START}\n\nAFTER\n`
+        : `# Mine\n\nBEFORE\n\n${BLOCK_START}\n\nMIDDLE\n\n${readFileSync(file, 'utf8').slice(readFileSync(file, 'utf8').indexOf(BLOCK_START))}`
+      writeFileSync(file, withOrphan)
 
-    expect(await stripManagedBlockFromFile(file)).toBe('stripped')
-
-    const left = readFileSync(file, 'utf8')
-    expect(left).not.toContain('first generation')
-    expect(left).not.toContain('second generation')
-    expect(left).not.toContain(BLOCK_START)
-    expect(left).toContain('keep me')
-    expect(left, 'text below our block is theirs').toContain('MINE-BELOW')
-    expect(existsSync(`${file}.opencastle-backup`)).toBe(true)
+      await stripManagedBlockFromFile(file)
+      const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+      for (const line of ['BEFORE', 'MIDDLE'].concat(below ? ['AFTER'] : [])) {
+        const n = left.split(line).length - 1
+        expect(n, `${line} appears ${n}× with the marker ${below ? 'below' : 'above'}`).toBe(1)
+      }
+      expect(left).not.toContain('generated')
+    }
   })
 
   it('agrees with what the preview predicted', async () => {

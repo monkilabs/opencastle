@@ -406,8 +406,15 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
 
   // ── Project scan ────────────────────────────────────────────────
+  // Bootstrap only on a first install. Its rename steps write over the target
+  // unconditionally, so on a re-run they replaced the user's own
+  // `stack/<provider>-config.md` with a blank template — the same hazard removed
+  // from `sync` in an earlier round and left standing here, and newly reachable
+  // without a prompt because `--yes` is new on this branch.
   console.log(`\n  ${c.dim('Configuring project...')}`)
-  const bootstrapResult = await bootstrapCustomizations(projectRoot, combinedRepoInfo, stack)
+  const bootstrapResult = isReinit
+    ? { populated: [], removed: [], renamed: [] }
+    : await bootstrapCustomizations(projectRoot, combinedRepoInfo, stack)
 
   if (bootstrapResult.populated.length > 0) {
     console.log(`  ${c.green('✓')} Populated ${c.bold(String(bootstrapResult.populated.length))} config files`)
@@ -466,7 +473,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     }
   }
   if (staleRoots.length > 0) {
-    console.log(`\n  ${c.yellow('⚠')}  ${staleRoots.length} file(s) still contain output from an earlier version:\n`)
+    console.log(`\n  ${c.yellow('⚠')}  ${new Set(staleRoots).size} file(s) still contain output from an earlier version:\n`)
     for (const p of new Set(staleRoots)) {
       console.log(`     ${c.bold(relative(projectRoot, p))}`)
       console.log(`     ${c.dim('└')} ${c.dim('your own writing comes first, so it was not replaced.')}\n`)

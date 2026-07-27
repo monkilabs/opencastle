@@ -1,6 +1,6 @@
 ---
 name: agent-hooks
-description: "Four lifecycle hooks every agent runs: on-session-start scans LESSONS-LEARNED.md, resumes checkpoints; on-pre-delegate verifies tracker issues, file partitions; on-post-delegate runs fast-review, CI checks; on-session-end executes session guard, writes logs. Use when starting a new session, running pre-flight checks before delegation, coordinating between agents, reviewing a completed handoff, or wrapping up a session. Trigger terms: multi-agent setup, delegate tasks, agent coordination, session management, run pre-flight checks, start a new session, coordinate between agents, wrap up session"
+description: "Four lifecycle hooks every agent runs: on-session-start scans LESSONS-LEARNED.md, resumes checkpoints; on-pre-delegate verifies tracker issues, file partitions; on-post-delegate runs fast-review, CI checks; on-session-end runs the health checks, writes logs. Use when starting a new session, running pre-flight checks before delegation, coordinating between agents, reviewing a completed handoff, or wrapping up a session. Trigger terms: multi-agent setup, delegate tasks, agent coordination, session management, run pre-flight checks, start a new session, coordinate between agents, wrap up session"
 ---
 
 # Agent Lifecycle Hooks
@@ -37,7 +37,7 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for extended startup checks (approv
 
 | # | Action |
 |---|--------|
-| 1 | `opencastle doctor` (session guard) |
+| 1 | `opencastle doctor` |
 | 2 | `opencastle log --type session ...` |
 | 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if work is incomplete |
 | 4 | Flag for memory merge if 5+ new lessons |

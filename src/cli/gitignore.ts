@@ -1,6 +1,12 @@
 import { resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import {
+  blockRegions,
+  orphanMarkers,
+  cutBlockRegion,
+  cutMarkerLine,
+} from './managed-block.js'
 
 const START_MARKER = '# >>> OpenCastle managed (do not edit) >>>'
 const END_MARKER = '# <<< OpenCastle managed <<<'
@@ -82,24 +88,28 @@ export async function updateGitignore(
 
   const existing = await readFile(gitignorePath, 'utf8')
 
-  // Replace existing block
-  const startIdx = existing.indexOf(START_MARKER)
-  const endIdx = existing.indexOf(END_MARKER)
-
-  if (startIdx !== -1 && endIdx !== -1) {
-    const before = existing.slice(0, startIdx)
-    const after = existing.slice(endIdx + END_MARKER.length)
-    const updated = before + block + after
+  // Same region model as the root files, rather than a second reading of the
+  // same idea. A doubled block — the "keep both sides" merge outcome — used to
+  // survive every sync here and outlive an uninstall, leaving a file whose whole
+  // contents were text this tool wrote.
+  const regions = blockRegions(existing, START_MARKER, END_MARKER)
+  if (regions.length > 0) {
+    let collapsed = existing
+    for (let i = regions.length - 1; i >= 1; i--) {
+      collapsed = cutBlockRegion(collapsed, regions[i].start, regions[i].end)
+    }
+    const first = blockRegions(collapsed, START_MARKER, END_MARKER)[0]
+    const updated = collapsed.slice(0, first.start) + block + collapsed.slice(first.end)
 
     if (updated === existing) return 'unchanged'
-
     await writeFile(gitignorePath, updated, 'utf8')
     return 'updated'
   }
 
   // Append block to existing file
-  const separator = existing.endsWith('\n') ? '\n' : '\n\n'
-  await writeFile(gitignorePath, existing + separator + block + '\n', 'utf8')
+  // One newline, same reasoning as the root-file merge: normalising the user's
+  // file ending is information we cannot give back.
+  await writeFile(gitignorePath, `${existing}\n${block}\n`, 'utf8')
   return 'updated'
 }
 
@@ -118,19 +128,24 @@ export async function removeGitignoreBlock(
   if (!existsSync(gitignorePath)) return 'unchanged'
 
   const existing = await readFile(gitignorePath, 'utf8')
-  const startIdx = existing.indexOf(START_MARKER)
-  const endIdx = existing.indexOf(END_MARKER)
 
-  if (startIdx === -1 || endIdx === -1) return 'unchanged'
+  // Every block, and any stray marker line — the root files learned this after a
+  // doubled block outlived `remove --all`.
+  let updated = existing
+  for (;;) {
+    const regions = blockRegions(updated, START_MARKER, END_MARKER)
+    if (regions.length === 0) break
+    const r = regions[regions.length - 1]
+    updated = cutBlockRegion(updated, r.start, r.end)
+  }
+  for (const at of orphanMarkers(updated, START_MARKER, END_MARKER).reverse()) {
+    updated = cutMarkerLine(updated, at, at + START_MARKER.length)
+  }
+  for (const at of [...markerLineOffsets(updated, END_MARKER)].reverse()) {
+    updated = cutMarkerLine(updated, at, at + END_MARKER.length)
+  }
 
-  const before = existing.slice(0, startIdx)
-  const after = existing.slice(endIdx + END_MARKER.length)
-
-  // Only the seam the block left, not the whole file. Collapsing every run of
-  // three newlines — which this used to do — reflowed groups the tool never
-  // wrote. One newline from each side is exactly what the append path inserted,
-  // and it is the same rule the root-file merge uses.
-  const updated = before.replace(/\r?\n$/, '') + after.replace(/^\r?\n/, '')
+  if (updated === existing) return 'unchanged'
 
   if (!updated.trim()) {
     const { unlink } = await import('node:fs/promises')
@@ -138,8 +153,18 @@ export async function removeGitignoreBlock(
     return 'removed'
   }
 
-  // No trailing newline of our own: `before` already carries whatever the user's
-  // last line ended with, so adding one grew the file by a byte on every cycle.
   await writeFile(gitignorePath, updated, 'utf8')
   return 'removed'
+}
+
+/** Line-start offsets of a marker, for sweeping stray end markers. */
+function markerLineOffsets(content: string, marker: string): number[] {
+  const out: number[] = []
+  let from = 0
+  for (;;) {
+    const at = content.indexOf(marker, from)
+    if (at === -1) return out
+    if (at === 0 || content[at - 1] === '\n') out.push(at)
+    from = at + marker.length
+  }
 }

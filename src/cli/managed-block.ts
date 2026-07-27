@@ -133,23 +133,41 @@ export interface BlockRegion {
  * ended the same way — conclude there is no block, append another, grow by 20KB
  * a sync. The invariant is enforced instead: exactly one complete block per file.
  */
-export function blockRegions(content: string): BlockRegion[] {
-  const starts = markerOffsets(content, BLOCK_START)
-  const ends = markerOffsets(content, BLOCK_END)
+export function blockRegions(
+  content: string,
+  startMarker: string = BLOCK_START,
+  endMarker: string = BLOCK_END,
+): BlockRegion[] {
+  const starts = markerOffsets(content, startMarker)
+  const ends = markerOffsets(content, endMarker)
   const regions: BlockRegion[] = []
 
   for (const [i, start] of starts.entries()) {
     const next = starts[i + 1] ?? Infinity
     const end = ends.find((e) => e > start && e < next)
-    if (end !== undefined) regions.push({ start, end: end + BLOCK_END.length })
+    if (end !== undefined) regions.push({ start, end: end + endMarker.length })
   }
   return regions
 }
 
 /** Start markers that open no block — damage, reported rather than interpreted. */
-export function orphanMarkers(content: string): number[] {
-  const complete = new Set(blockRegions(content).map((r) => r.start))
-  return markerOffsets(content, BLOCK_START).filter((at) => !complete.has(at))
+export function orphanMarkers(
+  content: string,
+  startMarker: string = BLOCK_START,
+  endMarker: string = BLOCK_END,
+): number[] {
+  const complete = new Set(blockRegions(content, startMarker, endMarker).map((r) => r.start))
+  return markerOffsets(content, startMarker).filter((at) => !complete.has(at))
+}
+
+/** Cut a region out, taking back the newline on each side. Shared with gitignore. */
+export function cutBlockRegion(content: string, start: number, end: number): string {
+  return cutBlock(content, start, end)
+}
+
+/** Cut a marker line out, taking back only its own terminator. */
+export function cutMarkerLine(content: string, start: number, end: number): string {
+  return cutLine(content, start, end)
 }
 
 /** Where the block we maintain lives: the last complete one. */
@@ -324,7 +342,11 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
 
   // The user's file predates OpenCastle. Keep every byte of it — no trimming, no
   // reflowing — and start the block on the next line.
-  const preamble = existing.length > 0 ? (existing.endsWith('\n') ? existing : `${existing}\n`) + '\n' : ''
+  // Exactly one newline between their content and our block, whether or not
+  // their file ended in one. Normalising first ("add a newline if missing, then
+  // a blank line") destroyed the information that it did not end in one, so the
+  // cut could never restore it and every round trip grew the file by a byte.
+  const preamble = existing.length > 0 ? `${existing}\n` : ''
   await writeFile(path, preamble + block)
   return {
     action: 'appended',
@@ -365,18 +387,15 @@ export function predictStrip(content: string): {
   if (!hasManagedBlock(content) && looksLikeLegacyGenerated(content)) {
     return { outcome: 'deleted', legacyGenerated: true }
   }
-  // The same reading `stripManagedBlockFromFile` will take, computed the same
-  // way — the preview and the action diverged once already when one of them
-  // learned about multiple blocks and the other did not.
-  const orphans = orphanMarkers(content)
-  const torn = orphans.length > 0
-  const regions = blockRegions(content)
-  const remainder = torn
-    ? content.slice(0, orphans[0]) + content.slice(regions.length > 0 ? regions[regions.length - 1].end : content.length)
-    : stripAllBlocks(content)
+  // The same reading `stripManagedBlockFromFile` takes, by calling the same
+  // function — the two diverged once by sharing a formula instead of a call.
+  if (!hasManagedBlock(content) && looksLikeLegacyGenerated(content)) {
+    return { outcome: 'deleted', legacyGenerated: true }
+  }
+  const remainder = stripAllBlocks(content)
   return {
     outcome: remainder.trim().length === 0 ? 'deleted' : 'stripped',
-    legacyGenerated: torn,
+    legacyGenerated: orphanMarkers(content).length > 0,
   }
 }
 
@@ -384,46 +403,42 @@ export async function stripManagedBlockFromFile(
   path: string,
 ): Promise<'deleted' | 'stripped' | 'absent'> {
   if (!existsSync(path)) return 'absent'
-  let existing = await readFile(path, 'utf8')
+  const existing = await readFile(path, 'utf8')
 
-  // A start marker with no partner. While writing we refuse to guess what it
-  // delimits, because the same shape can be our torn block or a line the user
-  // quoted. Removal is different: `remove` only runs on an install, so this file
-  // was ours, and a marker of ours with no end is our block with its end lost.
+  // A start marker with no partner is left exactly where it is, minus the marker
+  // line itself.
   //
-  // Everything from that marker to the end of the last block we own was ours
-  // when we wrote it — after a sync the file reads prose, orphan, stale body,
-  // current block, and leaving the stale body behind is an uninstall that does
-  // not uninstall. Anything the user added *below* our last block is theirs and
-  // stays. The file is backed up, because "was ours when we wrote it" is a
-  // judgement and they may have added to it since.
-  const orphans = orphanMarkers(existing)
-  if (orphans.length > 0) {
-    await backUp(path, existing)
-    const regions = blockRegions(existing)
-    const ownedTo = regions.length > 0 ? regions[regions.length - 1].end : existing.length
-    existing =
-      existing.slice(0, orphans[0]).replace(/\r?\n$/, '') +
-      existing.slice(ownedTo).replace(/^\r?\n/, '')
-  }
+  // Three attempts at interpreting one have now shipped. Taking the body below
+  // it deleted prose someone had written under a marker they merely quoted.
+  // Taking nothing left 20KB of stale instructions after an uninstall. Splicing
+  // from the marker to the end of our block did both — it deleted the user's
+  // rules when the marker sat above the block, and duplicated their paragraphs
+  // when it sat below, because the two slices overlapped.
+  //
+  // "`remove` only runs on an install" justifies claiming the marker line, which
+  // is text we wrote. It does not justify claiming bytes on the far side of a
+  // block whose boundaries are known exactly. So: complete blocks and marker
+  // lines, both unambiguous, and nothing else — in every path, always.
+  //
+  // The cost is that a genuinely torn file keeps a stale body. That is paid in
+  // the open: `doctor` warns and names the file, because only a human can tell
+  // their text from ours once the marker is gone.
+  // A file a pre-marker release generated in full is unambiguous in a way a torn
+  // one is not: it carries no markers at all, and its whole contents are ours.
   if (!hasManagedBlock(existing) && looksLikeLegacyGenerated(existing)) {
-    // Identical input, identical judgement, so identical care as the adopt path:
-    // this file has no marker to say where anything appended below the generated
-    // part begins. `sync` backed it up and these two callers did not, so one
-    // input got two answers and `remove --all` deleted prose one line after
-    // printing "your own writing stays".
     await backUp(path, existing)
     await rm(path, { force: true })
     return 'deleted'
   }
-  // Every block, not just the one we maintain: a file that acquired a second one
-  // used to keep it forever, so an uninstall left a complete set of generated
-  // instructions in a file the user owns.
+
   const remainder = stripAllBlocks(existing)
   if (remainder.trim().length === 0) {
     await rm(path, { force: true })
     return 'deleted'
   }
-  await writeFile(path, remainder.endsWith('\n') ? remainder : `${remainder}\n`)
+  // Written exactly as it came out. Appending a newline "to be tidy" meant a
+  // file that never ended in one came back a byte longer, which is not what
+  // "byte for byte" means.
+  await writeFile(path, remainder)
   return 'stripped'
 }
