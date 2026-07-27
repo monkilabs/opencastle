@@ -377,9 +377,10 @@ export async function rebuildMcpConfig(
   // filename — after the adapters had already rewritten the framework
   // directories and before the manifest was written, so the sync was half
   // applied. `remove` already names the file and carries on; so does this.
+  const before = await readFile(destPath, 'utf8');
   let existing: Record<string, unknown>;
   try {
-    existing = JSON.parse(await readFile(destPath, 'utf8')) as Record<string, unknown>;
+    existing = JSON.parse(before) as Record<string, unknown>;
   } catch {
     throw new UnreadableConfigError(destRelPath);
   }
@@ -435,10 +436,20 @@ export async function rebuildMcpConfig(
     }
   }
 
-  existing[containerKey] = existingServers;
+  // Only set the container when there is something to put in it, or it was
+  // already there. Writing `"mcp": {}` into a hand-written `opencode.json` —
+  // OpenCode's entire project config — added a key the user never asked for and
+  // reformatted the file, on a stack that contributes no MCP servers at all.
+  if (Object.keys(existingServers).length > 0 || containerKey in existing) {
+    existing[containerKey] = existingServers;
+  }
 
-  // Write the cleaned config (preserving manually-added servers and unchanged plugin servers)
-  await writeFile(destPath, JSON.stringify(existing, null, 2) + '\n');
+  // Write the cleaned config (preserving manually-added servers and unchanged
+  // plugin servers) — but only if it actually differs. This rewrote the file on
+  // every sync regardless, which is how a compact config came back
+  // pretty-printed by a command that had removed nothing from it.
+  const rebuilt = JSON.stringify(existing, null, 2) + '\n';
+  if (rebuilt !== before) await writeFile(destPath, rebuilt);
 
   // Re-scaffold: merges new plugin servers into the cleaned config
   await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);

@@ -53,6 +53,15 @@ const PIECES = [
   `${BLOCK_END}\n${BLOCK_START}\n`,
   '<!-- a comment -->\n',
   'A RULE THE USER WROTE\n',
+  // The fingerprints the adopt path matches on. They are byte-for-byte this
+  // release's own generated header, so a file can carry one *and* a marker —
+  // which is precisely the shape that used to be replaced wholesale.
+  '# Project Instructions\n',
+  '# Copilot Instructions\n',
+  'All conventions, architecture, and project context are embedded below.\n',
+  'This file is managed by OpenCastle\n',
+  `${BLOCK_START} trailing text\n`,
+  `  ${BLOCK_END}\n`,
 ]
 
 /** Deterministic pseudo-random, so a failure is reproducible from its index. */
@@ -80,7 +89,13 @@ function makeFile(seed: number): string {
 
 /** Every arrangement of a start marker, an end marker and a line of the user's. */
 function* arrangements(maxLen: number): Generator<string> {
-  const alphabet = [`${BLOCK_START}\n`, `${BLOCK_END}\n`, 'USERLINE\n']
+  const alphabet = [
+    `${BLOCK_START}\n`,
+    `${BLOCK_END}\n`,
+    'USERLINE\n',
+    // A legacy fingerprint, so the enumeration can reach the adopt path.
+    '# Project Instructions\n',
+  ]
   for (let len = 1; len <= maxLen; len++) {
     const total = alphabet.length ** len
     for (let i = 0; i < total; i++) {
@@ -131,7 +146,7 @@ describe('the managed block holds its invariants over files nobody chose', () =>
       // user's lines sitting inside a block. Cutting a block used to promote a
       // stray start marker beside a stray end marker into a pair around their
       // prose, and the write after that deleted it.
-      for (const original of arrangements(8)) {
+      for (const original of arrangements(7)) {
         writeFileSync(file, original)
         const before = linesInsideBlocks(original, 'USERLINE')
 
@@ -233,8 +248,15 @@ describe('the managed block holds its invariants over files nobody chose', () =>
         const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
         expect(left, `seed ${seed}: our body survived`).not.toContain('generated body')
         expect(left, `seed ${seed}: our fenced body survived`).not.toContain('npm run ship')
-        expect(left, `seed ${seed}: a marker survived`).not.toContain(BLOCK_START)
-        expect(left, `seed ${seed}: a marker survived`).not.toContain(BLOCK_END)
+        // Markers at column 0 only. We write them there and nowhere else, so an
+        // indented one is the user's text — leaving it is the same rule that
+        // leaves everything else of theirs alone.
+        for (const line of left.split('\n')) {
+          expect(
+            line === BLOCK_START || line === BLOCK_END,
+            `seed ${seed}: a marker of ours survived`,
+          ).toBe(false)
+        }
       }
     },
     TIMEOUT,
@@ -245,6 +267,13 @@ describe('the managed block holds its invariants over files nobody chose', () =>
     async () => {
       for (const seed of SEEDS) {
         const original = makeFile(seed)
+        // A file carrying no marker of ours at all, whose first line is one of
+        // this tool's old generated headers, is the documented adopt case: a
+        // pre-marker release wrote the whole thing, so the whole thing is
+        // replaced and a backup written. Excluded here so the property is about
+        // the case that matters — a file with a marker in it, which always has
+        // a boundary we can read and must therefore never be replaced.
+        if (blockRegions(original).length === 0 && orphanMarkers(original).length === 0) continue
         writeFileSync(file, original)
         // Three writes, then the strip. One was not enough: the shape that
         // destroyed the user's prose needed a second command to consume what
@@ -285,6 +314,16 @@ describe('the managed block holds its invariants over files nobody chose', () =>
             `seed ${seed}: lost or reordered ${JSON.stringify(line)}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(left)}`,
           ).toBeGreaterThanOrEqual(cursor)
           cursor = found + 1
+        }
+
+        // Loss is not the only way to damage a file. An earlier splice
+        // *duplicated* the user's paragraphs, and an in-order search cannot see
+        // that — it finds every line exactly where it expects one.
+        for (const line of new Set(theirs)) {
+          expect(
+            remaining.filter((l) => l === line).length,
+            `seed ${seed}: ${JSON.stringify(line)} duplicated\nfrom ${JSON.stringify(original)}`,
+          ).toBe(theirs.filter((l) => l === line).length)
         }
       }
     },

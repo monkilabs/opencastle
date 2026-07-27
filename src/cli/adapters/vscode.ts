@@ -1,7 +1,7 @@
 import { resolve } from 'node:path'
 import { mkdir, readFile, writeFile, copyFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
-import { writeManagedBlock } from '../managed-block.js'
+import { writeManagedBlock, recordMerge } from '../managed-block.js'
 import { copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getAgentTransform } from '../stack-config.js'
@@ -118,20 +118,7 @@ export async function install(
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
   {
     const merge = await writeManagedBlock(copilotDest, await readFile(copilotSrc, 'utf8'))
-    if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(copilotDest)
-    if (merge.orphanMarker) (results.tornRoots ??= []).push(copilotDest)
-    if (merge.action === 'adopted' || merge.action === 'repaired') {
-      results.created.push(copilotDest)
-      ;(merge.action === 'adopted'
-        ? (results.adopted ??= [])
-        : (results.repaired ??= [])
-      ).push(copilotDest)
-    } else if (merge.action === 'created') {
-      results.created.push(copilotDest)
-    } else if (merge.action === 'unchanged') {
-      results.skipped.push(copilotDest)
-    }
-    else results.copied.push(copilotDest)
+    recordMerge(results, copilotDest, merge)
   }
 
   // Framework directories
@@ -201,13 +188,7 @@ export async function update(
     copilotDest,
     await readFile(resolve(srcRoot, 'copilot-instructions.md'), 'utf8')
   )
-  // `unchanged` means the block was already correct — counting it inflated
-  // "Updated N framework files" by one on every single sync.
-  results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(copilotDest)
-  if (rootMerge.action === 'adopted') (results.adopted ??= []).push(copilotDest)
-  if (rootMerge.action === 'repaired') (results.repaired ??= []).push(copilotDest)
-  if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(copilotDest)
-  if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(copilotDest)
+  recordMerge(results, copilotDest, rootMerge)
 
   // Note what is here before the sweep, so the command can name anything it
   // removed that it did not generate. Only one adapter did this, so five of the

@@ -93,6 +93,21 @@ function firstMeaningfulLine(content: string): string {
  * and the stale generated text stays visible, which is untidy but recoverable.
  */
 function looksLikeLegacyGenerated(content: string): boolean {
+  // A marker anywhere disqualifies the file, which is what the comment above
+  // has always claimed and what the code did not do.
+  //
+  // The fingerprints below are byte-for-byte the *current* release's own output
+  // — they have to be, or an upgrade would not recognise its predecessor — so
+  // "starts with our header and contains our phrase" is true of every file this
+  // tool has ever written, including one whose start marker a merge dropped
+  // yesterday. The old gate only asked whether a *complete* block was present.
+  // A torn file therefore looked pre-marker, was replaced wholesale, and the
+  // notes the user had added below the block went with it. The surviving end
+  // marker said exactly where our half stopped and was thrown away.
+  //
+  // Adoption is for a file with no markers at all. Anything else has a boundary
+  // we can read, and reading it is always better than guessing.
+  if (blockRegions(content).length > 0 || orphanMarkers(content).length > 0) return false
   const first = firstMeaningfulLine(content)
   const startsGenerated =
     LEGACY_GENERATED_HEADERS.includes(first) ||
@@ -326,6 +341,75 @@ export function extractManagedBlock(content: string): string | null {
 }
 
 /** How many complete blocks the file holds — more than one is drift. */
+/**
+ * What state a co-owned file is in, and who can fix it.
+ *
+ * The one answer to that question. Five surfaces used to work it out for
+ * themselves — `sync`, `sync --check`, `doctor`, `status` and `remove`'s
+ * preview — and they disagreed in every combination the reviewers tried:
+ * `doctor` green while `sync` was about to delete the user's prose; `doctor`
+ * failing forever with a remedy that was a no-op; `sync --check` red on a state
+ * the writer refuses by design to change, prescribing the command that refuses;
+ * a remedy asserting "markers that do not pair up" about a file whose markers
+ * all paired. Each was fixed on its own and the next round found another pair
+ * that disagreed, because agreement was being maintained by hand.
+ *
+ * `fixable` is the fact the surfaces actually need: can any command clear this,
+ * or does it need a person? A red check whose remedy cannot work is worse than
+ * no check, and it is the failure this branch has shipped most often.
+ */
+export type FileState = 'clean' | 'doubled' | 'torn' | 'unreducible'
+
+export interface FileDiagnosis {
+  state: FileState
+  /** True when a command can clear it; false when only a person can. */
+  fixable: boolean
+  /** What to tell the user. Empty when there is nothing wrong. */
+  detail: string
+  /** The remedy, as a command when one works and as instructions when none does. */
+  fix: string
+}
+
+export function diagnoseManagedFile(
+  content: string,
+  startMarker: string = BLOCK_START,
+  endMarker: string = BLOCK_END,
+): FileDiagnosis {
+  const blocks = blockRegions(content, startMarker, endMarker).length
+  const strays = orphanMarkers(content, startMarker, endMarker).length
+
+  if (blocks > 1 && strays > 0) {
+    // The writer will not reduce this: cutting a block here can bring a stray
+    // start marker next to a stray end marker and sweep the user's own text
+    // into the pair. No command will touch it, so no command may claim to.
+    return {
+      state: 'unreducible',
+      fixable: false,
+      detail: `holds ${blocks} OpenCastle blocks and ${strays} marker(s) that pair with nothing`,
+      fix: 'delete the blocks you do not want, keeping one start/end pair — this one needs a person',
+    }
+  }
+  if (blocks > 1) {
+    return {
+      state: 'doubled',
+      fixable: true,
+      detail: `holds ${blocks} OpenCastle blocks`,
+      fix: 'opencastle sync',
+    }
+  }
+  if (strays > 0) {
+    return {
+      state: 'torn',
+      fixable: false,
+      detail: `has ${strays} OpenCastle marker(s) that pair with nothing`,
+      fix:
+        'text beside that marker may be stale generated output, and only you can tell —' +
+        ' remove it, or restore the missing marker; this one needs a person',
+    }
+  }
+  return { state: 'clean', fixable: true, detail: '', fix: '' }
+}
+
 export function countManagedBlocks(content: string): number {
   // Owned, not total. Counting a quoted example as a block made `sync --check`
   // permanently red on a file `collapseExtraBlocks` deliberately will not
@@ -412,25 +496,6 @@ function applyCuts(content: string, cuts: Cut[]): string {
 }
 
 
-/** Remove every managed block but the last, leaving a backup behind. */
-function collapseExtraBlocks(content: string): string {
-  // Orphan markers are left alone on purpose: damage we will not interpret.
-  //
-  // Complete blocks are all ours, including one sitting inside a fenced example
-  // — see `ownedRegions`. What must never survive is a second complete block,
-  // which is what a merge produces, what an upgrade over a disowned block used
-  // to produce, and what the assistant reads as a second set of rules.
-  // Decided once and cut back to front, for the reason `stripAllBlocks`
-  // explains: a cut can promote two stray markers into a region that was never
-  // there, and the next pass would remove the user's text between them.
-  const regions = blockRegions(content)
-  if (regions.length < 2) return content
-  const doomed = regions
-    .slice(0, -1)
-    .map((r) => ({ start: r.start, end: r.end, lone: false }))
-    .sort((a, b) => b.start - a.start)
-  return applyCuts(content, doomed)
-}
 
 /**
  * Write `body` into `path` as a managed block.
@@ -637,4 +702,50 @@ export async function stripManagedBlockFromFile(
   // "byte for byte" means.
   await writeFile(path, remainder)
   return 'stripped'
+}
+
+/**
+ * Record a root-file merge into a `CopyResults`, once, for every adapter.
+ *
+ * Five call sites across three adapter families each decided by hand which
+ * fields of the merge result to forward, and the answer differed at every one.
+ * `repaired` reached three of them, `damaged` reached one, and each omission
+ * meant the user was told nothing on the targets that missed it — including
+ * about the backup that is the only way to recover a collapse. Both were found
+ * by reviewers, one round apart, as separate bugs; they are the same bug, and
+ * it is the hand-wiring.
+ *
+ * A field added to `MergeResult` now reaches every adapter by construction.
+ */
+export function recordMerge(
+  results: {
+    copied: string[]
+    skipped: string[]
+    created: string[]
+    adopted?: string[]
+    repaired?: string[]
+    staleRoots?: string[]
+    tornRoots?: string[]
+    damagedRoots?: string[]
+  },
+  path: string,
+  merge: MergeResult,
+): void {
+  if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(path)
+  if (merge.orphanMarker) (results.tornRoots ??= []).push(path)
+  if (merge.damaged) (results.damagedRoots ??= []).push(path)
+
+  if (merge.action === 'adopted') {
+    results.created.push(path)
+    ;(results.adopted ??= []).push(path)
+  } else if (merge.action === 'repaired') {
+    results.created.push(path)
+    ;(results.repaired ??= []).push(path)
+  } else if (merge.action === 'created') {
+    results.created.push(path)
+  } else if (merge.action === 'unchanged') {
+    results.skipped.push(path)
+  } else {
+    results.copied.push(path)
+  }
 }

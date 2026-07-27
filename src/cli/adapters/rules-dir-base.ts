@@ -6,7 +6,7 @@ import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { splitFrontmatter, parseFrontmatterString } from './frontmatter.js'
-import { writeManagedBlock } from '../managed-block.js'
+import { writeManagedBlock, recordMerge } from '../managed-block.js'
 
 /**
  * Shared implementation for IDEs that take a root rules file plus a directory of
@@ -291,20 +291,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const rootFile = resolve(projectRoot, rootRulesFile)
     {
       const merge = await writeManagedBlock(rootFile, rootIntro)
-      if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(rootFile)
-      if (merge.orphanMarker) (results.tornRoots ??= []).push(rootFile)
-    if (merge.action === 'adopted' || merge.action === 'repaired') {
-        results.created.push(rootFile)
-        ;(merge.action === 'adopted'
-          ? (results.adopted ??= [])
-          : (results.repaired ??= [])
-        ).push(rootFile)
-      } else if (merge.action === 'created') {
-        results.created.push(rootFile)
-      } else if (merge.action === 'unchanged') {
-        results.skipped.push(rootFile)
-      }
-      else results.copied.push(rootFile)
+      recordMerge(results, rootFile, merge)
     }
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
@@ -352,11 +339,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // Absolute, as `install` reports it and as the sweep compares. Reporting
     // the relative name here put two spellings of one file into the same result
     // arrays, next to a sweep that decides what to delete by matching paths.
-    results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(rootPath)
-    if (rootMerge.action === 'adopted') (results.adopted ??= []).push(rootPath)
-  if (rootMerge.action === 'repaired') (results.repaired ??= []).push(rootPath)
-    if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
-    if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(rootPath)
+    recordMerge(results, rootPath, rootMerge)
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
 

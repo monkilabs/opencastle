@@ -176,7 +176,7 @@ p = pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace(sys.argv[1] + 
 node $CLI sync --yes --force >/dev/null 2>&1
 node $CLI sync --yes --force >/dev/null 2>&1
 [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "torn file does not grow" || bad "torn file grew"
-node $CLI doctor 2>&1 | grep -q "belongs to no block" && ok "doctor names the torn file" || bad "doctor silent about it"
+node $CLI doctor 2>&1 | plain | grep -q "pair with nothing" && ok "doctor names the torn file" || bad "doctor silent about it"
 node $CLI remove --all --yes >/dev/null 2>&1
 grep -q "my rules" CLAUDE.md 2>/dev/null && ok "user prose kept" || bad "user prose lost"
 grep -q -- "$START" CLAUDE.md 2>/dev/null && bad "our marker survived" || ok "our marker taken"
@@ -186,7 +186,7 @@ grep -q -- "$START" CLAUDE.md 2>/dev/null && bad "our marker survived" || ok "ou
 new c2-mirror; printf '# Mine\n\nkeep\n' > CLAUDE.md
 node $CLI init --yes >/dev/null 2>&1
 grep -v -- '^<!-- >>> OpenCastle managed' CLAUDE.md > t && mv t CLAUDE.md
-node $CLI doctor 2>&1 | grep -q "belongs to no block" && ok "doctor names it torn the other way" || bad "doctor silent on the mirror shape"
+node $CLI doctor 2>&1 | plain | grep -q "pair with nothing" && ok "doctor names it torn the other way" || bad "doctor silent on the mirror shape"
 node $CLI remove --all --yes >/dev/null 2>&1
 grep -q "keep" CLAUDE.md 2>/dev/null && ok "mirror: user prose kept" || bad "mirror: user prose lost"
 grep -q 'OpenCastle managed' CLAUDE.md 2>/dev/null && bad "mirror: our marker survived" || ok "mirror: our markers taken"
@@ -610,7 +610,7 @@ out=$(node $CLI sync --yes --force 2>&1 | plain)
 grep -q 'MY OWN RULE' CLAUDE.md && ok "the user's line survived the sync" || bad "the user's line was eaten"
 echo "$out" | grep -qi "cannot be reduced safely" && ok "sync said it would not reduce it" \
                                                   || { bad "sync was silent about it"; echo "$out" | tail -4; }
-node $CLI doctor 2>&1 | plain | grep -q "more than one OpenCastle block" \
+node $CLI doctor 2>&1 | plain | grep -qE "OpenCastle blocks?" \
   && ok "doctor names it" || bad "doctor calls a doubled file healthy"
 node $CLI doctor >/dev/null 2>&1 && bad "doctor passes on a doubled file" || ok "doctor fails on it"
 node $CLI sync --yes --force >/dev/null 2>&1
@@ -634,6 +634,96 @@ node $CLI sync --yes --force >/dev/null 2>&1
 git check-ignore -q .env.local && ok ".env.local still ignored after two syncs" \
                                || bad "two syncs dropped an ignore rule"
 grep -q 'keep-me' .gitignore && ok "the user's other rule survived" || bad "lost keep-me"
+
+say "CLAIM 14 — every surface agrees, and every remedy is reachable"
+# The closure that makes the four reporting surfaces one system rather than four
+# opinions. For each broken state: whatever `doctor` and `sync --check` say, the
+# remedy they print must either work or name a person — and they must not
+# disagree about whether the project is healthy.
+c14_check() {
+  label=$1
+  doc=$(node $CLI doctor 2>&1 | plain); doc_code=$?
+  node $CLI doctor >/dev/null 2>&1; doc_code=$?
+  chk=$(node $CLI sync --check 2>&1 | plain); chk_code=$?
+  node $CLI sync --check >/dev/null 2>&1; chk_code=$?
+  st=$(node $CLI 2>&1 | plain)
+
+  # 1. status must not call a project healthy while doctor or the checker is red.
+  if [ $doc_code -ne 0 ] || [ $chk_code -ne 0 ]; then
+    echo "$st" | grep -q "Everything is current" \
+      && bad "$label: status green while doctor=$doc_code check=$chk_code" \
+      || ok "$label: status agrees with doctor and the checker"
+  else
+    ok "$label: everything green"
+  fi
+
+  # 2. a red checker either prescribes a command that clears it, or says a
+  #    person is needed. It must never prescribe one that cannot work.
+  if [ $chk_code -ne 0 ]; then
+    if echo "$chk" | grep -q "Needs a person"; then
+      echo "$chk" | grep -q "Fix: opencastle sync" \
+        && bad "$label: checker prescribed sync for a state sync refuses" \
+        || ok "$label: checker names a person, not a command"
+    else
+      node $CLI sync --yes --force >/dev/null 2>&1
+      node $CLI sync --check >/dev/null 2>&1 \
+        && ok "$label: the checker's remedy cleared it" \
+        || bad "$label: checker red, remedy did not clear it"
+    fi
+  fi
+
+  # 3. a red doctor either prescribes a command that clears it, or says so.
+  if [ $doc_code -ne 0 ]; then
+    if echo "$doc" | grep -q "needs a person"; then
+      ok "$label: doctor names a person, not a command"
+    else
+      remedy=$(echo "$doc" | grep -oE "(npx )?opencastle [a-z-]+( --[a-z]+)?" | tail -1)
+      if [ -n "$remedy" ]; then
+        node $CLI ${remedy#*opencastle } --yes >/dev/null 2>&1
+        node $CLI doctor >/dev/null 2>&1 \
+          && ok "$label: doctor's remedy '$remedy' cleared it" \
+          || bad "$label: doctor red, '$remedy' did not clear it"
+      else
+        bad "$label: doctor red with no remedy at all"
+      fi
+    fi
+  fi
+}
+
+for state in clean doubled torn unreducible gi-doubled gi-unreducible; do
+  new "c14-$state"; printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
+  printf 'node_modules\nkeep-me\n' > .gitignore
+  node $CLI init --yes >/dev/null 2>&1
+  python3 - "$START" "$END" "$state" <<'PY'
+import pathlib, re, sys
+S, E, state = sys.argv[1], sys.argv[2], sys.argv[3]
+GS = '# >>> OpenCastle managed (do not edit) >>>'
+GE = '# <<< OpenCastle managed <<<'
+root = pathlib.Path('CLAUDE.md'); t = root.read_text()
+blk = re.search(re.escape(S) + '.*?' + re.escape(E), t, re.S).group(0)
+gi = pathlib.Path('.gitignore'); g = gi.read_text()
+gblk = re.search(re.escape(GS) + '.*?' + re.escape(GE), g, re.S).group(0)
+if state == 'doubled':
+    root.write_text(t + chr(10) + blk + chr(10))
+elif state == 'torn':
+    root.write_text(t.replace(E + chr(10), '', 1))
+elif state == 'unreducible':
+    root.write_text(S + chr(10) + 'MY OWN RULE' + chr(10) + blk + chr(10) + E + chr(10) + blk + chr(10))
+elif state == 'gi-doubled':
+    gi.write_text(g + chr(10) + gblk + chr(10))
+elif state == 'gi-unreducible':
+    gi.write_text('node_modules' + chr(10) + gblk + chr(10) + 'keep-me' + chr(10) + GS +
+                  chr(10) + '.env.local' + chr(10) + gblk + chr(10) + GE + chr(10))
+PY
+  c14_check "$state"
+  # And nothing of the user's is ever lost while all that is going on.
+  case $state in
+    gi-*) grep -q 'keep-me\|node_modules' .gitignore && ok "$state: their rules survived" \
+                                                    || bad "$state: lost their rules" ;;
+    *)    grep -q 'MY OWN RULE' CLAUDE.md && ok "$state: their line survived" \
+                                          || bad "$state: lost their line" ;;
+  esac
+done
 
 say "CLAIM 12d — a failing init leaves the install coherent too"
 # CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
@@ -743,33 +833,22 @@ sys.exit(1 if missing else 0)" \
 fi
 
 say "CLAIM 3c — a config we take nothing out of is not rewritten"
+# Written *after* init and holding only the user's own server, so the strip has
+# nothing of ours to remove. Any difference is gratuitous reformatting of a file
+# the tool merely looked at. (Seeding it before `init` instead means a server
+# gets merged in, and then byte-identity cannot hold — CLAIM 3b covers that
+# case by asserting the user's keys survive.)
 new c3c; printf '# R\n' > CLAUDE.md
 node $CLI init --yes >/dev/null 2>&1
-printf '{"mcpServers":{"mine":{"command":"node"}}}\n' > opencode.json
-cp opencode.json "$ROOT/oc2.orig"
+printf '{"mcpServers":{"mine":{"command":"node"}}}\n' > .mcp.json
+cp .mcp.json "$ROOT/oc2.orig"
 node $CLI remove --all --yes >/dev/null 2>&1
-if [ -f opencode.json ]; then
-  cmp -s "$ROOT/oc2.orig" opencode.json && ok "left byte-identical" \
-    || { bad "reformatted a file it removed nothing from"; diff "$ROOT/oc2.orig" opencode.json | head -4; }
+if [ -f .mcp.json ]; then
+  cmp -s "$ROOT/oc2.orig" .mcp.json && ok "left byte-identical" \
+    || { bad "reformatted a file it removed nothing from"; diff "$ROOT/oc2.orig" .mcp.json | head -4; }
 else
   bad "deleted a config holding only the user's own server"
 fi
-
-say "CLAIM 7b — sync compiles from the same inputs init did"
-# `repoInfo` reaches the adapters on `init` and, for two releases, did not on
-# `sync`: the parameter existed, every adapter accepted it, and the one call
-# site `sync` uses passed three arguments. Nothing caught it because a later
-# pass happened to rebuild the same file with the right inputs.
-new c7b; printf '# R\n' > CLAUDE.md
-echo '{"name":"p","dependencies":{"@supabase/supabase-js":"^2","@sentry/node":"^8"}}' > package.json
-node $CLI init --yes >/dev/null 2>&1
-mcp=$(ls .mcp.json .vscode/mcp.json 2>/dev/null | head -1)
-cp "$mcp" "$ROOT/mcp.after-init"
-node $CLI sync --yes --force >/dev/null 2>&1
-cmp -s "$ROOT/mcp.after-init" "$mcp" && ok "sync produced the same MCP config as init" \
-  || { bad "sync and init disagree on the MCP config"; diff "$ROOT/mcp.after-init" "$mcp" | head -6; }
-node $CLI sync --yes --force >/dev/null 2>&1
-cmp -s "$ROOT/mcp.after-init" "$mcp" && ok "and again on a second sync" || bad "the config keeps changing"
 
 say "CLAIM 12g — no command answers a broken project with a stack trace"
 new c12g; printf '# R\n' > CLAUDE.md

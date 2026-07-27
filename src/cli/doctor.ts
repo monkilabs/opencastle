@@ -5,7 +5,16 @@ import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
 import { IDE_ADAPTERS } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
-import { orphanMarkers, countManagedBlocks } from './managed-block.js';
+import {
+  diagnoseManagedFile,
+  BLOCK_START,
+  BLOCK_END,
+  type FileDiagnosis,
+} from './managed-block.js';
+import {
+  START_MARKER as GITIGNORE_START,
+  END_MARKER as GITIGNORE_END,
+} from './gitignore.js';
 import { UnreadableConfigError } from './types.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
@@ -281,7 +290,7 @@ async function checkGitignoredOutput(
     // forever: sync rewrites its own block, the offending line lives below it,
     // and doctor fails again with the same advice. Asking about the offending
     // lines is the whole difference.
-    fix: (await ignoredByOurBlock(projectRoot, hidden))
+    fix: (await syncWouldClearThis(projectRoot, hidden))
       ? 'opencastle sync — those entries are in a block this tool maintains'
       : 'remove those entries from .gitignore; OpenCastle only ignores .env and run artefacts',
   };
@@ -297,11 +306,16 @@ async function checkGitignoredOutput(
  * the user's `.gitignore`, least of all one that could be interrupted between
  * the two writes.
  */
-async function ignoredByOurBlock(projectRoot: string, hidden: string[]): Promise<boolean> {
+async function syncWouldClearThis(projectRoot: string, hidden: string[]): Promise<boolean> {
   const path = resolve(projectRoot, '.gitignore');
   if (!existsSync(path)) return false;
 
   const content = await readFile(path, 'utf8');
+  // Being inside a block of ours is not enough — `sync` has to be willing to
+  // rewrite that block. On an unreducible `.gitignore` it is not, so the
+  // "run sync" remedy was a no-op that failed identically on every run, four
+  // syncs in a row, while the check that *could* explain it said nothing.
+  if (!diagnoseManagedFile(content, GITIGNORE_START, GITIGNORE_END).fixable) return false;
   const { blockRegions } = await import('./managed-block.js');
   const { START_MARKER, END_MARKER } = await import('./gitignore.js');
   const regions = blockRegions(content, START_MARKER, END_MARKER);
@@ -391,47 +405,42 @@ async function checkTornBlocks(
   if (!manifest) return { label, ok: true, warning: false }
 
   const managed = await resolveManagedPaths(manifest)
-  const torn: string[] = []
-  const doubled: string[] = []
-  for (const rel of managed.merged) {
+  // `.gitignore` too. It is co-owned exactly as the root files are, it is the
+  // one whose loss cannot be noticed by reading it, and it was the only one no
+  // surface ever looked at — so a `.gitignore` the writer had declined to
+  // reduce sat there while `doctor` failed on a *different* check with a remedy
+  // that could not work, and nothing named the real problem.
+  const files: Array<{ rel: string; markers: [string, string] }> = [
+    ...managed.merged.map((rel) => ({ rel, markers: [BLOCK_START, BLOCK_END] as [string, string] })),
+    { rel: '.gitignore', markers: [GITIGNORE_START, GITIGNORE_END] as [string, string] },
+  ]
+
+  const found: Array<{ rel: string; diagnosis: FileDiagnosis }> = []
+  for (const { rel, markers } of files) {
     const abs = resolve(projectRoot, rel)
     if (!existsSync(abs)) continue
-    const content = await readFile(abs, 'utf8')
-    if (orphanMarkers(content).length > 0) torn.push(rel)
-    if (countManagedBlocks(content) > 1) doubled.push(rel)
+    const diagnosis = diagnoseManagedFile(await readFile(abs, 'utf8'), markers[0], markers[1])
+    if (diagnosis.state !== 'clean') found.push({ rel, diagnosis })
   }
 
-  if (torn.length === 0 && doubled.length === 0) return { label, ok: true, warning: false }
+  if (found.length === 0) return { label, ok: true, warning: false }
 
-  // More than one complete block is two sets of instructions in one file, and
-  // the assistant reads both. `sync --check` has always compared block counts;
-  // `doctor` looked only for unpaired markers, so it was the one surface that
-  // called a doubled root file healthy — and after the writer stopped reducing
-  // a torn file, that state persists rather than being collapsed on the next
-  // run. Whichever command the user reaches for has to say the same thing.
-  if (doubled.length > 0) {
-    return {
-      label,
-      ok: false,
-      warning: false,
-      detail: `${doubled.join(', ')} contains more than one OpenCastle block`,
-      fix:
-        'the file also has markers that do not pair up, so this cannot be reduced' +
-        ' safely — delete the block you do not want, keeping one start/end pair',
-    }
+  // Every file, not the first. Returning as soon as one was found dropped a
+  // genuinely torn file from the report the moment any other file was doubled.
+  const detail = found.map(({ rel, diagnosis }) => `${rel} ${diagnosis.detail}`).join('; ')
+  // Failing only when nothing can clear it. A doubled file with no strays is
+  // fixed by `sync` in one run, so telling the user to hand-edit 20KB — which
+  // the old single remedy did — was both wrong and alarming.
+  const needsAPerson = found.filter(({ diagnosis }) => !diagnosis.fixable)
+  if (needsAPerson.length === 0) {
+    return { label, ok: false, warning: false, detail, fix: 'opencastle sync' }
   }
-  // A warning, not a failure. The same shape is a torn block of ours *or* a
-  // marker the user quoted in their own documentation, and we cannot tell —
-  // failing would hand the second user a red check they can never clear, which
-  // is the unclearable-CI defect from an earlier round wearing a new hat.
   return {
     label,
-    ok: true,
-    warning: true,
-    detail: `${torn.join(', ')} has an OpenCastle marker that belongs to no block`,
-    fix:
-      'text beside that marker may be stale generated output — remove it, or restore the' +
-      ' missing marker, then run "npx opencastle sync"',
+    ok: false,
+    warning: false,
+    detail,
+    fix: needsAPerson.map(({ rel, diagnosis }) => `${rel}: ${diagnosis.fix}`).join('; '),
   }
 }
 

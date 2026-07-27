@@ -1,7 +1,7 @@
 import { resolve, basename, relative } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
-import { writeManagedBlock } from '../managed-block.js'
+import { writeManagedBlock, recordMerge } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
 import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
@@ -269,22 +269,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       }
 
       const merge = await writeManagedBlock(rootPath, sections.join('\n'))
-      if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
-      if (merge.orphanMarker) (results.tornRoots ??= []).push(rootPath)
-      if (merge.damaged) (results.damagedRoots ??= []).push(rootPath)
-    if (merge.action === 'adopted' || merge.action === 'repaired') {
-        results.created.push(rootPath)
-        ;(merge.action === 'adopted'
-          ? (results.adopted ??= [])
-          : (results.repaired ??= [])
-        ).push(rootPath)
-      } else if (merge.action === 'created') {
-        results.created.push(rootPath)
-      } else if (merge.action === 'unchanged') {
-        results.skipped.push(rootPath)
-      } else {
-        results.copied.push(rootPath)
-      }
+      recordMerge(results, rootPath, merge)
     }
 
     const dotDirPath = resolve(projectRoot, config.dotDir)
@@ -466,17 +451,22 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     results.skipped.push(...installResult.skipped)
     // Adoption happens inside install(); without this the notice never reaches
     // the user on the one command they actually run to upgrade.
-    // Every optional field the compile can set, forwarded. `repaired` was
-    // added and this list was not, so a collapse — the one event whose only
-    // recovery route is the backup it writes — happened in silence on
-    // claude-code, opencode, codex and antigravity, i.e. on CLAUDE.md,
-    // AGENTS.md and GEMINI.md. `init` printed it, the other two adapter
-    // families printed it, and the one command people run to upgrade did not.
-    if (installResult.adopted?.length) results.adopted = installResult.adopted
-    if (installResult.repaired?.length) results.repaired = installResult.repaired
-    if (installResult.staleRoots?.length) results.staleRoots = installResult.staleRoots
-    if (installResult.tornRoots?.length) results.tornRoots = installResult.tornRoots
-    if (installResult.damagedRoots?.length) results.damagedRoots = installResult.damagedRoots
+    // Every optional field the compile set, forwarded by iterating the object
+    // rather than by naming them.
+    //
+    // The named list is how `repaired` reached three adapter families and
+    // `damagedRoots` reached one: a field is added to `MergeResult`, wired at
+    // the place it is produced, and this list is not updated — so the user is
+    // told nothing on the targets that miss it, including about the backup that
+    // is the only way back from a collapse. Both were reported as separate bugs
+    // a round apart. They are one bug, and it is the list.
+    const COMPUTED_HERE = new Set(['copied', 'skipped', 'created', 'visited', 'deleted'])
+    for (const [key, value] of Object.entries(installResult)) {
+      if (COMPUTED_HERE.has(key)) continue
+      if (Array.isArray(value) && value.length > 0) {
+        ;(results as unknown as Record<string, unknown>)[key] = value
+      }
+    }
 
     return results
   }

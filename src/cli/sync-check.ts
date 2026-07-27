@@ -5,7 +5,12 @@ import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { resolveStack } from './stack-config.js'
-import { hasManagedBlock, extractManagedBlock, countManagedBlocks } from './managed-block.js'
+import {
+  hasManagedBlock,
+  extractManagedBlock,
+  countManagedBlocks,
+  diagnoseManagedFile,
+} from './managed-block.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeChoice, StackConfig } from './types.js'
 
@@ -19,7 +24,14 @@ import type { CliContext, IdeChoice, StackConfig } from './types.js'
  * compile is the only honest answer.
  */
 
-export type DriftKind = 'missing' | 'changed' | 'extra'
+/**
+ * `unreducible` is the state no command will change: a co-owned file holding
+ * more than one block *and* a marker that pairs with nothing. It is drift, so
+ * CI must fail — but the remedy is a person, and printing "Fix: opencastle
+ * sync" beside it made the check permanently red on a command that by design
+ * refuses to touch the file.
+ */
+export type DriftKind = 'missing' | 'changed' | 'extra' | 'unreducible'
 
 export interface Drift {
   ide: string
@@ -143,7 +155,14 @@ function comparePath(
   if (!existsSync(actual)) {
     drift.push({ ide, path: managedPath, kind: 'missing' })
   } else if (!sameContent(fresh, actual)) {
-    drift.push({ ide, path: managedPath, kind: 'changed' })
+    // The same classifier `sync`, `doctor` and `remove` read, so the check
+    // cannot describe a file differently from the command it recommends.
+    const diagnosis = diagnoseManagedFile(readFileSync(actual, 'utf8'))
+    drift.push({
+      ide,
+      path: managedPath,
+      kind: diagnosis.fixable ? 'changed' : 'unreducible',
+    })
   }
   return 1
 }
@@ -201,6 +220,7 @@ function render(report: CheckReport): void {
   const missing = report.drift.filter((d) => d.kind === 'missing')
   const changed = report.drift.filter((d) => d.kind === 'changed')
   const extra = report.drift.filter((d) => d.kind === 'extra')
+  const unreducible = report.drift.filter((d) => d.kind === 'unreducible')
 
   console.log(`\n  ${c.red('✗')} ${report.drift.length} file(s) differ from their sources.\n`)
 
@@ -220,8 +240,24 @@ function render(report: CheckReport): void {
     console.log('')
   }
 
-  console.log(`  ${c.bold('Fix:')} ${c.cyan('opencastle sync')}`)
-  console.log(`  ${c.dim('To keep an edit, move it into .opencastle/ instead — that directory is yours.')}\n`)
+  if (unreducible.length > 0) {
+    console.log(`  ${c.bold('Needs a person')} ${c.dim('(no command will change these)')}`)
+    for (const d of unreducible) console.log(`    ${c.red('!')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+    console.log(
+      `    ${c.dim('More than one OpenCastle block, plus a marker that pairs with nothing.')}`,
+    )
+    console.log(`    ${c.dim('Keep one start/end pair and delete the rest.')}\n`)
+  }
+
+  // Only when something here is actually fixable by it. `sync` was printed
+  // unconditionally, so a file the writer refuses to touch produced a red check
+  // recommending the command that refuses — CI red forever on a no-op.
+  if (report.drift.length > unreducible.length) {
+    console.log(`  ${c.bold('Fix:')} ${c.cyan('opencastle sync')}`)
+    console.log(`  ${c.dim('To keep an edit, move it into .opencastle/ instead — that directory is yours.')}\n`)
+  } else {
+    console.log(`  ${c.bold('Fix:')} ${c.dim('by hand — see above, then run')} ${c.cyan('opencastle doctor')}\n`)
+  }
 }
 
 /** Exits non-zero on drift so CI fails. */
