@@ -107,8 +107,18 @@ if (!command || command.startsWith('-')) {
       console.log(HELP)
       process.exit(0)
     }
-    const mod = await import('../dist/cli/status.js')
-    await mod.default({ pkgRoot, args: command ? [command, ...args] : [] })
+    // Same try/catch as every other command. This path sat outside it, so the
+    // one command users run most — the bare `opencastle` — answered an
+    // unreadable manifest with a raw Node stack trace, while `doctor` on the
+    // same project printed a one-line "✗ EACCES: …".
+    try {
+      const mod = await import('../dist/cli/status.js')
+      await mod.default({ pkgRoot, args: command ? [command, ...args] : [] })
+    } catch (err) {
+      console.error(`\n  ✗ ${err.message}\n`)
+      if (args.includes('--debug')) console.error(err)
+      process.exit(1)
+    }
     process.exit(0)
   }
 }

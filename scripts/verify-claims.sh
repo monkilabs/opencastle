@@ -36,9 +36,11 @@ for shape in plain unclosed-fence quoted-block quoted-start-only trailing-rule c
   node $CLI init --yes >/dev/null 2>&1
   node $CLI sync --yes --force >/dev/null 2>&1
   node $CLI sync --yes --force >/dev/null 2>&1
-  # A fixture that already held a complete quoted block keeps it: that is the
-  # user's documentation, and ours goes below. Every other shape ends with one.
-  case $shape in quoted-block) want=2 ;; *) want=1 ;; esac
+  # One block, from every shape. A fixture that already held a complete block
+  # inside a fence has it collapsed into the one we maintain: a complete marker
+  # pair is this tool's wherever it sits, which is the only reading the writer,
+  # the checker, the collapse and the uninstall have ever managed to share.
+  want=1
   n=$(grep -c -- "$END" CLAUDE.md)
   if [ "$n" = "$want" ]; then ok "$shape: $want block(s) after init+2 syncs"
   else bad "$shape: $n blocks, wanted $want"; fi
@@ -59,21 +61,32 @@ for shape in plain unclosed-fence quoted-block quoted-start-only trailing-rule c
   # Filtering it from *both* sides is deliberate and is a real exception to
   # "byte for byte" — so it is asserted separately, immediately below, rather
   # than hidden by the filter.
-  grep -v -F -- "$START" "$ROOT/$shape.orig" > "$ROOT/$shape.expect"
-  grep -v -F -- "$START" CLAUDE.md > "$ROOT/$shape.actual" 2>/dev/null || true
+  # `quoted-block` is compared on prose only: its marker pair *and* the body
+  # between them are ours, so they do not come back. Every other shape must.
+  if [ "$shape" = quoted-block ]; then
+    grep -v -x -F -e "$START" -e "$END" -e 'x' "$ROOT/$shape.orig" > "$ROOT/$shape.expect"
+    grep -v -x -F -e "$START" -e "$END" -e 'x' CLAUDE.md > "$ROOT/$shape.actual" 2>/dev/null || true
+  else
+    grep -v -F -- "$START" "$ROOT/$shape.orig" > "$ROOT/$shape.expect"
+    grep -v -F -- "$START" CLAUDE.md > "$ROOT/$shape.actual" 2>/dev/null || true
+  fi
   if cmp -s "$ROOT/$shape.expect" "$ROOT/$shape.actual"; then
     ok "$shape: user half byte-identical"
   else
     bad "$shape: user half changed"
     diff "$ROOT/$shape.expect" "$ROOT/$shape.actual" | head -4
   fi
-  # The filtered exception, stated: a quoted *complete* block keeps its markers
-  # (it is the user's example); a quoted lone start marker is taken.
+  # The exception, stated rather than filtered: a marker line is text this tool
+  # authored, so it is taken back even from inside the user's fence — together
+  # with the block body it delimits. Their prose and their fence stay.
   case $shape in
     quoted-block)
-      [ "$(grep -c -F -- "$START" CLAUDE.md)" = "1" ] \
-        && ok "$shape: the quoted example keeps its markers" \
-        || bad "$shape: the quoted example lost its markers" ;;
+      grep -q -F -- "$START" CLAUDE.md \
+        && bad "$shape: a marker pair survived uninstall" \
+        || ok "$shape: marker pair taken, prose kept (documented exception)"
+      grep -q '```md' CLAUDE.md \
+        && ok "$shape: the user's fence survives" \
+        || bad "$shape: the user's fence was removed" ;;
     quoted-start-only)
       grep -q -F -- "$START" CLAUDE.md \
         && bad "$shape: a lone quoted marker survived" \
@@ -96,7 +109,7 @@ node $CLI sync --yes >/dev/null 2>&1
 [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "plain sync collapsed it" || bad "still doubled"
 grep -q STALE CLAUDE.md && bad "stale half survived" || ok "stale half gone"
 
-say "CLAIM 1e — a documented example does not capture the real block"
+say "CLAIM 1e — a second complete block is collapsed, wherever it sits"
 for side in below above; do
   new "c1e-$side"; printf '# Mine\n\nkeep\n' > CLAUDE.md
   node $CLI init --yes >/dev/null 2>&1
@@ -108,15 +121,49 @@ p=pathlib.Path('CLAUDE.md'); t=p.read_text()
 p.write_text(t+doc if sys.argv[3]=='below' else doc+t)
 " "$START" "$END" "$side"
   node $CLI sync --yes --force >/dev/null 2>&1
-  [ "$(grep -c -- "$END" CLAUDE.md)" = "2" ] && ok "doc $side: one real block plus the example" \
-                                             || bad "doc $side: block count wrong"
-  python3 -c "
+  node $CLI sync --yes --force >/dev/null 2>&1
+  [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "doc $side: collapsed to one block" \
+                                             || bad "doc $side: $(grep -c -- "$END" CLAUDE.md) blocks"
+  grep -q '## How this works' CLAUDE.md && ok "doc $side: their heading kept" \
+                                        || bad "doc $side: their heading lost"
+  grep -q '```md' CLAUDE.md && ok "doc $side: their fence kept" || bad "doc $side: their fence lost"
+  grep -q 'keep' CLAUDE.md && ok "doc $side: their prose kept" || bad "doc $side: their prose lost"
+  [ -f CLAUDE.md.opencastle-backup ] && ok "doc $side: a backup was written" \
+                                     || bad "doc $side: collapsed without a backup"
+  node $CLI sync --check >/dev/null 2>&1 && ok "doc $side: check clean" || bad "doc $side: drift remains"
+done
+
+say "CLAIM 1f — a block the user fenced is still ours, and still leaves one"
+# The shape that defeated six versions of a "is this quoted?" test: an unpaired
+# fence above the block, a bare fence below it. Every version disowned the block
+# — check red forever, an upgrade appending a second 20KB body that every
+# command called healthy, and our whole body left behind by `remove --all`.
+for shape in wrapped unpaired; do
+  new "c1f-$shape"
+  case $shape in
+    wrapped)  printf '# House rules\n\nUse pnpm.\n' > CLAUDE.md ;;
+    unpaired) printf '# House rules\n\nA snippet that never got closed:\n\n```\n' > CLAUDE.md ;;
+  esac
+  node $CLI init --yes >/dev/null 2>&1
+  if [ "$shape" = wrapped ]; then
+    python3 -c "
 import pathlib, sys
-t = pathlib.Path('CLAUDE.md').read_text()
-i = t.index('\`\`\`md'); seg = t[i:t.index('\`\`\`', i+5)]
-sys.exit(1 if 'Project Instructions' in seg else 0)
-" && ok "doc $side: our body stayed out of the user's fence" \
-   || bad "doc $side: our body was written into the user's fence"
+p=pathlib.Path('CLAUDE.md'); t=p.read_text(); i=t.index(sys.argv[1])
+p.write_text(t[:i] + '\`\`\`' + chr(10) + t[i:].rstrip(chr(10)) + chr(10) + '\`\`\`' + chr(10))" "$START"
+  else
+    printf '\n```\nnpm test\n```\n' >> CLAUDE.md
+  fi
+  node $CLI sync --check >/dev/null 2>&1 && ok "$shape: check clean" || bad "$shape: unclearable drift"
+  # A content change is what exposed the duplication: the byte-identical case
+  # hid it. Simulate a new release by editing the compiled body's source.
+  node $CLI sync --yes --force >/dev/null 2>&1
+  [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "$shape: still one block" \
+                                             || bad "$shape: $(grep -c -- "$END" CLAUDE.md) blocks"
+  node $CLI remove --all --yes >/dev/null 2>&1
+  grep -q 'Project Instructions' CLAUDE.md 2>/dev/null \
+    && bad "$shape: our body survived uninstall" || ok "$shape: uninstall left nothing of ours"
+  grep -q 'House rules' CLAUDE.md 2>/dev/null \
+    && ok "$shape: their heading kept" || bad "$shape: their heading lost"
 done
 
 say "CLAIM 2 — a lone start marker is never interpreted"
@@ -256,13 +303,20 @@ for ide in claude-code codex antigravity cursor windsurf vscode; do
 done
 
 say "CLAIM 6 — doctor remedies work; status agrees with doctor"
-for breakage in agents matrix gitignored; do
+for breakage in agents matrix gitignored gitignored-ours; do
   new "c6-$breakage"; printf '# R\n' > CLAUDE.md
   node $CLI init --yes >/dev/null 2>&1
   case $breakage in
     agents)     rm -rf .opencastle/agents ;;
     matrix)     rm -f .opencastle/agents/skill-matrix.json ;;
-    gitignored) printf 'node_modules\n.claude/\n' > .gitignore ;;
+    # Appended, not overwritten. Overwriting destroyed our managed block, so
+    # the two-branch remedy added for the pre-0.36 population was never reached
+    # — the fixture only ever exercised the branch that was already there.
+    gitignored)      printf '.claude/\n' >> .gitignore ;;
+    gitignored-ours) python3 -c "
+import pathlib
+p = pathlib.Path('.gitignore')
+p.write_text('node_modules\n\n# >>> OpenCastle managed (do not edit) >>>\nCLAUDE.md\n.claude/agents/\n# <<< OpenCastle managed <<<\n')" ;;
   esac
 
   node $CLI doctor >/dev/null 2>&1 && { bad "$breakage: doctor no longer detects this"; continue; }
@@ -273,15 +327,19 @@ for breakage in agents matrix gitignored; do
 
   # Run whatever doctor printed as the remedy — not an assumed `sync`. A failure
   # only a person can clear must say so instead of naming a command.
-  remedy=$(node $CLI doctor 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -oE 'npx opencastle [a-z-]+' | head -1)
+  # With or without the `npx` prefix. The pattern required it, and the remedy
+  # added for the gitignore case does not use it — so that remedy was invisible
+  # here, and the else-branch's grep did not match its wording either. The check
+  # could not pass on the case it was written for, in either direction.
+  remedy=$(node $CLI doctor 2>&1 | plain | grep -oE '(npx )?opencastle [a-z-]+( --[a-z]+)?' | tail -1)
   if [ -n "$remedy" ]; then
-    node $CLI ${remedy#npx opencastle } --yes >/dev/null 2>&1
+    node $CLI ${remedy#*opencastle } --yes >/dev/null 2>&1
     node $CLI doctor >/dev/null 2>&1 && ok "$breakage: '$remedy' cleared it" \
                                      || bad "$breakage: '$remedy' did not clear it"
   else
-    node $CLI doctor 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -q "by hand\|remove those entries" \
+    node $CLI doctor 2>&1 | plain | grep -q "remove those entries\|by hand\|only you" \
       && ok "$breakage: names a fix only a person can apply" \
-      || bad "$breakage: no actionable remedy given"
+      || { bad "$breakage: no actionable remedy given"; node $CLI doctor 2>&1 | plain | tail -3; }
   fi
 done
 
@@ -356,14 +414,20 @@ p=pathlib.Path('.opencastle/manifest.json');m=json.load(open(p))
 m['stack']={'cms':'sanity','db':'supabase','pm':'linear'}
 json.dump(m,open(p,'w'),indent=2)"
 node $CLI sync --yes --force >/dev/null 2>&1 && ok "sync survived a v1 stack" || bad "sync crashed"
-node $CLI doctor >/dev/null 2>&1; [ $? -le 1 ] && ok "doctor survived a v1 stack" || bad "doctor crashed"
+# `[ $? -le 1 ]` was the old test, and `bin/cli.mjs` exits 1 on any uncaught
+# throw — so a doctor that died on EISDIR scored the same as a clean run. Assert
+# on the output: a doctor that ran printed its check table.
+out=$(node $CLI doctor 2>&1 | plain)
+echo "$out" | grep -q "OpenCastle manifest" \
+  && ok "doctor survived a v1 stack" \
+  || { bad "doctor crashed on a v1 stack"; echo "$out" | head -3; }
 python3 -c "
 import json,sys
 s=json.load(open('.opencastle/manifest.json'))['stack']
 sys.exit(0 if 'techTools' in s else 1)" && ok "manifest migrated to v2" || bad "manifest not migrated"
 
 say "CLAIM 10 — nothing shipped names a command that does not exist"
-cd /Users/filip/repos/MonkiLabs/opencastle
+cd "$REPO"
 npx vitest run src/cli/docs-accuracy.test.ts >/dev/null 2>&1 && ok "docs-accuracy guards pass" || bad "docs-accuracy failing"
 
 say "CLAIM 1c — a doubled .gitignore block heals and uninstalls"
@@ -472,6 +536,134 @@ echo "$out" | grep -q "Updated 0 framework files" && bad "reported 0 while rewri
 out2=$(node $CLI sync --yes --force 2>&1 | plain)
 echo "$out2" | grep -q "Updated 0 framework files" \
   && ok "a no-op sync reports 0" || bad "a no-op sync inflated its count"
+
+say "CLAIM 12d — a failing init leaves the install coherent too"
+# CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
+# emptied every framework directory before writing a byte.
+for cmd in "init --yes" "sync --yes --force"; do
+  new "c12d-$(echo "$cmd" | tr ' -' '__')"
+  printf '# R\n' > CLAUDE.md; printf 'x\n' > .cursorrules
+  node $CLI init --yes >/dev/null 2>&1
+  before=$(find .claude .cursor -type f 2>/dev/null | wc -l | tr -d ' ')
+  python3 -c "
+import pathlib
+p=pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace('# Project Instructions','# CHANGED'))"
+  chmod 444 CLAUDE.md
+  node $CLI $cmd >/dev/null 2>&1
+  chmod 644 CLAUDE.md
+  after=$(find .claude .cursor -type f 2>/dev/null | wc -l | tr -d ' ')
+  [ "$after" -gt 0 ] && ok "$cmd: framework directories still populated ($after files)" \
+                     || bad "$cmd: emptied the framework directories (was $before)"
+done
+
+say "CLAIM 12e — no command leaves an empty directory it created"
+for ide in claude-code codex antigravity cursor windsurf vscode; do
+  new "c12e-$ide"
+  case $ide in
+    claude-code) printf '# R\n' > CLAUDE.md ;;
+    codex)       mkdir -p .codex; printf '# R\n' > AGENTS.md ;;
+    antigravity) printf '# R\n' > GEMINI.md ;;
+    cursor)      printf 'x\n' > .cursorrules ;;
+    windsurf)    printf 'x\n' > .windsurfrules ;;
+    vscode)      mkdir -p .github; printf '# R\n' > .github/copilot-instructions.md ;;
+  esac
+  node $CLI init --yes >/dev/null 2>&1
+  node $CLI remove --all --yes >/dev/null 2>&1
+  empties=$(find . -path ./.git -prune -o -type d -empty -print 2>/dev/null | grep -v '^\./\.git' | grep -v '^\.$' | tr '\n' ' ')
+  [ -z "$empties" ] && ok "$ide: nothing left empty" || bad "$ide: left behind $empties"
+done
+
+say "CLAIM 12f — a rename that differs only in case is not deleted"
+# macOS and Windows match filenames case-insensitively, so the compiler writes
+# into the existing file under its existing name; the sweep then compared the
+# name it asked for against the name on disk and removed what it had written.
+new c12f; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+mv .claude/agents/architect.agent.md .claude/agents/Architect.agent.md
+node $CLI sync --yes --force >/dev/null 2>&1
+[ "$(find .claude/agents -iname 'architect.agent.md' | wc -l | tr -d ' ')" = "1" ] \
+  && ok "the file survives a case-only rename" || bad "sync deleted the file it just wrote"
+node $CLI sync --check >/dev/null 2>&1 && ok "check clean after a case-only rename" \
+                                       || bad "case-only rename leaves drift"
+
+say "CLAIM 6b — every printed remedy is a command that works"
+# The MCP message told the user to run `sync`, which short-circuits when nothing
+# has drifted — and the MCP config is not a path the drift checker compares.
+new c6b; printf '# R\n' > CLAUDE.md; echo '{"name":"p","dependencies":{"@sentry/node":"^8"}}' > package.json
+mkdir -p .vscode; printf '{\n  // JSONC\n  "mcpServers": {}\n}\n' > .mcp.json
+out=$(node $CLI init --yes </dev/null 2>&1 | plain)
+echo "$out" | grep -q "not valid JSON" && ok "init named the unreadable config" \
+                                       || bad "init did not name it"
+remedy=$(echo "$out" | grep -oE 'opencastle sync( --[a-z]+)?' | tail -1)
+printf '{\n  "mcpServers": {}\n}\n' > .mcp.json       # the user fixes the file
+node $CLI ${remedy#opencastle } --yes >/dev/null 2>&1
+[ "$(grep -c sentry .mcp.json)" -gt 0 ] && ok "'$remedy' added the MCP servers" \
+                                        || bad "'$remedy' did not add the MCP servers"
+
+say "CLAIM 6c — doctor never prescribes a command that refuses to run"
+new c6c; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+node $CLI remove --keep-files --yes >/dev/null 2>&1
+out=$(node $CLI doctor 2>&1 | plain)
+remedy=$(echo "$out" | grep -oE '(npx )?opencastle [a-z-]+' | tail -1)
+if [ -n "$remedy" ]; then
+  node $CLI ${remedy#*opencastle } --yes >/dev/null 2>&1
+  code=$?
+  [ $code -eq 0 ] && ok "'$remedy' runs on a manifest-less install" \
+                  || bad "'$remedy' exits $code — doctor named a command that refuses"
+else
+  bad "doctor named no remedy for a missing manifest"
+fi
+
+say "CLAIM 3b — a co-owned JSON config keeps every key the user put in it"
+# Byte fidelity is claimed for markdown, where the block is delimited and the
+# rest is untouched. A JSON config we merge servers into is round-tripped
+# through a parser, so it comes back canonically formatted — what must hold is
+# that every key of theirs survives with the same value, and that nothing of
+# ours is left. Asserted rather than assumed: `stripManagedMcpServers` used to
+# rewrite the file even when it removed nothing at all.
+new c3b; printf '# R\n' > CLAUDE.md
+printf '{"name":"p","agent":{"build":{"model":"anthropic/claude-opus-4"}}}\n' > opencode.json
+cp opencode.json "$ROOT/oc.orig"
+node $CLI init --yes >/dev/null 2>&1
+node $CLI remove --all --yes >/dev/null 2>&1
+if [ ! -f opencode.json ]; then
+  bad "opencode.json was deleted — it is the user's whole project config"
+else
+  python3 -c "
+import json, sys
+a = json.load(open('$ROOT/oc.orig')); b = json.load(open('opencode.json'))
+missing = [k for k, v in a.items() if k not in b or b[k] != v]
+sys.exit(1 if missing else 0)" \
+    && ok "every key the user wrote survived" || bad "keys were lost or changed"
+  grep -q chrome-devtools opencode.json && bad "our servers survived uninstall" \
+                                        || ok "our servers are gone"
+fi
+
+say "CLAIM 3c — a config we take nothing out of is not rewritten"
+new c3c; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+printf '{"mcpServers":{"mine":{"command":"node"}}}\n' > opencode.json
+cp opencode.json "$ROOT/oc2.orig"
+node $CLI remove --all --yes >/dev/null 2>&1
+if [ -f opencode.json ]; then
+  cmp -s "$ROOT/oc2.orig" opencode.json && ok "left byte-identical" \
+    || { bad "reformatted a file it removed nothing from"; diff "$ROOT/oc2.orig" opencode.json | head -4; }
+else
+  bad "deleted a config holding only the user's own server"
+fi
+
+say "CLAIM 12g — no command answers a broken project with a stack trace"
+new c12g; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+chmod 000 .opencastle/manifest.json
+for cmd in "" "doctor" "sync --check"; do
+  out=$(node $CLI $cmd 2>&1 | plain)
+  echo "$out" | grep -qE 'at async|Node\.js v' \
+    && bad "'opencastle $cmd' printed a stack trace" \
+    || ok "'opencastle ${cmd:-(bare)}' failed cleanly"
+done
+chmod 644 .opencastle/manifest.json
 
 say "CLAIM 4b — init does not rewrite .opencastle/ either"
 new c4b; echo '{"name":"p","dependencies":{"@supabase/supabase-js":"^2"}}' > package.json

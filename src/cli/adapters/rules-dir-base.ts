@@ -1,6 +1,6 @@
 import { resolve, join, basename } from 'node:path'
-import { mkdir, writeFile, readdir, readFile, unlink } from 'node:fs/promises'
-import { existsSync, readdirSync } from 'node:fs'
+import { mkdir, writeFile, readdir, readFile, unlink, rename } from 'node:fs/promises'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
@@ -60,6 +60,38 @@ export interface RulesDirAdapter {
   update(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo): Promise<CopyResults>
   getManagedPaths(): ManagedPaths
   getDoctorChecks(): DoctorCheck[]
+}
+
+/**
+ * Is this on-disk path one the compile just wrote, under a different spelling?
+ *
+ * macOS and Windows match filenames case-insensitively, so writing
+ * `architect.agent.md` into a directory already holding `Architect.agent.md`
+ * updates that file — under its existing name. The sweep then compared the
+ * spelling it asked for against the spelling on disk, found no match, and
+ * deleted the file it had just written. Renaming to the canonical spelling
+ * fixes both halves: the content is kept and `sync --check`, which looks for
+ * the compiler's spelling, stops reporting a file that is right there.
+ */
+async function reconcileCase(onDisk: string, visited: Set<string>): Promise<boolean> {
+  if (visited.has(onDisk)) return true
+  const lower = onDisk.toLowerCase()
+  for (const want of visited) {
+    if (want === onDisk || want.toLowerCase() !== lower) continue
+    // `resolve` is lexical and would call these two different files. Only the
+    // filesystem knows: `realpath.native` returns the real on-disk spelling, so
+    // two names for one file resolve to the same string and two genuinely
+    // different files on a case-sensitive filesystem do not.
+    if (!existsSync(want)) continue
+    try {
+      if (realpathSync.native(want) !== realpathSync.native(onDisk)) continue
+    } catch {
+      continue
+    }
+    await rename(onDisk, want)
+    return true
+  }
+  return false
 }
 
 export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
@@ -263,7 +295,10 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       if (merge.orphanMarker) (results.tornRoots ??= []).push(rootFile)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
         results.created.push(rootFile)
-        ;(results.adopted ??= []).push(rootFile)
+        ;(merge.action === 'adopted'
+          ? (results.adopted ??= [])
+          : (results.repaired ??= [])
+        ).push(rootFile)
       } else if (merge.action === 'created') {
         results.created.push(rootFile)
       } else if (merge.action === 'unchanged') {
@@ -315,7 +350,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // every sync, on the same counter the recompilation bug had already made
     // meaningless.
     results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(rootRulesFile)
-    if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(rootPath)
+    if (rootMerge.action === 'adopted') (results.adopted ??= []).push(rootPath)
+  if (rootMerge.action === 'repaired') (results.repaired ??= []).push(rootPath)
     if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
     if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(rootPath)
 
@@ -364,7 +400,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // `sync --check` clearable.
     const visited = new Set(results.visited ?? [])
     for (const [abs, rel] of beforeSweep) {
-      if (visited.has(abs)) continue
+      if (await reconcileCase(abs, visited)) continue
       await unlink(abs)
       ;(results.deleted ??= []).push(rel)
     }

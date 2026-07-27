@@ -39,7 +39,16 @@ interface CheckResult {
 
 function checkManifest(manifest: Manifest | null): CheckResult {
   if (!manifest) {
-    return { ok: false, label: 'OpenCastle manifest (.opencastle/manifest.json)', detail: 'Not found. Run "npx opencastle init" first.' };
+    // The remedy has to be set here. Without it the summary falls back to a
+    // blanket "run sync", and `sync` on a project with no manifest exits 1
+    // saying to run `init` — reachable from `remove --keep-files`, which is a
+    // documented command, and from deleting `.opencastle/`.
+    return {
+      ok: false,
+      label: 'OpenCastle manifest (.opencastle/manifest.json)',
+      detail: 'Not found. Run "npx opencastle init" first.',
+      fix: 'opencastle init',
+    };
   }
   return { ok: true, label: 'OpenCastle manifest (.opencastle/manifest.json)', detail: `v${manifest.version}, IDE: ${manifest.ides?.join(', ') ?? manifest.ide}` };
 }
@@ -59,7 +68,22 @@ async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
     return { ok: false, label: 'Skill matrix', detail: 'File not found at .opencastle/agents/skill-matrix.json' };
   }
   const { readFile } = await import('node:fs/promises');
-  const content = await readFile(path, 'utf8');
+  // The read is guarded as well as the parse. `doctor` is the command people
+  // run *because* something is wrong, and an unreadable skill matrix — a
+  // directory where the file should be, a permissions mistake — took it down
+  // with a bare `✗ EISDIR: illegal operation on a directory, read`: the
+  // diagnostic dying without naming what it could not read.
+  let content: string;
+  try {
+    content = await readFile(path, 'utf8');
+  } catch (err) {
+    return {
+      ok: false,
+      label: 'Skill matrix',
+      detail: `Cannot read .opencastle/agents/skill-matrix.json — ${(err as Error).message}`,
+      fix: 'fix or delete the file, then run opencastle sync',
+    };
+  }
   try {
     const data = JSON.parse(content);
     const bindings = data.bindings ?? {};
@@ -249,25 +273,83 @@ async function checkGitignoredOutput(
     detail:
       `${hidden.length} generated path(s) are gitignored (${hidden[0]}${hidden.length > 1 ? ', …' : ''})` +
       ' — a teammate\'s clone would have no rules',
-    // Two populations, two remedies. If the entries sit inside a managed block
-    // this tool wrote — every install from before 0.36 has one, listing
-    // CLAUDE.md and the framework directories — then `sync` rewrites that block
-    // and clears the check on its own. Telling those users to hand-edit a file
-    // the tool owns pointed them away from the one-command fix, and `status`
-    // repeated it.
-    fix: (await hasOurGitignoreBlock(projectRoot))
-      ? 'opencastle sync — the entries are in a block this tool maintains'
+    // Two populations, two remedies — and the question that separates them is
+    // "are *these* entries inside a block we maintain", not "does the file
+    // contain such a block". The first version asked the second question, which
+    // `init` makes true for every install there has ever been, so a project
+    // that ignored `.claude/` before OpenCastle arrived was sent to `sync`
+    // forever: sync rewrites its own block, the offending line lives below it,
+    // and doctor fails again with the same advice. Asking about the offending
+    // lines is the whole difference.
+    fix: (await ignoredByOurBlock(projectRoot, hidden))
+      ? 'opencastle sync — those entries are in a block this tool maintains'
       : 'remove those entries from .gitignore; OpenCastle only ignores .env and run artefacts',
   };
 }
 
-/** Does `.gitignore` carry a block this tool wrote and will rewrite? */
-async function hasOurGitignoreBlock(projectRoot: string): Promise<boolean> {
+/**
+ * Are the lines doing the ignoring inside a block we maintain?
+ *
+ * `git check-ignore -v` names the source file and line number of the pattern
+ * that matched, which is the only way to answer this without reimplementing
+ * gitignore matching — and without writing. An earlier attempt removed our
+ * block, re-asked git and put the file back; a diagnostic command must not edit
+ * the user's `.gitignore`, least of all one that could be interrupted between
+ * the two writes.
+ */
+async function ignoredByOurBlock(projectRoot: string, hidden: string[]): Promise<boolean> {
   const path = resolve(projectRoot, '.gitignore');
   if (!existsSync(path)) return false;
+
+  const content = await readFile(path, 'utf8');
   const { blockRegions } = await import('./managed-block.js');
   const { START_MARKER, END_MARKER } = await import('./gitignore.js');
-  return blockRegions(await readFile(path, 'utf8'), START_MARKER, END_MARKER).length > 0;
+  const regions = blockRegions(content, START_MARKER, END_MARKER);
+  if (regions.length === 0) return false;
+
+  // 1-based line numbers, to match `git check-ignore -v`.
+  const lineOf = (offset: number): number => content.slice(0, offset).split('\n').length;
+  const ours = regions.map((r) => ({ from: lineOf(r.start), to: lineOf(r.end) }));
+
+  const sources = await gitIgnoreSources(projectRoot, hidden);
+  if (sources === null || sources.length === 0) return false;
+
+  // Every hidden path must be hidden by a line of ours; one entry of the user's
+  // own is enough to make `sync` the wrong advice.
+  return sources.every(
+    (s) => s.file === '.gitignore' && ours.some((o) => s.line >= o.from && s.line <= o.to),
+  );
+}
+
+/** Which ignore file and line matched each path, per `git check-ignore -v`. */
+async function gitIgnoreSources(
+  projectRoot: string,
+  paths: string[],
+): Promise<Array<{ file: string; line: number }> | null> {
+  if (!existsSync(resolve(projectRoot, '.git'))) return null;
+  const { execFile } = await import('node:child_process');
+  return new Promise((done) => {
+    const child = execFile(
+      'git',
+      ['-C', projectRoot, 'check-ignore', '-v', '--no-index', '--stdin'],
+      (err, stdout) => {
+        if (err && (err as { code?: number }).code !== 1 && stdout === '') return done(null);
+        const out: Array<{ file: string; line: number }> = [];
+        for (const raw of stdout.split('\n')) {
+          // "<source>:<line>:<pattern>\t<pathname>"
+          const [locator] = raw.split('\t');
+          if (!locator) continue;
+          const parts = locator.split(':');
+          if (parts.length < 3) continue;
+          const line = Number(parts[1]);
+          if (!Number.isFinite(line)) continue;
+          out.push({ file: parts[0], line });
+        }
+        done(out);
+      },
+    );
+    child.stdin?.end(paths.join('\n') + '\n');
+  });
 }
 
 /**

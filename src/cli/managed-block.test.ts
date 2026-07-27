@@ -448,24 +448,31 @@ describe('a file that quotes the marker', () => {
 
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it('keeps the quotation and appends our own block below it', async () => {
-    // This asserted adoption for three rounds. Writing into the fence meant the
-    // whole compiled instruction set ended up markdown-quoted — the "instructions
-    // layer silently never installed" failure the managed block exists to
-    // prevent — and `remove --all` then gutted the user's example. A quoted
-    // region is theirs; ours goes below.
+  it('regenerates the body of a fenced example, and keeps one block', async () => {
+    // This asserted adoption, then quotation, then adoption again. The
+    // quotation reading is gone: it could not be made to hold, and every
+    // version of it shipped a worse failure than the one it fixed — a block
+    // disowned mid-file, an upgrade silently doubling the instruction set with
+    // every check reporting green, our body surviving `remove --all`. A
+    // complete marker pair is ours wherever it sits, and the marker line says
+    // as much in its own text.
     const documented = `# Our conventions\n\nOpenCastle writes a block like this:\n\n\`\`\`markdown\n${BLOCK_START}\n...generated...\n${BLOCK_END}\n\`\`\`\n`
     writeFileSync(file, documented)
 
     await writeManagedBlock(file, 'generated body')
     const once = readFileSync(file, 'utf8')
 
-    expect(once.startsWith(documented), "the user's file was rewritten").toBe(true)
+    // Their prose, their heading and their fence are untouched.
+    expect(once).toContain('# Our conventions')
+    expect(once).toContain('OpenCastle writes a block like this:')
+    expect(once).toContain('```markdown')
+    // The body between the markers is ours, so it is regenerated.
     expect(once).toContain('generated body')
-    const fenceEnd = once.indexOf('```\n', once.indexOf('```markdown') + 3)
-    expect(once.indexOf('generated body'), 'our body landed inside the fence').toBeGreaterThan(fenceEnd)
+    expect(once).not.toContain('...generated...')
+    // And exactly one block, as everywhere else.
+    expect(once.split(BLOCK_END)).toHaveLength(2)
 
-    // And stable: no growth on subsequent syncs.
+    // Stable: no growth on subsequent syncs.
     await writeManagedBlock(file, 'generated body')
     expect(readFileSync(file, 'utf8')).toBe(once)
   })
@@ -584,13 +591,10 @@ describe('the merge is a fixed point, whatever the prose looks like', () => {
 
           const text = readFileSync(file, 'utf8')
           expect(text, 'the third write changed the file').toBe(once)
-          // Exactly one block of *ours*. A fixture that already held a complete
-          // quoted block keeps it — that is the user's documentation, not a
-          // duplicate — so such a file ends with two complete regions.
-          const quotedInFixture = original.includes(BLOCK_END) ? 1 : 0
-          expect(text.split(BLOCK_END).length - 1, 'wrong number of blocks').toBe(
-            1 + quotedInFixture,
-          )
+          // Exactly one, from every starting shape. A fixture that already
+          // held a complete block has it collapsed into the one we maintain —
+          // there is no shape of file that ends with two.
+          expect(text.split(BLOCK_END).length - 1, 'wrong number of blocks').toBe(1)
           expect(hasManagedBlock(text), 'the block it just wrote is unfindable').toBe(true)
 
           // And uninstalling leaves none of our body behind.
@@ -680,7 +684,7 @@ describe('hasManagedBlock and extractManagedBlock agree', () => {
  * keep here and nowhere else: choosing between two real regions can only pick
  * wrong, never conclude there is no block, which is the answer that grows files.
  */
-describe('a documented example alongside the real block', () => {
+describe('a second complete block, however it got there', () => {
   let dir: string
   let file: string
 
@@ -694,7 +698,7 @@ describe('a documented example alongside the real block', () => {
   const example = `\n## How this works\n\n\`\`\`md\n${BLOCK_START}\n...example...\n${BLOCK_END}\n\`\`\`\n`
 
   for (const side of ['below', 'above'] as const) {
-    it(`keeps our body out of a fence documented ${side}`, async () => {
+    it(`collapses a fenced copy ${side} the real block, and backs the file up`, async () => {
       writeFileSync(file, '# Mine\n\nkeep\n')
       await writeManagedBlock(file, 'GENERATED BODY')
       const withBlock = readFileSync(file, 'utf8')
@@ -703,29 +707,22 @@ describe('a documented example alongside the real block', () => {
       await writeManagedBlock(file, 'SECOND GENERATION')
       const text = readFileSync(file, 'utf8')
 
-      const fenceStart = text.indexOf('```md')
-      const fenced = text.slice(fenceStart, text.indexOf('```', fenceStart + 5))
-      expect(fenced, 'our body was written into the user fence').not.toContain('SECOND GENERATION')
-      expect(fenced, "the user's example was rewritten").toContain('...example...')
+      // One block. Two sets of instructions in one file is the failure this
+      // whole module exists to prevent, and a fence does not stop an assistant
+      // reading the second set.
+      expect(text.split(BLOCK_END)).toHaveLength(2)
       expect(text).toContain('SECOND GENERATION')
+      // Their prose and their fence survive; only the marker pair inside it went.
+      expect(text).toContain('## How this works')
+      expect(text).toContain('```md')
       expect(text).toContain('keep')
-    })
-
-    it(`leaves the documented example in place, ${side}`, async () => {
-      writeFileSync(file, '# Mine\n\nkeep\n')
-      await writeManagedBlock(file, 'GENERATED BODY')
-      const withBlock = readFileSync(file, 'utf8')
-      writeFileSync(file, side === 'below' ? withBlock + example : example + withBlock)
-
-      await writeManagedBlock(file, 'SECOND GENERATION')
-      // Two complete regions survive: ours, and their documentation. Collapsing
-      // theirs to satisfy "one block" would be destroying their writing to tidy
-      // ours; what must never survive is a second *unquoted* block.
-      expect(readFileSync(file, 'utf8').split(BLOCK_END)).toHaveLength(3)
+      // And it is recoverable — nothing of theirs is discarded silently.
+      expect(existsSync(`${file}.opencastle-backup`)).toBe(true)
+      expect(readFileSync(`${file}.opencastle-backup`, 'utf8')).toContain('...example...')
     })
   }
 
-  it('still collapses two unquoted blocks', async () => {
+  it('collapses two plain blocks', async () => {
     writeFileSync(file, '# Mine\n\nkeep\n')
     await writeManagedBlock(file, 'GENERATED BODY')
     const t = readFileSync(file, 'utf8')

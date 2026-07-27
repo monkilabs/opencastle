@@ -287,13 +287,6 @@ export default async function remove({ args }: CliContext): Promise<void> {
     if (parent !== projectRoot) parents.add(parent)
   }
 
-  // The containers our own directories lived in. `.claude/agents/`, `skills/`
-  // and `commands/` were each removed by name, and `.claude/` itself was left
-  // behind — an empty directory the user has to notice and delete, after a
-  // command whose whole promise is leaving no trace. Only ever removed when
-  // empty, so anything of theirs inside keeps it.
-  pruneEmptyDirs(parents, projectRoot)
-
   // Co-owned files hold the user's own writing above our block. Take back the
   // block; delete the file only if nothing of theirs remains.
   let stripped = 0
@@ -312,7 +305,23 @@ export default async function remove({ args }: CliContext): Promise<void> {
     if (outcome === 'deleted') removed++
     else if (outcome === 'stripped') stripped++
     else if (outcome === 'unreadable') unreadable.push(getMcpConfigRelPath(ide))
+    const mcpParent = dirname(resolve(projectRoot, getMcpConfigRelPath(ide)))
+    if (mcpParent !== projectRoot) parents.add(mcpParent)
   }
+
+  // The containers our own directories lived in. `.claude/agents/`, `skills/`
+  // and `commands/` were each removed by name and `.claude/` itself was left
+  // behind — an empty directory the user has to notice and delete, after a
+  // command whose whole promise is leaving no trace.
+  //
+  // Deliberately after the MCP strip, not before it. Pruning first worked for
+  // claude-code and opencode, whose MCP config sits at the project root, and
+  // silently did nothing for the other five, whose config lives *inside* the
+  // container and was therefore still there when the prune walked past. Right
+  // for the first case, wrong for the rest.
+  //
+  // Only ever removes an empty directory, so anything of theirs inside keeps it.
+  pruneEmptyDirs(parents, projectRoot)
 
   // `.opencastle/` holds prose the user wrote — conventions, decisions, lessons —
   // and this same command writes a backup for a root file it merely replaces.

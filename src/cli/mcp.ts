@@ -326,9 +326,10 @@ export async function stripManagedMcpServers(
   const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
   if (!existsSync(destPath)) return 'absent';
 
+  const before = await readFile(destPath, 'utf8');
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(await readFile(destPath, 'utf8')) as Record<string, unknown>;
+    parsed = JSON.parse(before) as Record<string, unknown>;
   } catch {
     // Not ours to repair. Leaving it alone beats deleting something unreadable,
     // but 'stripped' would have removal report "kept your content in N file(s)"
@@ -336,10 +337,21 @@ export async function stripManagedMcpServers(
     return 'unreadable';
   }
 
+  // A copy to compare against: `willKeepSomethingAfterStrip` edits `parsed` in
+  // place, so this is the only record of what the file said before.
+  const untouched = JSON.stringify(parsed);
+
   if (!willKeepSomethingAfterStrip(parsed, ide)) {
     await rm(destPath, { force: true });
     return 'deleted';
   }
+
+  // Only rewrite when a server of ours actually came out. `opencode.json` is
+  // OpenCode's whole project config, and re-serialising it reformatted a
+  // hand-written one-line file on every uninstall — 10 bytes in, 15 out, for a
+  // strip that took nothing. Byte fidelity is a claim this tool makes about
+  // co-owned files, and a JSON config is one of those.
+  if (JSON.stringify(parsed) === untouched) return 'absent';
 
   await writeFile(destPath, JSON.stringify(parsed, null, 2) + '\n');
   return 'stripped';

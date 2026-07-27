@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
-import { mkdir, readFile, writeFile, copyFile, unlink } from 'node:fs/promises'
-import { existsSync, readdirSync } from 'node:fs'
+import { mkdir, readFile, writeFile, copyFile, unlink, rename } from 'node:fs/promises'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock } from '../managed-block.js'
 import { copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
@@ -64,6 +64,38 @@ function copyRulesFor(
   return {}
 }
 
+/**
+ * Is this on-disk path one the compile just wrote, under a different spelling?
+ *
+ * macOS and Windows match filenames case-insensitively, so writing
+ * `architect.agent.md` into a directory already holding `Architect.agent.md`
+ * updates that file — under its existing name. The sweep then compared the
+ * spelling it asked for against the spelling on disk, found no match, and
+ * deleted the file it had just written. Renaming to the canonical spelling
+ * fixes both halves: the content is kept and `sync --check`, which looks for
+ * the compiler's spelling, stops reporting a file that is right there.
+ */
+async function reconcileCase(onDisk: string, visited: Set<string>): Promise<boolean> {
+  if (visited.has(onDisk)) return true
+  const lower = onDisk.toLowerCase()
+  for (const want of visited) {
+    if (want === onDisk || want.toLowerCase() !== lower) continue
+    // `resolve` is lexical and would call these two different files. Only the
+    // filesystem knows: `realpath.native` returns the real on-disk spelling, so
+    // two names for one file resolve to the same string and two genuinely
+    // different files on a case-sensitive filesystem do not.
+    if (!existsSync(want)) continue
+    try {
+      if (realpathSync.native(want) !== realpathSync.native(onDisk)) continue
+    } catch {
+      continue
+    }
+    await rename(onDisk, want)
+    return true
+  }
+  return false
+}
+
 export async function install(
   pkgRoot: string,
   projectRoot: string,
@@ -90,7 +122,10 @@ export async function install(
     if (merge.orphanMarker) (results.tornRoots ??= []).push(copilotDest)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
       results.created.push(copilotDest)
-      ;(results.adopted ??= []).push(copilotDest)
+      ;(merge.action === 'adopted'
+        ? (results.adopted ??= [])
+        : (results.repaired ??= [])
+      ).push(copilotDest)
     } else if (merge.action === 'created') {
       results.created.push(copilotDest)
     } else if (merge.action === 'unchanged') {
@@ -169,7 +204,8 @@ export async function update(
   // `unchanged` means the block was already correct — counting it inflated
   // "Updated N framework files" by one on every single sync.
   results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(copilotDest)
-  if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(copilotDest)
+  if (rootMerge.action === 'adopted') (results.adopted ??= []).push(copilotDest)
+  if (rootMerge.action === 'repaired') (results.repaired ??= []).push(copilotDest)
   if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(copilotDest)
   if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(copilotDest)
 
@@ -225,7 +261,8 @@ export async function update(
 
   // Now drop output with no source left.
   for (const abs of beforeSweep.keys()) {
-    if (!visited.has(abs) && existsSync(abs)) await unlink(abs)
+    if (await reconcileCase(abs, visited)) continue
+    if (existsSync(abs)) await unlink(abs)
   }
 
   // Customizations are NEVER overwritten during update.

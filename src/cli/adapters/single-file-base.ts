@@ -1,6 +1,6 @@
 import { resolve, basename, relative } from 'node:path'
-import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile } from 'node:fs/promises'
-import { existsSync, readdirSync } from 'node:fs'
+import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile, rename } from 'node:fs/promises'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
 import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
@@ -75,6 +75,38 @@ function referenceDir(config: SingleFileAdapterConfig, stack?: StackConfig): {
   const present = owners.filter((o) => selected.has(o.ide))
   if (present.length < 2) return { dir: config.dotDir, sharedWith: [] }
   return { dir: present[0].dotDir, sharedWith: present.map((o) => o.dotDir) }
+}
+
+/**
+ * Is this on-disk path one the compile just wrote, under a different spelling?
+ *
+ * macOS and Windows match filenames case-insensitively, so writing
+ * `architect.agent.md` into a directory already holding `Architect.agent.md`
+ * updates that file — under its existing name. The sweep then compared the
+ * spelling it asked for against the spelling on disk, found no match, and
+ * deleted the file it had just written. Renaming to the canonical spelling
+ * fixes both halves: the content is kept and `sync --check`, which looks for
+ * the compiler's spelling, stops reporting a file that is right there.
+ */
+async function reconcileCase(onDisk: string, visited: Set<string>): Promise<boolean> {
+  if (visited.has(onDisk)) return true
+  const lower = onDisk.toLowerCase()
+  for (const want of visited) {
+    if (want === onDisk || want.toLowerCase() !== lower) continue
+    // `resolve` is lexical and would call these two different files. Only the
+    // filesystem knows: `realpath.native` returns the real on-disk spelling, so
+    // two names for one file resolve to the same string and two genuinely
+    // different files on a case-sensitive filesystem do not.
+    if (!existsSync(want)) continue
+    try {
+      if (realpathSync.native(want) !== realpathSync.native(onDisk)) continue
+    } catch {
+      continue
+    }
+    await rename(onDisk, want)
+    return true
+  }
+  return false
 }
 
 export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAdapter {
@@ -241,7 +273,10 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       if (merge.orphanMarker) (results.tornRoots ??= []).push(rootPath)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
         results.created.push(rootPath)
-        ;(results.adopted ??= []).push(rootPath)
+        ;(merge.action === 'adopted'
+          ? (results.adopted ??= [])
+          : (results.repaired ??= [])
+        ).push(rootPath)
       } else if (merge.action === 'created') {
         results.created.push(rootPath)
       } else if (merge.action === 'unchanged') {
@@ -417,10 +452,9 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     for (const dirPath of sweptDirs) {
       for (const rel of filesUnderDir(dirPath)) {
         const abs = resolve(dirPath, rel)
-        if (!written.has(abs)) {
-          ;(results.deleted ??= []).push(before.get(abs) ?? rel)
-          await rm(abs, { force: true })
-        }
+        if (await reconcileCase(abs, written)) continue
+        ;(results.deleted ??= []).push(before.get(abs) ?? rel)
+        await rm(abs, { force: true })
       }
     }
     // Pass the three categories through as they came back. Folding `created`
