@@ -7,7 +7,6 @@ import {
   stripManagedBlockFromFile,
   extractManagedBlock,
   hasManagedBlock,
-  ownedRegions,
   blockRegions,
   orphanMarkers,
   BLOCK_START,
@@ -15,19 +14,25 @@ import {
 } from './managed-block.js'
 
 /**
- * The invariants, checked over generated files rather than chosen ones.
+ * The invariants, checked over files nobody chose.
  *
  * Every managed-block defect in this branch's review history was found by a
  * person constructing a file the hand-written fixtures did not cover — a fence
- * that opened and never closed, a marker pasted into a code sample, a file
- * whose last line had no newline. Each fix then added a fixture for that exact
- * shape, and the next round found another.
+ * that opened and never closed, a marker pasted into a code sample, a file torn
+ * on both sides of the block. Each fix then added a fixture for that exact
+ * shape, and the next round found another one.
  *
- * These are the properties themselves. The generator below is deliberately
- * hostile: fences of both delimiters and several lengths, indented fences,
- * markers loose in prose, complete blocks already present, CRLF, and files with
- * and without a trailing newline. If a shape breaks an invariant, the assertion
- * prints the file that did it.
+ * Two searches, because they fail differently. `arrangements` is exhaustive
+ * over a three-symbol alphabet: it finds the *shortest* counterexample, on
+ * every run, in about a second — the shape that cost the user their prose
+ * exists at seven lines, and random sampling needed twelve thousand draws to
+ * stumble onto a ten-line instance of it. `makeFile` is a broad random
+ * generator over pieces that have each broken this module at some point, and
+ * catches what a three-symbol alphabet cannot express.
+ *
+ * These are deliberately long-running and carry their own timeouts. How much
+ * searching is allowed is the whole point, and the default ten seconds is a
+ * limit on that rather than on anything else.
  */
 
 /** Building blocks that have each, at some point, broken this module. */
@@ -45,7 +50,9 @@ const PIECES = [
   `${BLOCK_START}\n`,
   `${BLOCK_END}\n`,
   `${BLOCK_START}\nquoted body\n${BLOCK_END}\n`,
+  `${BLOCK_END}\n${BLOCK_START}\n`,
   '<!-- a comment -->\n',
+  'A RULE THE USER WROTE\n',
 ]
 
 /** Deterministic pseudo-random, so a failure is reproducible from its index. */
@@ -59,7 +66,9 @@ function lcg(seed: number): () => number {
 
 function makeFile(seed: number): string {
   const rand = lcg(seed)
-  const count = 1 + Math.floor(rand() * 6)
+  // Up to twelve pieces. The shapes that broke this needed seven to ten, and a
+  // six-piece cap is why eight thousand seeds once looked clean.
+  const count = 1 + Math.floor(rand() * 12)
   let text = ''
   for (let i = 0; i < count; i++) {
     text += PIECES[Math.floor(rand() * PIECES.length)]
@@ -69,10 +78,36 @@ function makeFile(seed: number): string {
   return text
 }
 
+/** Every arrangement of a start marker, an end marker and a line of the user's. */
+function* arrangements(maxLen: number): Generator<string> {
+  const alphabet = [`${BLOCK_START}\n`, `${BLOCK_END}\n`, 'USERLINE\n']
+  for (let len = 1; len <= maxLen; len++) {
+    const total = alphabet.length ** len
+    for (let i = 0; i < total; i++) {
+      let text = ''
+      let k = i
+      for (let j = 0; j < len; j++) {
+        text += alphabet[k % alphabet.length]
+        k = Math.floor(k / alphabet.length)
+      }
+      yield text
+    }
+  }
+}
+
 const BODY_A = 'generated body A\n\n```bash\nnpm run build\n```\n'
 const BODY_B = 'generated body B — a later release\n\n```bash\nnpm run ship\n```\n'
 
-describe('the managed block holds its invariants over generated files', () => {
+/** How many `line`s sit between a start marker and its end marker. */
+function linesInsideBlocks(text: string, line: string): number {
+  return blockRegions(text)
+    .map((r) => text.slice(r.start, r.end).split('\n').filter((l) => l === line).length)
+    .reduce((a, b) => a + b, 0)
+}
+
+const TIMEOUT = 180_000
+
+describe('the managed block holds its invariants over files nobody chose', () => {
   let dir: string
   let file: string
 
@@ -83,111 +118,176 @@ describe('the managed block holds its invariants over generated files', () => {
 
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  const SEEDS = Array.from({ length: 400 }, (_, i) => i + 1)
+  const SEEDS = Array.from({ length: 1500 }, (_, i) => i + 1)
 
-  it('converges on exactly one block, whatever the file looked like', async () => {
-    for (const seed of SEEDS) {
-      const original = makeFile(seed)
-      writeFileSync(file, original)
+  it(
+    "never draws a line of the user's into a block, over every arrangement",
+    async () => {
+      // The property that catches capture at the moment it happens, rather than
+      // one command later when the next run consumes it.
+      //
+      // A line already between a marker pair when we arrive is ours — that is
+      // the module's one rule — so what must never rise is the *count* of the
+      // user's lines sitting inside a block. Cutting a block used to promote a
+      // stray start marker beside a stray end marker into a pair around their
+      // prose, and the write after that deleted it.
+      for (const original of arrangements(8)) {
+        writeFileSync(file, original)
+        const before = linesInsideBlocks(original, 'USERLINE')
 
-      // Two writes, not one. A file carrying stray markers on both sides of a
-      // block needs a pass to normalise: removing a block can leave a stray
-      // start marker adjacent to a stray end marker, and that pair reads as a
-      // block on the next scan. The tool does not chase that in a loop — a loop
-      // would delete whatever sat between the two strays, which is the user's.
-      // It settles on the following pass instead, and `sync --check` reports
-      // the file as drifted until it does, so nothing is silently doubled.
-      await writeManagedBlock(file, BODY_A)
-      const afterOne = blockRegions(readFileSync(file, 'utf8')).length
-      await writeManagedBlock(file, BODY_A)
-      const text = readFileSync(file, 'utf8')
+        for (let pass = 0; pass < 3; pass++) {
+          await writeManagedBlock(file, pass === 1 ? BODY_B : BODY_A)
+          const text = readFileSync(file, 'utf8')
+          expect(
+            linesInsideBlocks(text, 'USERLINE'),
+            `pass ${pass}: a free-standing user line was captured\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(text)}`,
+          ).toBeLessThanOrEqual(before)
+        }
 
-      expect(afterOne, `seed ${seed}: first write already exceeded two blocks`).toBeLessThanOrEqual(2)
-      expect(blockRegions(text).length, `seed ${seed}: ${JSON.stringify(original)}`).toBe(1)
-      // The writer and every reader must agree that it is there. A disowned
-      // block — one the writer maintained and `hasManagedBlock` denied — is how
-      // `sync --check` came to report drift no command could clear.
-      expect(hasManagedBlock(text), `seed ${seed}: block is unfindable`).toBe(true)
-      expect(ownedRegions(text).length, `seed ${seed}: ownership disagrees`).toBe(1)
-      expect(extractManagedBlock(text), `seed ${seed}: body not readable back`).toBe(BODY_A.trimEnd())
-    }
-  })
-
-  it('is a fixed point, and stays one block across a content change', async () => {
-    for (const seed of SEEDS) {
-      writeFileSync(file, makeFile(seed))
-      await writeManagedBlock(file, BODY_A)
-      await writeManagedBlock(file, BODY_A)
-      const once = readFileSync(file, 'utf8')
-
-      await writeManagedBlock(file, BODY_A)
-      expect(readFileSync(file, 'utf8'), `seed ${seed}: not a fixed point`).toBe(once)
-
-      // The upgrade path. A block the tool failed to recognise used to be left
-      // alone here while a second one was appended — two complete instruction
-      // sets, with every reporting surface calling the project healthy.
-      await writeManagedBlock(file, BODY_B)
-      const after = readFileSync(file, 'utf8')
-      expect(blockRegions(after).length, `seed ${seed}: upgrade doubled the block`).toBe(1)
-      expect(extractManagedBlock(after), `seed ${seed}: upgrade did not take`).toBe(BODY_B.trimEnd())
-    }
-  })
-
-  it('leaves nothing of ours behind on uninstall', async () => {
-    for (const seed of SEEDS) {
-      writeFileSync(file, makeFile(seed))
-      await writeManagedBlock(file, BODY_A)
-      await writeManagedBlock(file, BODY_B)
-      await stripManagedBlockFromFile(file)
-
-      const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
-      expect(left, `seed ${seed}: our body survived`).not.toContain('generated body')
-      expect(left, `seed ${seed}: our fenced body survived`).not.toContain('npm run ship')
-      expect(left, `seed ${seed}: a marker survived`).not.toContain(BLOCK_START)
-      expect(left, `seed ${seed}: a marker survived`).not.toContain(BLOCK_END)
-    }
-  })
-
-  it("keeps every line of the user's that is not a marker or a block body", async () => {
-    for (const seed of SEEDS) {
-      const original = makeFile(seed)
-      writeFileSync(file, original)
-      await writeManagedBlock(file, BODY_A)
-      await stripManagedBlockFromFile(file)
-      const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
-
-      // Lines the tool is entitled to take: its own markers, and whatever sat
-      // between a complete pair. Everything else is the user's and must come
-      // back, in order and once each.
-      const ours = new Set<number>()
-      for (const r of blockRegions(original)) {
-        const from = original.slice(0, r.start).split('\n').length - 1
-        const to = original.slice(0, r.end).split('\n').length - 1
-        for (let i = from; i <= to; i++) ours.add(i)
-      }
-      for (const at of orphanMarkers(original)) {
-        ours.add(original.slice(0, at).split('\n').length - 1)
-      }
-      const theirs = original
-        .split('\n')
-        .filter((_, i) => !ours.has(i))
-        .filter((l) => l.trim() !== '')
-        .map((l) => l.replace(/\r$/, ''))
-
-      // Compared without carriage returns: a line's *terminator* around a
-      // removed block is genuinely ambiguous (see `cutBlock`), its content is
-      // not. This asserts the content.
-      const remaining = left.split('\n').map((l) => l.replace(/\r$/, ''))
-      let cursor = 0
-      for (const raw of theirs) {
-        const line = raw.replace(/\r$/, '')
-        const found = remaining.indexOf(line, cursor)
+        // And every free-standing one is still there at the end.
+        await stripManagedBlockFromFile(file)
+        const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+        const freeStanding =
+          original.split('\n').filter((l) => l === 'USERLINE').length - before
         expect(
-          found,
-          `seed ${seed}: lost or reordered ${JSON.stringify(line)}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(left)}`,
-        ).toBeGreaterThanOrEqual(cursor)
-        cursor = found + 1
+          left.split('\n').filter((l) => l === 'USERLINE').length,
+          `lost a free-standing user line from ${JSON.stringify(original)}`,
+        ).toBeGreaterThanOrEqual(freeStanding)
       }
-    }
-  })
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'converges on exactly one block, unless the file is torn',
+    async () => {
+      for (const seed of SEEDS) {
+        const original = makeFile(seed)
+        writeFileSync(file, original)
+
+        await writeManagedBlock(file, BODY_A)
+        const afterOne = blockRegions(readFileSync(file, 'utf8')).length
+        await writeManagedBlock(file, BODY_A)
+        const text = readFileSync(file, 'utf8')
+
+        // A file carrying unpaired markers is not reduced at all: cutting a
+        // block there can promote two strays into a pair around the user's own
+        // text. It must still never *grow*, and `sync --check` reports it.
+        if (orphanMarkers(original).length > 0) {
+          expect(
+            blockRegions(text).length,
+            `seed ${seed}: a torn file grew\n${JSON.stringify(original)}`,
+          ).toBeLessThanOrEqual(Math.max(1, blockRegions(original).length))
+        } else {
+          expect(afterOne, `seed ${seed}: first write exceeded two blocks`).toBeLessThanOrEqual(2)
+          expect(blockRegions(text).length, `seed ${seed}: ${JSON.stringify(original)}`).toBe(1)
+        }
+
+        expect(hasManagedBlock(text), `seed ${seed}: block is unfindable`).toBe(true)
+        expect(extractManagedBlock(text), `seed ${seed}: body not readable back`).toBe(
+          BODY_A.trimEnd(),
+        )
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'is a fixed point, and never gains a block across a content change',
+    async () => {
+      for (const seed of SEEDS) {
+        writeFileSync(file, makeFile(seed))
+        await writeManagedBlock(file, BODY_A)
+        await writeManagedBlock(file, BODY_A)
+        const once = readFileSync(file, 'utf8')
+
+        await writeManagedBlock(file, BODY_A)
+        expect(readFileSync(file, 'utf8'), `seed ${seed}: not a fixed point`).toBe(once)
+
+        // The upgrade path. A block the tool failed to recognise used to be
+        // left alone here while a second one was appended — two complete
+        // instruction sets, with every reporting surface calling it healthy.
+        await writeManagedBlock(file, BODY_B)
+        const after = readFileSync(file, 'utf8')
+        expect(
+          blockRegions(after).length,
+          `seed ${seed}: upgrade added a block`,
+        ).toBeLessThanOrEqual(blockRegions(once).length)
+        expect(extractManagedBlock(after), `seed ${seed}: upgrade did not take`).toBe(
+          BODY_B.trimEnd(),
+        )
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'leaves nothing of ours behind on uninstall',
+    async () => {
+      for (const seed of SEEDS) {
+        writeFileSync(file, makeFile(seed))
+        await writeManagedBlock(file, BODY_A)
+        await writeManagedBlock(file, BODY_B)
+        await stripManagedBlockFromFile(file)
+
+        const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+        expect(left, `seed ${seed}: our body survived`).not.toContain('generated body')
+        expect(left, `seed ${seed}: our fenced body survived`).not.toContain('npm run ship')
+        expect(left, `seed ${seed}: a marker survived`).not.toContain(BLOCK_START)
+        expect(left, `seed ${seed}: a marker survived`).not.toContain(BLOCK_END)
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    "keeps every line of the user's that is not a marker or a block body",
+    async () => {
+      for (const seed of SEEDS) {
+        const original = makeFile(seed)
+        writeFileSync(file, original)
+        // Three writes, then the strip. One was not enough: the shape that
+        // destroyed the user's prose needed a second command to consume what
+        // the first had produced.
+        await writeManagedBlock(file, BODY_A)
+        await writeManagedBlock(file, BODY_B)
+        await writeManagedBlock(file, BODY_A)
+        await stripManagedBlockFromFile(file)
+        const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+
+        // Lines the tool is entitled to take: its own markers, and whatever sat
+        // between a complete pair. Everything else is the user's and must come
+        // back, in order and once each.
+        const ours = new Set<number>()
+        for (const r of blockRegions(original)) {
+          const from = original.slice(0, r.start).split('\n').length - 1
+          const to = original.slice(0, r.end).split('\n').length - 1
+          for (let i = from; i <= to; i++) ours.add(i)
+        }
+        for (const at of orphanMarkers(original)) {
+          ours.add(original.slice(0, at).split('\n').length - 1)
+        }
+        const theirs = original
+          .split('\n')
+          .filter((_, i) => !ours.has(i))
+          .filter((l) => l.trim() !== '')
+          .map((l) => l.replace(/\r$/, ''))
+
+        // Compared without carriage returns: a line's *terminator* around a
+        // removed block is genuinely ambiguous (see `cutBlock`); its content is
+        // not. This asserts the content.
+        const remaining = left.split('\n').map((l) => l.replace(/\r$/, ''))
+        let cursor = 0
+        for (const line of theirs) {
+          const found = remaining.indexOf(line, cursor)
+          expect(
+            found,
+            `seed ${seed}: lost or reordered ${JSON.stringify(line)}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(left)}`,
+          ).toBeGreaterThanOrEqual(cursor)
+          cursor = found + 1
+        }
+      }
+    },
+    TIMEOUT,
+  )
 })

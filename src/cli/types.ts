@@ -67,6 +67,14 @@ export interface CopyResults {
    */
   repaired?: string[];
 
+  /**
+   * Root files holding more than one block *and* unpaired markers.
+   *
+   * Not reducible without risking the user's own text, so they are named and
+   * left alone rather than cut.
+   */
+  damagedRoots?: string[];
+
   unreadable?: string[];
 
   /**

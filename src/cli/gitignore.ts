@@ -80,7 +80,7 @@ function buildBlock(): string {
  */
 export async function updateGitignore(
   projectRoot: string
-): Promise<'created' | 'updated' | 'unchanged'> {
+): Promise<'created' | 'updated' | 'unchanged' | 'repaired'> {
   const gitignorePath = resolve(projectRoot, '.gitignore')
   const block = buildBlock()
 
@@ -96,17 +96,47 @@ export async function updateGitignore(
   // survive every sync here and outlive an uninstall, leaving a file whose whole
   // contents were text this tool wrote.
   const regions = blockRegions(existing, START_MARKER, END_MARKER)
+  const orphans = orphanMarkers(existing, START_MARKER, END_MARKER)
   if (regions.length > 0) {
-    let collapsed = existing
-    for (let i = regions.length - 1; i >= 1; i--) {
-      collapsed = cutBlockRegion(collapsed, regions[i].start, regions[i].end)
+    // The last block, as the root files do. This kept the *first* and they kept
+    // the last — one idea, two readings, and the two files consequently failed
+    // on mirror-image inputs, which is how each stayed out of the other's
+    // fixtures.
+    const keep = regions[regions.length - 1]
+
+    // Extras are cut only when nothing is unpaired, and every edit is computed
+    // against `existing` and applied back to front.
+    //
+    // Cutting and then re-reading `blockRegions` of the cut text — which is
+    // what this did — promotes a stray start marker beside a stray end marker
+    // into a block, and the following sync deletes everything between them.
+    // Here that is the user's ignore rules, and a dropped rule is a committed
+    // secret. `stripAllBlocks` was fixed for this; the writer was not, so two
+    // ordinary syncs removed `.env.local` from a file that had been protecting
+    // it, with no backup and no line of output.
+    const doomed = orphans.length === 0 ? regions.filter((r) => r.start !== keep.start) : []
+    const edits: Array<{ start: number; end: number; text?: string }> = [
+      ...doomed.map((r) => ({ start: r.start, end: r.end })),
+      { start: keep.start, end: keep.end, text: block },
+    ].sort((a, b) => b.start - a.start)
+
+    let updated = existing
+    for (const edit of edits) {
+      updated =
+        edit.text === undefined
+          ? cutBlockRegion(updated, edit.start, edit.end)
+          : updated.slice(0, edit.start) + edit.text + updated.slice(edit.end)
     }
-    const first = blockRegions(collapsed, START_MARKER, END_MARKER)[0]
-    const updated = collapsed.slice(0, first.start) + block + collapsed.slice(first.end)
 
     if (updated === existing) return 'unchanged'
+    // A backup, which this file never had. The root files write one before
+    // collapsing and `.gitignore` did not — so the one co-owned file whose
+    // loss cannot be noticed by reading it was also the one with no way back.
+    if (doomed.length > 0) {
+      await writeFile(`${gitignorePath}.opencastle-backup`, existing, 'utf8')
+    }
     await writeFile(gitignorePath, updated, 'utf8')
-    return 'updated'
+    return doomed.length > 0 ? 'repaired' : 'updated'
   }
 
   // Append block to existing file

@@ -16,7 +16,7 @@ import {
   getCustomizationsTransform,
   isEnvVarSatisfied,
 } from './stack-config.js'
-import { rebuildMcpConfig } from './mcp.js'
+import { rebuildMcpConfig, getMcpConfigRelPath } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
@@ -162,6 +162,23 @@ export default async function update({
   // against a fresh compile instead; recompiling is idempotent and cheap.
   const needsSync = await (async () => {
     if (manifest.version !== pkg.version || forceFlag || reconfigureFlag) return true
+    // A generated config that will not parse is work outstanding, and the drift
+    // checker cannot see it: MCP configs are `customizable` paths, so they are
+    // never compared. Without this the short-circuit fired, `sync` printed
+    // "Everything matches its sources", `doctor` and `sync --check` agreed, and
+    // the file stayed broken — while the message `init` prints about it says to
+    // run `sync`. Only `--force` did anything, which is why every harness arm
+    // that passed `--force` was green.
+    for (const ide of ides) {
+      const rel = getMcpConfigRelPath(ide as IdeChoice)
+      const abs = resolve(projectRoot, rel)
+      if (!existsSync(abs)) continue
+      try {
+        JSON.parse(await readFile(abs, 'utf8'))
+      } catch {
+        return true
+      }
+    }
     try {
       const { buildCheckReport } = await import('./sync-check.js')
       const report = await buildCheckReport(pkgRoot, projectRoot)
@@ -183,8 +200,17 @@ export default async function update({
   if (!dryRun) {
     const stackNow = resolveStack({ ...manifest, ides })
     await restoreMissingCustomizations(pkgRoot, projectRoot, stackNow, ides)
-    if ((await updateGitignore(projectRoot)) !== 'unchanged') {
+    const gitignoreOutcome = await updateGitignore(projectRoot)
+    if (gitignoreOutcome !== 'unchanged') {
       console.log(`  ${c.green('✓')} Updated .gitignore ${c.dim('(generated config is committed)')}`)
+    }
+    // A collapse here removes ignore rules, and a rule silently dropped is a
+    // secret committed. It used to happen with no backup and no output at all.
+    if (gitignoreOutcome === 'repaired') {
+      console.log(
+        `  ${c.yellow('!')} Collapsed a duplicated block in .gitignore; ` +
+          `.gitignore.opencastle-backup holds what was there before.`,
+      )
     }
   }
 
@@ -387,6 +413,7 @@ export default async function update({
   let totalCreated = 0
   const adoptedRoots: string[] = []
   const repairedRoots: string[] = []
+  const damagedRoots: string[] = []
   const staleRoots: string[] = []
   const tornRoots: string[] = []
   const sweptFiles: string[] = []
@@ -402,6 +429,7 @@ export default async function update({
     totalCreated += results.created.length
     adoptedRoots.push(...(results.adopted ?? []))
     repairedRoots.push(...(results.repaired ?? []))
+    damagedRoots.push(...(results.damagedRoots ?? []))
     staleRoots.push(...(results.staleRoots ?? []))
     tornRoots.push(...(results.tornRoots ?? []))
     sweptFiles.push(...(results.deleted ?? []))
@@ -488,6 +516,19 @@ export default async function update({
     console.log(`  ${c.yellow('!')} Left ${file} alone — it is not valid JSON.`)
     console.log(`     ${c.dim('Merge conflict? Fix the file and run sync again.')}`)
   }
+  if (damagedRoots.length > 0) {
+    // Two blocks and unpaired markers in one file. Reducing it means cutting,
+    // and cutting here can sweep the user's own text into a block; so the tool
+    // says what it sees and stops. `doctor` fails on this too.
+    console.log(
+      `\n  ${c.yellow('⚠')}  ${new Set(damagedRoots).size} file(s) hold more than one OpenCastle block and cannot be reduced safely:\n`,
+    )
+    for (const p of [...new Set(damagedRoots)]) {
+      console.log(`     ${c.dim(relative(projectRoot, p))}`)
+    }
+    console.log(`     ${c.dim('Keep one start/end pair and delete the rest.')}`)
+  }
+
   if (repairedRoots.length > 0) {
     // Not an adoption: nothing here came from an earlier release. The file held
     // two complete blocks — a merge that kept both sides, most often — and the

@@ -39,6 +39,14 @@ export interface MergeResult {
   staleGeneratedContent?: boolean
   /** The file carries a start marker that opens no block. */
   orphanMarker?: boolean
+  /**
+   * More than one complete block *and* unpaired markers.
+   *
+   * The tool will not reduce this: cutting a block here can promote two strays
+   * into a pair around the user's own text. Reported so a person can resolve it,
+   * which is the same answer this module gives to any damage it cannot read.
+   */
+  damaged?: boolean
 }
 
 /**
@@ -451,35 +459,65 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
   // `current` is what is on disk from here on. The collapse below can write,
   // and the append path further down must build on that rather than on the
   // bytes we read at the top, or it silently reinstates what was collapsed.
-  let current = existing
-  if (blockRegions(existing).length > 0) {
-    // Collapse first: any block other than the one we maintain is a duplicate,
-    // and leaving it produced a file with two sets of instructions where the
-    // stale one named agents that no longer ship.
-    const collapsed = collapseExtraBlocks(existing)
-    if (collapsed !== existing) {
-      await backUp(path, existing)
-      await writeFile(path, collapsed)
-    }
-    current = collapsed
+  const regions = blockRegions(existing)
+  const orphans = orphanMarkers(existing)
+  if (regions.length > 0) {
+    const keep = regions[regions.length - 1]
 
-    const region = maintainedRegion(current)
-    // With no region of ours, every complete block here is the user quoting the
-    // convention. Fall through and append below their example.
-    if (region) {
-      const next =
-        current.slice(0, region.start) + block.trimEnd() + current.slice(region.end)
-      const hadUserContent = outsideTheBlock(current).trim().length > 0
-      if (next === existing) {
-        return { action: 'unchanged', preservedUserContent: hadUserContent }
-      }
-      await writeFile(path, next)
+    // Extra blocks are removed only when the file has no unpaired markers.
+    //
+    // Cutting a region in a file that also carries strays can bring a stray
+    // start marker next to a stray end marker, and the next scan reads that
+    // pair as a block of ours — with the user's text between the two strays
+    // inside it. `stripAllBlocks` was fixed by deciding its cuts once; that was
+    // not enough, because this function wrote the promoted file to disk and the
+    // *next* command re-scanned it. Deferring the deletion by one invocation is
+    // not preventing it.
+    //
+    // So: no cut. A file torn on both sides keeps both blocks, `sync --check`
+    // reports it, and `doctor` names it as something only a person can resolve
+    // — the same policy this module already applies to a lone marker. Guessing
+    // has cost the user their prose in three separate rounds.
+    const doomed = orphans.length === 0 ? regions.slice(0, -1) : []
+
+    // Every edit computed against `existing` and applied back to front, so no
+    // step ever reads a partly-cut file. This is the whole lesson of the last
+    // three rounds, stated once.
+    type Edit = { start: number; end: number; text?: string }
+    const edits: Edit[] = [
+      ...doomed.map((r) => ({ start: r.start, end: r.end })),
+      { start: keep.start, end: keep.end, text: block.trimEnd() },
+    ].sort((a, b) => b.start - a.start)
+
+    let next = existing
+    for (const edit of edits) {
+      next =
+        edit.text === undefined
+          ? cutBlock(next, edit.start, edit.end)
+          : next.slice(0, edit.start) + edit.text + next.slice(edit.end)
+    }
+
+    const hadUserContent = outsideTheBlock(existing).trim().length > 0
+    const damaged = orphans.length > 0 && regions.length > 1
+    if (next === existing) {
       return {
-        action: collapsed !== existing ? 'repaired' : 'updated',
+        action: 'unchanged',
         preservedUserContent: hadUserContent,
+        ...(orphans.length > 0 && { orphanMarker: true }),
+        ...(damaged && { damaged: true }),
       }
+    }
+    if (doomed.length > 0) await backUp(path, existing)
+    await writeFile(path, next)
+    return {
+      action: doomed.length > 0 ? 'repaired' : 'updated',
+      preservedUserContent: hadUserContent,
+      ...(orphans.length > 0 && { orphanMarker: true }),
+      ...(damaged && { damaged: true }),
     }
   }
+
+  const current = existing
 
   if (looksLikeLegacyGenerated(current)) {
     // The one operation here that discards anything: a previous release wrote

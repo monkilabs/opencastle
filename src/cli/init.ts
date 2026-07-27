@@ -14,7 +14,7 @@ import { IDE_LABELS } from './types.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { bootstrapCustomizations } from './bootstrap.js'
 import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
-import { resolveManagedPaths } from './managed-paths.js'
+import { resolveManagedPaths, declaredManagedPaths } from './managed-paths.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -325,9 +325,19 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       // directories and a manifest still claiming an install. The targets that
       // survive are recompiled in place by the adapters below, which write
       // before they sweep.
+      // `previous` is resolved against the manifest, so a path an old release
+      // recorded is still cleaned up. `keeping` is resolved against what the
+      // surviving adapters *declare today* — deliberately not from the manifest.
+      //
+      // Both sides used `resolveManagedPaths`, which unions the manifest's
+      // stored paths into its result; since `init` writes the union of every
+      // installed target there, the dropped target's directories appeared in
+      // `keeping` too and `kept.has(p)` was true for every path. Both loops
+      // were no-ops, so dropping a target left its entire tree and its managed
+      // block on disk while the manifest said it was gone.
       const previous = await resolveManagedPaths({ ...existing, ide: dropped[0], ides: dropped })
-      const keeping = await resolveManagedPaths({ ...existing, ide: ides[0], ides: ides as string[] })
-      const kept = new Set([...keeping.framework, ...keeping.merged])
+      const keeping = await declaredManagedPaths(ides as string[])
+      const kept = new Set([...keeping.framework, ...(keeping.merged ?? [])])
       for (const p of previous.framework) {
         if (kept.has(p)) continue
         const fullPath = resolve(projectRoot, p)
@@ -354,6 +364,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const allManagedPaths = { framework: [] as string[], customizable: [] as string[], merged: [] as string[] }
   const adoptedRoots: string[] = []
   const repairedRoots: string[] = []
+  const damagedRoots: string[] = []
   const staleRoots: string[] = []
   const tornRoots: string[] = []
   // Generated config that exists but will not parse — a hand-written
@@ -374,6 +385,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
     adoptedRoots.push(...(results.adopted ?? []))
     repairedRoots.push(...(results.repaired ?? []))
+    damagedRoots.push(...(results.damagedRoots ?? []))
     staleRoots.push(...(results.staleRoots ?? []))
     tornRoots.push(...(results.tornRoots ?? []))
 
@@ -476,8 +488,14 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   if (gitignoreResult === 'created') {
     console.log(`  ${c.green('✓')} Created .gitignore with OpenCastle entries`)
-  } else if (gitignoreResult === 'updated') {
+  } else if (gitignoreResult === 'updated' || gitignoreResult === 'repaired') {
     console.log(`  ${c.green('✓')} Updated .gitignore with OpenCastle entries`)
+  }
+  if (gitignoreResult === 'repaired') {
+      console.log(
+        `  ${c.yellow('!')} Collapsed a duplicated block in .gitignore; ` +
+          `.gitignore.opencastle-backup holds what was there before.`,
+      )
   }
   if (totalSkipped > 0) {
     const noun = totalSkipped === 1 ? 'file' : 'files'
@@ -496,6 +514,19 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   // `sync` says both of these loudly; `init` said neither, so the one command
   // most likely to meet a pre-0.36 file was the one that replaced it in silence.
+  if (damagedRoots.length > 0) {
+    // Two blocks and unpaired markers in one file. Reducing it means cutting,
+    // and cutting here can sweep the user's own text into a block; so the tool
+    // says what it sees and stops. `doctor` fails on this too.
+    console.log(
+      `\n  ${c.yellow('⚠')}  ${new Set(damagedRoots).size} file(s) hold more than one OpenCastle block and cannot be reduced safely:\n`,
+    )
+    for (const p of [...new Set(damagedRoots)]) {
+      console.log(`     ${c.dim(relative(projectRoot, p))}`)
+    }
+    console.log(`     ${c.dim('Keep one start/end pair and delete the rest.')}`)
+  }
+
   if (repairedRoots.length > 0) {
     // Not an adoption: nothing here came from an earlier release. The file held
     // two complete blocks — a merge that kept both sides, most often — and the

@@ -5,7 +5,7 @@ import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
 import { IDE_ADAPTERS } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
-import { orphanMarkers } from './managed-block.js';
+import { orphanMarkers, countManagedBlocks } from './managed-block.js';
 import { UnreadableConfigError } from './types.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
@@ -392,13 +392,34 @@ async function checkTornBlocks(
 
   const managed = await resolveManagedPaths(manifest)
   const torn: string[] = []
+  const doubled: string[] = []
   for (const rel of managed.merged) {
     const abs = resolve(projectRoot, rel)
     if (!existsSync(abs)) continue
-    if (orphanMarkers(await readFile(abs, 'utf8')).length > 0) torn.push(rel)
+    const content = await readFile(abs, 'utf8')
+    if (orphanMarkers(content).length > 0) torn.push(rel)
+    if (countManagedBlocks(content) > 1) doubled.push(rel)
   }
 
-  if (torn.length === 0) return { label, ok: true, warning: false }
+  if (torn.length === 0 && doubled.length === 0) return { label, ok: true, warning: false }
+
+  // More than one complete block is two sets of instructions in one file, and
+  // the assistant reads both. `sync --check` has always compared block counts;
+  // `doctor` looked only for unpaired markers, so it was the one surface that
+  // called a doubled root file healthy — and after the writer stopped reducing
+  // a torn file, that state persists rather than being collapsed on the next
+  // run. Whichever command the user reaches for has to say the same thing.
+  if (doubled.length > 0) {
+    return {
+      label,
+      ok: false,
+      warning: false,
+      detail: `${doubled.join(', ')} contains more than one OpenCastle block`,
+      fix:
+        'the file also has markers that do not pair up, so this cannot be reduced' +
+        ' safely — delete the block you do not want, keeping one start/end pair',
+    }
+  }
   // A warning, not a failure. The same shape is a torn block of ours *or* a
   // marker the user quoted in their own documentation, and we cannot tell —
   // failing would hand the second user a red check they can never clear, which

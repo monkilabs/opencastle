@@ -271,6 +271,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       const merge = await writeManagedBlock(rootPath, sections.join('\n'))
       if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
       if (merge.orphanMarker) (results.tornRoots ??= []).push(rootPath)
+      if (merge.damaged) (results.damagedRoots ??= []).push(rootPath)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
         results.created.push(rootPath)
         ;(merge.action === 'adopted'
@@ -465,9 +466,17 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     results.skipped.push(...installResult.skipped)
     // Adoption happens inside install(); without this the notice never reaches
     // the user on the one command they actually run to upgrade.
+    // Every optional field the compile can set, forwarded. `repaired` was
+    // added and this list was not, so a collapse — the one event whose only
+    // recovery route is the backup it writes — happened in silence on
+    // claude-code, opencode, codex and antigravity, i.e. on CLAUDE.md,
+    // AGENTS.md and GEMINI.md. `init` printed it, the other two adapter
+    // families printed it, and the one command people run to upgrade did not.
     if (installResult.adopted?.length) results.adopted = installResult.adopted
+    if (installResult.repaired?.length) results.repaired = installResult.repaired
     if (installResult.staleRoots?.length) results.staleRoots = installResult.staleRoots
     if (installResult.tornRoots?.length) results.tornRoots = installResult.tornRoots
+    if (installResult.damagedRoots?.length) results.damagedRoots = installResult.damagedRoots
 
     return results
   }
