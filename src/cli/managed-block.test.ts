@@ -665,3 +665,69 @@ describe('hasManagedBlock and extractManagedBlock agree', () => {
     expect(extractManagedBlock(text)).toBe('REAL')
   })
 })
+
+/**
+ * A file that both carries our block and documents the convention.
+ *
+ * "Keep the last complete region" picked the user's fenced example when it sat
+ * below our block, so `sync` deleted the real block and wrote 20KB of
+ * instructions inside their code fence — and every check called the result
+ * correct, because there was still exactly one block. Fence detection earns its
+ * keep here and nowhere else: choosing between two real regions can only pick
+ * wrong, never conclude there is no block, which is the answer that grows files.
+ */
+describe('a documented example alongside the real block', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'managed-block-doc-'))
+    file = join(dir, 'CLAUDE.md')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const example = `\n## How this works\n\n\`\`\`md\n${BLOCK_START}\n...example...\n${BLOCK_END}\n\`\`\`\n`
+
+  for (const side of ['below', 'above'] as const) {
+    it(`keeps our body out of a fence documented ${side}`, async () => {
+      writeFileSync(file, '# Mine\n\nkeep\n')
+      await writeManagedBlock(file, 'GENERATED BODY')
+      const withBlock = readFileSync(file, 'utf8')
+      writeFileSync(file, side === 'below' ? withBlock + example : example + withBlock)
+
+      await writeManagedBlock(file, 'SECOND GENERATION')
+      const text = readFileSync(file, 'utf8')
+
+      const fenceStart = text.indexOf('```md')
+      const fenced = text.slice(fenceStart, text.indexOf('```', fenceStart + 5))
+      expect(fenced, 'our body was written into the user fence').not.toContain('SECOND GENERATION')
+      expect(fenced, "the user's example was rewritten").toContain('...example...')
+      expect(text).toContain('SECOND GENERATION')
+      expect(text).toContain('keep')
+    })
+
+    it(`leaves the documented example in place, ${side}`, async () => {
+      writeFileSync(file, '# Mine\n\nkeep\n')
+      await writeManagedBlock(file, 'GENERATED BODY')
+      const withBlock = readFileSync(file, 'utf8')
+      writeFileSync(file, side === 'below' ? withBlock + example : example + withBlock)
+
+      await writeManagedBlock(file, 'SECOND GENERATION')
+      // Two complete regions survive: ours, and their documentation. Collapsing
+      // theirs to satisfy "one block" would be destroying their writing to tidy
+      // ours; what must never survive is a second *unquoted* block.
+      expect(readFileSync(file, 'utf8').split(BLOCK_END)).toHaveLength(3)
+    })
+  }
+
+  it('still collapses two unquoted blocks', async () => {
+    writeFileSync(file, '# Mine\n\nkeep\n')
+    await writeManagedBlock(file, 'GENERATED BODY')
+    const t = readFileSync(file, 'utf8')
+    writeFileSync(file, t + '\n' + t.slice(t.indexOf(BLOCK_START)))
+
+    await writeManagedBlock(file, 'SECOND GENERATION')
+    expect(readFileSync(file, 'utf8').split(BLOCK_END)).toHaveLength(2)
+  })
+})

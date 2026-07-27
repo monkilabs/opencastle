@@ -74,6 +74,29 @@ node $CLI sync --yes >/dev/null 2>&1
 [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "plain sync collapsed it" || bad "still doubled"
 grep -q STALE CLAUDE.md && bad "stale half survived" || ok "stale half gone"
 
+say "CLAIM 1e — a documented example does not capture the real block"
+for side in below above; do
+  new "c1e-$side"; printf '# Mine\n\nkeep\n' > CLAUDE.md
+  node $CLI init --yes >/dev/null 2>&1
+  python3 -c "
+import pathlib, sys
+S=sys.argv[1]; E=sys.argv[2]
+doc = chr(10)+'## How this works'+chr(10)*2+'\`\`\`md'+chr(10)+S+chr(10)+'...example...'+chr(10)+E+chr(10)+'\`\`\`'+chr(10)
+p=pathlib.Path('CLAUDE.md'); t=p.read_text()
+p.write_text(t+doc if sys.argv[3]=='below' else doc+t)
+" "$START" "$END" "$side"
+  node $CLI sync --yes --force >/dev/null 2>&1
+  [ "$(grep -c -- "$END" CLAUDE.md)" = "2" ] && ok "doc $side: one real block plus the example" \
+                                             || bad "doc $side: block count wrong"
+  python3 -c "
+import pathlib, sys
+t = pathlib.Path('CLAUDE.md').read_text()
+i = t.index('\`\`\`md'); seg = t[i:t.index('\`\`\`', i+5)]
+sys.exit(1 if 'Project Instructions' in seg else 0)
+" && ok "doc $side: our body stayed out of the user's fence" \
+   || bad "doc $side: our body was written into the user's fence"
+done
+
 say "CLAIM 2 — a lone start marker is never interpreted"
 new c2; printf '# Mine\n\nmy rules\n' > CLAUDE.md
 node $CLI init --yes >/dev/null 2>&1
@@ -170,21 +193,33 @@ out=$(node $CLI sync --force --yes </dev/null 2>&1); code=$?
 echo "$out" | grep -q "$mcp" && ok "named the file" || bad "did not name the file"
 
 say "CLAIM 6 — doctor remedies work; status agrees with doctor"
-for breakage in agents matrix logs; do
+for breakage in agents matrix gitignored; do
   new "c6-$breakage"; printf '# R\n' > CLAUDE.md
   node $CLI init --yes >/dev/null 2>&1
   case $breakage in
-    agents) rm -rf .opencastle/agents ;;
-    matrix) rm -f .opencastle/agents/skill-matrix.json ;;
-    logs)   rm -rf .opencastle/logs ;;
+    agents)     rm -rf .opencastle/agents ;;
+    matrix)     rm -f .opencastle/agents/skill-matrix.json ;;
+    gitignored) printf 'node_modules\n.claude/\n' > .gitignore ;;
   esac
-  node $CLI doctor >/dev/null 2>&1; d1=$?
-  if [ $d1 -ne 0 ]; then
-    st=$(node $CLI 2>&1)
-    echo "$st" | grep -q "Everything is current" && bad "$breakage: status green while doctor red" || ok "$breakage: status agrees"
-    node $CLI sync --yes >/dev/null 2>&1
-    node $CLI doctor >/dev/null 2>&1 && ok "$breakage: plain sync cleared it" || bad "$breakage: still failing"
-  else ok "$breakage: not a failure state"; fi
+
+  node $CLI doctor >/dev/null 2>&1 && { bad "$breakage: doctor no longer detects this"; continue; }
+  ok "$breakage: doctor reports it"
+
+  node $CLI 2>&1 | grep -q "Everything is current" \
+    && bad "$breakage: status green while doctor red" || ok "$breakage: status agrees"
+
+  # Run whatever doctor printed as the remedy — not an assumed `sync`. A failure
+  # only a person can clear must say so instead of naming a command.
+  remedy=$(node $CLI doctor 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -oE 'npx opencastle [a-z-]+' | head -1)
+  if [ -n "$remedy" ]; then
+    node $CLI ${remedy#npx opencastle } --yes >/dev/null 2>&1
+    node $CLI doctor >/dev/null 2>&1 && ok "$breakage: '$remedy' cleared it" \
+                                     || bad "$breakage: '$remedy' did not clear it"
+  else
+    node $CLI doctor 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -q "by hand\|remove those entries" \
+      && ok "$breakage: names a fix only a person can apply" \
+      || bad "$breakage: no actionable remedy given"
+  fi
 done
 
 say "CLAIM 7 — every entry point preserves the stack"

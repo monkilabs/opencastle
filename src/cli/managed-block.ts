@@ -185,10 +185,57 @@ export function cutMarkerLine(content: string, start: number, end: number): stri
   return cutLine(content, start, end)
 }
 
-/** Where the block we maintain lives: the last complete one. */
-function findBlockStart(content: string): number {
+/**
+ * Byte ranges covered by a closed fenced code block.
+ *
+ * Used for one thing only: choosing between complete regions. It never decides
+ * whether a block *exists* — that question is what four rounds of fence
+ * heuristics got wrong, and answering it "no" over a block we wrote is what
+ * caused unbounded growth. A misfire here can only pick the wrong region of two
+ * real ones, which leaves the file with exactly one block either way.
+ */
+function closedFenceRanges(content: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = []
+  let open: { at: number; char: string; len: number } | null = null
+  let offset = 0
+  for (const line of content.split('\n')) {
+    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)
+    if (fence) {
+      const char = fence[1][0]
+      const len = fence[1].length
+      if (!open) open = { at: offset, char, len }
+      else if (char === open.char && len >= open.len) {
+        ranges.push([open.at, offset + line.length])
+        open = null
+      }
+    }
+    offset += line.length + 1
+  }
+  return ranges
+}
+
+/**
+ * Where the block we maintain lives.
+ *
+ * The last complete region that is not sitting inside a fenced code block. A
+ * user who documents the convention *below* our block used to have their
+ * example chosen — so `sync` deleted the real block and wrote 20KB of
+ * instructions inside their fence, and every check called the result correct.
+ * Falls back to the last region when they are all fenced, because returning -1
+ * over a file that has a block is the answer that grows files.
+ */
+function maintainedRegion(content: string): BlockRegion | null {
   const regions = blockRegions(content)
-  return regions.length === 0 ? -1 : regions[regions.length - 1].start
+  if (regions.length === 0) return null
+  const fenced = closedFenceRanges(content)
+  const quoted = (r: BlockRegion): boolean => fenced.some(([s, e]) => r.start >= s && r.start < e)
+  const unquoted = regions.filter((r) => !quoted(r))
+  const pool = unquoted.length > 0 ? unquoted : regions
+  return pool[pool.length - 1]
+}
+
+function findBlockStart(content: string): number {
+  return maintainedRegion(content)?.start ?? -1
 }
 
 /**
@@ -240,10 +287,9 @@ export function hasManagedBlock(content: string): boolean {
  * checker compared another.
  */
 export function extractManagedBlock(content: string): string | null {
-  const regions = blockRegions(content)
-  if (regions.length === 0) return null
-  const { start, end } = regions[regions.length - 1]
-  return content.slice(start + BLOCK_START.length, end - BLOCK_END.length).trim()
+  const region = maintainedRegion(content)
+  if (!region) return null
+  return content.slice(region.start + BLOCK_START.length, region.end - BLOCK_END.length).trim()
 }
 
 /** How many complete blocks the file holds — more than one is drift. */
@@ -274,10 +320,9 @@ async function backUp(path: string, contents: string): Promise<void> {
 
 /** Everything outside the block we maintain, plus any stray marker lines. */
 function outsideTheBlock(content: string): string {
-  const regions = blockRegions(content)
-  if (regions.length === 0) return removeOrphanMarkers(content)
-  const { start, end } = regions[regions.length - 1]
-  return removeOrphanMarkers(cutBlock(content, start, end))
+  const region = maintainedRegion(content)
+  if (!region) return removeOrphanMarkers(content)
+  return removeOrphanMarkers(cutBlock(content, region.start, region.end))
 }
 
 /** Everything outside *every* block. */
@@ -308,16 +353,22 @@ function removeOrphanMarkers(content: string): string {
 
 /** Remove every managed block but the last, and any stray start markers. */
 function collapseExtraBlocks(content: string): string {
-  // Orphan markers are left alone on purpose. They are damage we will not
-  // interpret while writing — and they are the only evidence `remove` has that
-  // the body below them was ours, so erasing them here would make an uninstall
-  // leave that body behind for good.
+  // Orphan markers are left alone on purpose: damage we will not interpret.
+  //
+  // A region inside a fenced code block is left alone too. It is the user
+  // documenting the convention, not a duplicate of ours — deleting it to satisfy
+  // "one block per file" would be destroying their writing to tidy ours. What
+  // must never survive is a second *unquoted* block, which is what a merge
+  // produces and what the assistant would read as a second set of rules.
   let text = content
   for (;;) {
-    const regions = blockRegions(text)
-    if (regions.length < 2) return text
-    const r = regions[0]
-    text = cutBlock(text, r.start, r.end)
+    const keep = maintainedRegion(text)
+    if (!keep) return text
+    const fenced = closedFenceRanges(text)
+    const quoted = (r: BlockRegion): boolean => fenced.some(([s, e]) => r.start >= s && r.start < e)
+    const doomed = blockRegions(text).find((r) => r.start !== keep.start && !quoted(r))
+    if (!doomed) return text
+    text = cutBlock(text, doomed.start, doomed.end)
   }
 }
 
@@ -350,16 +401,16 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
     }
 
     const current = collapsed
-    const regions = blockRegions(current)
+    const region = maintainedRegion(current)
     // Defensive: a cut that damaged the surviving marker used to make this
-    // destructure throw mid-command, after the adapters had already cleared the
-    // framework directories. If the block is somehow gone, append a fresh one
-    // rather than dying with the tree half-applied.
-    if (regions.length === 0) {
+    // throw mid-command, after the adapters had already cleared the framework
+    // directories. If the block is somehow gone, append a fresh one rather than
+    // dying with the tree half-applied.
+    if (!region) {
       await writeFile(path, (current.endsWith('\n') ? current : `${current}\n`) + block)
       return { action: 'repaired', preservedUserContent: current.trim().length > 0 }
     }
-    const { start, end } = regions[regions.length - 1]
+    const { start, end } = region
     const next = current.slice(0, start) + block.trimEnd() + current.slice(end)
     const hadUserContent = outsideTheBlock(current).trim().length > 0
     if (next === existing) {
