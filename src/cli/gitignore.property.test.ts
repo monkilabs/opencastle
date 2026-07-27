@@ -39,6 +39,12 @@ const PIECES = [
   `${END_MARKER}\n`,
   `${START_MARKER}\n.env\n${END_MARKER}\n`,
   `${END_MARKER}\n${START_MARKER}\n`,
+  // A block from a release that ignored the generated config — the population
+  // `doctor`'s "generated config is committed" check exists for, and the shape
+  // that made that check fail forever on a remedy which could not run.
+  `${START_MARKER}\n.claude/\nCLAUDE.md\n.cursor/\n${END_MARKER}\n`,
+  `  ${START_MARKER}\n`,
+  `${START_MARKER} trailing\n`,
 ]
 
 function lcg(seed: number): () => number {
@@ -174,8 +180,14 @@ describe('.gitignore holds the same invariants as a root file', () => {
         }
 
         const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
-        expect(left, `seed ${seed}: a marker survived`).not.toContain(START_MARKER)
-        expect(left, `seed ${seed}: a marker survived`).not.toContain(END_MARKER)
+        // Markers at column 0 only: we write them there and nowhere else, so an
+        // indented one is a line of the user's and stays.
+        for (const line of left.split('\n')) {
+          expect(
+            line === START_MARKER || line === END_MARKER,
+            `seed ${seed}: a marker of ours survived`,
+          ).toBe(false)
+        }
       }
     },
     TIMEOUT,

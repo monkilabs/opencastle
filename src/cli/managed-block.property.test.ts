@@ -32,7 +32,11 @@ import {
  *
  * These are deliberately long-running and carry their own timeouts. How much
  * searching is allowed is the whole point, and the default ten seconds is a
- * limit on that rather than on anything else.
+ * limit on that rather than on anything else. Every previous round's headline
+ * defect was inside the reach of the generator and outside the reach of the
+ * bound I had chosen for it, so the bound is now set by what the machine can
+ * stand rather than by what makes the suite feel quick — and the numbers here
+ * were verified further still (12000 seeds, `arrangements(8)`) before landing.
  */
 
 /** Building blocks that have each, at some point, broken this module. */
@@ -146,7 +150,7 @@ describe('the managed block holds its invariants over files nobody chose', () =>
       // user's lines sitting inside a block. Cutting a block used to promote a
       // stray start marker beside a stray end marker into a pair around their
       // prose, and the write after that deleted it.
-      for (const original of arrangements(7)) {
+      for (const original of arrangements(8)) {
         writeFileSync(file, original)
         const before = linesInsideBlocks(original, 'USERLINE')
 
