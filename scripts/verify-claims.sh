@@ -84,10 +84,20 @@ p = pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace(sys.argv[1] + 
 node $CLI sync --yes --force >/dev/null 2>&1
 node $CLI sync --yes --force >/dev/null 2>&1
 [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "torn file does not grow" || bad "torn file grew"
-node $CLI doctor 2>&1 | grep -q "no end marker" && ok "doctor names the torn file" || bad "doctor silent about it"
+node $CLI doctor 2>&1 | grep -q "belongs to no block" && ok "doctor names the torn file" || bad "doctor silent about it"
 node $CLI remove --all --yes >/dev/null 2>&1
 grep -q "my rules" CLAUDE.md 2>/dev/null && ok "user prose kept" || bad "user prose lost"
 grep -q -- "$START" CLAUDE.md 2>/dev/null && bad "our marker survived" || ok "our marker taken"
+
+# Torn the other way: start marker deleted, end marker surviving. This shape had
+# no fixture, so it went unreported and kept its whole body through an uninstall.
+new c2-mirror; printf '# Mine\n\nkeep\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+grep -v -- '^<!-- >>> OpenCastle managed' CLAUDE.md > t && mv t CLAUDE.md
+node $CLI doctor 2>&1 | grep -q "belongs to no block" && ok "doctor names it torn the other way" || bad "doctor silent on the mirror shape"
+node $CLI remove --all --yes >/dev/null 2>&1
+grep -q "keep" CLAUDE.md 2>/dev/null && ok "mirror: user prose kept" || bad "mirror: user prose lost"
+grep -q 'OpenCastle managed' CLAUDE.md 2>/dev/null && bad "mirror: our marker survived" || ok "mirror: our markers taken"
 
 # Neither ordering may delete or duplicate the user's text.
 for side in above below; do
@@ -243,6 +253,19 @@ node $CLI sync --yes --force >/dev/null 2>&1
 [ "$(grep -c '>>> OpenCastle managed' .gitignore)" = "1" ] && ok "sync collapsed the doubled block" || bad "still doubled"
 node $CLI remove --all --yes >/dev/null 2>&1
 cmp -s "$ROOT/gi.orig" .gitignore && ok ".gitignore restored byte-identical" || bad ".gitignore not restored"
+
+# Separated by a single newline, with a user rule below — the shape that welded
+# `.env.local` into a comment and stopped git ignoring it.
+new c1d; printf 'node_modules\n' > .gitignore; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+printf '.env.local\n' >> .gitignore
+python3 -c "
+import pathlib,re
+p=pathlib.Path('.gitignore');t=p.read_text()
+m=re.search(r'# >>> OpenCastle managed.*?# <<< OpenCastle managed <<<',t,re.S)
+p.write_text(t[:m.end()]+chr(10)+m.group(0)+t[m.end():])"
+node $CLI sync --yes --force >/dev/null 2>&1
+git check-ignore -q .env.local && ok "a user rule below a doubled block survives" || bad "user rule welded into a comment"
 
 say "CLAIM 4b — init does not rewrite .opencastle/ either"
 new c4b; echo '{"name":"p","dependencies":{"@supabase/supabase-js":"^2"}}' > package.json

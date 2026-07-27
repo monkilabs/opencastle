@@ -343,6 +343,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const allManagedPaths = { framework: [] as string[], customizable: [] as string[], merged: [] as string[] }
   const adoptedRoots: string[] = []
   const staleRoots: string[] = []
+  const tornRoots: string[] = []
 
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
@@ -353,6 +354,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
     adoptedRoots.push(...(results.adopted ?? []))
     staleRoots.push(...(results.staleRoots ?? []))
+    tornRoots.push(...(results.tornRoots ?? []))
 
     const managed = adapter.getManagedPaths()
     allManagedPaths.framework.push(...managed.framework)
@@ -412,7 +414,14 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // from `sync` in an earlier round and left standing here, and newly reachable
   // without a prompt because `--yes` is new on this branch.
   console.log(`\n  ${c.dim('Configuring project...')}`)
-  const bootstrapResult = isReinit
+  // Keyed off the directory, not the manifest. `isReinit` alone missed two
+  // routes onto the destructive path — `remove --keep-files` (which drops only
+  // the manifest, by design) and a manifest with merge-conflict markers, which
+  // `readManifest` reports as "no install". Both then ran bootstrap's
+  // unconditional renames over a populated `.opencastle/` and replaced the
+  // user's own stack notes with a blank template.
+  const alreadyScaffolded = existsSync(resolve(projectRoot, '.opencastle', 'agents'))
+  const bootstrapResult = isReinit || alreadyScaffolded
     ? { populated: [], removed: [], renamed: [] }
     : await bootstrapCustomizations(projectRoot, combinedRepoInfo, stack)
 
@@ -470,6 +479,17 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       const rel = relative(projectRoot, p)
       console.log(`     ${c.bold(rel)}`)
       console.log(`     ${c.dim('└')} ${c.dim(`previous contents kept as ${rel}.opencastle-backup`)}\n`)
+    }
+  }
+  if (tornRoots.length > 0) {
+    console.log(
+      `\n  ${c.yellow('⚠')}  ${new Set(tornRoots).size} file(s) carry an OpenCastle marker that opens no block:\n`,
+    )
+    for (const p of new Set(tornRoots)) {
+      console.log(`     ${c.bold(relative(projectRoot, p))}`)
+      console.log(
+        `     ${c.dim('└')} ${c.dim('text beside it may be stale generated output; only you can tell. Run')} ${c.cyan('opencastle doctor')}\n`,
+      )
     }
   }
   if (staleRoots.length > 0) {

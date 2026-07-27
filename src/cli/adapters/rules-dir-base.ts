@@ -1,6 +1,6 @@
-import { resolve, basename } from 'node:path'
+import { resolve, join, basename } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfig } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
@@ -250,7 +250,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     {
       const merge = await writeManagedBlock(rootFile, rootIntro)
       if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(rootFile)
-      if (merge.orphanMarker) (results.staleRoots ??= []).push(rootFile)
+      if (merge.orphanMarker) (results.tornRoots ??= []).push(rootFile)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
         results.created.push(rootFile)
         ;(results.adopted ??= []).push(rootFile)
@@ -303,7 +303,9 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const rootMerge = await writeManagedBlock(rootPath, rootIntro)
     results.copied.push(rootRulesFile)
     if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(rootPath)
-    if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
+    if (rootMerge.staleGeneratedContent || rootMerge.orphanMarker) {
+      ;(results.staleRoots ??= []).push(rootPath)
+    }
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
 
@@ -314,6 +316,15 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // hand (deleted on the next sync)" and then `sync` left them there — a
     // report that could never be cleared, so CI stayed red and `needsSync`
     // stayed true forever. Whatever the checker warns about, this removes.
+    // Name what goes. The sweep is deliberate — `getManagedPaths` declares this
+    // whole directory, and the drift checker warns about strays first — but a
+    // file disappearing with no line of output is not a warning the user saw.
+    if (existsSync(rulesRoot)) {
+      for (const rel of filesUnderDir(rulesRoot)) {
+        results.deleted = results.deleted ?? []
+        results.deleted.push(`${configDir}/rules/${rel}`)
+      }
+    }
     await removeDirIfExists(rulesRoot)
 
     await convertDir(srcRoot, 'instructions', rulesRoot, results, {
@@ -375,4 +386,17 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   }
 
   return { IDE_ID: ideId, IDE_LABEL: ideLabel, install, update, getManagedPaths, getDoctorChecks }
+}
+
+/** Every file under a directory, relative to it. */
+function filesUnderDir(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(join(dir, entry.name), `${prefix}${entry.name}/`)
+      else out.push(`${prefix}${entry.name}`)
+    }
+  }
+  if (existsSync(root)) walk(root, '')
+  return out
 }

@@ -121,6 +121,41 @@ export async function updateGitignore(
  * - Deletes `.gitignore` if the file becomes empty after removal.
  * - Returns 'removed' or 'unchanged'.
  */
+/**
+ * Every managed block and stray marker removed — the one implementation.
+ *
+ * `remove`'s preview used to predict this with a lazy regex of its own, which
+ * matched a single block. On a `.gitignore` holding two (the "keep both sides"
+ * merge outcome) the preview promised an edit and the action unlinked the file.
+ */
+function withoutManagedBlocks(content: string): string {
+  let updated = content
+  for (;;) {
+    const regions = blockRegions(updated, START_MARKER, END_MARKER)
+    if (regions.length === 0) break
+    const r = regions[regions.length - 1]
+    updated = cutBlockRegion(updated, r.start, r.end)
+  }
+  for (const at of orphanMarkers(updated, START_MARKER, END_MARKER).reverse()) {
+    const len = updated.startsWith(START_MARKER, at) ? START_MARKER.length : END_MARKER.length
+    updated = cutMarkerLine(updated, at, at + len)
+  }
+  return updated
+}
+
+/** What `removeGitignoreBlock` would leave behind, without writing anything. */
+export async function predictGitignoreStrip(
+  projectRoot: string,
+): Promise<'deleted' | 'stripped' | 'absent'> {
+  const path = resolve(projectRoot, '.gitignore')
+  if (!existsSync(path)) return 'absent'
+
+  const existing = await readFile(path, 'utf8')
+  const remainder = withoutManagedBlocks(existing)
+  if (remainder === existing) return 'absent'
+  return remainder.trim() ? 'stripped' : 'deleted'
+}
+
 export async function removeGitignoreBlock(
   projectRoot: string
 ): Promise<'removed' | 'unchanged'> {
@@ -129,21 +164,7 @@ export async function removeGitignoreBlock(
 
   const existing = await readFile(gitignorePath, 'utf8')
 
-  // Every block, and any stray marker line — the root files learned this after a
-  // doubled block outlived `remove --all`.
-  let updated = existing
-  for (;;) {
-    const regions = blockRegions(updated, START_MARKER, END_MARKER)
-    if (regions.length === 0) break
-    const r = regions[regions.length - 1]
-    updated = cutBlockRegion(updated, r.start, r.end)
-  }
-  for (const at of orphanMarkers(updated, START_MARKER, END_MARKER).reverse()) {
-    updated = cutMarkerLine(updated, at, at + START_MARKER.length)
-  }
-  for (const at of [...markerLineOffsets(updated, END_MARKER)].reverse()) {
-    updated = cutMarkerLine(updated, at, at + END_MARKER.length)
-  }
+  const updated = withoutManagedBlocks(existing)
 
   if (updated === existing) return 'unchanged'
 
@@ -157,14 +178,3 @@ export async function removeGitignoreBlock(
   return 'removed'
 }
 
-/** Line-start offsets of a marker, for sweeping stray end markers. */
-function markerLineOffsets(content: string, marker: string): number[] {
-  const out: number[] = []
-  let from = 0
-  for (;;) {
-    const at = content.indexOf(marker, from)
-    if (at === -1) return out
-    if (at === 0 || content[at - 1] === '\n') out.push(at)
-    from = at + marker.length
-  }
-}

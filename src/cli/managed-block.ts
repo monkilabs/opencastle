@@ -150,14 +150,29 @@ export function blockRegions(
   return regions
 }
 
-/** Start markers that open no block — damage, reported rather than interpreted. */
+/** Markers that belong to no block — damage, reported rather than interpreted. */
 export function orphanMarkers(
   content: string,
   startMarker: string = BLOCK_START,
   endMarker: string = BLOCK_END,
 ): number[] {
-  const complete = new Set(blockRegions(content, startMarker, endMarker).map((r) => r.start))
-  return markerOffsets(content, startMarker).filter((at) => !complete.has(at))
+  // Both orientations. Tracking only unmatched *starts* meant a file torn the
+  // other way — end marker surviving, start deleted — was never named by
+  // `doctor` and kept its whole generated body through an uninstall, while the
+  // `.gitignore` remover swept stray end markers all along. One format, two
+  // readers, again.
+  const regions = blockRegions(content, startMarker, endMarker)
+  const claimedStarts = new Set(regions.map((r) => r.start))
+  const claimedEnds = new Set(regions.map((r) => r.end - endMarker.length))
+  return [
+    ...markerOffsets(content, startMarker).filter((at) => !claimedStarts.has(at)),
+    ...markerOffsets(content, endMarker).filter((at) => !claimedEnds.has(at)),
+  ].sort((a, b) => a - b)
+}
+
+/** How long the marker at `at` is — start and end markers differ in length. */
+function markerLengthAt(content: string, at: number): number {
+  return content.startsWith(BLOCK_START, at) ? BLOCK_START.length : BLOCK_END.length
 }
 
 /** Cut a region out, taking back the newline on each side. Shared with gitignore. */
@@ -177,14 +192,28 @@ function findBlockStart(content: string): number {
 }
 
 /**
- * Cut a block out, taking back the newline the append path put on each side.
+ * Cut a block out, taking back only the newline that is certainly ours.
  *
- * The block is written as `<user content>\n` + `\n` + block-ending-in-`\n`, so
- * one newline before and one after belong to us.
+ * The append path writes one newline between the user's content and the block,
+ * and the block ends with one. Reclaiming both unconditionally was wrong the
+ * moment a file held two blocks: the newline before the *second* one belongs to
+ * whatever precedes it, so taking it welded two lines together. In `.gitignore`
+ * that turned `.env.local` into part of a comment and stopped it being ignored;
+ * in a root file it moved the start marker off column 0, after which
+ * `blockRegions` found nothing while `hasManagedBlock` had already said yes, and
+ * `sync` threw — having already deleted the framework directories, so the
+ * install was left gutted.
+ *
+ * The block's own trailing newline is always ours. The one before it is taken
+ * only when doing so cannot join two lines: when nothing follows, or when what
+ * follows starts on its own line anyway.
  */
 function cutBlock(content: string, start: number, end: number): string {
-  const before = content.slice(0, start).replace(/\r?\n$/, '')
+  let before = content.slice(0, start)
   const after = content.slice(end).replace(/^\r?\n/, '')
+  if (before.endsWith('\n') && (after === '' || after.startsWith('\n'))) {
+    before = before.replace(/\r?\n$/, '')
+  }
   return before + after
 }
 
@@ -232,10 +261,15 @@ export const BACKUP_SUFFIX = '.opencastle-backup'
  * Keep the previous contents beside a file we are about to change destructively.
  * Taken at most once per run, so a second call cannot discard what the first saved.
  */
+const backedUpThisRun = new Set<string>()
+
 async function backUp(path: string, contents: string): Promise<void> {
-  const at = `${path}${BACKUP_SUFFIX}`
-  if (existsSync(at)) return
-  await writeFile(at, contents)
+  // Once per run, so a second destructive step cannot discard what the first
+  // saved — but not once ever, which left a stale backup and no copy of what a
+  // later command actually replaced.
+  if (backedUpThisRun.has(path)) return
+  backedUpThisRun.add(path)
+  await writeFile(`${path}${BACKUP_SUFFIX}`, contents)
 }
 
 /** Everything outside the block we maintain, plus any stray marker lines. */
@@ -267,7 +301,7 @@ function stripAllBlocks(content: string): string {
 function removeOrphanMarkers(content: string): string {
   let text = content
   for (const at of orphanMarkers(text).reverse()) {
-    text = cutLine(text, at, at + BLOCK_START.length)
+    text = cutLine(text, at, at + markerLengthAt(text, at))
   }
   return text
 }
@@ -316,7 +350,16 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
     }
 
     const current = collapsed
-    const { start, end } = blockRegions(current)[blockRegions(current).length - 1]
+    const regions = blockRegions(current)
+    // Defensive: a cut that damaged the surviving marker used to make this
+    // destructure throw mid-command, after the adapters had already cleared the
+    // framework directories. If the block is somehow gone, append a fresh one
+    // rather than dying with the tree half-applied.
+    if (regions.length === 0) {
+      await writeFile(path, (current.endsWith('\n') ? current : `${current}\n`) + block)
+      return { action: 'repaired', preservedUserContent: current.trim().length > 0 }
+    }
+    const { start, end } = regions[regions.length - 1]
     const next = current.slice(0, start) + block.trimEnd() + current.slice(end)
     const hadUserContent = outsideTheBlock(current).trim().length > 0
     if (next === existing) {
@@ -389,13 +432,11 @@ export function predictStrip(content: string): {
   }
   // The same reading `stripManagedBlockFromFile` takes, by calling the same
   // function — the two diverged once by sharing a formula instead of a call.
-  if (!hasManagedBlock(content) && looksLikeLegacyGenerated(content)) {
-    return { outcome: 'deleted', legacyGenerated: true }
-  }
   const remainder = stripAllBlocks(content)
   return {
     outcome: remainder.trim().length === 0 ? 'deleted' : 'stripped',
-    legacyGenerated: orphanMarkers(content).length > 0,
+    // Only the legacy branch above writes a backup, so only it may claim one.
+    legacyGenerated: false,
   }
 }
 

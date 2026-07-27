@@ -3,7 +3,7 @@ import { unlink, readFile, rename } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { readManifest } from './manifest.js'
 import { removeDirIfExists } from './copy.js'
-import { removeGitignoreBlock } from './gitignore.js'
+import { removeGitignoreBlock, predictGitignoreStrip } from './gitignore.js'
 import { confirm, select, closePrompts, c } from './prompt.js'
 import { stripManagedBlockFromFile, predictStrip } from './managed-block.js'
 import { resolveManagedPaths } from './managed-paths.js'
@@ -195,19 +195,12 @@ export default async function remove({ args }: CliContext): Promise<void> {
         console.log(`    ${c.yellow('~')} ${c.dim(e.path)} ${c.dim(`— removes ${e.note}`)}`)
       }
     }
-    const gitignorePath = resolve(projectRoot, '.gitignore')
-    if (existsSync(gitignorePath)) {
-      // Deleted outright when our block was the only thing in it, which the
-      // preview used to describe as an edit.
-      const rest = (await readFile(gitignorePath, 'utf8'))
-        .replace(/# >>> OpenCastle managed[\s\S]*?# <<< OpenCastle managed <<</, '')
-        .trim()
-      if (rest.length === 0) {
-        console.log(`    ${c.red('-')} ${c.dim('.gitignore')} ${c.dim('— it holds nothing but our block')}`)
-      } else {
-        if (kept.length === 0) console.log(`\n  ${c.bold('Edited, not deleted')}\n`)
-        console.log(`    ${c.yellow('~')} ${c.dim('.gitignore')} ${c.dim('— removes the OpenCastle block')}`)
-      }
+    const gitignoreOutcome = await predictGitignoreStrip(projectRoot)
+    if (gitignoreOutcome === 'deleted') {
+      console.log(`    ${c.red('-')} ${c.dim('.gitignore')} ${c.dim('— it holds nothing but our block')}`)
+    } else if (gitignoreOutcome === 'stripped') {
+      if (kept.length === 0) console.log(`\n  ${c.bold('Edited, not deleted')}\n`)
+      console.log(`    ${c.yellow('~')} ${c.dim('.gitignore')} ${c.dim('— removes the OpenCastle block')}`)
     }
     console.log()
   }

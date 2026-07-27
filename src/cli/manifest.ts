@@ -1,6 +1,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { Manifest } from './types.js';
+import { UnreadableConfigError } from './types.js';
 
 const MANIFEST_FILE = '.opencastle/manifest.json';
 
@@ -12,24 +14,24 @@ const MANIFEST_FILE = '.opencastle/manifest.json';
 export async function readManifest(
   projectRoot: string
 ): Promise<Manifest | null> {
-  try {
-    const content = await readFile(
-      resolve(projectRoot, MANIFEST_FILE),
-      'utf8'
-    );
-    return JSON.parse(content) as Manifest;
-  } catch {
-    // Fallback to legacy location
+  for (const rel of [MANIFEST_FILE, '.opencastle.json']) {
+    const path = resolve(projectRoot, rel);
+    if (!existsSync(path)) continue;
+
+    const content = await readFile(path, 'utf8');
     try {
-      const content = await readFile(
-        resolve(projectRoot, '.opencastle.json'),
-        'utf8'
-      );
       return JSON.parse(content) as Manifest;
     } catch {
-      return null;
+      // Present but unreadable is not the same as absent, and reporting it as
+      // absent was actively harmful: every command said "not set up in this
+      // project" and `doctor` prescribed `init`, which then ran bootstrap over
+      // the populated `.opencastle/` and overwrote the user's own notes. The
+      // manifest is committed and its `updatedAt` changes on every sync, so a
+      // merge conflict here is the likely cause — say so.
+      throw new UnreadableConfigError(rel);
     }
   }
+  return null;
 }
 
 /**

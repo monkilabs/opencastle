@@ -6,6 +6,7 @@ import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-
 import { IDE_ADAPTERS } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import { orphanMarkers } from './managed-block.js';
+import { UnreadableConfigError } from './types.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
 
@@ -307,10 +308,10 @@ async function checkTornBlocks(
     label,
     ok: true,
     warning: true,
-    detail: `${torn.join(', ')} has an OpenCastle start marker with no end marker`,
+    detail: `${torn.join(', ')} has an OpenCastle marker that belongs to no block`,
     fix:
-      'text below that marker may be stale generated output — delete it, or restore the' +
-      ' end marker, then run "npx opencastle sync"',
+      'text beside that marker may be stale generated output — remove it, or restore the' +
+      ' missing marker, then run "npx opencastle sync"',
   }
 }
 
@@ -376,10 +377,28 @@ export default async function doctor({ args }: CliContext): Promise<void> {
   console.log(`\n  🏰 ${BOLD('OpenCastle Doctor')}\n`);
   console.log(`  ${DIM('Checking your setup...')}\n`);
 
-  const manifest = await readManifest(projectRoot);
+  let manifest: Manifest | null = null;
+  let manifestUnreadable: string | undefined;
+  try {
+    manifest = await readManifest(projectRoot);
+  } catch (err) {
+    if (!(err instanceof UnreadableConfigError)) throw err;
+    manifestUnreadable = err.file;
+  }
 
   // Shared checks (not IDE-specific)
-  const sharedResults = await runSharedChecks(projectRoot, manifest);
+  const sharedResults = manifestUnreadable
+    ? [
+        {
+          ok: false,
+          label: 'OpenCastle manifest',
+          detail: `${manifestUnreadable} is not valid JSON`,
+          // Not `init`: that would run over a populated .opencastle/ and is how
+          // this state used to destroy the user's own notes.
+          fix: 'fix the JSON by hand — a merge conflict, most likely',
+        },
+      ]
+    : await runSharedChecks(projectRoot, manifest);
 
   // IDE-specific checks derived from each adapter
   type IdeGroup = { label: string; results: CheckResult[] };

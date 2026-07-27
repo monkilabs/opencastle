@@ -49,6 +49,16 @@ export interface CopyResults {
   adopted?: string[];
   /** Root files that still carry an older release's output above our block. */
   staleRoots?: string[];
+  /** Files the compiler removed that it did not generate. */
+  deleted?: string[];
+  /**
+   * Root files carrying a marker that belongs to no block.
+   *
+   * Distinct from `staleRoots`: a hand-written file that merely quotes the
+   * marker has never held our output, and saying it "still contains output from
+   * an earlier version" is simply false.
+   */
+  tornRoots?: string[];
 }
 
 /** Options for the copyDir utility. */

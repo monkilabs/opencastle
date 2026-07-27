@@ -380,6 +380,8 @@ export default async function update({
   let totalCreated = 0
   const adoptedRoots: string[] = []
   const staleRoots: string[] = []
+  const tornRoots: string[] = []
+  const sweptFiles: string[] = []
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
     const results = await adapter.update(pkgRoot, projectRoot, newStack)
@@ -387,6 +389,8 @@ export default async function update({
     totalCreated += results.created.length
     adoptedRoots.push(...(results.adopted ?? []))
     staleRoots.push(...(results.staleRoots ?? []))
+    tornRoots.push(...(results.tornRoots ?? []))
+    sweptFiles.push(...(results.deleted ?? []))
   }
 
   // Deduplicated, and re-sorted by what the adapters declare today — two targets
@@ -476,6 +480,30 @@ export default async function update({
     for (const p of adoptedRoots) {
       console.log(`     ${c.bold(relative(projectRoot, p))}`)
       console.log(`     ${c.dim('└')} ${c.dim(`previous contents kept as ${relative(projectRoot, p)}.opencastle-backup`)}\n`)
+    }
+  }
+  // Anything the sweep removed that the recompile did not put back. `sync --check`
+  // warns about these beforehand, but saying nothing at the moment of deletion
+  // made the warning easy to miss — and the sweep is wider on this branch than
+  // it was on main.
+  const strays = [...new Set(sweptFiles)].filter(
+    (rel) => !existsSync(resolve(projectRoot, rel)),
+  )
+  if (strays.length > 0) {
+    console.log(`\n  ${c.yellow('!')} Removed ${strays.length} file(s) that were not generated:\n`)
+    for (const rel of strays.slice(0, 10)) console.log(`     ${c.dim(rel)}`)
+    if (strays.length > 10) console.log(`     ${c.dim(`… and ${strays.length - 10} more`)}`)
+  }
+
+  if (tornRoots.length > 0) {
+    console.log(
+      `\n  ${c.yellow('⚠')}  ${new Set(tornRoots).size} file(s) carry an OpenCastle marker that opens no block:\n`,
+    )
+    for (const p of new Set(tornRoots)) {
+      console.log(`     ${c.bold(relative(projectRoot, p))}`)
+      console.log(
+        `     ${c.dim('└')} ${c.dim('text beside it may be stale generated output; only you can tell. Run')} ${c.cyan('opencastle doctor')}\n`,
+      )
     }
   }
   if (staleRoots.length > 0) {

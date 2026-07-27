@@ -87,7 +87,7 @@ export async function install(
   {
     const merge = await writeManagedBlock(copilotDest, await readFile(copilotSrc, 'utf8'))
     if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(copilotDest)
-    if (merge.orphanMarker) (results.staleRoots ??= []).push(copilotDest)
+    if (merge.orphanMarker) (results.tornRoots ??= []).push(copilotDest)
     if (merge.action === 'adopted' || merge.action === 'repaired') {
       results.created.push(copilotDest)
       ;(results.adopted ??= []).push(copilotDest)

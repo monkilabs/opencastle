@@ -5,6 +5,7 @@ import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectAssistantConfigs } from './detect.js'
 import { missingRequiredCustomizations } from './managed-paths.js'
+import { UnreadableConfigError } from './types.js'
 import { c } from './prompt.js'
 import type { CliContext, IdeAdapter, Manifest } from './types.js'
 
@@ -92,7 +93,24 @@ async function loadAdapters(manifest: Manifest): Promise<Array<{ ide: string; ad
 }
 
 export async function buildStatusReport(pkgRoot: string, projectRoot: string): Promise<StatusReport> {
-  const manifest = await readManifest(projectRoot)
+  let manifest: Awaited<ReturnType<typeof readManifest>> = null
+  try {
+    manifest = await readManifest(projectRoot)
+  } catch (err) {
+    if (!(err instanceof UnreadableConfigError)) throw err
+    // Present but unreadable. Reporting "not set up" sent people to `init`,
+    // which is the one command that could make it worse.
+    return {
+      installed: true,
+      version: undefined,
+      ides: [],
+      targets: [],
+      stale: false,
+      unmanaged: [],
+      nextCommand: 'opencastle doctor',
+      nextReason: `${err.file} is not valid JSON — fix it by hand, a merge conflict most likely`,
+    }
+  }
 
   if (!manifest) {
     // Not installed: the useful signal is which assistants are already configured,
@@ -249,7 +267,9 @@ function render(report: StatusReport): void {
   )
 
   for (const t of report.targets) {
-    const targetStale = (t.drifted ?? report.stale) || Boolean(report.nextCommand)
+    // Per target. Folding `nextCommand` back in marked all seven targets
+    // "needs a sync" when one had drifted.
+    const targetStale = t.drifted ?? report.stale
     const mark = t.present && !targetStale ? c.green('✓') : c.yellow('!')
     const detail = !t.present
       ? c.yellow(`${t.missing.length} path${t.missing.length === 1 ? '' : 's'} missing`)
