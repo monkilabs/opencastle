@@ -448,20 +448,24 @@ describe('a file that quotes the marker', () => {
 
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-  it('has the quotation adopted rather than gaining a second block', async () => {
-    // The trade recorded in `blockRegions`: four rounds of trying to tell a
-    // quoted marker from a real one by reading the surrounding markdown each
-    // produced a version that mistook a real block for a quotation and doubled
-    // the file. One block per file, always, is the property worth keeping; a
-    // documented example being claimed is bounded, visible, and reversible.
+  it('keeps the quotation and appends our own block below it', async () => {
+    // This asserted adoption for three rounds. Writing into the fence meant the
+    // whole compiled instruction set ended up markdown-quoted — the "instructions
+    // layer silently never installed" failure the managed block exists to
+    // prevent — and `remove --all` then gutted the user's example. A quoted
+    // region is theirs; ours goes below.
     const documented = `# Our conventions\n\nOpenCastle writes a block like this:\n\n\`\`\`markdown\n${BLOCK_START}\n...generated...\n${BLOCK_END}\n\`\`\`\n`
     writeFileSync(file, documented)
 
     await writeManagedBlock(file, 'generated body')
     const once = readFileSync(file, 'utf8')
-    expect(once.split(BLOCK_START)).toHaveLength(2)
 
-    // And it is stable: no growth on subsequent syncs.
+    expect(once.startsWith(documented), "the user's file was rewritten").toBe(true)
+    expect(once).toContain('generated body')
+    const fenceEnd = once.indexOf('```\n', once.indexOf('```markdown') + 3)
+    expect(once.indexOf('generated body'), 'our body landed inside the fence').toBeGreaterThan(fenceEnd)
+
+    // And stable: no growth on subsequent syncs.
     await writeManagedBlock(file, 'generated body')
     expect(readFileSync(file, 'utf8')).toBe(once)
   })
@@ -580,13 +584,13 @@ describe('the merge is a fixed point, whatever the prose looks like', () => {
 
           const text = readFileSync(file, 'utf8')
           expect(text, 'the third write changed the file').toBe(once)
-          // Exactly one, always. A file that quotes the marker has its quotation
-          // adopted rather than gaining a second block — the documented trade,
-          // because the alternative was unbounded growth.
-          // One *complete* block. A fixture that already quoted a bare start
-          // marker keeps that marker — it is damage, not a block, and removing
-          // more than the marker line is not ours to do.
-          expect(text.split(BLOCK_END).length - 1, 'not exactly one block').toBe(1)
+          // Exactly one block of *ours*. A fixture that already held a complete
+          // quoted block keeps it — that is the user's documentation, not a
+          // duplicate — so such a file ends with two complete regions.
+          const quotedInFixture = original.includes(BLOCK_END) ? 1 : 0
+          expect(text.split(BLOCK_END).length - 1, 'wrong number of blocks').toBe(
+            1 + quotedInFixture,
+          )
           expect(hasManagedBlock(text), 'the block it just wrote is unfindable').toBe(true)
 
           // And uninstalling leaves none of our body behind.

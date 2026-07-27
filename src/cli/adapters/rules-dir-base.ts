@@ -303,9 +303,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     const rootMerge = await writeManagedBlock(rootPath, rootIntro)
     results.copied.push(rootRulesFile)
     if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(rootPath)
-    if (rootMerge.staleGeneratedContent || rootMerge.orphanMarker) {
-      ;(results.staleRoots ??= []).push(rootPath)
-    }
+    if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
+    if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(rootPath)
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
 

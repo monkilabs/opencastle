@@ -30,20 +30,24 @@ for shape in plain unclosed-fence quoted-block quoted-start-only trailing-rule c
   node $CLI init --yes >/dev/null 2>&1
   node $CLI sync --yes --force >/dev/null 2>&1
   node $CLI sync --yes --force >/dev/null 2>&1
+  # A fixture that already held a complete quoted block keeps it: that is the
+  # user's documentation, and ours goes below. Every other shape ends with one.
+  case $shape in quoted-block) want=2 ;; *) want=1 ;; esac
   n=$(grep -c -- "$END" CLAUDE.md)
-  if [ "$n" = "1" ]; then ok "$shape: one block after init+2 syncs"; else bad "$shape: $n blocks"; fi
-  cp CLAUDE.md /tmp/v-c1-pre 2>/dev/null
+  if [ "$n" = "$want" ]; then ok "$shape: $want block(s) after init+2 syncs"
+  else bad "$shape: $n blocks, wanted $want"; fi
   node $CLI remove --all --yes >/dev/null 2>&1
-  if [ -f CLAUDE.md ] && grep -q -- "$END" CLAUDE.md; then bad "$shape: block survived uninstall"
-  elif [ -f CLAUDE.md ] && grep -q "Project Instructions" CLAUDE.md; then bad "$shape: body survived uninstall"
+  # Our *body* must be gone. A quoted example keeps its markers, because those
+  # are the user's text, so markers alone are not the test.
+  if [ -f CLAUDE.md ] && grep -q "Project Instructions" CLAUDE.md; then
+    bad "$shape: our body survived uninstall"
   else ok "$shape: uninstall left nothing of ours"; fi
   # The user's own bytes, not just ours. The harness used to check only that our
   # markers were gone, so it passed on a file whose rules had been deleted.
   # A file holding a *complete* quoted block has that block adopted — recorded
   # in `blockRegions` as the price of never guessing which marker is ours. Every
   # other shape must come back byte for byte.
-  if [ "$shape" = "quoted-block" ]; then
-    ok "$shape: quotation adopted (documented trade)"
+  if false; then :
   else
     # Everything except OpenCastle's own marker lines must come back byte for
     # byte. A marker line is text this tool authored, so taking it even out of
@@ -220,6 +224,33 @@ for breakage in agents matrix gitignored; do
       && ok "$breakage: names a fix only a person can apply" \
       || bad "$breakage: no actionable remedy given"
   fi
+done
+
+say "CLAIM 12b — a failing command leaves the install coherent"
+new c12b; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+python3 -c "
+import pathlib
+p=pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace('# Project Instructions','# CHANGED'))"
+chmod 444 CLAUDE.md
+node $CLI sync --yes --force >/dev/null 2>&1
+chmod 644 CLAUDE.md
+[ "$(ls .claude/agents 2>/dev/null | wc -l | tr -d ' ')" -gt 0 ] \
+  && ok "a failed sync left the framework directories intact" \
+  || bad "a failed sync emptied the framework directories"
+
+say "CLAIM 12c — every adapter names what it deletes"
+for ide in claude-code vscode cursor; do
+  new "c12c-$ide"
+  case $ide in
+    claude-code) printf '# R\n' > CLAUDE.md; d=.claude/agents ;;
+    vscode)      d=.github/instructions ;;
+    cursor)      printf 'x\n' > .cursorrules; d=.cursor/rules ;;
+  esac
+  node $CLI init --yes >/dev/null 2>&1
+  mkdir -p "$d"; echo mine > "$d/MY-OWN.md"
+  node $CLI sync --yes --force 2>&1 | grep -q "MY-OWN.md" \
+    && ok "$ide names the file it removed" || bad "$ide deleted it in silence"
 done
 
 say "CLAIM 7 — every entry point preserves the stack"

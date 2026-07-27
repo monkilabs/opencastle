@@ -186,52 +186,41 @@ export function cutMarkerLine(content: string, start: number, end: number): stri
 }
 
 /**
- * Byte ranges covered by a closed fenced code block.
+ * Is this region the user quoting the convention rather than a block of ours?
  *
- * Used for one thing only: choosing between complete regions. It never decides
- * whether a block *exists* — that question is what four rounds of fence
- * heuristics got wrong, and answering it "no" over a block we wrote is what
- * caused unbounded growth. A misfire here can only pick the wrong region of two
- * real ones, which leaves the file with exactly one block either way.
+ * Strictly local: a fence delimiter on the line directly above the start marker
+ * and another directly below the end marker. Nothing else counts.
+ *
+ * Scanning the file for fence *ranges* looked more principled and was not — an
+ * unclosed fence in the user's prose pairs with any later fence line, including
+ * one inside our own generated body, so a real block sitting between them was
+ * judged quoted. That is how four earlier rounds ended in a file growing 20KB
+ * per sync. A local test cannot be fooled by distant fences, and its worst
+ * misfire is bounded: a block we wrongly call quoted causes one extra block to
+ * be appended, and the appended one is never fence-adjacent, so the next run is
+ * stable.
  */
-function closedFenceRanges(content: string): Array<[number, number]> {
-  const ranges: Array<[number, number]> = []
-  let open: { at: number; char: string; len: number } | null = null
-  let offset = 0
-  for (const line of content.split('\n')) {
-    const fence = /^ {0,3}(`{3,}|~{3,})/.exec(line)
-    if (fence) {
-      const char = fence[1][0]
-      const len = fence[1].length
-      if (!open) open = { at: offset, char, len }
-      else if (char === open.char && len >= open.len) {
-        ranges.push([open.at, offset + line.length])
-        open = null
-      }
-    }
-    offset += line.length + 1
-  }
-  return ranges
+function isQuoted(content: string, region: BlockRegion): boolean {
+  const lineBefore = content.slice(0, region.start).split('\n').at(-2) ?? ''
+  const rest = content.slice(region.end).replace(/^\r?\n/, '')
+  const lineAfter = rest.split('\n')[0] ?? ''
+  const fence = /^\s{0,3}(?:`{3,}|~{3,})/
+  return fence.test(lineBefore.trim()) && fence.test(lineAfter.trim())
 }
 
-/**
- * Where the block we maintain lives.
- *
- * The last complete region that is not sitting inside a fenced code block. A
- * user who documents the convention *below* our block used to have their
- * example chosen — so `sync` deleted the real block and wrote 20KB of
- * instructions inside their fence, and every check called the result correct.
- * Falls back to the last region when they are all fenced, because returning -1
- * over a file that has a block is the answer that grows files.
- */
+export function ownedRegions(content: string): BlockRegion[] {
+  return blockRegions(content).filter((r) => !isQuoted(content, r))
+}
+
 function maintainedRegion(content: string): BlockRegion | null {
-  const regions = blockRegions(content)
-  if (regions.length === 0) return null
-  const fenced = closedFenceRanges(content)
-  const quoted = (r: BlockRegion): boolean => fenced.some(([s, e]) => r.start >= s && r.start < e)
-  const unquoted = regions.filter((r) => !quoted(r))
-  const pool = unquoted.length > 0 ? unquoted : regions
-  return pool[pool.length - 1]
+  // Only an unquoted region is ever ours. Falling back to a fenced one when it
+  // was the only complete block meant `init` spliced 20KB of instructions into
+  // the user's own documented example — markdown-quoted, so the instructions
+  // layer effectively never installed, which is the failure the managed block
+  // exists to prevent. With no unquoted region the caller appends a fresh block
+  // instead, which keeps their example and still leaves exactly one of ours.
+  const owned = ownedRegions(content)
+  return owned.length === 0 ? null : owned[owned.length - 1]
 }
 
 function findBlockStart(content: string): number {
@@ -276,7 +265,7 @@ function cutLine(content: string, start: number, end: number): string {
 }
 
 export function hasManagedBlock(content: string): boolean {
-  return blockRegions(content).length > 0
+  return ownedRegions(content).length > 0
 }
 
 /**
@@ -294,7 +283,10 @@ export function extractManagedBlock(content: string): string | null {
 
 /** How many complete blocks the file holds — more than one is drift. */
 export function countManagedBlocks(content: string): number {
-  return blockRegions(content).length
+  // Owned, not total. Counting a quoted example as a block made `sync --check`
+  // permanently red on a file `collapseExtraBlocks` deliberately will not
+  // change — a failure whose prescribed fix could never clear it.
+  return ownedRegions(content).length
 }
 
 function wrap(body: string): string {
@@ -329,9 +321,9 @@ function outsideTheBlock(content: string): string {
 function stripAllBlocks(content: string): string {
   let text = content
   for (;;) {
-    const regions = blockRegions(text)
-    if (regions.length === 0) return removeOrphanMarkers(text)
-    const { start, end } = regions[regions.length - 1]
+    const owned = ownedRegions(text)
+    if (owned.length === 0) return removeOrphanMarkers(text)
+    const { start, end } = owned[owned.length - 1]
     text = cutBlock(text, start, end)
   }
 }
@@ -364,9 +356,7 @@ function collapseExtraBlocks(content: string): string {
   for (;;) {
     const keep = maintainedRegion(text)
     if (!keep) return text
-    const fenced = closedFenceRanges(text)
-    const quoted = (r: BlockRegion): boolean => fenced.some(([s, e]) => r.start >= s && r.start < e)
-    const doomed = blockRegions(text).find((r) => r.start !== keep.start && !quoted(r))
+    const doomed = ownedRegions(text).find((r) => r.start !== keep.start)
     if (!doomed) return text
     text = cutBlock(text, doomed.start, doomed.end)
   }

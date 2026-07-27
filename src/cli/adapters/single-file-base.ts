@@ -1,6 +1,6 @@
-import { resolve, basename } from 'node:path'
+import { resolve, basename, relative } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { writeManagedBlock } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
 import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
@@ -343,22 +343,54 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     // block inside it, so deleting it here would destroy whatever the user
     // wrote around that block.
 
-    // 2. Remove existing framework directories
-    for (const dir of config.frameworkDirs) {
-      const dirPath = resolve(dotDirPath, dir)
-      if (existsSync(dirPath)) {
-        await rm(dirPath, { recursive: true })
+    // 2. Note what is there now, so step 4 can say what it removed.
+    const sweptDirs = config.frameworkDirs
+      .map((dir) => resolve(dotDirPath, dir))
+      .filter((dirPath) => existsSync(dirPath))
+    const before = new Map<string, string>()
+    for (const dirPath of sweptDirs) {
+      for (const rel of filesUnderDir(dirPath)) {
+        before.set(
+          resolve(dirPath, rel),
+          `${config.dotDir}/${relative(dotDirPath, dirPath)}/${rel}`,
+        )
       }
     }
 
-    // 3. Re-run full install
+    // 3. Re-run the install *before* clearing anything.
+    //
+    // Sweeping first meant a failure writing the root file — an unwritable
+    // CLAUDE.md is enough — left `.claude/` empty and the manifest unwritten:
+    // the command that was asked to repair the install destroyed it. The other
+    // two adapters already wrote the root file first.
     const installResult = await install(pkgRoot, projectRoot, stack)
+
+    // 4. Now that the new output exists, drop anything stale beside it.
+    //
+    // "Ours" is created ∪ copied ∪ skipped: a file the install left in place
+    // because it was already correct is reported as *skipped*, and leaving that
+    // out of the set deleted every regenerated file on the first run.
+    const written = new Set<string>([
+      ...installResult.created,
+      ...installResult.copied,
+      ...installResult.skipped,
+    ])
+    for (const dirPath of sweptDirs) {
+      for (const rel of filesUnderDir(dirPath)) {
+        const abs = resolve(dirPath, rel)
+        if (!written.has(abs)) {
+          ;(results.deleted ??= []).push(before.get(abs) ?? rel)
+          await rm(abs, { force: true })
+        }
+      }
+    }
     results.copied.push(...installResult.created)
     results.skipped.push(...installResult.skipped)
     // Adoption happens inside install(); without this the notice never reaches
     // the user on the one command they actually run to upgrade.
     if (installResult.adopted?.length) results.adopted = installResult.adopted
     if (installResult.staleRoots?.length) results.staleRoots = installResult.staleRoots
+    if (installResult.tornRoots?.length) results.tornRoots = installResult.tornRoots
 
     return results
   }
@@ -389,4 +421,17 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
   }
 
   return { install, update, getManagedPaths, getDoctorChecks }
+}
+
+/** Every file under a directory, relative to it. */
+function filesUnderDir(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(resolve(dir, entry.name), `${prefix}${entry.name}/`)
+      else out.push(`${prefix}${entry.name}`)
+    }
+  }
+  if (existsSync(root)) walk(root, '')
+  return out
 }

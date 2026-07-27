@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { writeManagedBlock } from '../managed-block.js'
 import { copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfig } from '../mcp.js'
@@ -168,8 +168,18 @@ export async function update(
   results.copied.push(copilotDest)
   if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(copilotDest)
   if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(copilotDest)
+  if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(copilotDest)
 
   // Remove existing framework directories to clear stale files
+  // Note what is here before the sweep, so the command can name anything it
+  // removed that it did not generate. Only one adapter did this, so five of the
+  // seven targets deleted hand-written files in silence.
+  const beforeSweep = new Map<string, string>()
+  for (const dir of FRAMEWORK_DIRS) {
+    const abs = resolve(destRoot, dir)
+    for (const rel of filesUnderDir(abs)) beforeSweep.set(resolve(abs, rel), `.github/${dir}/${rel}`)
+  }
+
   for (const dir of FRAMEWORK_DIRS) {
     await removeDirIfExists(resolve(destRoot, dir))
   }
@@ -202,6 +212,10 @@ export async function update(
 
   // Customizations are NEVER overwritten during update.
 
+  for (const [abs, rel] of beforeSweep) {
+    if (!existsSync(abs)) (results.deleted ??= []).push(rel)
+  }
+
   return results
 }
 
@@ -225,4 +239,17 @@ export function getDoctorChecks(): DoctorCheck[] {
     { label: 'Agent workflows', path: '.github/agent-workflows/', type: 'dir', countContents: true },
     { label: 'Prompts directory', path: '.github/prompts/', type: 'dir', countContents: true },
   ]
+}
+
+/** Every file under a directory, relative to it. */
+function filesUnderDir(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(resolve(dir, entry.name), `${prefix}${entry.name}/`)
+      else out.push(`${prefix}${entry.name}`)
+    }
+  }
+  if (existsSync(root)) walk(root, '')
+  return out
 }
