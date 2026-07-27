@@ -317,7 +317,10 @@ export default async function update({
   }
 
   if (needsSync) {
-    console.log(`  ${c.dim('Framework files will be overwritten.')}`)
+    // A statement about ownership, not a prediction about this run: the count
+    // printed at the end says what actually changed, and announcing an
+    // overwrite before a sync that rewrites nothing read as a contradiction.
+    console.log(`  ${c.dim('Framework files are recompiled from source; edits there are replaced.')}`)
     console.log(`  ${c.dim('Customization files will be preserved.')}`)
   }
   console.log()
@@ -376,6 +379,10 @@ export default async function update({
   }
 
   // ── Update each IDE ─────────────────────────────────────────────
+  // Generated config that exists but will not parse. Filled from two places —
+  // the adapters' own scaffold step and the rebuild pass below — and reported
+  // once at the end, because the user needs the filename either way.
+  const unreadable: string[] = []
   let totalCopied = 0
   let totalCreated = 0
   const adoptedRoots: string[] = []
@@ -391,6 +398,11 @@ export default async function update({
     staleRoots.push(...(results.staleRoots ?? []))
     tornRoots.push(...(results.tornRoots ?? []))
     sweptFiles.push(...(results.deleted ?? []))
+    // The adapters skip a config they cannot parse instead of throwing; the
+    // report below is the only place the user learns which file to fix.
+    for (const file of results.unreadable ?? []) {
+      if (!unreadable.includes(file)) unreadable.push(file)
+    }
   }
 
   // Deduplicated, and re-sorted by what the adapters declare today — two targets
@@ -403,7 +415,6 @@ export default async function update({
   // — a flag only ever set inside the interactive reconfigure branch — meant
   // `opencastle add supabase` edited the manifest, recompiled, and left the skill
   // matrix and MCP config describing the stack from before the pack was added.
-  const unreadable: string[] = []
   if (newStack) {
     for (const ide of ides) {
       for (const step of [
@@ -490,7 +501,10 @@ export default async function update({
     (rel) => !existsSync(resolve(projectRoot, rel)),
   )
   if (strays.length > 0) {
-    console.log(`\n  ${c.yellow('!')} Removed ${strays.length} file(s) that were not generated:\n`)
+    // Deliberately not "files that were not generated": most of these *were*
+    // generated, by a release that still shipped them. The user cares that
+    // something was deleted and what it was, not about our provenance test.
+    console.log(`\n  ${c.yellow('!')} Removed ${strays.length} file(s) no longer produced by any source:\n`)
     for (const rel of strays.slice(0, 10)) console.log(`     ${c.dim(rel)}`)
     if (strays.length > 10) console.log(`     ${c.dim(`… and ${strays.length - 10} more`)}`)
   }

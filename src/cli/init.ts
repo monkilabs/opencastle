@@ -344,6 +344,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const adoptedRoots: string[] = []
   const staleRoots: string[] = []
   const tornRoots: string[] = []
+  // Generated config that exists but will not parse — a hand-written
+  // `.vscode/mcp.json` with a `//` comment is legal JSONC to VS Code and does
+  // this. Named at the end instead of aborting: the abort left the framework
+  // tree written with no manifest beside it, and never said which file.
+  const unreadable: string[] = []
 
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
@@ -351,6 +356,9 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     totalCreated += results.created.length
     totalSkipped += results.skipped.length
     skippedPaths.push(...results.skipped)
+    for (const file of results.unreadable ?? []) {
+      if (!unreadable.includes(file)) unreadable.push(file)
+    }
 
     adoptedRoots.push(...(results.adopted ?? []))
     staleRoots.push(...(results.staleRoots ?? []))
@@ -369,30 +377,24 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     // this was the one question it did not cover. On a TTY it still asked.
     const overwrite = assumeYes || (await confirm('Overwrite existing files?', true))
     if (overwrite) {
-      // Delete framework paths and re-run install
-      for (const ide of ides) {
-        const adapter = await IDE_ADAPTERS[ide]()
-        const managed = adapter.getManagedPaths()
-        for (const p of managed.framework) {
-          const fullPath = resolve(projectRoot, p)
-          if (p.endsWith('/')) {
-            await removeDirIfExists(fullPath)
-          } else if (existsSync(fullPath)) {
-            await unlink(fullPath)
-          }
-        }
-        for (const p of managed.merged ?? []) {
-          await stripManagedBlockFromFile(resolve(projectRoot, p))
-        }
-      }
-      // Re-run install
+      // Recompile in place rather than emptying the tree first.
+      //
+      // Deleting every framework path and re-installing was the old shape, and
+      // it made `init` the one command that could destroy an install by
+      // failing: an unwritable CLAUDE.md, met after 62 files had already been
+      // unlinked, left the directories empty and the manifest claiming an
+      // install. `update` writes the new output before sweeping what has no
+      // source left, which is the same guarantee `sync` gives.
       totalCreated = 0
       totalSkipped = 0
       for (const ide of ides) {
         const adapter = await IDE_ADAPTERS[ide]()
-        const results = await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo)
+        const results = await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
         totalCreated += results.created.length
         totalSkipped += results.skipped.length
+        for (const file of results.unreadable ?? []) {
+          if (!unreadable.includes(file)) unreadable.push(file)
+        }
       }
     }
   }
@@ -451,6 +453,10 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   // ── Summary ─────────────────────────────────────────────────────
   console.log(`  ${c.green('✓')} Created ${c.bold(String(totalCreated))} files`)
+  for (const file of unreadable) {
+    console.log(`  ${c.yellow('!')} Left ${file} alone — it is not valid JSON.`)
+    console.log(`     ${c.dim('Fix the file and run opencastle sync to add the MCP servers.')}`)
+  }
   if (gitignoreResult === 'created') {
     console.log(`  ${c.green('✓')} Created .gitignore with OpenCastle entries`)
   } else if (gitignoreResult === 'updated') {

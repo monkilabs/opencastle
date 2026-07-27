@@ -186,41 +186,115 @@ export function cutMarkerLine(content: string, start: number, end: number): stri
 }
 
 /**
- * Is this region the user quoting the convention rather than a block of ours?
+ * Byte ranges the user has fenced off, computed with our own blocks masked out.
  *
- * Strictly local: a fence delimiter on the line directly above the start marker
- * and another directly below the end marker. Nothing else counts.
+ * The masking is the whole trick, and it is what two earlier attempts at this
+ * were missing. Scanning the raw file for fence ranges cannot work: our
+ * generated body contains fences of its own, so a fence in the user's prose
+ * pairs with one of ours and every pairing after it is nonsense — that is how a
+ * real block came to look quoted and CLAUDE.md grew 20KB a sync. Blanking every
+ * complete region first (newlines kept, so byte offsets and line numbers are
+ * untouched) leaves exactly the user's own fence structure to read.
  *
- * Scanning the file for fence *ranges* looked more principled and was not — an
- * unclosed fence in the user's prose pairs with any later fence line, including
- * one inside our own generated body, so a real block sitting between them was
- * judged quoted. That is how four earlier rounds ended in a file growing 20KB
- * per sync. A local test cannot be fooled by distant fences, and its worst
- * misfire is bounded: a block we wrongly call quoted causes one extra block to
- * be appended, and the appended one is never fence-adjacent, so the next run is
- * stable.
+ * Only *closed* pairs count. An unclosed fence in the user's prose must not cast
+ * doubt over the rest of the file; treating it as open-ended is the same bug
+ * from the other direction.
+ *
+ * The local test this replaces — a fence directly above the start marker and
+ * directly below the end marker — was fooled by an ordinary file: one ending in
+ * a closing fence with no trailing newline puts our start marker directly under
+ * that fence, and a fenced example the user later adds below the block closes
+ * the trap. Both adjacency tests then pass, we disown our own block, and the
+ * file silently carries two sets of instructions that no command will collapse
+ * and no uninstall will remove.
  */
+function quotedRanges(content: string): Array<{ from: number; to: number }> {
+  let masked = content
+  for (const r of blockRegions(content)) {
+    masked =
+      masked.slice(0, r.start) +
+      masked.slice(r.start, r.end).replace(/[^\n]/g, ' ') +
+      masked.slice(r.end)
+  }
+
+  const ranges: Array<{ from: number; to: number }> = []
+  const fence = /^\s{0,3}(`{3,}|~{3,})(.*)$/
+  let open: { at: number; delim: string } | null = null
+  let offset = 0
+  for (const line of masked.split('\n')) {
+    const m = fence.exec(line)
+    if (m) {
+      const delim = m[1]
+      if (!open) {
+        // The range starts after the opening fence's own line.
+        open = { at: offset + line.length, delim }
+      } else if (delim[0] === open.delim[0] && delim.length >= open.delim.length && !m[2].trim()) {
+        // The pair only counts as a quotation if it holds *nothing but*
+        // blocks. Because the regions were blanked above, that is exactly
+        // "the masked span is whitespace".
+        //
+        // This is the test that decides it, and the reason is that containment
+        // alone does not distinguish the two cases. Someone documenting the
+        // convention fences the block and nothing else. An unclosed fence in
+        // ordinary prose, by contrast, pairs with the next unrelated fence
+        // further down and the span between them is full of the user's own
+        // headings and code — with our block merely somewhere in the middle.
+        // Reading that as a quotation is what made the tool disown the block it
+        // had just written and append another on every sync.
+        //
+        // The trade: fence our block together with a comment line and we will
+        // treat it as ours and overwrite it. That costs one hand-written line
+        // in a file the user is deliberately using to document this tool;
+        // the alternative costs a duplicated 20KB of instructions in ordinary
+        // files, silently, forever.
+        if (!masked.slice(open.at, offset).trim()) {
+          ranges.push({ from: open.at, to: offset })
+        }
+        open = null
+      }
+    }
+    offset += line.length + 1
+  }
+  return ranges
+}
+
 function isQuoted(content: string, region: BlockRegion): boolean {
-  const lineBefore = content.slice(0, region.start).split('\n').at(-2) ?? ''
-  const rest = content.slice(region.end).replace(/^\r?\n/, '')
-  const lineAfter = rest.split('\n')[0] ?? ''
-  const fence = /^\s{0,3}(?:`{3,}|~{3,})/
-  return fence.test(lineBefore.trim()) && fence.test(lineAfter.trim())
+  return quotedRanges(content).some((q) => region.start >= q.from && region.end <= q.to)
 }
 
 export function ownedRegions(content: string): BlockRegion[] {
-  return blockRegions(content).filter((r) => !isQuoted(content, r))
+  const regions = blockRegions(content)
+  if (regions.length === 0) return []
+  const quoted = quotedRanges(content)
+  return regions.filter((r) => !quoted.some((q) => r.start >= q.from && r.end <= q.to))
 }
 
-function maintainedRegion(content: string): BlockRegion | null {
-  // Only an unquoted region is ever ours. Falling back to a fenced one when it
-  // was the only complete block meant `init` spliced 20KB of instructions into
-  // the user's own documented example — markdown-quoted, so the instructions
-  // layer effectively never installed, which is the failure the managed block
-  // exists to prevent. With no unquoted region the caller appends a fresh block
-  // instead, which keeps their example and still leaves exactly one of ours.
+/**
+ * The region to overwrite, if any.
+ *
+ * First choice is the last unquoted region. Falling back to a fenced one when
+ * it was the only complete block meant `init` spliced 20KB of instructions into
+ * the user's own documented example — markdown-quoted, so the instructions
+ * layer effectively never installed, which is the failure the managed block
+ * exists to prevent.
+ *
+ * `block` is the second choice, and it is not a heuristic: a region holding
+ * byte-for-byte what we are about to write is ours, whatever the fences around
+ * it suggest. Fence classification is guesswork at the edges — a user's
+ * unclosed fence pairs with some later fence of theirs and swallows a block
+ * sitting between the two — and every version of that guess has been wrong in
+ * one direction or the other. Recognising our own bytes needs no guess, and the
+ * write it authorises is a no-op, so being wrong costs nothing. Without it, a
+ * file with an unclosed fence above the block gained a duplicate on every sync.
+ */
+function maintainedRegion(content: string, block?: string): BlockRegion | null {
   const owned = ownedRegions(content)
-  return owned.length === 0 ? null : owned[owned.length - 1]
+  if (owned.length > 0) return owned[owned.length - 1]
+  if (!block) return null
+  const identical = blockRegions(content).filter(
+    (r) => content.slice(r.start, r.end) === block,
+  )
+  return identical.length === 0 ? null : identical[identical.length - 1]
 }
 
 function findBlockStart(content: string): number {
@@ -380,7 +454,17 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
 
   const existing = await readFile(path, 'utf8')
 
-  if (hasManagedBlock(existing)) {
+  // Any complete region is worth examining, not only one we already recognise
+  // as ours. Gating on `hasManagedBlock` — "is some region unquoted" — meant a
+  // block the fence classifier had mislabelled was never even considered, so
+  // the file went straight to the append path and gained a duplicate on every
+  // single sync.
+  //
+  // `current` is what is on disk from here on. The collapse below can write,
+  // and the append path further down must build on that rather than on the
+  // bytes we read at the top, or it silently reinstates what was collapsed.
+  let current = existing
+  if (blockRegions(existing).length > 0) {
     // Collapse first: any block other than the one we maintain is a duplicate,
     // and leaving it produced a file with two sets of instructions where the
     // stale one named agents that no longer ship.
@@ -389,37 +473,33 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
       await backUp(path, existing)
       await writeFile(path, collapsed)
     }
+    current = collapsed
 
-    const current = collapsed
-    const region = maintainedRegion(current)
-    // Defensive: a cut that damaged the surviving marker used to make this
-    // throw mid-command, after the adapters had already cleared the framework
-    // directories. If the block is somehow gone, append a fresh one rather than
-    // dying with the tree half-applied.
-    if (!region) {
-      await writeFile(path, (current.endsWith('\n') ? current : `${current}\n`) + block)
-      return { action: 'repaired', preservedUserContent: current.trim().length > 0 }
-    }
-    const { start, end } = region
-    const next = current.slice(0, start) + block.trimEnd() + current.slice(end)
-    const hadUserContent = outsideTheBlock(current).trim().length > 0
-    if (next === existing) {
-      return { action: 'unchanged', preservedUserContent: hadUserContent }
-    }
-    await writeFile(path, next)
-    return {
-      action: collapsed !== existing ? 'repaired' : 'updated',
-      preservedUserContent: hadUserContent,
+    const region = maintainedRegion(current, block.trimEnd())
+    // With no region of ours, every complete block here is the user quoting the
+    // convention. Fall through and append below their example.
+    if (region) {
+      const next =
+        current.slice(0, region.start) + block.trimEnd() + current.slice(region.end)
+      const hadUserContent = outsideTheBlock(current).trim().length > 0
+      if (next === existing) {
+        return { action: 'unchanged', preservedUserContent: hadUserContent }
+      }
+      await writeFile(path, next)
+      return {
+        action: collapsed !== existing ? 'repaired' : 'updated',
+        preservedUserContent: hadUserContent,
+      }
     }
   }
 
-  if (looksLikeLegacyGenerated(existing)) {
+  if (looksLikeLegacyGenerated(current)) {
     // The one operation here that discards anything: a previous release wrote
     // this whole file, so replacing it is right — but if someone appended notes
     // below the generated part, there is no marker to tell us where theirs
     // began. Keep a copy next to it rather than being clever, and let the user
     // decide.
-    await backUp(path, existing)
+    await backUp(path, current)
     await writeFile(path, block)
     return { action: 'adopted', preservedUserContent: false }
   }
@@ -430,21 +510,21 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
   // their file ended in one. Normalising first ("add a newline if missing, then
   // a blank line") destroyed the information that it did not end in one, so the
   // cut could never restore it and every round trip grew the file by a byte.
-  const preamble = existing.length > 0 ? `${existing}\n` : ''
+  const preamble = current.length > 0 ? `${current}\n` : ''
   await writeFile(path, preamble + block)
   return {
     action: 'appended',
-    preservedUserContent: existing.trim().length > 0,
+    preservedUserContent: current.trim().length > 0,
     // A start marker with no partner. We will not guess what it delimits, but
     // the user should know their file has one, because the tool cannot maintain
     // whatever sits below it and will not remove it on uninstall.
-    ...(orphanMarkers(existing).length > 0 && { orphanMarker: true }),
+    ...(orphanMarkers(current).length > 0 && { orphanMarker: true }),
     // Their own writing came first, so we appended rather than adopting — but
     // the file also carries our old output somewhere below, and that stale half
     // still names agents and skills that no longer exist. The agent reads both.
     // Adoption exists to prevent exactly that, so when we decline to adopt, the
     // user has to be told what is now doubled.
-    ...(LEGACY_GENERATED_MARKERS.some((m) => existing.includes(m)) && { staleGeneratedContent: true }),
+    ...(LEGACY_GENERATED_MARKERS.some((m) => current.includes(m)) && { staleGeneratedContent: true }),
   }
 }
 

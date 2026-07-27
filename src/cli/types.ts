@@ -52,6 +52,27 @@ export interface CopyResults {
   /** Files the compiler removed that it did not generate. */
   deleted?: string[];
   /**
+   * Generated config files that exist but will not parse.
+   *
+   * Named and skipped rather than thrown: an abort here leaves the framework
+   * tree written and the manifest absent, and the user is never told which
+   * file to fix.
+   */
+  unreadable?: string[];
+
+  /**
+   * Every destination the compile considered, whatever it then did to it.
+   *
+   * The sweep that removes output with no source left needs "did the compiler
+   * account for this path", and reassembling that from created ∪ copied ∪
+   * skipped makes it depend on how each write happened to be *categorised*. It
+   * broke twice that way: once when `skipped` was left out of the union and the
+   * first sync deleted all 79 regenerated files, once when `copied` was left
+   * out and an upgrade deleted 43 skills. Recorded where the path is decided,
+   * so no reporting change can move it.
+   */
+  visited?: string[];
+  /**
    * Root files carrying a marker that belongs to no block.
    *
    * Distinct from `staleRoots`: a hand-written file that merely quotes the
@@ -134,7 +155,12 @@ export interface DoctorCheck {
 /** IDE adapter interface (init/update commands). */
 export interface IdeAdapter {
   install(_pkgRoot: string, _projectRoot: string, _stack?: StackConfig, _repoInfo?: RepoInfo): Promise<CopyResults>;
-  update(_pkgRoot: string, _projectRoot: string, _stack?: StackConfig): Promise<CopyResults>;
+  update(
+    _pkgRoot: string,
+    _projectRoot: string,
+    _stack?: StackConfig,
+    _repoInfo?: RepoInfo,
+  ): Promise<CopyResults>;
   getManagedPaths(): ManagedPaths;
   getDoctorChecks(): DoctorCheck[];
 }

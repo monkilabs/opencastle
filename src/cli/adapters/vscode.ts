@@ -1,9 +1,9 @@
 import { resolve } from 'node:path'
-import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, copyFile, unlink } from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { writeManagedBlock } from '../managed-block.js'
 import { copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
-import { scaffoldMcpConfig } from '../mcp.js'
+import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getAgentTransform } from '../stack-config.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 
@@ -130,14 +130,14 @@ export async function install(
   }
 
   // MCP server config → .vscode/mcp.json (scaffold once)
-  const mcpResult = await scaffoldMcpConfig(
+  await scaffoldMcpConfigInto(
+    results,
     projectRoot,
     '.vscode/mcp.json',
     stack,
     repoInfo,
     'vscode'
   )
-  results[mcpResult.action].push(mcpResult.path)
 
   return results
 }
@@ -145,7 +145,8 @@ export async function install(
 export async function update(
   pkgRoot: string,
   projectRoot: string,
-  stack?: StackConfig
+  stack?: StackConfig,
+  repoInfo?: RepoInfo
 ): Promise<CopyResults> {
   const srcRoot = getOrchestratorRoot(pkgRoot)
   const destRoot = resolve(projectRoot, '.github')
@@ -165,12 +166,13 @@ export async function update(
     copilotDest,
     await readFile(resolve(srcRoot, 'copilot-instructions.md'), 'utf8')
   )
-  results.copied.push(copilotDest)
+  // `unchanged` means the block was already correct — counting it inflated
+  // "Updated N framework files" by one on every single sync.
+  results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(copilotDest)
   if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(copilotDest)
   if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(copilotDest)
   if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(copilotDest)
 
-  // Remove existing framework directories to clear stale files
   // Note what is here before the sweep, so the command can name anything it
   // removed that it did not generate. Only one adapter did this, so five of the
   // seven targets deleted hand-written files in silence.
@@ -180,11 +182,14 @@ export async function update(
     for (const rel of filesUnderDir(abs)) beforeSweep.set(resolve(abs, rel), `.github/${dir}/${rel}`)
   }
 
-  for (const dir of FRAMEWORK_DIRS) {
-    await removeDirIfExists(resolve(destRoot, dir))
-  }
-
-  // Re-copy framework directories
+  // Recompile over the existing tree, then sweep — not the other way round.
+  //
+  // Emptying the framework directories first meant any later failure left this
+  // target with nothing installed, and it made every file look rewritten
+  // because every file had just been created: "Updated 80 framework files" on a
+  // sync that changed nothing. Writing in place gives an honest count for free,
+  // since `copyDir` now compares bytes before it writes.
+  const visited = new Set<string>()
   for (const dir of FRAMEWORK_DIRS) {
     const srcDir = resolve(srcRoot, dir)
     if (!existsSync(srcDir)) continue
@@ -193,9 +198,10 @@ export async function update(
     const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
 
     const sub = await copyDir(srcDir, destDir, { overwrite: true, filter, transform })
-    // All re-installed framework files count as "updated" (copied), not "created"
-    results.copied.push(...sub.copied, ...sub.created)
+    results.copied.push(...sub.copied)
+    results.created.push(...sub.created)
     results.skipped.push(...sub.skipped)
+    for (const abs of sub.visited ?? []) visited.add(abs)
   }
 
   // Plugin skills → .github/skills/<plugin-id>/ (overwrite)
@@ -206,8 +212,20 @@ export async function update(
     const pluginDestDir = resolve(destRoot, 'skills', id)
     await mkdir(pluginDestDir, { recursive: true })
     const destPath = resolve(pluginDestDir, 'SKILL.md')
-    await copyFile(skillPath, destPath)
-    results.copied.push(destPath)
+    visited.add(destPath)
+    const content = await readFile(skillPath, 'utf8')
+    if (existsSync(destPath) && (await readFile(destPath, 'utf8')) === content) {
+      results.skipped.push(destPath)
+    } else {
+      const existed = existsSync(destPath)
+      await writeFile(destPath, content)
+      results[existed ? 'copied' : 'created'].push(destPath)
+    }
+  }
+
+  // Now drop output with no source left.
+  for (const abs of beforeSweep.keys()) {
+    if (!visited.has(abs) && existsSync(abs)) await unlink(abs)
   }
 
   // Customizations are NEVER overwritten during update.

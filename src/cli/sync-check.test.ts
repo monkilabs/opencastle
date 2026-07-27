@@ -6,7 +6,7 @@
  * package without recompiling. A stale rule file still loads fine, so nothing
  * else would notice.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, appendFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, readdirSync, appendFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -235,6 +235,9 @@ describe('every reported extra is one that sync actually removes', () => {
     ['cursor', ['.cursor/rules/team-conventions.mdc', '.cursor/rules/NOTES.md', '.cursor/rules/team/mine.mdc']],
     ['windsurf', ['.windsurf/rules/mine.md', '.windsurf/rules/NOTES.txt', '.windsurf/rules/team/mine.md']],
     ['claude-code', ['.claude/agents/mine.md', '.claude/skills/team/SKILL.md']],
+    ['opencode', ['.opencode/agents/mine.md']],
+    ['codex', ['.codex/agents/mine.md']],
+    ['antigravity', ['.agents/agents/mine.md']],
   ]
 
   for (const [ide, foreign] of cases) {
@@ -271,7 +274,66 @@ describe('every reported extra is one that sync actually removes', () => {
       }
 
       const after = await buildCheckReport(pkgRoot, projectRoot)
-      expect(after.drift.filter((d) => d.kind === 'extra')).toEqual([])
+      // Every kind, not only `extra`. Filtering to the one kind the fixture
+      // seeded is why `sync` could stop refreshing content on four of the seven
+      // targets with this suite green: the drift it left behind was all
+      // `changed`, and nothing here looked at that.
+      expect(after.drift, `${ide} still reports drift after its own remedy`).toEqual([])
+    })
+
+    it(`restores edited content for ${ide}`, async () => {
+      const adapter = await IDE_ADAPTERS[ide]()
+      const ideStack = { ides: [ide], techTools: [], teamTools: [] } as unknown as StackConfig
+      await adapter.install(pkgRoot, projectRoot, ideStack, undefined)
+      await writeManifest(projectRoot, {
+        version: '9.9.9',
+        ide,
+        ides: [ide],
+        installedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        stack: ideStack,
+      })
+
+      // Overwrite every generated file this target owns. `sync` compiles
+      // sources into targets; if it will not replace a file whose bytes differ
+      // from its source, it is not compiling anything.
+      const dirs = adapter
+        .getManagedPaths()
+        .framework.filter((rel) => rel.endsWith('/'))
+      const tampered: string[] = []
+      const walk = (abs: string, rel: string): void => {
+        if (!existsSync(abs)) return
+        for (const entry of readdirSync(abs, { withFileTypes: true })) {
+          const childAbs = join(abs, entry.name)
+          const childRel = `${rel}${entry.name}`
+          if (entry.isDirectory()) walk(childAbs, `${childRel}/`)
+          else {
+            writeFileSync(childAbs, 'STALE RELEASE CONTENT\n')
+            tampered.push(childRel)
+          }
+        }
+      }
+      for (const dir of dirs) walk(join(projectRoot, dir), dir)
+      expect(tampered.length, `${ide}: nothing to tamper with`).toBeGreaterThan(0)
+
+      const before = await buildCheckReport(pkgRoot, projectRoot)
+      expect(
+        before.drift.filter((d) => d.kind === 'changed').length,
+        `${ide}: the checker did not notice ${tampered.length} rewritten files`,
+      ).toBeGreaterThan(0)
+
+      await adapter.update(pkgRoot, projectRoot, ideStack)
+
+      for (const rel of tampered) {
+        expect(existsSync(join(projectRoot, rel)), `${ide}: sync deleted ${rel}`).toBe(true)
+        expect(
+          readFileSync(join(projectRoot, rel), 'utf8'),
+          `${ide}: sync left stale content in ${rel}`,
+        ).not.toBe('STALE RELEASE CONTENT\n')
+      }
+
+      const after = await buildCheckReport(pkgRoot, projectRoot)
+      expect(after.drift, `${ide}: drift its own remedy cannot clear`).toEqual([])
     })
   }
 })

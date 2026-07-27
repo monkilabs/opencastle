@@ -2,7 +2,7 @@ import { resolve, join, basename } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink } from 'node:fs/promises'
 import { existsSync, readdirSync } from 'node:fs'
 import { getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
-import { scaffoldMcpConfig } from '../mcp.js'
+import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { splitFrontmatter, parseFrontmatterString } from './frontmatter.js'
@@ -57,7 +57,7 @@ export interface RulesDirAdapter {
   IDE_ID: IdeChoice
   IDE_LABEL: string
   install(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo): Promise<CopyResults>
-  update(pkgRoot: string, projectRoot: string, stack?: StackConfig): Promise<CopyResults>
+  update(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo): Promise<CopyResults>
   getManagedPaths(): ManagedPaths
   getDoctorChecks(): DoctorCheck[]
 }
@@ -117,12 +117,22 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     results: CopyResults,
     overwrite = false,
   ): Promise<void> {
-    if (!overwrite && existsSync(destPath)) {
+    ;(results.visited ??= []).push(destPath)
+    const existed = existsSync(destPath)
+    if (!overwrite && existed) {
       results.skipped.push(destPath)
       return
     }
-    const existed = existsSync(destPath)
-    await writeFile(destPath, await convertFile(srcPath, opts))
+    const content = await convertFile(srcPath, opts)
+    // Rewriting a file with what it already contains is not an update. The
+    // totals here become "Updated N framework files", and counting every file
+    // visited made a sync that changed nothing look identical to one that
+    // rewrote the tree.
+    if (existed && (await readFile(destPath, 'utf8')) === content) {
+      results.skipped.push(destPath)
+      return
+    }
+    await writeFile(destPath, content)
     results[existed ? 'copied' : 'created'].push(destPath)
   }
 
@@ -282,8 +292,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       removeExt: '.prompt.md',
     })
 
-    const mcpResult = await scaffoldMcpConfig(projectRoot, mcpPath, stack, repoInfo, ideId)
-    results[mcpResult.action].push(mcpResult.path)
+    await scaffoldMcpConfigInto(results, projectRoot, mcpPath, stack, repoInfo, ideId)
 
     return results
   }
@@ -292,6 +301,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     pkgRoot: string,
     projectRoot: string,
     stack?: StackConfig,
+    repoInfo?: RepoInfo,
   ): Promise<CopyResults> {
     const srcRoot = getOrchestratorRoot(pkgRoot)
     const results: CopyResults = { copied: [], skipped: [], created: [] }
@@ -301,30 +311,24 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
 
     const rootPath = resolve(projectRoot, rootRulesFile)
     const rootMerge = await writeManagedBlock(rootPath, rootIntro)
-    results.copied.push(rootRulesFile)
+    // `unchanged` is not an update; counting it inflated the total by one on
+    // every sync, on the same counter the recompilation bug had already made
+    // meaningless.
+    results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(rootRulesFile)
     if (rootMerge.action === 'adopted' || rootMerge.action === 'repaired') (results.adopted ??= []).push(rootPath)
     if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)
     if (rootMerge.orphanMarker) (results.tornRoots ??= []).push(rootPath)
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
 
-    // Clear the whole rules directory, which is what `getManagedPaths` declares
-    // and what the drift checker compares. Sweeping only the four known
-    // subdirectories plus root-level rule files meant `sync --check` reported
-    // `.cursor/rules/NOTES.md` and `.cursor/rules/team/mine.mdc` as "added by
-    // hand (deleted on the next sync)" and then `sync` left them there — a
-    // report that could never be cleared, so CI stayed red and `needsSync`
-    // stayed true forever. Whatever the checker warns about, this removes.
-    // Name what goes. The sweep is deliberate — `getManagedPaths` declares this
-    // whole directory, and the drift checker warns about strays first — but a
-    // file disappearing with no line of output is not a warning the user saw.
+    // Note what is here, so the sweep below can name what it removes. A file
+    // disappearing with no line of output is not a warning the user saw.
+    const beforeSweep = new Map<string, string>()
     if (existsSync(rulesRoot)) {
       for (const rel of filesUnderDir(rulesRoot)) {
-        results.deleted = results.deleted ?? []
-        results.deleted.push(`${configDir}/rules/${rel}`)
+        beforeSweep.set(resolve(rulesRoot, rel), `${configDir}/rules/${rel}`)
       }
     }
-    await removeDirIfExists(rulesRoot)
 
     await convertDir(srcRoot, 'instructions', rulesRoot, results, {
       alwaysApply: true,
@@ -349,11 +353,23 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       overwrite: true,
     })
 
-    // Customizations are NEVER overwritten.
+    // Now drop output with no source left. Emptying the directory first was the
+    // old shape: it made every regenerated file look new, so the "Updated N"
+    // line reported the whole tree on a sync that changed nothing, and any
+    // failure in between left this target with no rules at all.
+    //
+    // The sweep is still the whole directory — `getManagedPaths` declares it
+    // and the drift checker compares it, so anything else living here is
+    // reported as a stray first and removed here. That is what makes
+    // `sync --check` clearable.
+    const visited = new Set(results.visited ?? [])
+    for (const [abs, rel] of beforeSweep) {
+      if (visited.has(abs)) continue
+      await unlink(abs)
+      ;(results.deleted ??= []).push(rel)
+    }
 
-    // Re-installed framework files count as updated, not created.
-    results.copied.push(...results.created)
-    results.created = []
+    // Customizations are NEVER overwritten.
 
     return results
   }

@@ -5,7 +5,7 @@ import { getIncludedMcpServers } from './stack-config.js';
 import { PLUGINS } from '../orchestrator/plugins/index.js';
 import { UnreadableConfigError } from './types.js';
 import type { McpInput } from '../orchestrator/plugins/types.js';
-import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice } from './types.js';
+import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice, CopyResults } from './types.js';
 
 // ── IDE-specific MCP format transformation ────────────────────
 
@@ -137,9 +137,23 @@ export async function scaffoldMcpConfig(
   const output = transformMcpForIde(resolvedIde, servers, inputs.length > 0 ? inputs : undefined);
 
   if (existsSync(destPath)) {
-    // Merge: add missing servers without overwriting existing ones
+    // Merge: add missing servers without overwriting existing ones.
+    //
+    // Guarded for the same reason `rebuildMcpConfig` below is, and it took
+    // longer to get here because this is the *scaffold* path — nobody expected
+    // a first install to meet a config it could not read. It does: VS Code
+    // reads `mcp.json` as JSONC, so a hand-written one with a `//` comment is
+    // legal to VS Code and fatal here, and every adapter's `install()` runs
+    // this. An unguarded throw left the framework tree written and the manifest
+    // absent, which the front door then read as "not set up" — pointing at the
+    // `init` that had just crashed. One file, two readers, one hardened.
     const existingContent = await readFile(destPath, 'utf8');
-    const existing = JSON.parse(existingContent) as Record<string, unknown>;
+    let existing: Record<string, unknown>;
+    try {
+      existing = JSON.parse(existingContent) as Record<string, unknown>;
+    } catch {
+      throw new UnreadableConfigError(destRelPath);
+    }
 
     // Determine the server container key for this IDE
     const containerKey = resolvedIde === 'opencode'
@@ -227,6 +241,34 @@ export function getMcpConfigRelPath(ide: IdeChoice): string {
  * 3. Preserves manually-added server entries
  * 4. Re-scaffolds with the new stack selection
  */
+/**
+ * Scaffold the MCP config into `results`, naming a config we cannot read
+ * instead of aborting.
+ *
+ * Every adapter's `install()` ends here, and `init` always runs `install()`, so
+ * an unparseable config used to take the whole command down — leaving the
+ * framework tree written and no manifest beside it. The front door then read
+ * that as "not set up in this project" and recommended the `init` that had just
+ * crashed, with the offending file never named. Naming it and carrying on is
+ * what `sync` already does for the skill matrix.
+ */
+export async function scaffoldMcpConfigInto(
+  results: CopyResults,
+  projectRoot: string,
+  destRelPath: string,
+  stack?: StackConfig,
+  repoInfo?: RepoInfo,
+  ide?: IdeChoice
+): Promise<void> {
+  try {
+    const result = await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
+    results[result.action].push(result.path);
+  } catch (err) {
+    if (!(err instanceof UnreadableConfigError)) throw err;
+    (results.unreadable ??= []).push(err.file);
+  }
+}
+
 /**
  * Take our MCP servers back out of a config file we only merged into.
  *

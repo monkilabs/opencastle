@@ -3,12 +3,18 @@
 # Written in bash (not zsh) so unquoted expansion word-splits as expected;
 # `timeout` does not exist on this machine, so nothing relies on it.
 set -u
-CLI="$(cd "$(dirname "$0")/.." && pwd)/bin/cli.mjs"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+CLI="$REPO/bin/cli.mjs"
 ROOT=$(mktemp -d)
 PASS=0; FAIL=0
 ok()   { echo "  ok   $1"; PASS=$((PASS+1)); }
 bad()  { echo "  FAIL $1"; FAIL=$((FAIL+1)); }
 say()  { echo; echo "$1"; }
+# The CLI styles its output, so a literal grep for "Updated 0 framework files"
+# can never match: the count is wrapped in bold. An assertion that can never
+# match is an assertion that always reports whatever its else-branch says, and
+# two of the checks below were passing for that reason alone.
+plain() { sed $'s/\033\[[0-9;]*m//g'; }
 
 new() { d="$ROOT/$1"; rm -rf "$d"; mkdir -p "$d"; cd "$d" || exit 1; git init -q; }
 
@@ -47,20 +53,32 @@ for shape in plain unclosed-fence quoted-block quoted-start-only trailing-rule c
   # A file holding a *complete* quoted block has that block adopted — recorded
   # in `blockRegions` as the price of never guessing which marker is ours. Every
   # other shape must come back byte for byte.
-  if false; then :
+  # Everything except OpenCastle's own marker lines must come back byte for
+  # byte. A marker line is text this tool authored, so taking it even out of
+  # someone's quoted example loses nothing they wrote; anything else would.
+  # Filtering it from *both* sides is deliberate and is a real exception to
+  # "byte for byte" — so it is asserted separately, immediately below, rather
+  # than hidden by the filter.
+  grep -v -F -- "$START" "$ROOT/$shape.orig" > "$ROOT/$shape.expect"
+  grep -v -F -- "$START" CLAUDE.md > "$ROOT/$shape.actual" 2>/dev/null || true
+  if cmp -s "$ROOT/$shape.expect" "$ROOT/$shape.actual"; then
+    ok "$shape: user half byte-identical"
   else
-    # Everything except OpenCastle's own marker lines must come back byte for
-    # byte. A marker line is text this tool authored, so taking it even out of
-    # someone's quoted example loses nothing they wrote; anything else would.
-    grep -v -F -- "$START" "$ROOT/$shape.orig" > "$ROOT/$shape.expect"
-    grep -v -F -- "$START" CLAUDE.md > "$ROOT/$shape.actual" 2>/dev/null || true
-    if cmp -s "$ROOT/$shape.expect" "$ROOT/$shape.actual"; then
-      ok "$shape: user half byte-identical"
-    else
-      bad "$shape: user half changed"
-      diff "$ROOT/$shape.expect" "$ROOT/$shape.actual" | head -4
-    fi
+    bad "$shape: user half changed"
+    diff "$ROOT/$shape.expect" "$ROOT/$shape.actual" | head -4
   fi
+  # The filtered exception, stated: a quoted *complete* block keeps its markers
+  # (it is the user's example); a quoted lone start marker is taken.
+  case $shape in
+    quoted-block)
+      [ "$(grep -c -F -- "$START" CLAUDE.md)" = "1" ] \
+        && ok "$shape: the quoted example keeps its markers" \
+        || bad "$shape: the quoted example lost its markers" ;;
+    quoted-start-only)
+      grep -q -F -- "$START" CLAUDE.md \
+        && bad "$shape: a lone quoted marker survived" \
+        || ok "$shape: a lone quoted marker is taken (documented exception)" ;;
+  esac
 done
 
 say "CLAIM 1b — a doubled block heals on a plain sync"
@@ -183,18 +201,59 @@ after=$(grep -rl SENTINEL .opencastle | wc -l | tr -d ' ')
 [ "$before" = "$after" ] && ok "all $after hand edits survived" || bad "lost $((before-after)) of $before"
 grep -q my-skill .opencastle/agents/skill-matrix.json && ok "hand-set matrix entry survived" || bad "matrix entry erased"
 
-say "CLAIM 5 — unparseable generated JSON is named, not fatal"
-new c5; echo '{"name":"p","version":"1.0.0"}' > package.json
-node $CLI init --yes >/dev/null 2>&1
-mcp=$(ls .vscode/mcp.json .mcp.json 2>/dev/null | head -1)
-python3 - "$mcp" <<'PY'
+say "CLAIM 5 — unparseable generated JSON is named, not fatal, on every target"
+# Parameterised because the previous fixture (a bare package.json) always
+# resolved to vscode — the one adapter whose update() never re-runs the scaffold
+# — so the unguarded parse that broke the other six was unreachable from here.
+# `init` is exercised too: it is the command that left a framework tree on disk
+# with no manifest beside it.
+c5_seed() {
+  case $1 in
+    claude-code) printf '# R\n' > CLAUDE.md ;;
+    codex)       mkdir -p .codex; printf '# R\n' > AGENTS.md ;;
+    antigravity) printf '# R\n' > GEMINI.md ;;
+    cursor)      printf 'x\n' > .cursorrules ;;
+    windsurf)    printf 'x\n' > .windsurfrules ;;
+    vscode)      mkdir -p .github; printf '# R\n' > .github/copilot-instructions.md ;;
+  esac
+}
+c5_mcp() {
+  case $1 in
+    claude-code) echo .mcp.json ;;
+    codex)       echo .codex/mcp.json ;;
+    antigravity) echo .agents/mcp_config.json ;;
+    cursor)      echo .cursor/mcp.json ;;
+    windsurf)    echo .windsurf/mcp.json ;;
+    vscode)      echo .vscode/mcp.json ;;
+  esac
+}
+corrupt() {
+  python3 - "$1" <<'PY'
 import sys, pathlib
 p = pathlib.Path(sys.argv[1]); l = p.read_text().split('\n')
 l.insert(2, '<<<<<<< HEAD\n=======\n>>>>>>> feat'); p.write_text('\n'.join(l))
 PY
-out=$(node $CLI sync --force --yes </dev/null 2>&1); code=$?
-[ $code -eq 0 ] && ok "sync completed" || bad "sync exited $code"
-echo "$out" | grep -q "$mcp" && ok "named the file" || bad "did not name the file"
+}
+for ide in claude-code codex antigravity cursor windsurf vscode; do
+  mcp=$(c5_mcp "$ide")
+  # (a) sync over a conflicted config
+  new "c5-sync-$ide"; c5_seed "$ide"
+  node $CLI init --yes >/dev/null 2>&1
+  if [ ! -f "$mcp" ]; then bad "$ide: expected $mcp after init"; continue; fi
+  corrupt "$mcp"
+  out=$(node $CLI sync --force --yes </dev/null 2>&1); code=$?
+  [ $code -eq 0 ] && ok "$ide: sync completed" || bad "$ide: sync exited $code"
+  echo "$out" | grep -q -- "$mcp" && ok "$ide: sync named the file" || bad "$ide: sync did not name it"
+
+  # (b) a first init meeting a config it cannot read — must not orphan the tree
+  new "c5-init-$ide"; c5_seed "$ide"
+  mkdir -p "$(dirname "$mcp")"
+  printf '{\n  // JSONC, legal to VS Code\n  "servers": {}\n}\n' > "$mcp"
+  out=$(node $CLI init --yes </dev/null 2>&1); code=$?
+  [ $code -eq 0 ] && ok "$ide: init completed" || bad "$ide: init exited $code"
+  echo "$out" | grep -q -- "$mcp" && ok "$ide: init named the file" || bad "$ide: init did not name it"
+  [ -f .opencastle/manifest.json ] && ok "$ide: manifest written" || bad "$ide: ORPHANED install"
+done
 
 say "CLAIM 6 — doctor remedies work; status agrees with doctor"
 for breakage in agents matrix gitignored; do
@@ -332,6 +391,87 @@ m=re.search(r'# >>> OpenCastle managed.*?# <<< OpenCastle managed <<<',t,re.S)
 p.write_text(t[:m.end()]+chr(10)+m.group(0)+t[m.end():])"
 node $CLI sync --yes --force >/dev/null 2>&1
 git check-ignore -q .env.local && ok "a user rule below a doubled block survives" || bad "user rule welded into a comment"
+
+say "CLAIM 13 — sync recompiles content, on every target"
+# The claim the branch is *named* for, and the one nothing tested: a generated
+# file whose bytes differ from its source is rewritten by `sync`. It went
+# unnoticed for a full release because every existing check asked whether files
+# were *present*, and the four single-file targets kept every stale byte while
+# reporting "Updated 0 framework files" and a drift the prescribed remedy could
+# not clear.
+c13_seed() {
+  case $1 in
+    claude-code) printf '# R\n' > CLAUDE.md ;;
+    codex)       mkdir -p .codex; printf '# R\n' > AGENTS.md ;;
+    antigravity) printf '# R\n' > GEMINI.md ;;
+    cursor)      printf 'x\n' > .cursorrules ;;
+    windsurf)    printf 'x\n' > .windsurfrules ;;
+    vscode)      mkdir -p .github; printf '# R\n' > .github/copilot-instructions.md ;;
+    opencode)    printf '# R\n' > CLAUDE.md ;;
+  esac
+}
+for ide in claude-code codex antigravity opencode cursor windsurf vscode; do
+  new "c13-$ide"; c13_seed "$ide"
+  node $CLI init --yes >/dev/null 2>&1
+  # opencode has no detection trigger of its own that does not collide with
+  # codex over AGENTS.md, so point the manifest at it and recompile.
+  if [ "$ide" = opencode ]; then
+    python3 -c "
+import json,pathlib
+p=pathlib.Path('.opencastle/manifest.json'); m=json.load(open(p))
+m['ides']=['opencode']; m['ide']='opencode'; m['stack']['ides']=['opencode']
+json.dump(m,open(p,'w'),indent=2)"
+    node $CLI sync --yes --force >/dev/null 2>&1
+  fi
+
+  before=$(find . -path ./.git -prune -o -type f -print | wc -l | tr -d ' ')
+  # Tamper with every generated markdown file the compiler owns.
+  targets=$(node --input-type=module -e "
+const {IDE_ADAPTERS} = await import('$REPO/dist/cli/adapters/index.js')
+const a = await IDE_ADAPTERS[process.argv[1]]()
+console.log(a.getManagedPaths().framework.filter(p => p.endsWith('/')).join(' '))
+" "$ide" 2>/dev/null)
+  n=0
+  for dir in $targets; do
+    while IFS= read -r f; do
+      printf 'STALE RELEASE CONTENT\n' > "$f"; n=$((n+1))
+    done < <(find "$dir" -type f 2>/dev/null)
+  done
+  if [ "$n" = "0" ]; then bad "$ide: no generated files found to tamper with"; continue; fi
+
+  node $CLI sync --yes --force >/dev/null 2>&1
+  left=$(grep -rl 'STALE RELEASE CONTENT' $targets 2>/dev/null | wc -l | tr -d ' ')
+  [ "$left" = "0" ] && ok "$ide: sync restored all $n tampered files" \
+                    || bad "$ide: $left of $n files kept stale content"
+  node $CLI sync --check >/dev/null 2>&1 \
+    && ok "$ide: sync --check clean afterwards" \
+    || bad "$ide: sync --check still reports drift its own remedy cannot clear"
+  after=$(find . -path ./.git -prune -o -type f -print | wc -l | tr -d ' ')
+  [ "$before" = "$after" ] && ok "$ide: file count unchanged ($after)" \
+                           || bad "$ide: $before files before, $after after"
+done
+
+say "CLAIM 13b — an upgrade delivers new content to an existing install"
+new c13b; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+before=$(find .claude -type f | wc -l | tr -d ' ')
+find .claude -type f -name '*.md' -exec sh -c 'printf "PREVIOUS RELEASE\n" > "$1"' _ {} \;
+python3 -c "
+import json,pathlib
+p=pathlib.Path('.opencastle/manifest.json'); m=json.load(open(p)); m['version']='0.30.0'
+json.dump(m,open(p,'w'),indent=2)"
+out=$(node $CLI sync --yes 2>&1 | plain)
+[ "$(grep -rl 'PREVIOUS RELEASE' .claude 2>/dev/null | wc -l | tr -d ' ')" = "0" ] \
+  && ok "no file kept the previous release's body" || bad "stale bodies survived the upgrade"
+[ "$before" = "$(find .claude -type f | wc -l | tr -d ' ')" ] \
+  && ok "the upgrade deleted nothing ($before files)" || bad "the upgrade changed the file count"
+node $CLI sync --check >/dev/null 2>&1 && ok "clean after upgrade" || bad "drift after upgrade"
+# The counter must describe the run, not the tree.
+echo "$out" | grep -q "Updated 0 framework files" && bad "reported 0 while rewriting the tree" \
+                                                  || ok "the count reflects what changed"
+out2=$(node $CLI sync --yes --force 2>&1 | plain)
+echo "$out2" | grep -q "Updated 0 framework files" \
+  && ok "a no-op sync reports 0" || bad "a no-op sync inflated its count"
 
 say "CLAIM 4b — init does not rewrite .opencastle/ either"
 new c4b; echo '{"name":"p","dependencies":{"@supabase/supabase-js":"^2"}}' > package.json

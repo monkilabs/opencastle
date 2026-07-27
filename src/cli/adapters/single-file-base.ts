@@ -4,7 +4,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { writeManagedBlock } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
 import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
-import { scaffoldMcpConfig } from '../mcp.js'
+import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeAdapter, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { stripFrontmatter, parseFrontmatterMeta } from './frontmatter.js'
@@ -78,11 +78,47 @@ function referenceDir(config: SingleFileAdapterConfig, stack?: StackConfig): {
 }
 
 export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAdapter {
-  async function install(
+  /**
+   * Write one generated file and report what actually happened to it.
+   *
+   * `install` scaffolds and must never clobber; `update` recompiles and must,
+   * or the compiler never delivers new content to an existing install. Those
+   * two needs were served by one code path with `existsSync` hard-wired to
+   * "skip", so after the write-before-sweep reordering `sync` stopped
+   * refreshing anything: it printed "Updated 0 framework files" while
+   * `sync --check` stayed red on the very files it had just declined to write,
+   * and prescribed itself as the remedy. An upgrade got the new managed block
+   * over the previous release's agent bodies.
+   *
+   * Even when overwriting, an identical file counts as skipped — the "Updated
+   * N" line should say what changed, not how many files were visited.
+   */
+  async function emit(
+    destPath: string,
+    content: string,
+    overwrite: boolean,
+    results: CopyResults
+  ): Promise<void> {
+    ;(results.visited ??= []).push(destPath)
+    if (existsSync(destPath)) {
+      if (!overwrite || (await readFile(destPath, 'utf8')) === content) {
+        results.skipped.push(destPath)
+        return
+      }
+      await writeFile(destPath, content)
+      results.copied.push(destPath)
+      return
+    }
+    await writeFile(destPath, content)
+    results.created.push(destPath)
+  }
+
+  async function compile(
     pkgRoot: string,
     projectRoot: string,
-    stack?: StackConfig,
-    repoInfo?: RepoInfo
+    stack: StackConfig | undefined,
+    repoInfo: RepoInfo | undefined,
+    overwrite: boolean
   ): Promise<CopyResults> {
     const srcRoot = getOrchestratorRoot(pkgRoot)
     const results: CopyResults = { copied: [], skipped: [], created: [] }
@@ -226,13 +262,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (!file.endsWith('.md')) continue
         if (excludedAgents.has(file)) continue
         const destPath = resolve(destAgents, file)
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
         const content = await readFile(resolve(agentsDir, file), 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
-        results.created.push(destPath)
+        await emit(destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
@@ -252,10 +283,18 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (!existsSync(skillFile)) continue
         const sub = await copyDir(
           resolve(skillsDir, entry.name),
-          resolve(destSkills, entry.name)
+          resolve(destSkills, entry.name),
+          { overwrite }
         )
+        // All three, not two. With `overwrite` false a rewritten file was
+        // impossible, so dropping `copied` cost nothing; the moment `update`
+        // started recompiling in place, every skill it actually refreshed went
+        // unrecorded — and the sweep, which deletes whatever the compile did
+        // not account for, removed all 43 of them.
         results.created.push(...sub.created)
+        results.copied.push(...sub.copied)
         results.skipped.push(...sub.skipped)
+        if (sub.visited) (results.visited ??= []).push(...sub.visited)
       }
     }
 
@@ -270,12 +309,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const pluginDestDir = resolve(destSkills, id)
         await mkdir(pluginDestDir, { recursive: true })
         const destPath = resolve(pluginDestDir, 'SKILL.md')
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
-        await copyFile(skillPath, destPath)
-        results.created.push(destPath)
+        await emit(destPath, await readFile(skillPath, 'utf8'), overwrite, results)
       }
     }
 
@@ -288,13 +322,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (!file.endsWith('.md')) continue
         const name = basename(file, '.prompt.md') || basename(file, '.md')
         const destPath = resolve(destPrompts, `${name}.md`)
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
         const content = await readFile(resolve(promptDir, file), 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
-        results.created.push(destPath)
+        await emit(destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
@@ -308,33 +337,39 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (file === 'README.md') continue
         const name = basename(file, '.md')
         const destPath = resolve(destWf, `${config.workflowPrefix}${name}.md`)
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
         const content = await readFile(resolve(wfDir, file), 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
-        results.created.push(destPath)
+        await emit(destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
     // 7. MCP server config (scaffold once)
-    const mcpResult = await scaffoldMcpConfig(
+    await scaffoldMcpConfigInto(
+      results,
       projectRoot,
       config.mcpConfigPath,
       stack,
       repoInfo,
       config.mcpFormat
     )
-    results[mcpResult.action].push(mcpResult.path)
 
     return results
+  }
+
+  /** First install: scaffold, and never clobber a file that is already there. */
+  async function install(
+    pkgRoot: string,
+    projectRoot: string,
+    stack?: StackConfig,
+    repoInfo?: RepoInfo
+  ): Promise<CopyResults> {
+    return compile(pkgRoot, projectRoot, stack, repoInfo, false)
   }
 
   async function update(
     pkgRoot: string,
     projectRoot: string,
-    stack?: StackConfig
+    stack?: StackConfig,
+    repoInfo?: RepoInfo
   ): Promise<CopyResults> {
     const results: CopyResults = { copied: [], skipped: [], created: [] }
     const dotDirPath = resolve(projectRoot, config.dotDir)
@@ -357,24 +392,28 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       }
     }
 
-    // 3. Re-run the install *before* clearing anything.
+    // 3. Recompile *before* clearing anything, overwriting as we go.
     //
     // Sweeping first meant a failure writing the root file — an unwritable
     // CLAUDE.md is enough — left `.claude/` empty and the manifest unwritten:
     // the command that was asked to repair the install destroyed it. The other
     // two adapters already wrote the root file first.
-    const installResult = await install(pkgRoot, projectRoot, stack)
+    //
+    // `overwrite` is what makes that reordering safe to keep. Without it the
+    // sweep was carrying the refresh — files were replaced by being deleted and
+    // written again — and reversing the order silently turned `sync` into a
+    // no-op on content. The sweep's job now is only to remove output with no
+    // source left, which is the one thing recompiling cannot do.
+    const installResult = await compile(pkgRoot, projectRoot, stack, repoInfo, true)
 
     // 4. Now that the new output exists, drop anything stale beside it.
     //
-    // "Ours" is created ∪ copied ∪ skipped: a file the install left in place
-    // because it was already correct is reported as *skipped*, and leaving that
-    // out of the set deleted every regenerated file on the first run.
-    const written = new Set<string>([
-      ...installResult.created,
-      ...installResult.copied,
-      ...installResult.skipped,
-    ])
+    // Keyed on what the recompile *visited*, not on how it categorised each
+    // write. Reassembling this from the report arrays failed twice — once
+    // missing `skipped` (first sync deleted all 79 regenerated files), once
+    // missing `copied` (an upgrade deleted 43 skills) — and both times the
+    // deletion was silent and the categories looked right.
+    const written = new Set<string>(installResult.visited ?? [])
     for (const dirPath of sweptDirs) {
       for (const rel of filesUnderDir(dirPath)) {
         const abs = resolve(dirPath, rel)
@@ -384,7 +423,11 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         }
       }
     }
-    results.copied.push(...installResult.created)
+    // Pass the three categories through as they came back. Folding `created`
+    // into `copied` was how "Updated N framework files" stayed plausible while
+    // nothing was being rewritten — the count was of files visited, not changed.
+    results.created.push(...installResult.created)
+    results.copied.push(...installResult.copied)
     results.skipped.push(...installResult.skipped)
     // Adoption happens inside install(); without this the notice never reaches
     // the user on the one command they actually run to upgrade.

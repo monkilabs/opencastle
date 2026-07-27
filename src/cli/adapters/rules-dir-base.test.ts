@@ -150,13 +150,26 @@ describe.each([
     expect(existsSync(stale)).toBe(false)
   })
 
-  it('reports created files on install and updated files on update', async () => {
+  it('counts what changed, not what it looked at', async () => {
     const first = await adapter.install(pkgRoot, projectRoot)
     expect(first.created.length).toBeGreaterThan(0)
 
-    const updated = await adapter.update(pkgRoot, projectRoot)
-    expect(updated.created).toHaveLength(0)
-    expect(updated.copied.length).toBeGreaterThan(0)
+    // An update over an already-correct tree rewrites nothing, so it reports
+    // nothing. This used to report every file, because `update` deleted the
+    // rules directory first and every file was then genuinely new — which is
+    // how "Updated 80 framework files" came to be printed by a sync that
+    // changed not one byte.
+    const noop = await adapter.update(pkgRoot, projectRoot)
+    expect(noop.created).toHaveLength(0)
+    expect(noop.copied).toHaveLength(0)
+    expect(noop.skipped.length).toBeGreaterThan(0)
+
+    // A file whose bytes differ from its source is rewritten, and counted.
+    const target = join(rules(), 'agents', `developer${ext}`)
+    writeFileSync(target, 'STALE\n')
+    const changed = await adapter.update(pkgRoot, projectRoot)
+    expect(changed.copied).toContain(target)
+    expect(readFileSync(target, 'utf8')).not.toBe('STALE\n')
   })
 
   it('lists managed and doctor paths under its own config directory', () => {

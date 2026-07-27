@@ -249,8 +249,25 @@ async function checkGitignoredOutput(
     detail:
       `${hidden.length} generated path(s) are gitignored (${hidden[0]}${hidden.length > 1 ? ', …' : ''})` +
       ' — a teammate\'s clone would have no rules',
-    fix: 'remove those entries from .gitignore; OpenCastle only ignores .env and run artefacts',
+    // Two populations, two remedies. If the entries sit inside a managed block
+    // this tool wrote — every install from before 0.36 has one, listing
+    // CLAUDE.md and the framework directories — then `sync` rewrites that block
+    // and clears the check on its own. Telling those users to hand-edit a file
+    // the tool owns pointed them away from the one-command fix, and `status`
+    // repeated it.
+    fix: (await hasOurGitignoreBlock(projectRoot))
+      ? 'opencastle sync — the entries are in a block this tool maintains'
+      : 'remove those entries from .gitignore; OpenCastle only ignores .env and run artefacts',
   };
+}
+
+/** Does `.gitignore` carry a block this tool wrote and will rewrite? */
+async function hasOurGitignoreBlock(projectRoot: string): Promise<boolean> {
+  const path = resolve(projectRoot, '.gitignore');
+  if (!existsSync(path)) return false;
+  const { blockRegions } = await import('./managed-block.js');
+  const { START_MARKER, END_MARKER } = await import('./gitignore.js');
+  return blockRegions(await readFile(path, 'utf8'), START_MARKER, END_MARKER).length > 0;
 }
 
 /**

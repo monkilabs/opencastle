@@ -1,6 +1,6 @@
-import { resolve, relative } from 'node:path'
+import { resolve, relative, dirname } from 'node:path'
 import { unlink, readFile, rename } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, rmdirSync } from 'node:fs'
 import { readManifest } from './manifest.js'
 import { removeDirIfExists } from './copy.js'
 import { removeGitignoreBlock, predictGitignoreStrip } from './gitignore.js'
@@ -102,6 +102,41 @@ async function previewCoOwned(
   return out
 }
 
+/**
+ * Remove `dirs` that are now empty, and any empty parents up to `stop`.
+ *
+ * Never recursive and never forced: an entry inside means the user has
+ * something there, and it stays.
+ */
+function pruneEmptyDirs(dirs: Iterable<string>, stop: string): void {
+  for (const dir of dirs) {
+    let current = dir
+    while (current.startsWith(stop) && current !== stop) {
+      try {
+        if (readdirSync(current).length > 0) break
+        rmdirSync(current)
+      } catch {
+        break
+      }
+      current = dirname(current)
+    }
+  }
+}
+
+/**
+ * Where `.opencastle/` will be parked — the one implementation.
+ *
+ * The preview named `.opencastle.removed/` unconditionally while the action
+ * suffixed to avoid clobbering an earlier rescue copy, so a second uninstall
+ * told the user to look somewhere the files were not. One fact, one reader.
+ */
+export function parkedDirFor(projectRoot: string): string {
+  let parked = resolve(projectRoot, '.opencastle.removed')
+  let suffix = 2
+  while (existsSync(parked)) parked = resolve(projectRoot, `.opencastle.removed.${suffix++}`)
+  return parked
+}
+
 export default async function remove({ args }: CliContext): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(REMOVE_HELP)
@@ -173,7 +208,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
     // user's own, and the command spends the rest of its effort preserving
     // exactly that kind of content elsewhere.
     console.log(
-      `    ${c.yellow('→')} ${c.dim('.opencastle/')} ${c.yellow('moved to .opencastle.removed/ — your conventions and lessons')}`,
+      `    ${c.yellow('→')} ${c.dim('.opencastle/')} ${c.yellow(`moved to ${relative(projectRoot, parkedDirFor(projectRoot))}/ — your conventions and lessons`)}`,
     )
     if (hasLegacy) console.log(`    ${c.red('-')} ${c.dim('.opencastle.json')}`)
 
@@ -236,6 +271,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
   }
 
   let removed = 0
+  const parents = new Set<string>()
   for (const p of [...frameworkPaths, ...customizablePaths]) {
     if (p.endsWith('/')) {
       await removeDirIfExists(resolve(projectRoot, p))
@@ -247,7 +283,16 @@ export default async function remove({ args }: CliContext): Promise<void> {
         removed++
       }
     }
+    const parent = dirname(resolve(projectRoot, p.replace(/\/$/, '')))
+    if (parent !== projectRoot) parents.add(parent)
   }
+
+  // The containers our own directories lived in. `.claude/agents/`, `skills/`
+  // and `commands/` were each removed by name, and `.claude/` itself was left
+  // behind — an empty directory the user has to notice and delete, after a
+  // command whose whole promise is leaving no trace. Only ever removed when
+  // empty, so anything of theirs inside keeps it.
+  pruneEmptyDirs(parents, projectRoot)
 
   // Co-owned files hold the user's own writing above our block. Take back the
   // block; delete the file only if nothing of theirs remains.
@@ -279,9 +324,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
   if (existsSync(opencastleDir)) {
     // A second uninstall used to delete the first one's rescue copy, which is
     // the one thing this parking is for. Suffix instead.
-    let parked = resolve(projectRoot, '.opencastle.removed')
-    let suffix = 2
-    while (existsSync(parked)) parked = resolve(projectRoot, `.opencastle.removed.${suffix++}`)
+    const parked = parkedDirFor(projectRoot)
     await rename(opencastleDir, parked)
     keptDir = relative(projectRoot, parked)
     removed++

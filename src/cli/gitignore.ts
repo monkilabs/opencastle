@@ -8,8 +8,11 @@ import {
   cutMarkerLine,
 } from './managed-block.js'
 
-const START_MARKER = '# >>> OpenCastle managed (do not edit) >>>'
-const END_MARKER = '# <<< OpenCastle managed <<<'
+// Exported so `doctor` can ask whether the entries it is complaining about sit
+// inside a block this tool maintains — the answer decides which remedy it
+// prints — rather than re-deriving the markers and drifting from them.
+export const START_MARKER = '# >>> OpenCastle managed (do not edit) >>>'
+export const END_MARKER = '# <<< OpenCastle managed <<<'
 
 /**
  * What OpenCastle asks git to ignore — which is almost nothing.

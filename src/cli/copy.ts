@@ -10,6 +10,12 @@ import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import type { CopyResults, CopyDirOptions } from './types.js';
 
+/** Do two files hold the same bytes? */
+async function sameFile(a: string, b: string): Promise<boolean> {
+  const [x, y] = await Promise.all([readFile(a), readFile(b)]);
+  return x.equals(y);
+}
+
 /**
  * Recursively copy a directory tree.
  */
@@ -38,7 +44,9 @@ export async function copyDir(
       results.copied.push(...sub.copied);
       results.skipped.push(...sub.skipped);
       results.created.push(...sub.created);
+      if (sub.visited) (results.visited ??= []).push(...sub.visited);
     } else {
+      (results.visited ??= []).push(destPath);
       const exists = existsSync(destPath);
       if (exists && !overwrite) {
         results.skipped.push(destPath);
@@ -48,11 +56,22 @@ export async function copyDir(
       if (transform) {
         const content = await readFile(srcPath, 'utf8');
         const transformed = await transform(content, srcPath);
-        if (transformed !== null) {
-          await writeFile(destPath, transformed);
-          results[exists ? 'copied' : 'created'].push(destPath);
+        if (transformed === null) continue;
+        // An overwrite that changes nothing is not an update. Callers total
+        // `copied` into "Updated N framework files", and counting every file
+        // visited made a sync that rewrote nothing indistinguishable from one
+        // that rewrote everything.
+        if (exists && (await readFile(destPath, 'utf8')) === transformed) {
+          results.skipped.push(destPath);
+          continue;
         }
+        await writeFile(destPath, transformed);
+        results[exists ? 'copied' : 'created'].push(destPath);
       } else {
+        if (exists && (await sameFile(srcPath, destPath))) {
+          results.skipped.push(destPath);
+          continue;
+        }
         await copyFile(srcPath, destPath);
         results[exists ? 'copied' : 'created'].push(destPath);
       }
