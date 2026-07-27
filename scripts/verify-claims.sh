@@ -653,6 +653,22 @@ else
   bad "deleted a config holding only the user's own server"
 fi
 
+say "CLAIM 7b — sync compiles from the same inputs init did"
+# `repoInfo` reaches the adapters on `init` and, for two releases, did not on
+# `sync`: the parameter existed, every adapter accepted it, and the one call
+# site `sync` uses passed three arguments. Nothing caught it because a later
+# pass happened to rebuild the same file with the right inputs.
+new c7b; printf '# R\n' > CLAUDE.md
+echo '{"name":"p","dependencies":{"@supabase/supabase-js":"^2","@sentry/node":"^8"}}' > package.json
+node $CLI init --yes >/dev/null 2>&1
+mcp=$(ls .mcp.json .vscode/mcp.json 2>/dev/null | head -1)
+cp "$mcp" "$ROOT/mcp.after-init"
+node $CLI sync --yes --force >/dev/null 2>&1
+cmp -s "$ROOT/mcp.after-init" "$mcp" && ok "sync produced the same MCP config as init" \
+  || { bad "sync and init disagree on the MCP config"; diff "$ROOT/mcp.after-init" "$mcp" | head -6; }
+node $CLI sync --yes --force >/dev/null 2>&1
+cmp -s "$ROOT/mcp.after-init" "$mcp" && ok "and again on a second sync" || bad "the config keeps changing"
+
 say "CLAIM 12g — no command answers a broken project with a stack trace"
 new c12g; printf '# R\n' > CLAUDE.md
 node $CLI init --yes >/dev/null 2>&1

@@ -274,8 +274,13 @@ export default async function remove({ args }: CliContext): Promise<void> {
   const parents = new Set<string>()
   for (const p of [...frameworkPaths, ...customizablePaths]) {
     if (p.endsWith('/')) {
-      await removeDirIfExists(resolve(projectRoot, p))
-      removed++
+      // Only if it was there. The manifest still lists paths for a target that
+      // has since been dropped, so the count claimed to have removed
+      // directories that had not existed for releases.
+      if (existsSync(resolve(projectRoot, p))) {
+        await removeDirIfExists(resolve(projectRoot, p))
+        removed++
+      }
     } else {
       const file = resolve(projectRoot, p)
       if (existsSync(file)) {

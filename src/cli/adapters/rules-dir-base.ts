@@ -349,7 +349,10 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // `unchanged` is not an update; counting it inflated the total by one on
     // every sync, on the same counter the recompilation bug had already made
     // meaningless.
-    results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(rootRulesFile)
+    // Absolute, as `install` reports it and as the sweep compares. Reporting
+    // the relative name here put two spellings of one file into the same result
+    // arrays, next to a sweep that decides what to delete by matching paths.
+    results[rootMerge.action === 'unchanged' ? 'skipped' : 'copied'].push(rootPath)
     if (rootMerge.action === 'adopted') (results.adopted ??= []).push(rootPath)
   if (rootMerge.action === 'repaired') (results.repaired ??= []).push(rootPath)
     if (rootMerge.staleGeneratedContent) (results.staleRoots ??= []).push(rootPath)

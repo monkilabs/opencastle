@@ -392,7 +392,12 @@ export default async function update({
   const sweptFiles: string[] = []
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
-    const results = await adapter.update(pkgRoot, projectRoot, newStack)
+    // `repoInfo` matters here: `scaffoldMcpConfigInto` uses it to decide which
+    // servers belong in the config. The parameter was threaded through all
+    // three adapters and then not passed from the one place `sync` calls them,
+    // so every sync scaffolded MCP as though the repository had been detected
+    // as nothing at all — a property enforced everywhere except at the call.
+    const results = await adapter.update(pkgRoot, projectRoot, newStack, repoInfo)
     totalCopied += results.copied.length
     totalCreated += results.created.length
     adoptedRoots.push(...(results.adopted ?? []))

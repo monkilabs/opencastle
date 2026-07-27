@@ -46,9 +46,9 @@ export async function copyDir(
       results.created.push(...sub.created);
       if (sub.visited) (results.visited ??= []).push(...sub.visited);
     } else {
-      (results.visited ??= []).push(destPath);
       const exists = existsSync(destPath);
       if (exists && !overwrite) {
+        (results.visited ??= []).push(destPath);
         results.skipped.push(destPath);
         continue;
       }
@@ -56,7 +56,12 @@ export async function copyDir(
       if (transform) {
         const content = await readFile(srcPath, 'utf8');
         const transformed = await transform(content, srcPath);
+        // A transform returning null means "do not install this file", so the
+        // destination is *not* visited — recording it before this point would
+        // have told the sweep to spare a stale copy of a file the compiler had
+        // just decided not to produce.
         if (transformed === null) continue;
+        (results.visited ??= []).push(destPath);
         // An overwrite that changes nothing is not an update. Callers total
         // `copied` into "Updated N framework files", and counting every file
         // visited made a sync that rewrote nothing indistinguishable from one
@@ -68,6 +73,7 @@ export async function copyDir(
         await writeFile(destPath, transformed);
         results[exists ? 'copied' : 'created'].push(destPath);
       } else {
+        (results.visited ??= []).push(destPath);
         if (exists && (await sameFile(srcPath, destPath))) {
           results.skipped.push(destPath);
           continue;
