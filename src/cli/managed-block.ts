@@ -258,10 +258,33 @@ function findBlockStart(content: string): number {
  * follows starts on its own line anyway.
  */
 function cutBlock(content: string, start: number, end: number): string {
-  let before = content.slice(0, start)
+  const before = content.slice(0, start)
   const after = content.slice(end).replace(/^\r?\n/, '')
-  if (before.endsWith('\n') && (after === '' || after.startsWith('\n'))) {
-    before = before.replace(/\r?\n$/, '')
+
+  // Take back the blank line above the block, and only that.
+  //
+  // The append path writes `<their content>\n` before the block, so when their
+  // file ended in a newline the result has a blank line there — one we made,
+  // and one that has to go or every install/uninstall cycle adds another.
+  //
+  // The previous rule was "a newline, if what follows is empty or blank", which
+  // is the same text in two different situations. A file whose block was not
+  // placed by our append — merged in, hand-moved, written by a release from
+  // before the markers — has an ordinary line terminator there, belonging to
+  // the user, and we took it: `mine\n<block>` came back as `mine`, and
+  // `a\n<block>\n\nb\n` lost the blank line between a and b.
+  //
+  // Requiring a *blank* line narrows it to what we can actually recognise as
+  // ours. The one shape it gets wrong now is the reverse: a file that ended
+  // without a trailing newline gains one, because our append and a hand-placed
+  // block are byte-identical in that case and nothing in the file can tell them
+  // apart. Leaving a newline behind is the better half of an undecidable trade
+  // than deleting one of theirs.
+  //
+  // It cannot weld two lines together, which the round-9 version of this could:
+  // after removing one `\n` from a `\n\n`, `before` still ends in a newline.
+  if (before.endsWith('\n\n') || before.endsWith('\r\n\r\n')) {
+    return before.replace(/\r?\n$/, '') + after
   }
   return before + after
 }
@@ -323,38 +346,63 @@ async function backUp(path: string, contents: string): Promise<void> {
   await writeFile(`${path}${BACKUP_SUFFIX}`, contents)
 }
 
-/** Everything outside the block we maintain, plus any stray marker lines. */
+/**
+ * Everything that would be left if all of ours were taken out.
+ *
+ * The same function the uninstall uses, so "does this file hold anything of the
+ * user's" is answered the same way it will be acted on. It used to strip only
+ * the maintained block and then re-scan for strays — the two-pass shape that
+ * could promote a pair of orphans into a region and delete what lay between.
+ */
 function outsideTheBlock(content: string): string {
-  const region = maintainedRegion(content)
-  if (!region) return removeOrphanMarkers(content)
-  return removeOrphanMarkers(cutBlock(content, region.start, region.end))
+  return stripAllBlocks(content)
 }
 
 /** Everything outside *every* block. */
 function stripAllBlocks(content: string): string {
-  let text = content
-  for (;;) {
-    const owned = ownedRegions(text)
-    if (owned.length === 0) return removeOrphanMarkers(text)
-    const { start, end } = owned[owned.length - 1]
-    text = cutBlock(text, start, end)
-  }
+  // What comes out is decided once, from the file as it stands, and the cuts
+  // are applied back to front so the offsets stay valid.
+  //
+  // Re-scanning after each cut looked equivalent and was not. Removing the
+  // block can bring a stray start marker above it next to a stray end marker
+  // below it, and the next scan reads that pair as a *new* complete block — so
+  // the user's text between the two strays went out with it. On a file torn on
+  // both sides (a "keep both sides" merge does this) `remove --all` deleted
+  // their content and then deleted the file for being empty. Found by seeded
+  // round-trip testing; no hand-written fixture had a file torn on both sides
+  // at once, which is why eight rounds of review walked past it.
+  return applyCuts(content, cutList(content))
 }
 
-/**
- * Drop stray start markers, and nothing around them.
- *
- * The marker line is unambiguously ours; whatever sits below it is not, so it
- * stays. That is the whole of what we are entitled to do with damage we cannot
- * interpret.
- */
-function removeOrphanMarkers(content: string): string {
+interface Cut {
+  start: number
+  end: number
+  /** A marker line with no partner: take the line, never anything around it. */
+  lone: boolean
+}
+
+/** Every byte range removal is entitled to, computed against `content` alone. */
+function cutList(content: string): Cut[] {
+  return [
+    ...blockRegions(content).map((r) => ({ start: r.start, end: r.end, lone: false })),
+    ...orphanMarkers(content).map((at) => ({
+      start: at,
+      end: at + markerLengthAt(content, at),
+      lone: true,
+    })),
+  ].sort((a, b) => b.start - a.start)
+}
+
+function applyCuts(content: string, cuts: Cut[]): string {
   let text = content
-  for (const at of orphanMarkers(text).reverse()) {
-    text = cutLine(text, at, at + markerLengthAt(text, at))
+  for (const cut of cuts) {
+    text = cut.lone
+      ? cutLine(text, cut.start, cut.end)
+      : cutBlock(text, cut.start, cut.end)
   }
   return text
 }
+
 
 /** Remove every managed block but the last, leaving a backup behind. */
 function collapseExtraBlocks(content: string): string {
@@ -364,14 +412,16 @@ function collapseExtraBlocks(content: string): string {
   // — see `ownedRegions`. What must never survive is a second complete block,
   // which is what a merge produces, what an upgrade over a disowned block used
   // to produce, and what the assistant reads as a second set of rules.
-  let text = content
-  for (;;) {
-    const keep = maintainedRegion(text)
-    if (!keep) return text
-    const doomed = ownedRegions(text).find((r) => r.start !== keep.start)
-    if (!doomed) return text
-    text = cutBlock(text, doomed.start, doomed.end)
-  }
+  // Decided once and cut back to front, for the reason `stripAllBlocks`
+  // explains: a cut can promote two stray markers into a region that was never
+  // there, and the next pass would remove the user's text between them.
+  const regions = blockRegions(content)
+  if (regions.length < 2) return content
+  const doomed = regions
+    .slice(0, -1)
+    .map((r) => ({ start: r.start, end: r.end, lone: false }))
+    .sort((a, b) => b.start - a.start)
+  return applyCuts(content, doomed)
 }
 
 /**

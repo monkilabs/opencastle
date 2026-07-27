@@ -269,7 +269,6 @@ describe("the user's half survives a round trip byte for byte", () => {
     ['a horizontal rule mid-document', '# Acme\n\n---\n\nMore.\n'],
     ['trailing whitespace on a line', '# Acme\n\nTrailing spaces here:   \nand more.\n'],
     ['CRLF line endings', '# Acme\r\n\r\nWindows wrote this.\r\n'],
-    ['no trailing newline', '# Acme\n\nNo newline at end.'],
   ]
 
   for (const [name, original] of samples) {
@@ -281,13 +280,35 @@ describe("the user's half survives a round trip byte for byte", () => {
       const merged = readFileSync(file, 'utf8')
       expect(merged.startsWith(original)).toBe(true)
 
-      // And handed back on the way out, byte for byte — including a file that
-      // never ended in a newline, which an earlier version normalised on the way
-      // in and could therefore never restore.
+      // And handed back on the way out, byte for byte — with one stated
+      // exception below.
       await stripManagedBlockFromFile(file)
       expect(readFileSync(file, 'utf8')).toBe(original)
     })
   }
+
+  it('adds a trailing newline to a file that never had one — the stated exception', async () => {
+    // `mine\n<block>` is what our append produces over a file with no trailing
+    // newline, and it is also what a file whose block was merged in, moved by
+    // hand, or written by a pre-marker release looks like. The two are the same
+    // bytes, so removing the block has to guess which newline it is looking at.
+    //
+    // It guesses in the direction that cannot delete: a newline is only
+    // reclaimed when it is the second of a pair, which is the blank line our
+    // append leaves above the block. The old rule reclaimed a lone newline too
+    // and so restored this case exactly — at the cost of eating the user's own
+    // line terminator in every file whose block it had not placed itself
+    // (`mine\n<block>` came back as `mine`, and `a\n<block>\n\nb\n` lost the
+    // blank line between a and b).
+    //
+    // One byte gained, never one lost. Asserted here so the trade is visible
+    // rather than discovered.
+    const original = '# Acme\n\nNo newline at end.'
+    writeFileSync(file, original)
+    await writeManagedBlock(file, 'generated body')
+    await stripManagedBlockFromFile(file)
+    expect(readFileSync(file, 'utf8')).toBe(`${original}\n`)
+  })
 
   it('never writes a separator rule of its own', async () => {
     writeFileSync(file, '# Acme\n\nNo rules here.\n')

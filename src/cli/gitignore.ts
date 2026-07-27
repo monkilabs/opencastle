@@ -132,16 +132,29 @@ export async function updateGitignore(
  * merge outcome) the preview promised an edit and the action unlinked the file.
  */
 function withoutManagedBlocks(content: string): string {
+  // Decided once, applied back to front — see `stripAllBlocks`. Removing a
+  // block here can leave a stray start marker adjacent to a stray end marker
+  // and the re-scan would read them as a block, taking the user's ignore rules
+  // in between. `.gitignore` is where that costs the most: a rule silently
+  // dropped is a secret committed.
+  const cuts = [
+    ...blockRegions(content, START_MARKER, END_MARKER).map((r) => ({
+      start: r.start,
+      end: r.end,
+      lone: false,
+    })),
+    ...orphanMarkers(content, START_MARKER, END_MARKER).map((at) => ({
+      start: at,
+      end: at + (content.startsWith(START_MARKER, at) ? START_MARKER.length : END_MARKER.length),
+      lone: true,
+    })),
+  ].sort((a, b) => b.start - a.start)
+
   let updated = content
-  for (;;) {
-    const regions = blockRegions(updated, START_MARKER, END_MARKER)
-    if (regions.length === 0) break
-    const r = regions[regions.length - 1]
-    updated = cutBlockRegion(updated, r.start, r.end)
-  }
-  for (const at of orphanMarkers(updated, START_MARKER, END_MARKER).reverse()) {
-    const len = updated.startsWith(START_MARKER, at) ? START_MARKER.length : END_MARKER.length
-    updated = cutMarkerLine(updated, at, at + len)
+  for (const cut of cuts) {
+    updated = cut.lone
+      ? cutMarkerLine(updated, cut.start, cut.end)
+      : cutBlockRegion(updated, cut.start, cut.end)
   }
   return updated
 }

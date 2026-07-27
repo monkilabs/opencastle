@@ -228,7 +228,25 @@ for shape in lf crlf fenced blanks no-eol-newline; do
   cp CLAUDE.md /tmp/v-root; cp .gitignore /tmp/v-gi
   node $CLI init --yes >/dev/null 2>&1
   node $CLI remove --all --yes >/dev/null 2>&1
-  cmp -s /tmp/v-root CLAUDE.md && ok "$shape: root file byte-identical" || bad "$shape: root file differs"
+  # A file that never ended in a newline gets one back, and only that. Our
+  # append and a block placed by anything else are byte-identical in that case,
+  # so removal cannot tell whose newline it is looking at; it declines to delete
+  # rather than guess. Everything else must match byte for byte.
+  if [ "$shape" = no-eol-newline ]; then
+    want=$(( $(wc -c < /tmp/v-root) + 1 ))
+    got=$(wc -c < CLAUDE.md)
+    if [ "$(cat /tmp/v-root)" = "$(cat CLAUDE.md)" ] && [ "$got" -eq "$want" ]; then
+      ok "$shape: restored, plus the one newline it will not guess about"
+    else
+      bad "$shape: differs beyond the stated exception ($got bytes, wanted $want)"
+      diff /tmp/v-root CLAUDE.md | head -4
+    fi
+  elif cmp -s /tmp/v-root CLAUDE.md; then
+    ok "$shape: root file byte-identical"
+  else
+    bad "$shape: root file differs"
+    diff /tmp/v-root CLAUDE.md | head -4
+  fi
   cmp -s /tmp/v-gi .gitignore && ok "$shape: .gitignore byte-identical" || bad "$shape: .gitignore differs"
 done
 
