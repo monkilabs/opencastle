@@ -101,3 +101,10 @@ jobs:
           # And the destructive commands keep it recoverable too.
           node "$GITHUB_WORKSPACE/bin/cli.mjs" remove --all --yes
           grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md.opencastle-backup
+
+      # Drives the CLI against the branch's stated claims — one block per file
+      # from any starting content, byte fidelity, uninstall completeness, dry
+      # runs writing nothing. Seven review rounds found defects that unit tests
+      # passed over because they called the function rather than the command.
+      - name: Verify the claims through the CLI
+        run: npm run verify:claims

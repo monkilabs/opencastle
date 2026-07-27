@@ -47,7 +47,8 @@
     "website:build": "astro build --root website",
     "website:preview": "astro preview --root website",
     "prepublishOnly": "npm run build",
-    "dashboard:etl:empty": "tsx src/dashboard/scripts/etl.ts --db .opencastle/__no_demo_db__ --out src/dashboard/public/data"
+    "dashboard:etl:empty": "tsx src/dashboard/scripts/etl.ts --db .opencastle/__no_demo_db__ --out src/dashboard/public/data",
+    "verify:claims": "bash scripts/verify-claims.sh"
   },
   "engines": {
     "node": ">=22.5.0"

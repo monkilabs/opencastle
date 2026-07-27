@@ -403,6 +403,27 @@ describe('a file whose end marker was lost', () => {
     expect(existsSync(`${file}.opencastle-backup`), 'no way back').toBe(true)
   })
 
+  it('uninstalls completely even after the torn file has been synced', async () => {
+    // The case my first fix missed: after a sync the file reads prose, orphan
+    // marker, stale body, current block. Handling only "torn and never synced"
+    // left the stale body as permanent residue — an uninstall that does not
+    // uninstall. Everything from the orphan to the end of our last block was
+    // ours; anything below it is the user's and stays.
+    await tear()
+    await writeManagedBlock(file, 'second generation')
+    writeFileSync(file, readFileSync(file, 'utf8') + '\n## Added later\n\nMINE-BELOW\n')
+
+    expect(await stripManagedBlockFromFile(file)).toBe('stripped')
+
+    const left = readFileSync(file, 'utf8')
+    expect(left).not.toContain('first generation')
+    expect(left).not.toContain('second generation')
+    expect(left).not.toContain(BLOCK_START)
+    expect(left).toContain('keep me')
+    expect(left, 'text below our block is theirs').toContain('MINE-BELOW')
+    expect(existsSync(`${file}.opencastle-backup`)).toBe(true)
+  })
+
   it('agrees with what the preview predicted', async () => {
     await tear()
     const predicted = predictStrip(readFileSync(file, 'utf8'))

@@ -369,9 +369,10 @@ export function predictStrip(content: string): {
   // way — the preview and the action diverged once already when one of them
   // learned about multiple blocks and the other did not.
   const orphans = orphanMarkers(content)
-  const torn = orphans.length > 0 && blockRegions(content).length === 0
+  const torn = orphans.length > 0
+  const regions = blockRegions(content)
   const remainder = torn
-    ? content.slice(0, orphans[0])
+    ? content.slice(0, orphans[0]) + content.slice(regions.length > 0 ? regions[regions.length - 1].end : content.length)
     : stripAllBlocks(content)
   return {
     outcome: remainder.trim().length === 0 ? 'deleted' : 'stripped',
@@ -385,17 +386,25 @@ export async function stripManagedBlockFromFile(
   if (!existsSync(path)) return 'absent'
   let existing = await readFile(path, 'utf8')
 
-  // A start marker with no partner, in a file that has no complete block either.
-  // Uninstalling should not leave 20KB of generated instructions behind, and
-  // here the ambiguity resolves: `remove` only runs on an install, so a file
-  // holding our marker and no block is our block with its end marker lost —
-  // not someone quoting the convention, which would leave the real block intact.
-  // Everything below the marker was ours when we wrote it; back the file up in
-  // case anything was added since, then take it.
+  // A start marker with no partner. While writing we refuse to guess what it
+  // delimits, because the same shape can be our torn block or a line the user
+  // quoted. Removal is different: `remove` only runs on an install, so this file
+  // was ours, and a marker of ours with no end is our block with its end lost.
+  //
+  // Everything from that marker to the end of the last block we own was ours
+  // when we wrote it — after a sync the file reads prose, orphan, stale body,
+  // current block, and leaving the stale body behind is an uninstall that does
+  // not uninstall. Anything the user added *below* our last block is theirs and
+  // stays. The file is backed up, because "was ours when we wrote it" is a
+  // judgement and they may have added to it since.
   const orphans = orphanMarkers(existing)
-  if (orphans.length > 0 && blockRegions(existing).length === 0) {
+  if (orphans.length > 0) {
     await backUp(path, existing)
-    existing = existing.slice(0, orphans[0]).replace(/\r?\n$/, '')
+    const regions = blockRegions(existing)
+    const ownedTo = regions.length > 0 ? regions[regions.length - 1].end : existing.length
+    existing =
+      existing.slice(0, orphans[0]).replace(/\r?\n$/, '') +
+      existing.slice(ownedTo).replace(/^\r?\n/, '')
   }
   if (!hasManagedBlock(existing) && looksLikeLegacyGenerated(existing)) {
     // Identical input, identical judgement, so identical care as the adopt path:
