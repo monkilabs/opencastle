@@ -1,0 +1,183 @@
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import {
+  updateGitignore,
+  removeGitignoreBlock,
+  predictGitignoreStrip,
+  START_MARKER,
+  END_MARKER,
+} from './gitignore.js'
+import { blockRegions, orphanMarkers } from './managed-block.js'
+
+/**
+ * The same invariants the root file gets, on the file that had none.
+ *
+ * `.gitignore` is the one co-owned file whose loss cannot be noticed by reading
+ * it — a rule silently dropped is a secret committed — and it was the one with
+ * no backup and no property coverage. Two ordinary syncs removed `.env.local`
+ * from a file that had been protecting it, with `sync --check` and `doctor`
+ * green on both sides of the loss.
+ *
+ * `git check-ignore` is the oracle for the rules, not string matching: only git
+ * knows what a pattern matches.
+ */
+
+const RULES = ['node_modules', '.env.local', 'secrets/prod.key', 'dist/', '*.tmp']
+
+const PIECES = [
+  'node_modules\n',
+  '.env.local\n',
+  'secrets/prod.key\n',
+  'dist/\n',
+  '*.tmp\n',
+  '\n',
+  '# a comment of mine\n',
+  `${START_MARKER}\n`,
+  `${END_MARKER}\n`,
+  `${START_MARKER}\n.env\n${END_MARKER}\n`,
+  `${END_MARKER}\n${START_MARKER}\n`,
+]
+
+function lcg(seed: number): () => number {
+  let s = seed >>> 0
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0
+    return s / 0x100000000
+  }
+}
+
+function makeFile(seed: number): string {
+  const rand = lcg(seed)
+  const count = 1 + Math.floor(rand() * 12)
+  let text = ''
+  for (let i = 0; i < count; i++) text += PIECES[Math.floor(rand() * PIECES.length)]
+  return text
+}
+
+/** Which of `RULES` git ignores, given the file on disk. */
+function ignored(dir: string): string[] {
+  try {
+    const out = execFileSync('git', ['-C', dir, 'check-ignore', '--stdin'], {
+      input: RULES.join('\n') + '\n',
+      encoding: 'utf8',
+    })
+    return out.split('\n').filter(Boolean)
+  } catch (err) {
+    // Exit 1 means "none ignored", which is an answer, not a failure.
+    const e = err as { status?: number; stdout?: string }
+    if (e.status === 1) return (e.stdout ?? '').split('\n').filter(Boolean)
+    throw err
+  }
+}
+
+const TIMEOUT = 180_000
+
+describe('.gitignore holds the same invariants as a root file', () => {
+  let dir: string
+  let file: string
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'gitignore-prop-'))
+    execFileSync('git', ['-C', dir, 'init', '-q'])
+    file = join(dir, '.gitignore')
+  })
+
+  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+
+  const SEEDS = Array.from({ length: 800 }, (_, i) => i + 1)
+
+  it(
+    'never stops honouring a rule the user wrote outside our block',
+    async () => {
+      for (const seed of SEEDS) {
+        const original = makeFile(seed)
+        writeFileSync(file, original)
+
+        // Which rules git honours *because of a line outside every block of
+        // ours*. Those are the user's, and no number of syncs may drop one.
+        const ownedLines = new Set<number>()
+        for (const r of blockRegions(original, START_MARKER, END_MARKER)) {
+          const from = original.slice(0, r.start).split('\n').length - 1
+          const to = original.slice(0, r.end).split('\n').length - 1
+          for (let i = from; i <= to; i++) ownedLines.add(i)
+        }
+        writeFileSync(
+          file,
+          original
+            .split('\n')
+            .filter((_, i) => !ownedLines.has(i))
+            .join('\n'),
+        )
+        const theirs = new Set(ignored(dir))
+        writeFileSync(file, original)
+
+        for (let pass = 0; pass < 3; pass++) {
+          await updateGitignore(dir)
+          const now = new Set(ignored(dir))
+          for (const rule of theirs) {
+            expect(
+              now.has(rule),
+              `pass ${pass}: stopped ignoring ${rule}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(readFileSync(file, 'utf8'))}`,
+            ).toBe(true)
+          }
+        }
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'converges on one block unless the file is torn, and never grows',
+    async () => {
+      for (const seed of SEEDS) {
+        const original = makeFile(seed)
+        writeFileSync(file, original)
+
+        await updateGitignore(dir)
+        await updateGitignore(dir)
+        const once = readFileSync(file, 'utf8')
+        await updateGitignore(dir)
+        expect(readFileSync(file, 'utf8'), `seed ${seed}: not a fixed point`).toBe(once)
+
+        const blocks = blockRegions(once, START_MARKER, END_MARKER).length
+        if (orphanMarkers(original, START_MARKER, END_MARKER).length > 0) {
+          expect(blocks, `seed ${seed}: a torn file grew`).toBeLessThanOrEqual(
+            Math.max(1, blockRegions(original, START_MARKER, END_MARKER).length),
+          )
+        } else {
+          expect(blocks, `seed ${seed}: ${JSON.stringify(original)}`).toBe(1)
+        }
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'leaves nothing of ours behind, and the preview says what the action does',
+    async () => {
+      for (const seed of SEEDS) {
+        writeFileSync(file, makeFile(seed))
+        await updateGitignore(dir)
+
+        // The preview and the action, from the same state — these have diverged
+        // before, and the preview is what the user is asked to approve.
+        const predicted = await predictGitignoreStrip(dir)
+        await removeGitignoreBlock(dir)
+        const actual = !existsSync(file) ? 'deleted' : 'stripped'
+        if (predicted !== 'absent') {
+          expect(predicted, `seed ${seed}: preview said ${predicted}, action did ${actual}`).toBe(
+            actual,
+          )
+        }
+
+        const left = existsSync(file) ? readFileSync(file, 'utf8') : ''
+        expect(left, `seed ${seed}: a marker survived`).not.toContain(START_MARKER)
+        expect(left, `seed ${seed}: a marker survived`).not.toContain(END_MARKER)
+      }
+    },
+    TIMEOUT,
+  )
+})

@@ -280,6 +280,7 @@ c5_seed() {
     cursor)      printf 'x\n' > .cursorrules ;;
     windsurf)    printf 'x\n' > .windsurfrules ;;
     vscode)      mkdir -p .github; printf '# R\n' > .github/copilot-instructions.md ;;
+    opencode)    printf '# R\n' > CLAUDE.md; printf '{"name":"p"}\n' > opencode.json ;;
   esac
 }
 c5_mcp() {
@@ -290,6 +291,7 @@ c5_mcp() {
     cursor)      echo .cursor/mcp.json ;;
     windsurf)    echo .windsurf/mcp.json ;;
     vscode)      echo .vscode/mcp.json ;;
+    opencode)    echo opencode.json ;;
   esac
 }
 corrupt() {
@@ -299,7 +301,7 @@ p = pathlib.Path(sys.argv[1]); l = p.read_text().split('\n')
 l.insert(2, '<<<<<<< HEAD\n=======\n>>>>>>> feat'); p.write_text('\n'.join(l))
 PY
 }
-for ide in claude-code codex antigravity cursor windsurf vscode; do
+for ide in claude-code codex antigravity opencode cursor windsurf vscode; do
   mcp=$(c5_mcp "$ide")
   # (a) sync over a conflicted config
   new "c5-sync-$ide"; c5_seed "$ide"
@@ -555,6 +557,84 @@ out2=$(node $CLI sync --yes --force 2>&1 | plain)
 echo "$out2" | grep -q "Updated 0 framework files" \
   && ok "a no-op sync reports 0" || bad "a no-op sync inflated its count"
 
+say "CLAIM 8b — whenever a backup appears, the run said so"
+# The harness checked that `.opencastle-backup` existed and never that the
+# command mentioned it, which is why a collapse could go silent on four of the
+# seven targets through 175 green checks. The backup is the only recovery route
+# for a collapse; a backup nobody is told about is not one.
+c8b_seed() {
+  case $1 in
+    claude-code) printf '# Mine\n' > CLAUDE.md; echo CLAUDE.md ;;
+    codex)       mkdir -p .codex; printf '# Mine\n' > AGENTS.md; echo AGENTS.md ;;
+    antigravity) printf '# Mine\n' > GEMINI.md; echo GEMINI.md ;;
+    cursor)      printf 'x\n' > .cursorrules; echo .cursorrules ;;
+    windsurf)    printf 'x\n' > .windsurfrules; echo .windsurfrules ;;
+    vscode)      mkdir -p .github; printf '# Mine\n' > .github/copilot-instructions.md; echo .github/copilot-instructions.md ;;
+  esac
+}
+for ide in claude-code codex antigravity cursor windsurf vscode; do
+  new "c8b-$ide"; root=$(c8b_seed "$ide")
+  node $CLI init --yes >/dev/null 2>&1
+  # Duplicate the block, as a merge that kept both sides does.
+  python3 -c "
+import pathlib, re, sys
+S = sys.argv[1]; E = sys.argv[2]; f = pathlib.Path(sys.argv[3])
+t = f.read_text(); b = re.search(re.escape(S) + '.*?' + re.escape(E), t, re.S).group(0)
+f.write_text(t + chr(10) + b + chr(10))" "$START" "$END" "$root"
+  out=$(node $CLI sync --yes --force 2>&1 | plain)
+  if [ -f "$root.opencastle-backup" ]; then
+    echo "$out" | grep -qi "collapsed a duplicated block" \
+      && ok "$ide: the collapse was reported" \
+      || { bad "$ide: wrote a backup and said nothing"; echo "$out" | tail -4; }
+    echo "$out" | grep -q "$(basename "$root")" \
+      && ok "$ide: the file was named" || bad "$ide: the file was not named"
+  else
+    bad "$ide: no backup written for a collapsed duplicate"
+  fi
+  [ "$(grep -c -- "$END" "$root")" = "1" ] && ok "$ide: one block after the collapse" \
+                                           || bad "$ide: still doubled"
+done
+
+say "CLAIM 8c — a torn file is reported, not cut"
+# Two blocks *and* unpaired markers. Reducing it means cutting, and cutting can
+# sweep the user's own text into a block — so the tool must decline, say so, and
+# keep every line of theirs.
+new c8c; printf '# Mine\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+python3 -c "
+import pathlib, re, sys
+S = sys.argv[1]; E = sys.argv[2]; f = pathlib.Path('CLAUDE.md')
+t = f.read_text(); b = re.search(re.escape(S) + '.*?' + re.escape(E), t, re.S).group(0)
+f.write_text(S + chr(10) + 'MY OWN RULE' + chr(10) + b + chr(10) + E + chr(10) + b + chr(10))" "$START" "$END"
+out=$(node $CLI sync --yes --force 2>&1 | plain)
+grep -q 'MY OWN RULE' CLAUDE.md && ok "the user's line survived the sync" || bad "the user's line was eaten"
+echo "$out" | grep -qi "cannot be reduced safely" && ok "sync said it would not reduce it" \
+                                                  || { bad "sync was silent about it"; echo "$out" | tail -4; }
+node $CLI doctor 2>&1 | plain | grep -q "more than one OpenCastle block" \
+  && ok "doctor names it" || bad "doctor calls a doubled file healthy"
+node $CLI doctor >/dev/null 2>&1 && bad "doctor passes on a doubled file" || ok "doctor fails on it"
+node $CLI sync --yes --force >/dev/null 2>&1
+grep -q 'MY OWN RULE' CLAUDE.md && ok "and survived a second sync" || bad "the second sync ate it"
+node $CLI remove --all --yes >/dev/null 2>&1
+grep -q 'MY OWN RULE' CLAUDE.md 2>/dev/null && ok "and survived remove --all" || bad "remove --all ate it"
+
+say "CLAIM 3d — .gitignore keeps the rules git was honouring"
+new c3d; printf '# R\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+python3 -c "
+import pathlib, re
+S = '# >>> OpenCastle managed (do not edit) >>>'; E = '# <<< OpenCastle managed <<<'
+p = pathlib.Path('.gitignore'); t = p.read_text()
+b = re.search(re.escape(S) + '.*?' + re.escape(E), t, re.S).group(0)
+p.write_text('node_modules' + chr(10) + b + chr(10) + 'keep-me' + chr(10) + S + chr(10) +
+             '.env.local' + chr(10) + b + chr(10) + E + chr(10))"
+git check-ignore -q .env.local && ok "git honours .env.local to begin with" || bad "fixture is wrong"
+node $CLI sync --yes --force >/dev/null 2>&1
+node $CLI sync --yes --force >/dev/null 2>&1
+git check-ignore -q .env.local && ok ".env.local still ignored after two syncs" \
+                               || bad "two syncs dropped an ignore rule"
+grep -q 'keep-me' .gitignore && ok "the user's other rule survived" || bad "lost keep-me"
+
 say "CLAIM 12d — a failing init leaves the install coherent too"
 # CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
 # emptied every framework directory before writing a byte.
@@ -575,7 +655,7 @@ p=pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace('# Project Instr
 done
 
 say "CLAIM 12e — no command leaves an empty directory it created"
-for ide in claude-code codex antigravity cursor windsurf vscode; do
+for ide in claude-code codex antigravity opencode cursor windsurf vscode; do
   new "c12e-$ide"
   case $ide in
     claude-code) printf '# R\n' > CLAUDE.md ;;
@@ -584,8 +664,12 @@ for ide in claude-code codex antigravity cursor windsurf vscode; do
     cursor)      printf 'x\n' > .cursorrules ;;
     windsurf)    printf 'x\n' > .windsurfrules ;;
     vscode)      mkdir -p .github; printf '# R\n' > .github/copilot-instructions.md ;;
+    opencode)    printf '# R\n' > CLAUDE.md; printf '{"name":"p"}\n' > opencode.json ;;
   esac
   node $CLI init --yes >/dev/null 2>&1
+  # After a sync, not only after init: the run directories only exist once
+  # something has run, so the fixture never created what it was checking for.
+  node $CLI sync --yes --force >/dev/null 2>&1
   node $CLI remove --all --yes >/dev/null 2>&1
   empties=$(find . -path ./.git -prune -o -type d -empty -print 2>/dev/null | grep -v '^\./\.git' | grep -v '^\.$' | tr '\n' ' ')
   [ -z "$empties" ] && ok "$ide: nothing left empty" || bad "$ide: left behind $empties"

@@ -3,7 +3,7 @@ import { unlink, readFile, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, rmdirSync } from 'node:fs'
 import { readManifest } from './manifest.js'
 import { removeDirIfExists } from './copy.js'
-import { removeGitignoreBlock, predictGitignoreStrip } from './gitignore.js'
+import { removeGitignoreBlock, predictGitignoreStrip, LOCAL_DIRS } from './gitignore.js'
 import { confirm, select, closePrompts, c } from './prompt.js'
 import { stripManagedBlockFromFile, predictStrip } from './managed-block.js'
 import { resolveManagedPaths } from './managed-paths.js'
@@ -340,6 +340,15 @@ export default async function remove({ args }: CliContext): Promise<void> {
     // the one thing this parking is for. Suffix instead.
     const parked = parkedDirFor(projectRoot)
     await rename(opencastleDir, parked)
+    // The run directories go with it, and they are empty: `sync` creates
+    // `runs/`, `artifacts/`, `worktrees/` and `baselines/` on every invocation
+    // whether or not anything runs. A rescue copy is meant to hold what the
+    // user wrote, not four empty folders the tool made for itself — and the
+    // claim is that no command leaves an empty directory of ours behind.
+    pruneEmptyDirs(
+      LOCAL_DIRS.map((d) => resolve(parked, d.replace(/^\.opencastle\//, ''))),
+      parked,
+    )
     keptDir = relative(projectRoot, parked)
     removed++
   }
