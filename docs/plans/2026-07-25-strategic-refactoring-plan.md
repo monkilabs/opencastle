@@ -175,53 +175,68 @@ Net: **19 commands → 6 visible + 1 experimental namespace**; global flags stan
 
 ## Review loop
 
-The branch was then reviewed by OpenCastle's own panel-majority-vote skill: three
+The branch was reviewed by OpenCastle's own panel-majority-vote skill: three
 reviewers per round, isolated, identical prompts, no knowledge of each other.
+Every round's findings were worked before the next was run.
 
-| Round | Verdict | Confidence | MUST-FIX |
+| Round | Verdict | MUST-FIX | Headline finding |
 |---|---|---|---|
-| 1 | BLOCK 0/3 PASS | 3× high | 8 |
-| 2 | BLOCK 0/3 PASS | 3× high | 4 (2 unanimous) |
-| 3 | *running* | | |
+| 1 | BLOCK 3/3 | 8 | Root files made co-owned without teaching any write path about the block |
+| 2 | BLOCK 3/3 | 4 | Round 1's fix reached no manifest that actually existed |
+| 3 | BLOCK 3/3 | 1 + 18 | `sync` backed up a pre-marker file; `init` and `remove` deleted it |
+| 4 | BLOCK 1/1* | 2 | Fence parity duplicated the block on every sync (20→41→62KB) |
+| 5 | BLOCK 3/3 | 2 | The replacement heuristic still lost the block; `sync` overwrote `.opencastle/` |
+| 6 | BLOCK 2/3 | 4 | `sync` couldn't repair what `doctor` prescribed; `init` dropped added packs |
+| 7 | BLOCK 3/3 | 3 | The one-block invariant sat in a function `sync` never called |
+| 8 | BLOCK 3/3 | 2 | The orphan-marker splice deleted *and* duplicated user text |
+| 9 | BLOCK 3/3 | 3 | Reclaiming "our" newline welded a gitignore rule and crashed `sync` |
 
-**Round 1** found one mistake with four faces: root instruction files were made
-co-owned without teaching any write path about the managed block, so `init`
-re-run and `remove --all` destroyed the user's own prose, the gitignore block
-meant there was no committed copy to restore, and the CI check the branch shipped
-could only ever fail. Two reviewers independently proposed the same fix — a third
-`merged` category — which corrected all four at once.
+\* round 4 was cut short by capacity; its one completed reviewer returned BLOCK.
 
-**Round 2** found that those fixes covered every path reading the *new*
-categorisation and none reading a *stored* one. Since every release up to 0.35.2
-recorded the root file under `framework` and wrote no `merged` key, the fix
-reached no install that actually existed: the strip loop iterated an empty array
-while the unlink still fired. `updateGitignore` likewise had a single call site
-in `init`, so the population that upgrades rather than reinstalls never got the
-new block. Both were reproduced by all three reviewers.
+### What the loop was worth
 
-Round 2 also caught four defects introduced *by* the round-1 fixes — the value of
-re-reviewing rather than re-reading:
+Twenty-nine must-fix defects, every one reproducible from the shipped
+entrypoint, and none caught by a test suite that grew from 1,489 to 1,737 cases
+along the way. Four of them destroyed user data on paths the tool actively
+recommends.
 
-- The legacy-adoption heuristic matched its fingerprint anywhere in the file, so
-  a generated `CLAUDE.md` someone had added house rules to was replaced wholesale.
-- The merge reflowed the user's half, collapsing blank runs inside fenced code
-  blocks and stripping a trailing `---` the user may have written.
-- `.cursor/rules/` was declared as six paths but swept as a directory, so a
-  hand-written rule there was deleted with `sync --check` reporting "all clear"
-  moments earlier.
-- `sync --yes` prompted anyway when there was nothing to do.
+### The four shapes
 
-### What the loop is worth
+Nearly every finding was one of four, and naming them was worth more than fixing
+any individual instance:
 
-Every one of these was reproducible from the shipped entrypoint, and none was
-caught by 1,586 passing tests — because the tests all constructed manifests in
-the shape the new code wrote. Two rounds cost roughly an hour of wall time and
-found nine defects that would have shipped, four of them data loss for every
-existing user. The tests added since (`legacy-install.test.ts`, the byte-fidelity
-samples, the per-adapter tier and extra-detection sweeps) exist because a
-reviewer named the fixture that was missing.
+1. **One fact, two interpreters.** A stored manifest versus the adapters. `init`
+   versus `sync` over `.opencastle/`. A preview versus the action it previews.
+   The block format read by the writer and by the checker. Unmatched *start*
+   markers tracked while unmatched *end* markers were not. Each passed review
+   until someone diffed the two answers on one input.
+2. **A property enforced where nothing calls it.** The writer collapsed
+   duplicate blocks for two rounds while `sync` short-circuited before reaching
+   it. Unit tests passed throughout, because they called the function.
+3. **A check that asserts a claim without establishing it.** A fence fixture
+   table that could not fail. A status guard unfalsifiable for its own input. A
+   claims harness whose doubled-block fixtures used the one separator that
+   cannot weld. Three of these were written specifically to prevent the defect
+   they then hid.
+4. **An assumption true of the first case only.** "The newline before a block is
+   ours" holds for the first block in a file and no other. It welded a
+   `.gitignore` rule into a comment — git stopped ignoring `.env.local` — and
+   crashed `sync` after it had already emptied `.claude/`.
 
-**Practice worth keeping:** when a change alters what a *record* means, the
-migration is the feature. Grep for every reader of that record before declaring
-the change done — `init.ts` had one call site that already did it correctly, and
-that inconsistency was the tell.
+In rounds 4 through 9 the most serious finding was a flaw in the *previous*
+round's fix, twice shipped the same day. Self-review did not catch these; three
+independent reviewers driving the CLI did.
+
+### Practices worth keeping
+
+- **When a change alters what a record means, the migration is the feature.**
+  Grep every reader before calling it done.
+- **Drive the CLI, not the function.** `npm run verify:claims` exists for this:
+  74 checks against the twelve claims, through `bin/cli.mjs`, in CI.
+- **Build fixtures in the shape the old code produced**, not the shape the new
+  code writes. Every round that missed a defect had a fixture that could not
+  reach it.
+- **Prefer untidy to clever on ambiguous input.** Three interpretations of a
+  lone marker shipped and all three destroyed something; refusing to interpret
+  it, and having `doctor` name the file instead, is the only version that has
+  not.
