@@ -6,6 +6,7 @@ import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
 import { getRequiredMcpEnvVars, getCustomizationsTransform } from './stack-config.js'
+import { stripManagedMcpServers } from './mcp.js'
 import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
 import type { PluginConfig } from '../orchestrator/plugins/types.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde, detectAssistantConfigs } from './detect.js'
@@ -347,6 +348,15 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
           await unlink(fullPath)
         }
       }
+      // The dropped target's MCP config is co-owned in the same way: take back
+      // our servers, leave anything of theirs. It used to be left untouched
+      // *and* dropped from the manifest, so no later command would ever clean
+      // it — the one path by which uninstalling could not reach its own output.
+      for (const id of dropped) {
+        if ((ides as string[]).includes(id)) continue
+        await stripManagedMcpServers(projectRoot, id as IdeChoice)
+      }
+
       // Co-owned files are not ours to delete — take back only the block, and
       // only where no surviving target still owns it (opencode and codex share
       // AGENTS.md, so dropping one must not strip the other's block).
@@ -375,7 +385,17 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
-    const results = await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo)
+    // Re-running over an existing install recompiles; a first install scaffolds.
+    //
+    // `install` is scaffold-once by contract, so re-init left every generated
+    // file exactly as it found it — and then stamped the manifest with the
+    // current version. The record said 0.36 while the tree was still 0.30. It
+    // was recoverable, because `sync --check` compares content and not version
+    // numbers, but a command that writes a version it did not compile is
+    // asserting something it has not done.
+    const results = isReinit
+      ? await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
+      : await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo)
     totalCreated += results.created.length
     totalSkipped += results.skipped.length
     skippedPaths.push(...results.skipped)

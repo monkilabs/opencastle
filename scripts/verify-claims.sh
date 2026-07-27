@@ -725,6 +725,26 @@ PY
   esac
 done
 
+say "CLAIM 9b — init over an existing install compiles what it records"
+# `install` is scaffold-once, so re-init left every generated file untouched and
+# then wrote the current version into the manifest: the record said one release
+# and the tree was another. Recoverable, because the drift checker compares
+# content rather than version numbers — but a command must not assert work it
+# has not done.
+new c9b; printf '# Mine\n\nMY RULE\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+find .claude -name '*.md' -exec sh -c 'printf "STALE\n" > "$1"' _ {} \;
+python3 -c "
+import json,pathlib; p=pathlib.Path('.opencastle/manifest.json'); m=json.load(open(p)); m['version']='0.30.0'
+json.dump(m,open(p,'w'),indent=2)"
+echo mine > .claude/MY-OWN.md
+node $CLI init --yes >/dev/null 2>&1
+[ "$(grep -rl STALE .claude 2>/dev/null | wc -l | tr -d ' ')" = "0" ] \
+  && ok "re-init recompiled the tree it stamped" || bad "re-init recorded a version it did not compile"
+node $CLI sync --check >/dev/null 2>&1 && ok "clean afterwards" || bad "drift after re-init"
+grep -q 'MY RULE' CLAUDE.md && ok "their root-file line survived" || bad "re-init ate their line"
+[ -f .claude/MY-OWN.md ] && ok "their own file under .claude/ survived" || bad "re-init deleted their file"
+
 say "CLAIM 12d — a failing init leaves the install coherent too"
 # CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
 # emptied every framework directory before writing a byte.
