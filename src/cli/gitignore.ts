@@ -83,6 +83,9 @@ const LOCAL_ONLY = [
 // the only surviving copy of something the user wrote. Ignoring it hid it from
 // `git status`, which left it one `git clean -xdf` from gone.
 
+/** A line only our generated block contains — the marker that it is ours. */
+const GENERATED_SENTINEL = 'Generated assistant config is committed on purpose'
+
 export function buildBlock(): string {
   return [
     START_MARKER,
@@ -104,7 +107,7 @@ export function buildBlock(): string {
  */
 export async function updateGitignore(
   projectRoot: string
-): Promise<'created' | 'updated' | 'unchanged' | 'repaired'> {
+): Promise<'created' | 'updated' | 'unchanged' | 'repaired' | 'severed'> {
   const gitignorePath = resolve(projectRoot, '.gitignore')
   const block = asBytes(buildBlock())
 
@@ -162,6 +165,15 @@ export async function updateGitignore(
     await writeBytes(gitignorePath, updated)
     return doomed.length > 0 ? 'repaired' : 'updated'
   }
+
+  // Never append into a severed file, for the reason `writeManagedBlock` gives:
+  // the markers that delimited our rules are gone but the rules are still
+  // there, so appending writes a second block underneath the first. Here that
+  // also means two copies of the ignore list, and `remove --all` later leaving
+  // a complete block — `.env` included — in the user's file.
+  // Same test as the root files: a stray marker only means "severed" when our
+  // rules are actually in the file with nothing delimiting them.
+  if (orphans.length > 0 && existing.includes(GENERATED_SENTINEL)) return 'severed'
 
   // Append block to existing file
   // One newline, same reasoning as the root-file merge: normalising the user's

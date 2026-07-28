@@ -205,8 +205,11 @@ function comparePath(
     drift.push({
       ide,
       path: managedPath,
-      kind: diagnosis.state === 'unreducible' ? 'unreducible' : 'changed',
-      ...(diagnosis.state === 'unreducible' && {
+      kind:
+        diagnosis.state === 'unreducible' || diagnosis.state === 'severed'
+          ? 'unreducible'
+          : 'changed',
+      ...((diagnosis.state === 'unreducible' || diagnosis.state === 'severed') && {
         detail: diagnosis.detail,
         fix: diagnosis.fix,
       }),
@@ -285,7 +288,10 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
         // names it, which is the right weight for something that breaks
         // nothing.
         const diagnosis = diagnoseManagedFile(text)
-        if (diagnosis.state === 'unreducible') {
+        // `severed` too: nothing will be written to that file until a person
+        // acts, so CI must not pass over it. `torn` stays out — an intact block
+        // beside a documented marker breaks nothing.
+        if (diagnosis.state === 'unreducible' || diagnosis.state === 'severed') {
           if (!drift.some((d) => d.path === rel)) {
             drift.push({
               ide: 'all',
@@ -341,16 +347,40 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       // inside it left every surface green while `.env` became committable —
       // the one co-owned file whose loss cannot be noticed by reading it, with
       // its content checked by nothing.
-      const wanted = buildGitignoreBlock()
-      const actual = extractRegion(giText, GITIGNORE_START, GITIGNORE_END)
-      if (actual !== null && actual.trim() !== wanted.trim()) {
-        drift.push({ ide: 'all', path: '.gitignore', kind: 'changed' })
+      // Normalised, for the reason `sameContent` gives above: a Git for Windows
+      // checkout rewrites every committed file to CRLF, so a byte comparison
+      // reported `.gitignore` as drifted on every run there — and `sync`'s
+      // "fix" produced nothing to commit, because git normalises on staging.
+      // Permanently red CI with an uncommittable remedy, which is exactly the
+      // failure `normaliseEndings` exists to prevent, on the comparison added
+      // one commit after it.
+      const wanted = normaliseEndings(buildGitignoreBlock())
+      const region = extractRegion(giText, GITIGNORE_START, GITIGNORE_END)
+      const actual = region === null ? null : normaliseEndings(region)
+      // `null` — the block removed altogether — is the *larger* deletion, and it
+      // fell straight through this test: `.env`, the run artefacts and the
+      // rescue directory all stopped being ignored, `.env` became committable,
+      // and every surface reported health. The case the check was written for
+      // was caught and the bigger one beside it was not.
+      if (actual === null || actual.trim() !== wanted.trim()) {
+        drift.push({
+          ide: 'all',
+          path: '.gitignore',
+          kind: 'changed',
+          ...(actual === null && {
+            detail: 'the OpenCastle block is gone, so .env and the run artefacts are no' +
+              ' longer ignored',
+          }),
+        })
       }
       const d = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END)
-      // Any state only a person can clear, not just `unreducible`. A torn
-      // `.gitignore` left `doctor` red and this command green, which is the
-      // same hole closed one state at a time — `fixable` is the question.
-      if (!d.fixable) {
+      // `unreducible` only, matching how root files are weighted twenty lines
+      // up. `!d.fixable` includes `torn`, so a lone stray marker — the state
+      // deliberately downgraded to a warning because the commonest way to get
+      // one is a file documenting the convention — still failed CI here,
+      // permanently, on the very file this gate was added for. `doctor` called
+      // the same bytes healthy throughout.
+      if (d.state === 'unreducible' || d.state === 'severed') {
         drift.push({
           ide: 'all',
           path: '.gitignore',
@@ -361,6 +391,21 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       }
       }
     }
+  }
+
+  // A manifest that parses but names no target this release knows is not a
+  // clean project — `sync` exits 1 on it. Reporting "0 generated files match
+  // their sources across 0 targets" is an assertion that cannot fail, and it
+  // turned the drift gate into a silent pass over an install with 78 files on
+  // disk.
+  if (ides.length === 0) {
+    drift.push({
+      ide: 'all',
+      path: '.opencastle/manifest.json',
+      kind: 'unreducible',
+      detail: 'names no target this release recognises, so nothing could be compared',
+      fix: 'fix the "ides" field, or re-run opencastle init; this one needs a person',
+    })
   }
 
   return { installed: true, ides, drift, checked }

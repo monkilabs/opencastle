@@ -3,7 +3,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
-import { IDE_ADAPTERS } from './adapters/index.js';
+import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import {
   carriesLegacyBody,
@@ -49,6 +49,43 @@ interface CheckResult {
 
 // ── Individual checks ─────────────────────────────────────────
 
+/** Is our `.gitignore` block present and current? */
+async function checkGitignoreBlock(projectRoot: string): Promise<CheckResult> {
+  const label = 'Local artefacts are ignored';
+  const path = resolve(projectRoot, '.gitignore');
+  if (!existsSync(path)) return { label, ok: true, warning: false };
+
+  let content: string;
+  try {
+    content = await readFile(path, 'utf8');
+  } catch {
+    return { label, ok: true, warning: false };
+  }
+
+  const { blockRegions } = await import('./managed-block.js');
+  const { buildBlock, START_MARKER, END_MARKER } = await import('./gitignore.js');
+  const regions = blockRegions(content, START_MARKER, END_MARKER);
+  if (regions.length === 0) {
+    return {
+      label,
+      ok: false,
+      detail: '.gitignore has no OpenCastle block — .env and the run artefacts are not ignored',
+      fix: 'opencastle sync',
+    };
+  }
+  const r = regions[regions.length - 1];
+  const normalise = (s: string): string => s.replace(/\r\n/g, '\n').trim();
+  if (normalise(content.slice(r.start, r.end)) !== normalise(buildBlock())) {
+    return {
+      label,
+      ok: false,
+      detail: '.gitignore\'s OpenCastle block has been edited — some artefacts may not be ignored',
+      fix: 'opencastle sync',
+    };
+  }
+  return { label, ok: true, warning: false };
+}
+
 function checkManifest(manifest: Manifest | null): CheckResult {
   if (!manifest) {
     // The remedy has to be set here. Without it the summary falls back to a
@@ -62,7 +99,20 @@ function checkManifest(manifest: Manifest | null): CheckResult {
       fix: 'opencastle init',
     };
   }
-  return { ok: true, label: 'OpenCastle manifest (.opencastle/manifest.json)', detail: `v${manifest.version}, IDE: ${manifest.ides?.join(', ') ?? manifest.ide}` };
+  // A manifest that parses but names no recognised target is not a healthy
+  // install: `sync` exits 1 on it while this printed "vundefined, IDE: undefined"
+  // and passed.
+  const named = manifest.ides?.length ? manifest.ides : manifest.ide ? [manifest.ide] : [];
+  const known = named.filter((id) => id && VALID_IDES.includes(id));
+  if (known.length === 0) {
+    return {
+      ok: false,
+      label: 'OpenCastle manifest (.opencastle/manifest.json)',
+      detail: `names no target this release recognises (valid: ${VALID_IDES.join(', ')})`,
+      fix: 'fix the "ides" field, or re-run opencastle init; this one needs a person',
+    };
+  }
+  return { ok: true, label: 'OpenCastle manifest (.opencastle/manifest.json)', detail: `v${manifest.version}, IDE: ${known.join(', ')}` };
 }
 
 async function checkCustomizations(projectRoot: string): Promise<CheckResult> {
@@ -642,6 +692,7 @@ export async function runSharedChecks(
     await checkMcpEnvVars(projectRoot, manifest),
     await checkDotEnv(projectRoot, manifest),
     await checkGitignoredOutput(projectRoot, manifest),
+    await checkGitignoreBlock(projectRoot),
     await checkTornBlocks(projectRoot, manifest),
     checkRootFileClassification(manifest),
   ];

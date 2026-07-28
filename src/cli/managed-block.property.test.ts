@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
+  diagnoseManagedFile,
   writeManagedBlock,
   stripManagedBlockFromFile,
   extractManagedBlock,
@@ -184,6 +185,18 @@ describe('the managed block holds its invariants over files nobody chose', () =>
         const original = makeFile(seed)
         writeFileSync(file, original)
 
+        // A severed file — our body present with its markers gone — is written
+        // to by nothing until a person resolves it, so there is no block to
+        // converge on. What must hold is that the file is left exactly alone.
+        if (diagnoseManagedFile(original).state === 'severed') {
+          await writeManagedBlock(file, BODY_A)
+          expect(
+            readFileSync(file, 'utf8'),
+            `seed ${seed}: wrote into a severed file`,
+          ).toBe(original)
+          continue
+        }
+
         await writeManagedBlock(file, BODY_A)
         const afterOne = blockRegions(readFileSync(file, 'utf8')).length
         await writeManagedBlock(file, BODY_A)
@@ -215,7 +228,9 @@ describe('the managed block holds its invariants over files nobody chose', () =>
     'is a fixed point, and never gains a block across a content change',
     async () => {
       for (const seed of SEEDS) {
-        writeFileSync(file, makeFile(seed))
+        const original = makeFile(seed)
+        if (diagnoseManagedFile(original).state === 'severed') continue
+        writeFileSync(file, original)
         await writeManagedBlock(file, BODY_A)
         await writeManagedBlock(file, BODY_A)
         const once = readFileSync(file, 'utf8')

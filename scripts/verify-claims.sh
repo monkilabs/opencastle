@@ -154,8 +154,15 @@ p.write_text(t[:i] + '\`\`\`' + chr(10) + t[i:].rstrip(chr(10)) + chr(10) + '\`\
     printf '\n```\nnpm test\n```\n' >> CLAUDE.md
   fi
   node $CLI sync --check >/dev/null 2>&1 && ok "$shape: check clean" || bad "$shape: unclearable drift"
-  # A content change is what exposed the duplication: the byte-identical case
-  # hid it. Simulate a new release by editing the compiled body's source.
+  # Both cases, because they fail differently: the byte-identical sync (which
+  # once hid the duplication) and a changed body. The comment here used to
+  # promise the second and perform only the first.
+  node $CLI sync --yes --force >/dev/null 2>&1
+  python3 -c "
+import pathlib, sys
+p = pathlib.Path('CLAUDE.md'); t = p.read_text()
+p.write_text(t.replace('# Project Instructions', '# Project Instructions CHANGED', 1))
+"
   node $CLI sync --yes --force >/dev/null 2>&1
   [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "$shape: still one block" \
                                              || bad "$shape: $(grep -c -- "$END" CLAUDE.md) blocks"
@@ -175,8 +182,13 @@ p = pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace(sys.argv[1] + 
 " "$END"
 node $CLI sync --yes --force >/dev/null 2>&1
 node $CLI sync --yes --force >/dev/null 2>&1
-[ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "torn file does not grow" || bad "torn file grew"
-node $CLI doctor 2>&1 | plain | grep -q "pair with nothing" && ok "doctor names the torn file" || bad "doctor silent about it"
+# Counting end markers cannot detect this: the fixture deletes the file's only
+# end marker, so after a 20KB block is appended there is exactly one again and
+# the assertion read `[ 1 = 1 ]` over a file that had doubled. Count bodies.
+[ "$(grep -c '^# Project Instructions$' CLAUDE.md)" = "1" ] \
+  && ok "torn file does not grow" \
+  || bad "torn file grew to $(grep -c '^# Project Instructions$' CLAUDE.md) instruction sets"
+node $CLI doctor 2>&1 | plain | grep -qE "pair with nothing|no complete block" && ok "doctor names the torn file" || bad "doctor silent about it"
 node $CLI remove --all --yes >/dev/null 2>&1
 grep -q "my rules" CLAUDE.md 2>/dev/null && ok "user prose kept" || bad "user prose lost"
 grep -q -- "$START" CLAUDE.md 2>/dev/null && bad "our marker survived" || ok "our marker taken"
@@ -186,7 +198,7 @@ grep -q -- "$START" CLAUDE.md 2>/dev/null && bad "our marker survived" || ok "ou
 new c2-mirror; printf '# Mine\n\nkeep\n' > CLAUDE.md
 node $CLI init --yes >/dev/null 2>&1
 grep -v -- '^<!-- >>> OpenCastle managed' CLAUDE.md > t && mv t CLAUDE.md
-node $CLI doctor 2>&1 | plain | grep -q "pair with nothing" && ok "doctor names it torn the other way" || bad "doctor silent on the mirror shape"
+node $CLI doctor 2>&1 | plain | grep -qE "pair with nothing|no complete block" && ok "doctor names it torn the other way" || bad "doctor silent on the mirror shape"
 node $CLI remove --all --yes >/dev/null 2>&1
 grep -q "keep" CLAUDE.md 2>/dev/null && ok "mirror: user prose kept" || bad "mirror: user prose lost"
 grep -q 'OpenCastle managed' CLAUDE.md 2>/dev/null && bad "mirror: our marker survived" || ok "mirror: our markers taken"
@@ -703,7 +715,7 @@ c14_check() {
   fi
 }
 
-for state in clean doubled torn unreducible gi-doubled gi-unreducible; do
+for state in clean doubled torn unreducible gi-doubled gi-torn gi-unreducible; do
   new "c14-$state"; printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
   printf 'node_modules\nkeep-me\n' > .gitignore
   node $CLI init --yes >/dev/null 2>&1
@@ -724,6 +736,8 @@ elif state == 'unreducible':
     root.write_text(S + chr(10) + 'MY OWN RULE' + chr(10) + blk + chr(10) + E + chr(10) + blk + chr(10))
 elif state == 'gi-doubled':
     gi.write_text(g + chr(10) + gblk + chr(10))
+elif state == 'gi-torn':
+    gi.write_text(g + chr(10) + GS + chr(10))
 elif state == 'gi-unreducible':
     gi.write_text('node_modules' + chr(10) + gblk + chr(10) + 'keep-me' + chr(10) + GS +
                   chr(10) + '.env.local' + chr(10) + gblk + chr(10) + GE + chr(10))
@@ -798,30 +812,30 @@ done
 
 say "CLAIM 14b — anything called unreducible really is"
 # The generalisation reviewers asked for: every drift entry the checker files
-# under "needs a person" must survive the command it declined to name. The
-# old assertion only checked that `sync` was not *mentioned*, which no state
-# could falsify — and a file with one block plus one stray marker was being
-# filed there while one sync cleared it.
+# under "needs a person" must survive the command it declined to name.
+#
+# The fixture builds a genuinely *unreducible* file — two complete blocks plus a
+# stray marker. It used to build a merely torn one, which the checker classifies
+# as ordinary drift, so the branch this claim is named for never executed once.
 new c14b; printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
 node $CLI init --yes >/dev/null 2>&1
 python3 -c "
-import pathlib
-E='<!-- <<< OpenCastle managed <<< -->'
-p=pathlib.Path('CLAUDE.md'); t=p.read_text()
-t=t.replace('MY OWN RULE','MY OWN RULE'+chr(10)*2+'Example of the end marker:'+chr(10)+E,1)
-t=t.replace('# Project Instructions','# Project Instructions EDITED',1)
-p.write_text(t)"
+import pathlib, re, sys
+S, E = sys.argv[1], sys.argv[2]
+p = pathlib.Path('CLAUDE.md'); t = p.read_text()
+b = re.search(re.escape(S) + '.*?' + re.escape(E), t, re.S).group(0)
+p.write_text('MY OWN RULE' + chr(10) + b + chr(10) + E + chr(10) + b + chr(10))
+" "$START" "$END"
 out=$(node $CLI sync --check 2>&1 | plain)
 if echo "$out" | grep -q "Needs a person"; then
+  ok "the unreducible state reached the checker"
   node $CLI sync --yes --force >/dev/null 2>&1
   node $CLI sync --check >/dev/null 2>&1 \
     && bad "called it unreducible, then sync cleared it" \
     || ok "unreducible survived a sync, as claimed"
 else
-  node $CLI sync --yes --force >/dev/null 2>&1
-  node $CLI sync --check >/dev/null 2>&1 \
-    && ok "classified as ordinary drift, and sync cleared it" \
-    || bad "ordinary drift that sync did not clear"
+  bad "the fixture did not produce an unreducible state — this claim tests nothing"
+  echo "$out" | head -4
 fi
 grep -q 'MY OWN RULE' CLAUDE.md && ok "their line survived" || bad "their line was eaten"
 
@@ -842,6 +856,15 @@ printf 'secrets-caf\xe9/x\n' | git check-ignore --stdin >/dev/null 2>&1 \
 node $CLI remove --all --yes >/dev/null 2>&1
 cmp -s "$ROOT/enc.orig" CLAUDE.md && ok "root file byte-identical" \
   || { bad "a non-UTF-8 byte was rewritten"; xxd CLAUDE.md | head -1; }
+# The baseline this claim copied and then never looked at — so the *removal*
+# path for a non-UTF-8 ignore rule, which is what the comment above describes,
+# was set up and left unasserted.
+if [ -f .gitignore ]; then
+  cmp -s "$ROOT/enc.gi" .gitignore && ok ".gitignore byte-identical after removal" \
+    || { bad "removal rewrote a non-UTF-8 ignore rule"; xxd .gitignore | head -1; }
+else
+  ok ".gitignore held nothing but our block and was removed"
+fi
 
 say "CLAIM 13c — upgrading a real previous-release install"
 # Synthesised the way the previous release actually wrote it, rather than with a
@@ -892,6 +915,42 @@ import pathlib;p=pathlib.Path('CLAUDE.md');p.write_text('# MY OWN RULES'+chr(10)
   esac
   [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "$shape: exactly one block" \
                                              || bad "$shape: $(grep -c -- "$END" CLAUDE.md) blocks"
+done
+
+say "CLAIM 3f — a byte-order mark changes nothing but the bytes"
+# Three bytes in front of the heading made the start marker stop being at column
+# zero, so the block was invisible, `sync` appended a second one, the file
+# doubled to two full instruction sets, and every surface reported health.
+c3f_seed() {
+  case $1 in
+    claude-code) echo CLAUDE.md ;;
+    codex)       mkdir -p .codex; echo AGENTS.md ;;
+    antigravity) echo GEMINI.md ;;
+    cursor)      echo .cursorrules ;;
+    windsurf)    echo .windsurfrules ;;
+    vscode)      mkdir -p .github; echo .github/copilot-instructions.md ;;
+  esac
+}
+for ide in claude-code codex antigravity cursor windsurf vscode; do
+  new "c3f-$ide"; root=$(c3f_seed "$ide"); printf '# R\n' > "$root"
+  node $CLI init --yes >/dev/null 2>&1
+  before=$(wc -c < "$root" | tr -d ' ')
+  python3 -c "
+import pathlib, sys
+p = pathlib.Path(sys.argv[1]); p.write_bytes(b'\xef\xbb\xbf' + p.read_bytes())" "$root"
+  node $CLI sync --yes --force >/dev/null 2>&1
+  after=$(wc -c < "$root" | tr -d ' ')
+  [ "$after" -eq "$((before + 3))" ] && ok "$ide: the BOM costs three bytes and nothing else" \
+    || bad "$ide: $before + 3 expected, got $after"
+  [ "$(grep -c -- "$END" "$root")" = "1" ] && ok "$ide: still one block" \
+    || bad "$ide: $(grep -c -- "$END" "$root") blocks"
+  node $CLI remove --all --yes >/dev/null 2>&1
+  if [ -f "$root" ]; then
+    grep -q 'Project Instructions\|Copilot Instructions' "$root" \
+      && bad "$ide: our body survived the uninstall" || ok "$ide: uninstall left nothing of ours"
+  else
+    ok "$ide: uninstall removed the file"
+  fi
 done
 
 say "CLAIM 12d — a failing init leaves the install coherent too"

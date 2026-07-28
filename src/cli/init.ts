@@ -424,7 +424,10 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     console.log(`  ${c.yellow('⚠')}  Found ${totalSkipped} existing files from a previous installation.`)
     // `--yes` is documented as "accept the detected setup without asking", and
     // this was the one question it did not cover. On a TTY it still asked.
-    const overwrite = assumeYes || (await confirm('Overwrite existing files?', true))
+    // `refuse`, because the default here overwrites. A piped run that ran out of
+    // answers before this question took the destructive branch in silence.
+    const overwrite =
+      assumeYes || (await confirm('Overwrite existing files?', true, 'refuse'))
     if (overwrite) {
       // Recompile in place rather than emptying the tree first.
       //

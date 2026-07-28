@@ -323,13 +323,32 @@ async function selectNumbered(
  */
 export async function confirm(
   message: string,
-  defaultYes = true
+  defaultYes = true,
+  /**
+   * What an exhausted stream means for this question.
+   *
+   * `'default'` is right for a question whose default changes nothing. For one
+   * whose default *destroys* something, silence is not consent: a piped run
+   * that stopped short of the question would take the destructive branch with
+   * nothing echoed, so a hand edit disappeared because the answer never
+   * arrived. Those questions pass `'refuse'` and the caller aborts. `--yes` is
+   * explicit consent and skips the prompt entirely, so it is unaffected.
+   */
+  onEndOfInput: 'default' | 'refuse' = 'default'
 ): Promise<boolean> {
   const hint = defaultYes ? '[Y/n]' : '[y/N]';
   const answer = await nextLine(`  ${message} ${hint} `);
 
-  if (!answer.trim()) return defaultYes;
+  if (!answer.trim()) {
+    if (onEndOfInput === 'refuse' && stdinIsExhausted()) return false;
+    return defaultYes;
+  }
   return answer.trim().toLowerCase().startsWith('y');
+}
+
+/** True when stdin has closed and nothing is queued — nobody is going to answer. */
+export function stdinIsExhausted(): boolean {
+  return _stdinEnded && _lineBuffer.length === 0;
 }
 
 // ── Multiselect ───────────────────────────────────────────────────
