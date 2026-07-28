@@ -6,6 +6,8 @@ import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-
 import { IDE_ADAPTERS } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import {
+  carriesLegacyBody,
+  stripManagedBlock,
   diagnoseManagedFile,
   BLOCK_START,
   BLOCK_END,
@@ -315,7 +317,13 @@ async function syncWouldClearThis(projectRoot: string, hidden: string[]): Promis
   // rewrite that block. On an unreducible `.gitignore` it is not, so the
   // "run sync" remedy was a no-op that failed identically on every run, four
   // syncs in a row, while the check that *could* explain it said nothing.
-  if (!diagnoseManagedFile(content, GITIGNORE_START, GITIGNORE_END).fixable) return false;
+  // Only the state the writer refuses outright. A `.gitignore` with one block
+  // and a stray marker is still rewritten by `sync`, so sending that user to
+  // hand-edit was the same conflation the drift checker had: "can the structure
+  // be reduced" is not "will sync rewrite the block".
+  if (diagnoseManagedFile(content, GITIGNORE_START, GITIGNORE_END).state === 'unreducible') {
+    return false;
+  }
   const { blockRegions } = await import('./managed-block.js');
   const { START_MARKER, END_MARKER } = await import('./gitignore.js');
   const regions = blockRegions(content, START_MARKER, END_MARKER);
@@ -419,8 +427,46 @@ async function checkTornBlocks(
   for (const { rel, markers } of files) {
     const abs = resolve(projectRoot, rel)
     if (!existsSync(abs)) continue
-    const diagnosis = diagnoseManagedFile(await readFile(abs, 'utf8'), markers[0], markers[1])
+    // Guarded, like `checkSkillMatrix` twelve lines up. `doctor` is what people
+    // run *because* something is wrong, and an unreadable root file made it die
+    // with a bare `✗ EACCES` before printing a single check — one reader
+    // hardened, its neighbour not.
+    let content: string
+    try {
+      content = await readFile(abs, 'utf8')
+    } catch (err) {
+      found.push({
+        rel,
+        diagnosis: {
+          state: 'torn',
+          fixable: false,
+          detail: `cannot be read — ${(err as Error).message}`,
+          fix: 'fix the permissions or replace the file; this one needs a person',
+        },
+      })
+      continue
+    }
+    const diagnosis = diagnoseManagedFile(content, markers[0], markers[1])
     if (diagnosis.state !== 'clean') found.push({ rel, diagnosis })
+    // A whole instruction set from an older release, sitting outside our block.
+    // Nothing checked for this: the writer warned about it once while
+    // appending and never again, so an upgraded file carrying two complete sets
+    // of instructions — the assistant reads both — was reported healthy by
+    // every command from the second sync onwards.
+    else if (carriesLegacyBody(stripManagedBlock(content))) {
+      found.push({
+        rel,
+        diagnosis: {
+          state: 'torn',
+          fixable: false,
+          detail: 'contains a whole instruction set from an older OpenCastle release,' +
+            ' above the managed block',
+          fix:
+            'delete the generated text above the OpenCastle block — it is superseded,' +
+            ' and only you can tell where your own writing ends; this one needs a person',
+        },
+      })
+    }
   }
 
   if (found.length === 0) return { label, ok: true, warning: false }
@@ -478,6 +524,42 @@ function checkRootFileClassification(manifest: Manifest | null): CheckResult {
  * matrix. One fact, two interpreters, which is the defect this codebase keeps
  * producing; the cure is a call, not a second implementation.
  */
+/**
+ * The adapter-declared half of `doctor`'s verdict.
+ *
+ * Exported for `status`, which used to build its picture from the shared checks
+ * alone — so a missing agent directory made `doctor` red and the front door
+ * green. Two readers of one question, in the command whose whole job is to
+ * answer it.
+ */
+export async function runAdapterChecks(
+  projectRoot: string,
+  manifest: Manifest | null,
+): Promise<CheckResult[]> {
+  if (!manifest) return [];
+  const ides = manifest.ides?.length ? manifest.ides : manifest.ide ? [manifest.ide] : [];
+  const out: CheckResult[] = [];
+  for (const ide of ides) {
+    const loader = IDE_ADAPTERS[ide];
+    if (!loader) continue;
+    const adapter = await loader();
+    for (const check of adapter.getDoctorChecks()) {
+      try {
+        out.push(await runDoctorCheck(projectRoot, check));
+      } catch (err) {
+        out.push({
+          label: check.label,
+          ok: false,
+          detail: `could not be checked — ${(err as Error).message}`,
+        });
+      }
+    }
+    const mcpPaths = adapter.getManagedPaths().customizable.filter((p) => !p.endsWith('/'));
+    out.push(checkMcpFromPaths(projectRoot, mcpPaths));
+  }
+  return out;
+}
+
 export async function runSharedChecks(
   projectRoot: string,
   manifest: Manifest | null,

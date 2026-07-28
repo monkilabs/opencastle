@@ -370,8 +370,10 @@ python3 -c "
 import pathlib
 p=pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace('# Project Instructions','# CHANGED'))"
 chmod 444 CLAUDE.md
-node $CLI sync --yes --force >/dev/null 2>&1
+node $CLI sync --yes --force >/dev/null 2>&1; code=$?
 chmod 644 CLAUDE.md
+[ $code -ne 0 ] && ok "the injected failure took effect" \
+                || bad "sync exited 0 — the fixture tested nothing"
 [ "$(ls .claude/agents 2>/dev/null | wc -l | tr -d ' ')" -gt 0 ] \
   && ok "a failed sync left the framework directories intact" \
   || bad "a failed sync emptied the framework directories"
@@ -672,7 +674,18 @@ c14_check() {
     fi
   fi
 
-  # 3. a red doctor either prescribes a command that clears it, or says so.
+  # 3. "needs a person" has to be true. Run the command it declined to name and
+  #    require the report to be unchanged — the checker used to say "no command
+  #    will change these" about drift one sync cleared.
+  if [ $chk_code -ne 0 ] && echo "$chk" | grep -q "Needs a person"; then
+    node $CLI sync --yes --force >/dev/null 2>&1
+    again=$(node $CLI sync --check 2>&1 | plain)
+    echo "$again" | grep -q "Needs a person" \
+      && ok "$label: 'needs a person' survived a sync, as claimed" \
+      || bad "$label: sync cleared a state reported as needing a person"
+  fi
+
+  # 4. a red doctor either prescribes a command that clears it, or says so.
   if [ $doc_code -ne 0 ]; then
     if echo "$doc" | grep -q "needs a person"; then
       ok "$label: doctor names a person, not a command"
@@ -745,6 +758,85 @@ node $CLI sync --check >/dev/null 2>&1 && ok "clean afterwards" || bad "drift af
 grep -q 'MY RULE' CLAUDE.md && ok "their root-file line survived" || bad "re-init ate their line"
 [ -f .claude/MY-OWN.md ] && ok "their own file under .claude/ survived" || bad "re-init deleted their file"
 
+say "CLAIM 6d — no surface calls a project healthy while another is red"
+# Injected filesystem faults, which is the only route I could find to a
+# status/doctor divergence — and the route that found three of them. `status`
+# derived its verdict from half of `doctor`'s checks and treated a comparison
+# that *threw* as "no drift".
+for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-matrix; do
+  new "c6d-$fault"; printf '# R\n' > CLAUDE.md
+  node $CLI init --yes >/dev/null 2>&1
+  case $fault in
+    unreadable-dir)       chmod 000 .claude/agents ;;
+    file-where-dir-belongs) rm -rf .claude/agents; printf 'oops' > .claude/agents ;;
+    unreadable-root)      chmod 000 CLAUDE.md ;;
+    unreadable-matrix)    rm -f .opencastle/agents/skill-matrix.json
+                          mkdir -p .opencastle/agents/skill-matrix.json ;;
+  esac
+  node $CLI doctor >/dev/null 2>&1; dr=$?
+  node $CLI sync --check >/dev/null 2>&1; ck=$?
+  st=$(node $CLI 2>&1 | plain)
+  if [ $dr -ne 0 ] || [ $ck -ne 0 ]; then
+    echo "$st" | grep -q "Everything is current" \
+      && bad "$fault: status green while doctor=$dr check=$ck" \
+      || ok "$fault: status agrees"
+  else
+    ok "$fault: nothing to disagree about"
+  fi
+  # And whatever failed, it named the file rather than dying anonymously.
+  out=$(node $CLI doctor 2>&1 | plain; node $CLI sync --yes --force 2>&1 | plain)
+  echo "$out" | grep -qE "at async|Node\.js v" && bad "$fault: printed a stack trace" \
+                                               || ok "$fault: failed cleanly"
+  chmod 755 .claude/agents 2>/dev/null; chmod 644 CLAUDE.md 2>/dev/null
+done
+
+say "CLAIM 14b — anything called unreducible really is"
+# The generalisation reviewers asked for: every drift entry the checker files
+# under "needs a person" must survive the command it declined to name. The
+# old assertion only checked that `sync` was not *mentioned*, which no state
+# could falsify — and a file with one block plus one stray marker was being
+# filed there while one sync cleared it.
+new c14b; printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
+node $CLI init --yes >/dev/null 2>&1
+python3 -c "
+import pathlib
+E='<!-- <<< OpenCastle managed <<< -->'
+p=pathlib.Path('CLAUDE.md'); t=p.read_text()
+t=t.replace('MY OWN RULE','MY OWN RULE'+chr(10)*2+'Example of the end marker:'+chr(10)+E,1)
+t=t.replace('# Project Instructions','# Project Instructions EDITED',1)
+p.write_text(t)"
+out=$(node $CLI sync --check 2>&1 | plain)
+if echo "$out" | grep -q "Needs a person"; then
+  node $CLI sync --yes --force >/dev/null 2>&1
+  node $CLI sync --check >/dev/null 2>&1 \
+    && bad "called it unreducible, then sync cleared it" \
+    || ok "unreducible survived a sync, as claimed"
+else
+  node $CLI sync --yes --force >/dev/null 2>&1
+  node $CLI sync --check >/dev/null 2>&1 \
+    && ok "classified as ordinary drift, and sync cleared it" \
+    || bad "ordinary drift that sync did not clear"
+fi
+grep -q 'MY OWN RULE' CLAUDE.md && ok "their line survived" || bad "their line was eaten"
+
+say "CLAIM 3e — a byte that is not valid UTF-8 survives"
+# Everything outside our markers is the user's, including bytes a decoder
+# cannot read. They used to come back as U+FFFD, and in .gitignore a re-spelled
+# pattern stops matching — the rule is gone and the file it protected is
+# committable, with nothing said.
+new c3e
+printf 'Caf\xe9 rules: use pnpm\n' > CLAUDE.md
+cp CLAUDE.md "$ROOT/enc.orig"
+printf 'secrets-caf\xe9/\n' > .gitignore
+cp .gitignore "$ROOT/enc.gi"
+node $CLI init --yes >/dev/null 2>&1
+printf 'secrets-caf\xe9/x\n' | git check-ignore --stdin >/dev/null 2>&1 \
+  && ok "git still honours a rule with a non-UTF-8 byte" \
+  || bad "init broke a rule containing a non-UTF-8 byte"
+node $CLI remove --all --yes >/dev/null 2>&1
+cmp -s "$ROOT/enc.orig" CLAUDE.md && ok "root file byte-identical" \
+  || { bad "a non-UTF-8 byte was rewritten"; xxd CLAUDE.md | head -1; }
+
 say "CLAIM 12d — a failing init leaves the install coherent too"
 # CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
 # emptied every framework directory before writing a byte.
@@ -757,8 +849,13 @@ for cmd in "init --yes" "sync --yes --force"; do
 import pathlib
 p=pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace('# Project Instructions','# CHANGED'))"
   chmod 444 CLAUDE.md
-  node $CLI $cmd >/dev/null 2>&1
+  node $CLI $cmd >/dev/null 2>&1; code=$?
   chmod 644 CLAUDE.md
+  # The injected failure has to actually bite, or "the tree survived" is true of
+  # a run that simply succeeded — the assertion passes identically either way,
+  # and would go on passing anywhere the chmod does not apply (CI as root).
+  [ $code -ne 0 ] && ok "$cmd: the injected failure took effect" \
+                  || bad "$cmd: exited 0 — the fixture tested nothing"
   after=$(find .claude .cursor -type f 2>/dev/null | wc -l | tr -d ' ')
   [ "$after" -gt 0 ] && ok "$cmd: framework directories still populated ($after files)" \
                      || bad "$cmd: emptied the framework directories (was $before)"

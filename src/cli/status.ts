@@ -145,6 +145,7 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   // command is the front door; reassuring someone right before `sync` removes
   // their file is worse than saying nothing.
   let stale = false
+  let checkFailed: string | undefined
   // Per target, because the report already knows which one drifted. Collapsing
   // it to one boolean made every target read "needs a sync" when one had.
   const drifted = new Set<string>()
@@ -154,8 +155,9 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     stale = report.drift.length > 0
     for (const d of report.drift) drifted.add(d.ide)
   } catch {
-    // Falls back to the mtime heuristic rather than claiming health it cannot
-    // establish — a manifest we cannot compile from is itself worth a nudge.
+    // Falls back to the mtime heuristic. That is a fair answer when the reason
+    // we could not compile is on our side; what it must not do is answer "no
+    // drift" when it could not read the project either — see the inner catch.
     const sourceMtime = await newestMtime(resolve(pkgRoot, 'src', 'orchestrator'))
     for (const { adapter } of adapters) {
       for (const p of adapter.getManagedPaths().framework) {
@@ -167,7 +169,14 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
             stale = true
             break
           }
-        } catch { /* ignore */ }
+        } catch (err) {
+          // Not ignored. Swallowing this meant an unreadable framework
+          // directory left `stale = false`, and the front door printed
+          // "Everything is current" over a project `doctor` and `sync --check`
+          // were both exiting 1 on. A path we cannot read is not a path we have
+          // checked.
+          checkFailed = `${p}: ${(err as Error).message}`
+        }
       }
       if (stale) break
     }
@@ -190,27 +199,50 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   // was failing it.
   let failing: string[] = []
   try {
-    const { runSharedChecks } = await import('./doctor.js')
-    failing = (await runSharedChecks(projectRoot, manifest))
-      .filter((r) => !r.ok)
-      .map((r) => r.label)
-  } catch {
-    // A diagnosis we could not run is not evidence of health, but it is also
-    // not a finding; the drift report still stands on its own.
+    const { runSharedChecks, runAdapterChecks } = await import('./doctor.js')
+    // Both halves of `doctor`'s verdict. `failing` was built from the shared
+    // checks alone, so every adapter-declared one — the root file, the agent,
+    // skill and command directories, per target — was invisible here: exactly
+    // the "one fact, two interpreters" split this surface was restructured to
+    // remove, still standing in the surface it was restructured for.
+    const results = [
+      ...(await runSharedChecks(projectRoot, manifest)),
+      ...(await runAdapterChecks(projectRoot, manifest)),
+    ]
+    failing = results.filter((r) => !r.ok).map((r) => r.label)
+  } catch (err) {
+    // A diagnosis we could not run is not evidence of health — and the comment
+    // that said so used to be followed by code that treated it as exactly that.
+    // With a co-owned file unreadable, `doctor` exited 1, `sync --check` exited
+    // 1, and this command printed "Everything is current".
+    failing = [`could not be checked (${(err as Error).message})`]
   }
 
   const incomplete = targets.filter((t) => !t.present)
   let nextCommand: string | undefined
   let nextReason: string | undefined
-  if (failing.length > 0) {
-    nextCommand = 'opencastle doctor'
-    nextReason = `${failing.length} check(s) failing: ${failing.join(', ')}`
-  } else if (missingRequired.length > 0) {
+  // Ordered by how specific the remedy is. Generated files that are simply
+  // missing make the adapter checks fail too, and for those `sync` is the
+  // answer — pointing at `doctor` first would have sent the user to a
+  // diagnostic that says "run sync". `doctor` is what is left when a failure
+  // has no more specific command.
+  if (missingRequired.length > 0) {
     nextCommand = 'opencastle sync'
     nextReason = `${missingRequired.length} required file(s) missing from .opencastle/`
   } else if (incomplete.length > 0) {
     nextCommand = 'opencastle sync'
     nextReason = `${incomplete.length} target${incomplete.length === 1 ? '' : 's'} missing generated files`
+  } else if (failing.length > 0) {
+    nextCommand = 'opencastle doctor'
+    nextReason = `${failing.length} check(s) failing: ${failing.join(', ')}`
+  } else if (checkFailed) {
+    // Last of the failure branches, because a comparison can also fail for
+    // reasons that say nothing about the project — but never *ignored*: it used
+    // to fall through to an mtime heuristic that answered "no drift", so an
+    // unreadable framework directory produced "Everything is current" while
+    // `doctor` and `sync --check` both exited 1.
+    nextCommand = 'opencastle doctor'
+    nextReason = `the drift check could not run (${checkFailed})`
   } else if (stale) {
     nextCommand = 'opencastle sync'
     nextReason = 'generated files no longer match their sources'

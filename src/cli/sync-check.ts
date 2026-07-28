@@ -6,6 +6,10 @@ import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { resolveStack } from './stack-config.js'
 import {
+  START_MARKER as GITIGNORE_START,
+  END_MARKER as GITIGNORE_END,
+} from './gitignore.js'
+import {
   hasManagedBlock,
   extractManagedBlock,
   countManagedBlocks,
@@ -37,6 +41,8 @@ export interface Drift {
   ide: string
   path: string
   kind: DriftKind
+  /** The classifier's own words, so the checker and `doctor` cannot diverge. */
+  detail?: string
 }
 
 export interface CheckReport {
@@ -54,7 +60,11 @@ function filesUnder(root: string): string[] {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const abs = join(dir, entry.name)
       if (entry.isDirectory()) walk(abs)
-      else if (entry.isFile()) out.push(relative(root, abs).split(sep).join('/'))
+      // Anything that is not a directory, matching what the sweep collects. The
+      // checker used `isFile()` and the adapters a bare `else`, so a symlink in
+      // a framework directory was invisible to the check and deleted by the
+      // sync — the one class the checker exists to warn about beforehand.
+      else out.push(relative(root, abs).split(sep).join('/'))
     }
   }
   if (existsSync(root)) walk(root)
@@ -155,13 +165,20 @@ function comparePath(
   if (!existsSync(actual)) {
     drift.push({ ide, path: managedPath, kind: 'missing' })
   } else if (!sameContent(fresh, actual)) {
-    // The same classifier `sync`, `doctor` and `remove` read, so the check
-    // cannot describe a file differently from the command it recommends.
+    // Keyed on the state, not on `fixable`.
+    //
+    // `fixable` answers "can the *structure* be reduced". Using it to classify
+    // *content* drift conflated two questions: a file with one block and one
+    // stray marker is unreducible as a structure but its block resyncs
+    // perfectly, so a stale body in it was reported as "no command will change
+    // these" — and one `sync` changed it. Only a file the writer will not touch
+    // at all belongs in that category.
     const diagnosis = diagnoseManagedFile(readFileSync(actual, 'utf8'))
     drift.push({
       ide,
       path: managedPath,
-      kind: diagnosis.fixable ? 'changed' : 'unreducible',
+      kind: diagnosis.state === 'unreducible' ? 'unreducible' : 'changed',
+      ...(diagnosis.state === 'unreducible' && { detail: diagnosis.detail }),
     })
   }
   return 1
@@ -196,6 +213,20 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       }
     } finally {
       rmSync(scratch, { recursive: true, force: true })
+    }
+  }
+
+  // `.gitignore` is co-owned and is the one file whose loss cannot be noticed
+  // by reading it, yet the documented CI gate never looked at it: a
+  // `.gitignore` the writer refuses to reduce left `doctor` red and this
+  // command green, so CI passed over the exact state a person has to resolve.
+  {
+    const gi = resolve(projectRoot, '.gitignore')
+    if (existsSync(gi)) {
+      const d = diagnoseManagedFile(readFileSync(gi, 'utf8'), GITIGNORE_START, GITIGNORE_END)
+      if (d.state === 'unreducible') {
+        drift.push({ ide: 'all', path: '.gitignore', kind: 'unreducible', detail: d.detail })
+      }
     }
   }
 
@@ -242,10 +273,13 @@ function render(report: CheckReport): void {
 
   if (unreducible.length > 0) {
     console.log(`  ${c.bold('Needs a person')} ${c.dim('(no command will change these)')}`)
-    for (const d of unreducible) console.log(`    ${c.red('!')} ${d.path} ${c.dim(`(${d.ide})`)}`)
-    console.log(
-      `    ${c.dim('More than one OpenCastle block, plus a marker that pairs with nothing.')}`,
-    )
+    // The classifier's sentence, not a second one written here. The hard-coded
+    // line said "more than one block" about files that had exactly one, while
+    // `doctor` — reading the same classifier — described them correctly.
+    for (const d of unreducible) {
+      console.log(`    ${c.red('!')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+      if (d.detail) console.log(`      ${c.dim(d.detail)}`)
+    }
     console.log(`    ${c.dim('Keep one start/end pair and delete the rest.')}\n`)
   }
 

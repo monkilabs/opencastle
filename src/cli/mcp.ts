@@ -448,8 +448,18 @@ export async function rebuildMcpConfig(
   // plugin servers) — but only if it actually differs. This rewrote the file on
   // every sync regardless, which is how a compact config came back
   // pretty-printed by a command that had removed nothing from it.
-  const rebuilt = JSON.stringify(existing, null, 2) + '\n';
-  if (rebuilt !== before) await writeFile(destPath, rebuilt);
+  // Compared as values, not as text. Comparing the serialised forms meant a
+  // hand-written compact config was "different" from its own pretty-printed
+  // self, so `sync` reformatted a file it had changed nothing in — while
+  // `remove`, which compares properly, left the same file alone. One file, two
+  // policies, and the user's formatting lost to the stricter of them.
+  let unchanged = false;
+  try {
+    unchanged = JSON.stringify(JSON.parse(before)) === JSON.stringify(existing);
+  } catch {
+    unchanged = false;
+  }
+  if (!unchanged) await writeFile(destPath, JSON.stringify(existing, null, 2) + '\n');
 
   // Re-scaffold: merges new plugin servers into the cleaned config
   await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);

@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { resolve, relative } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { TechTool, TeamTool, StackConfig, CopyDirOptions, RepoInfo } from './types.js';
@@ -336,7 +336,16 @@ export async function updateSkillMatrixFile(
   const matrixPath = getSkillMatrixPath(projectRoot, ide);
   if (!matrixPath || !existsSync(matrixPath)) return false;
 
-  const content = await readFile(matrixPath, 'utf8');
+  // The read is guarded as well as the parse. Hardening the parse and leaving
+  // the read bare meant a directory where the file should be took `sync` down
+  // with a bare `✗ EISDIR: illegal operation on a directory, read` — naming
+  // nothing, from a command that had already written the framework tree.
+  let content: string;
+  try {
+    content = await readFile(matrixPath, 'utf8');
+  } catch (err) {
+    throw new UnreadableConfigError(relative(projectRoot, matrixPath));
+  }
   const updated = updateSkillMatrixContent(content, stack);
   if (updated !== content) {
     await writeFile(matrixPath, updated);

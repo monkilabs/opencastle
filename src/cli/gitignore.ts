@@ -15,6 +15,30 @@ export const START_MARKER = '# >>> OpenCastle managed (do not edit) >>>'
 export const END_MARKER = '# <<< OpenCastle managed <<<'
 
 /**
+ * Read and written as bytes, like the root files — and for a sharper reason.
+ *
+ * A rule containing a byte that is not valid UTF-8 came back as U+FFFD, and a
+ * pattern that has been re-spelled no longer matches: `secrets-café/` stopped
+ * being ignored by `init` alone. Everything else in this file survives a
+ * mangling as something a person can see; an ignore rule fails silently, and
+ * the thing it was protecting gets committed.
+ *
+ * Both markers here are pure ASCII, so they need no conversion — but the
+ * generated block does, since it is built from ordinary strings.
+ */
+async function readBytes(path: string): Promise<string> {
+  return (await readFile(path)).toString('latin1')
+}
+
+async function writeBytes(path: string, bytes: string): Promise<void> {
+  await writeFile(path, Buffer.from(bytes, 'latin1'))
+}
+
+function asBytes(text: string): string {
+  return Buffer.from(text, 'utf8').toString('latin1')
+}
+
+/**
  * What OpenCastle asks git to ignore — which is almost nothing.
  *
  * Generated assistant config used to be ignored wholesale, on the reasoning that
@@ -82,14 +106,14 @@ export async function updateGitignore(
   projectRoot: string
 ): Promise<'created' | 'updated' | 'unchanged' | 'repaired'> {
   const gitignorePath = resolve(projectRoot, '.gitignore')
-  const block = buildBlock()
+  const block = asBytes(buildBlock())
 
   if (!existsSync(gitignorePath)) {
-    await writeFile(gitignorePath, block + '\n', 'utf8')
+    await writeBytes(gitignorePath, block + '\n')
     return 'created'
   }
 
-  const existing = await readFile(gitignorePath, 'utf8')
+  const existing = await readBytes(gitignorePath)
 
   // Same region model as the root files, rather than a second reading of the
   // same idea. A doubled block — the "keep both sides" merge outcome — used to
@@ -133,16 +157,16 @@ export async function updateGitignore(
     // collapsing and `.gitignore` did not — so the one co-owned file whose
     // loss cannot be noticed by reading it was also the one with no way back.
     if (doomed.length > 0) {
-      await writeFile(`${gitignorePath}.opencastle-backup`, existing, 'utf8')
+      await writeBytes(`${gitignorePath}.opencastle-backup`, existing)
     }
-    await writeFile(gitignorePath, updated, 'utf8')
+    await writeBytes(gitignorePath, updated)
     return doomed.length > 0 ? 'repaired' : 'updated'
   }
 
   // Append block to existing file
   // One newline, same reasoning as the root-file merge: normalising the user's
   // file ending is information we cannot give back.
-  await writeFile(gitignorePath, `${existing}\n${block}\n`, 'utf8')
+  await writeBytes(gitignorePath, `${existing}\n${block}\n`)
   return 'updated'
 }
 
@@ -196,7 +220,7 @@ export async function predictGitignoreStrip(
   const path = resolve(projectRoot, '.gitignore')
   if (!existsSync(path)) return 'absent'
 
-  const existing = await readFile(path, 'utf8')
+  const existing = await readBytes(path)
   const remainder = withoutManagedBlocks(existing)
   if (remainder === existing) return 'absent'
   return remainder.trim() ? 'stripped' : 'deleted'
@@ -208,7 +232,7 @@ export async function removeGitignoreBlock(
   const gitignorePath = resolve(projectRoot, '.gitignore')
   if (!existsSync(gitignorePath)) return 'unchanged'
 
-  const existing = await readFile(gitignorePath, 'utf8')
+  const existing = await readBytes(gitignorePath)
 
   const updated = withoutManagedBlocks(existing)
 
@@ -220,7 +244,7 @@ export async function removeGitignoreBlock(
     return 'removed'
   }
 
-  await writeFile(gitignorePath, updated, 'utf8')
+  await writeBytes(gitignorePath, updated)
   return 'removed'
 }
 

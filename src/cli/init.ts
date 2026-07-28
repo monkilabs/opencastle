@@ -412,7 +412,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     const managed = adapter.getManagedPaths()
     allManagedPaths.framework.push(...managed.framework)
     allManagedPaths.customizable.push(...managed.customizable)
-    allManagedPaths.merged.push(...(managed.merged ?? []))
+    // Deduplicated: opencode and codex share AGENTS.md, so a per-adapter push
+    // listed it twice — "Merged into your existing …, AGENTS.md, AGENTS.md".
+    for (const m of managed.merged ?? []) {
+      if (!allManagedPaths.merged.includes(m)) allManagedPaths.merged.push(m)
+    }
   }
 
   // If all files were skipped (orphaned install — no manifest but files exist)

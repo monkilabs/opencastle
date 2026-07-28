@@ -41,6 +41,46 @@ async function installManifest(projectRoot: string, over: Partial<Manifest> = {}
   })
 }
 
+/**
+ * Everything a real vscode install has on disk.
+ *
+ * The fixtures used to create only the `framework` paths, with a
+ * `placeholder.md` inside each directory — which left the co-owned root file
+ * absent and the agent directory empty by the adapter's own filter. That was
+ * invisible while `status` consulted the shared checks alone; now that it reads
+ * the adapter's checks too, an incomplete fixture reads as an unhealthy project,
+ * which it is.
+ */
+async function materialiseInstall(projectRoot: string, when: Date): Promise<void> {
+  const { getManagedPaths } = await import('./adapters/vscode.js')
+  const managed = getManagedPaths()
+  for (const p of managed.framework) {
+    const abs = resolve(projectRoot, p)
+    if (p.endsWith('/')) {
+      mkdirSync(abs, { recursive: true })
+      const name = p.includes('agents') ? 'architect.agent.md' : 'placeholder.md'
+      writeFileSync(join(abs, name), 'x\n')
+      utimesSync(join(abs, name), when, when)
+    } else {
+      mkdirSync(resolve(abs, '..'), { recursive: true })
+      writeFileSync(abs, 'x\n')
+      utimesSync(abs, when, when)
+    }
+  }
+  for (const p of managed.merged ?? []) {
+    const abs = resolve(projectRoot, p)
+    mkdirSync(resolve(abs, '..'), { recursive: true })
+    writeFileSync(abs, 'x\n')
+    utimesSync(abs, when, when)
+  }
+  for (const p of managed.customizable.filter((q) => !q.endsWith('/'))) {
+    const abs = resolve(projectRoot, p)
+    mkdirSync(resolve(abs, '..'), { recursive: true })
+    writeFileSync(abs, '{}\n')
+    utimesSync(abs, when, when)
+  }
+}
+
 describe('status report', () => {
   let pkgRoot: string
   let projectRoot: string
@@ -93,20 +133,7 @@ describe('status report', () => {
 
     // Create every path the vscode adapter manages, stamped in the future so it
     // cannot read as stale.
-    const { getManagedPaths } = await import('./adapters/vscode.js')
-    const future = new Date(Date.now() + 60_000)
-    for (const p of getManagedPaths().framework) {
-      const abs = resolve(projectRoot, p)
-      if (p.endsWith('/')) {
-        mkdirSync(abs, { recursive: true })
-        writeFileSync(join(abs, 'placeholder.md'), 'x\n')
-        utimesSync(join(abs, 'placeholder.md'), future, future)
-      } else {
-        mkdirSync(resolve(abs, '..'), { recursive: true })
-        writeFileSync(abs, 'x\n')
-        utimesSync(abs, future, future)
-      }
-    }
+    await materialiseInstall(projectRoot, new Date(Date.now() + 60_000))
 
     const report = await buildStatusReport(pkgRoot, projectRoot)
     expect(report.targets[0].present).toBe(true)
@@ -117,20 +144,7 @@ describe('status report', () => {
   it('detects drift when generated files predate the framework sources', async () => {
     await installManifest(projectRoot)
 
-    const { getManagedPaths } = await import('./adapters/vscode.js')
-    const past = new Date(Date.now() - 86_400_000)
-    for (const p of getManagedPaths().framework) {
-      const abs = resolve(projectRoot, p)
-      if (p.endsWith('/')) {
-        mkdirSync(abs, { recursive: true })
-        writeFileSync(join(abs, 'placeholder.md'), 'x\n')
-        utimesSync(join(abs, 'placeholder.md'), past, past)
-      } else {
-        mkdirSync(resolve(abs, '..'), { recursive: true })
-        writeFileSync(abs, 'x\n')
-        utimesSync(abs, past, past)
-      }
-    }
+    await materialiseInstall(projectRoot, new Date(Date.now() - 86_400_000))
 
     const report = await buildStatusReport(pkgRoot, projectRoot)
     expect(report.stale).toBe(true)
