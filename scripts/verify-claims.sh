@@ -775,14 +775,14 @@ for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-ma
   esac
   node $CLI doctor >/dev/null 2>&1; dr=$?
   node $CLI sync --check >/dev/null 2>&1; ck=$?
-  st=$(node $CLI 2>&1 | plain)
-  if [ $dr -ne 0 ] || [ $ck -ne 0 ]; then
-    echo "$st" | grep -q "Everything is current" \
-      && bad "$fault: status green while doctor=$dr check=$ck" \
-      || ok "$fault: status agrees"
-  else
-    ok "$fault: nothing to disagree about"
-  fi
+  # The fault has to bite, or the arm below is a free pass — the same shape the
+  # chmod fixtures were fixed for.
+  [ $dr -ne 0 ] || [ $ck -ne 0 ] && ok "$fault: the fault registered" \
+                                 || bad "$fault: neither surface noticed — the fixture tested nothing"
+  # And the full closure, not just agreement: every remedy printed for a
+  # filesystem fault must work or name a person. `doctor` used to answer both
+  # of these with "run sync", and `sync` exits non-zero on the same path.
+  c14_check "$fault"
   # And whatever failed, it named the file rather than dying anonymously.
   out=$(node $CLI doctor 2>&1 | plain; node $CLI sync --yes --force 2>&1 | plain)
   echo "$out" | grep -qE "at async|Node\.js v" && bad "$fault: printed a stack trace" \

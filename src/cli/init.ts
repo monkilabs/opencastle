@@ -439,7 +439,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       for (const ide of ides) {
         const adapter = await IDE_ADAPTERS[ide]()
         const results = await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
-        totalCreated += results.created.length
+        // `copied` too. Counting only `created` and `skipped` made this path
+        // report "Created 0 files / Left 29 existing files untouched" over a
+        // run that had just rewritten 78 of them — the summary asserting the
+        // opposite of what happened, on the one path that exists to overwrite.
+        totalCreated += results.created.length + results.copied.length
         totalSkipped += results.skipped.length
         for (const file of results.unreadable ?? []) {
           if (!unreadable.includes(file)) unreadable.push(file)

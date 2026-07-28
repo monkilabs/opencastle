@@ -179,6 +179,25 @@ export default async function update({
         return true
       }
     }
+    // A co-owned file in a state worth reporting is work outstanding too.
+    // `needsSync` was purely a content-drift question, so every warning that
+    // lives in the merge result — stale half, torn, damaged — was emitted by
+    // the sync that first met it and never again: the second run printed
+    // "Everything matches its sources" over the same file.
+    try {
+      const { resolveManagedPaths } = await import('./managed-paths.js')
+      const { diagnoseManagedFile, carriesLegacyBody, stripManagedBlock } =
+        await import('./managed-block.js')
+      for (const rel of (await resolveManagedPaths(manifest)).merged) {
+        const abs = resolve(projectRoot, rel)
+        if (!existsSync(abs)) continue
+        const text = await readFile(abs, 'utf8')
+        if (diagnoseManagedFile(text).state !== 'clean') return true
+        if (carriesLegacyBody(stripManagedBlock(text))) return true
+      }
+    } catch {
+      return true
+    }
     try {
       const { buildCheckReport } = await import('./sync-check.js')
       const report = await buildCheckReport(pkgRoot, projectRoot)

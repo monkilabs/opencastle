@@ -8,8 +8,10 @@ import { resolveStack } from './stack-config.js'
 import {
   START_MARKER as GITIGNORE_START,
   END_MARKER as GITIGNORE_END,
+  buildBlock as buildGitignoreBlock,
 } from './gitignore.js'
 import {
+  blockRegions,
   carriesLegacyBody,
   stripManagedBlock,
   hasManagedBlock,
@@ -55,6 +57,14 @@ export interface CheckReport {
   drift: Drift[]
   /** Files compared, for reporting scale. */
   checked: number
+}
+
+/** The text of the last complete region delimited by `start`/`end`, if any. */
+function extractRegion(content: string, start: string, end: string): string | null {
+  const regions = blockRegions(content, start, end)
+  if (regions.length === 0) return null
+  const r = regions[regions.length - 1]
+  return content.slice(r.start, r.end)
 }
 
 /** Every file under a directory, relative to it, sorted for stable output. */
@@ -248,7 +258,32 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
         // missing end marker, not an older release's — reporting it here called
         // it "from an older OpenCastle release" and re-flagged a state the torn
         // diagnosis already owns.
-        if (diagnoseManagedFile(text).state !== 'clean') continue
+        // Structural damage first, so the gate sees the states `doctor` fails
+        // on. `comparePath` only ever classifies a file whose *content* it has
+        // already found to differ, so a torn root file with a perfectly correct
+        // block passed CI while `doctor` exited 1 naming it — the same hole
+        // that was closed for `.gitignore` one file over.
+        // `unreducible` only — two blocks the tool will not reduce, which is
+        // real harm the assistant reads. A lone stray marker is *not* gated
+        // here: the commonest way to get one is a file documenting the
+        // convention, and failing CI on that would be a red the user could
+        // only clear by deleting their own documentation. `doctor` warns and
+        // names it, which is the right weight for something that breaks
+        // nothing.
+        const diagnosis = diagnoseManagedFile(text)
+        if (diagnosis.state === 'unreducible') {
+          if (!drift.some((d) => d.path === rel)) {
+            drift.push({
+              ide: 'all',
+              path: rel,
+              kind: 'unreducible',
+              detail: diagnosis.detail,
+              fix: diagnosis.fix,
+            })
+          }
+          continue
+        }
+        if (diagnosis.state !== 'clean') continue
         if (!carriesLegacyBody(stripManagedBlock(text))) continue
         if (drift.some((d) => d.path === rel)) continue
         drift.push({
@@ -271,8 +306,21 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
   {
     const gi = resolve(projectRoot, '.gitignore')
     if (existsSync(gi)) {
-      const d = diagnoseManagedFile(readFileSync(gi, 'utf8'), GITIGNORE_START, GITIGNORE_END)
-      if (d.state === 'unreducible') {
+      const giText = readFileSync(gi, 'utf8')
+      // The block's *contents*, not only its structure. Deleting `.env` from
+      // inside it left every surface green while `.env` became committable —
+      // the one co-owned file whose loss cannot be noticed by reading it, with
+      // its content checked by nothing.
+      const wanted = buildGitignoreBlock()
+      const actual = extractRegion(giText, GITIGNORE_START, GITIGNORE_END)
+      if (actual !== null && actual.trim() !== wanted.trim()) {
+        drift.push({ ide: 'all', path: '.gitignore', kind: 'changed' })
+      }
+      const d = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END)
+      // Any state only a person can clear, not just `unreducible`. A torn
+      // `.gitignore` left `doctor` red and this command green, which is the
+      // same hole closed one state at a time — `fixable` is the question.
+      if (!d.fixable) {
         drift.push({
           ide: 'all',
           path: '.gitignore',
@@ -355,7 +403,33 @@ function render(report: CheckReport): void {
 
 /** Exits non-zero on drift so CI fails. */
 export async function runCheck({ pkgRoot, args }: CliContext): Promise<void> {
-  const report = await buildCheckReport(pkgRoot, process.cwd())
+  let report: CheckReport
+  try {
+    report = await buildCheckReport(pkgRoot, process.cwd())
+  } catch (err) {
+    // A comparison that could not run is a finding, reported like any other —
+    // and reported as one only a person can clear, because `sync` fails on the
+    // same path. The bare exception that used to come out here exited 1 with no
+    // verdict, no remedy, and (with `--json`) no JSON at all, so a CI consumer
+    // got a parse error instead of a report.
+    const failure: CheckReport = {
+      installed: true,
+      ides: [],
+      checked: 0,
+      drift: [
+        {
+          ide: 'all',
+          path: (err as Error).message,
+          kind: 'unreducible',
+          detail: 'the comparison could not run',
+          fix: 'fix the path named above, then run opencastle sync; this one needs a person',
+        },
+      ],
+    }
+    if (args.includes('--json')) console.log(JSON.stringify(failure, null, 2))
+    else render(failure)
+    process.exit(1)
+  }
 
   if (args.includes('--json')) {
     console.log(JSON.stringify(report, null, 2))

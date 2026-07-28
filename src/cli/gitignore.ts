@@ -83,7 +83,7 @@ const LOCAL_ONLY = [
 // the only surviving copy of something the user wrote. Ignoring it hid it from
 // `git status`, which left it one `git clean -xdf` from gone.
 
-function buildBlock(): string {
+export function buildBlock(): string {
   return [
     START_MARKER,
     '# Generated assistant config is committed on purpose, so teammates get',

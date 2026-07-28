@@ -88,22 +88,56 @@ export interface MergeResult {
  * leaving a doubled file whose stale half still advertises agents and skills
  * that no longer exist. These strings only ever came out of this tool.
  */
+/**
+ * Sentences those releases opened their *body* with. Prose no one writes by
+ * accident, and never as a note to a teammate.
+ */
 const LEGACY_GENERATED_MARKERS = [
-  'This file is managed by OpenCastle',
   'All conventions, architecture, and project context are embedded below',
   'All conventions, architecture, and project context live in',
 ]
 
+/**
+ * The banner those releases wrote, which only counts inside an HTML comment.
+ *
+ * `This file is managed by OpenCastle` is a sentence a person writes — "This
+ * file is managed by OpenCastle. Make your edits in `.opencastle/` instead." is
+ * a reasonable line for a human to put at the top of their own CLAUDE.md, and
+ * it was enough to have that file replaced wholesale. Our releases only ever
+ * emitted it as `<!-- ⚠️ This file is managed by OpenCastle. … -->`, so the
+ * comment is the part that makes it ours.
+ */
+const LEGACY_BANNER_MARKERS = ['This file is managed by OpenCastle']
+
 /** Headers those releases opened the file with. */
 const LEGACY_GENERATED_HEADERS = ['# Project Instructions', '# Copilot Instructions']
 
+/**
+ * A leading byte-order mark, removed before any of these predicates look.
+ *
+ * In byte space a BOM is three characters in front of the heading, so
+ * `# Project Instructions` stopped being the first line and every legacy test
+ * silently answered no: an upgrade neither adopted the file nor warned about
+ * it, just appended — 197 lines becoming 421, in silence — while `doctor`, still
+ * decoding as UTF-8 where the BOM is one invisible character, said the opposite
+ * about the same bytes. A one-byte cliff, and a fresh pair of interpreters.
+ */
+const BOM_BYTES = Buffer.from('\ufeff', 'utf8').toString('latin1')
+
+function withoutBom(text: string): string {
+  if (text.startsWith(BOM_BYTES)) return text.slice(BOM_BYTES.length)
+  return text.startsWith('\ufeff') ? text.slice(1) : text
+}
+
 /** First line with content, ignoring comments that are not our own banner. */
 function firstMeaningfulLine(content: string): string {
-  for (const raw of content.split('\n')) {
+  for (const raw of withoutBom(content).split('\n')) {
     const line = raw.trim()
     if (!line) continue
     if (line.startsWith('<!--')) {
-      if (LEGACY_GENERATED_MARKERS.some((m) => line.includes(m))) return line
+      if ([...LEGACY_GENERATED_MARKERS, ...LEGACY_BANNER_MARKERS].some((m) => line.includes(m))) {
+        return line
+      }
       continue
     }
     return line
@@ -161,7 +195,7 @@ function looksLikeLegacyGenerated(
   const firstOpener = first.replace(/^<!--\s*/, '').replace(/^[^A-Za-z#]+/, '')
   const startsGenerated =
     LEGACY_GENERATED_HEADERS.includes(first) ||
-    LEGACY_GENERATED_MARKERS.some((m) => firstOpener.startsWith(m))
+    [...LEGACY_GENERATED_MARKERS, ...LEGACY_BANNER_MARKERS].some((m) => firstOpener.startsWith(m))
   return startsGenerated && hasLegacyOpeningLine(content)
 }
 
@@ -179,12 +213,12 @@ function looksLikeLegacyGenerated(
  * comment opener and any decoration in front of the words come off first.
  */
 function hasLegacyOpeningLine(content: string): boolean {
-  return content.split('\n').some((line) => {
-    const opener = line
-      .trim()
-      .replace(/^<!--\s*/, '')
-      .replace(/^[^A-Za-z#]+/, '')
-    return LEGACY_GENERATED_MARKERS.some((m) => opener.startsWith(m))
+  return withoutBom(content).split('\n').some((line) => {
+    const trimmed = line.trim()
+    const inComment = trimmed.startsWith('<!--')
+    const opener = trimmed.replace(/^<!--\s*/, '').replace(/^[^A-Za-z#]+/, '')
+    if (LEGACY_GENERATED_MARKERS.some((m) => opener.startsWith(m))) return true
+    return inComment && LEGACY_BANNER_MARKERS.some((m) => opener.startsWith(m))
   })
 }
 
@@ -211,7 +245,7 @@ function hasLegacyOpeningLine(content: string): boolean {
  * that talks about it.
  */
 export function carriesLegacyBody(content: string): boolean {
-  const lines = content.split('\n').map((l) => l.trim())
+  const lines = withoutBom(content).split('\n').map((l) => l.trim())
   const hasHeader = lines.some((l) => LEGACY_GENERATED_HEADERS.includes(l))
   return hasHeader && hasLegacyOpeningLine(content)
 }
@@ -444,7 +478,14 @@ export function extractManagedBlock(content: string): string | null {
  * or does it need a person? A red check whose remedy cannot work is worse than
  * no check, and it is the failure this branch has shipped most often.
  */
-export type FileState = 'clean' | 'doubled' | 'torn' | 'unreducible'
+/**
+ * `torn` is the only one of these that breaks nothing — the block is intact and
+ * every command works — so it is the only one weighted as a warning. The others
+ * are conditions a person has to see. They are distinct states rather than one
+ * shared shape because reusing `torn` for them made both inherit its weight the
+ * moment that weight changed.
+ */
+export type FileState = 'clean' | 'doubled' | 'torn' | 'unreducible' | 'stale' | 'unreadable'
 
 export interface FileDiagnosis {
   state: FileState
@@ -740,17 +781,50 @@ export async function writeManagedBlock(path: string, body: string): Promise<Mer
  * the preview assumed every co-owned file survives and printed "your own
  * writing stays" over files that were about to be deleted.
  */
-export function predictStrip(content: string): {
+/**
+ * What `stripManagedBlockFromFile` would do to `path`, reading it the same way.
+ *
+ * The preview used to decode as UTF-8 while the action read bytes, and the two
+ * then disagreed about whether anything of the user's was left: a file whose
+ * user half was a single `0xA0` is whitespace to `trim()` in byte space and
+ * U+FFFD — not whitespace — in UTF-8 space. The preview promised "your own
+ * writing stays" and the action deleted the file, with no backup. One question,
+ * one reader, and the reader has to be the one that acts.
+ */
+export async function predictStripFile(path: string): Promise<{
+  outcome: 'stripped' | 'deleted'
+  legacyGenerated: boolean
+  /** A superseded instruction set of ours would still be there afterwards. */
+  staleRemains: boolean
+}> {
+  const bytes = await readBytes(path)
+  const predicted = predictStrip(bytes, BLOCK_START_BYTES, BLOCK_END_BYTES)
+  return {
+    ...predicted,
+    staleRemains:
+      predicted.outcome === 'stripped' &&
+      carriesLegacyBody(stripAllBlocks(bytes, BLOCK_START_BYTES, BLOCK_END_BYTES)),
+  }
+}
+
+export function predictStrip(
+  content: string,
+  start = BLOCK_START,
+  end = BLOCK_END,
+): {
   outcome: 'stripped' | 'deleted'
   /** True when the file is ours from an older release, so a backup is written. */
   legacyGenerated: boolean
 } {
-  if (!hasManagedBlock(content) && looksLikeLegacyGenerated(content)) {
+  if (
+    blockRegions(content, start, end).length === 0 &&
+    looksLikeLegacyGenerated(content, start, end)
+  ) {
     return { outcome: 'deleted', legacyGenerated: true }
   }
   // The same reading `stripManagedBlockFromFile` takes, by calling the same
   // function — the two diverged once by sharing a formula instead of a call.
-  const remainder = stripAllBlocks(content)
+  const remainder = stripAllBlocks(content, start, end)
   return {
     outcome: remainder.trim().length === 0 ? 'deleted' : 'stripped',
     // Only the legacy branch above writes a backup, so only it may claim one.

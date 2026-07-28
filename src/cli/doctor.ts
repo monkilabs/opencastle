@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
 import { IDE_ADAPTERS } from './adapters/index.js';
@@ -8,6 +8,7 @@ import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js'
 import {
   carriesLegacyBody,
   stripManagedBlock,
+  countManagedBlocks,
   diagnoseManagedFile,
   BLOCK_START,
   BLOCK_END,
@@ -92,7 +93,7 @@ async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
       ok: false,
       label: 'Skill matrix',
       detail: `Cannot read .opencastle/agents/skill-matrix.json — ${(err as Error).message}`,
-      fix: 'fix or delete the file, then run opencastle sync',
+      fix: 'fix or delete the file, then run opencastle sync; this one needs a person',
     };
   }
   try {
@@ -203,8 +204,25 @@ export async function runDoctorCheck(projectRoot: string, check: DoctorCheck): P
     return { ok: false, label: check.label, detail: `${check.path} not found` };
   }
 
+  // Something is there but it is not a directory we can read — a plain file
+  // where the tree belongs, or one we lack permission for. `sync` cannot repair
+  // either: it exits non-zero on the same path, so the blanket "run sync"
+  // remedy sent the user round a loop that never converged, with `doctor`
+  // repeating the advice each time.
+  let contents: string[];
+  try {
+    contents = await readdir(fullPath);
+  } catch (err) {
+    return {
+      ok: false,
+      label: check.label,
+      detail: `${check.path} cannot be read — ${(err as Error).message}`,
+      fix: `remove or fix ${check.path}, then run opencastle sync; this one needs a person`,
+    };
+  }
+
   if (check.countContents) {
-    const entries = await readdir(fullPath).catch(() => [] as string[]);
+    const entries = contents;
     const filtered = check.countFilter
       ? entries.filter((e) => e.endsWith(check.countFilter!))
       : entries;
@@ -222,6 +240,25 @@ export function checkMcpFromPaths(projectRoot: string, mcpPaths: string[]): Chec
   if (mcpPaths.length === 0) {
     return { ok: true, label: 'MCP configuration', detail: 'No MCP config path configured' };
   }
+  // Opened and parsed, not merely stat'ed. `existsSync` is true of a config
+  // nobody can read and of a directory wearing the name — both of which make
+  // `sync` exit non-zero, while this check said "1 MCP config(s)" and `doctor`,
+  // `status` and `sync --check` all reported health.
+  for (const p of mcpPaths) {
+    const abs = resolve(projectRoot, p);
+    if (!existsSync(abs)) continue;
+    try {
+      JSON.parse(readFileSync(abs, 'utf8'));
+    } catch (err) {
+      return {
+        ok: false,
+        label: 'MCP configuration',
+        detail: `${p} cannot be read — ${(err as Error).message}`,
+        fix: `fix or delete ${p}, then run opencastle sync; this one needs a person`,
+      };
+    }
+  }
+
   const found = mcpPaths.filter((p) => existsSync(resolve(projectRoot, p)));
   if (found.length === 0) {
     return {
@@ -438,7 +475,7 @@ async function checkTornBlocks(
       found.push({
         rel,
         diagnosis: {
-          state: 'torn',
+          state: 'unreadable',
           fixable: false,
           detail: `cannot be read — ${(err as Error).message}`,
           fix: 'fix the permissions or replace the file; this one needs a person',
@@ -453,11 +490,19 @@ async function checkTornBlocks(
     // appending and never again, so an upgraded file carrying two complete sets
     // of instructions — the assistant reads both — was reported healthy by
     // every command from the second sync onwards.
-    else if (carriesLegacyBody(stripManagedBlock(content))) {
+    // Only when our block is actually there. With no recognised block — markers
+    // indented off column 0, say — the whole file is the adopt case and one
+    // `sync` replaces it, so calling that "needs a person" was wrong twice
+    // over: it named the current release's own body as an older release's.
+    else if (
+      diagnoseManagedFile(content, markers[0], markers[1]).state === 'clean' &&
+      countManagedBlocks(content) > 0 &&
+      carriesLegacyBody(stripManagedBlock(content))
+    ) {
       found.push({
         rel,
         diagnosis: {
-          state: 'torn',
+          state: 'stale',
           fixable: false,
           detail: 'contains a whole instruction set from an older OpenCastle release,' +
             ' above the managed block',
@@ -477,6 +522,21 @@ async function checkTornBlocks(
   // Failing only when nothing can clear it. A doubled file with no strays is
   // fixed by `sync` in one run, so telling the user to hand-edit 20KB — which
   // the old single remedy did — was both wrong and alarming.
+  // A lone stray marker breaks nothing — the block is intact and every command
+  // works — and the commonest source of one is a file that documents the
+  // convention. Failing on it hands that user a red they can only clear by
+  // editing their own prose. It is still named, with its remedy, because only
+  // they can tell whether the text beside it is stale output of ours.
+  if (found.every(({ diagnosis }) => diagnosis.state === 'torn')) {
+    return {
+      label,
+      ok: true,
+      warning: true,
+      detail,
+      fix: found.map(({ rel, diagnosis }) => `${rel}: ${diagnosis.fix}`).join('; '),
+    }
+  }
+
   const needsAPerson = found.filter(({ diagnosis }) => !diagnosis.fixable)
   if (needsAPerson.length === 0) {
     return { label, ok: false, warning: false, detail, fix: 'opencastle sync' }
@@ -676,6 +736,13 @@ export default async function doctor({ args }: CliContext): Promise<void> {
     process.exit(1);
   } else if (warnings.length > 0) {
     console.log(`  ${BOLD('All checks passed')} with ${warnings.length} warning(s).\n`);
+    // A warning's remedy was computed and never shown — `fix` was rendered for
+    // failures only, so `sync` told the user to run `doctor` and `doctor`
+    // printed the problem with no advice attached to it.
+    for (const w of warnings) {
+      if (w.fix) console.log(`    ${w.label}: ${DIM(w.fix)}`);
+    }
+    if (warnings.some((w) => w.fix)) console.log('');
   } else {
     console.log(`  ${BOLD('All checks passed.')} Your setup is healthy.\n`);
   }

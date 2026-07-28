@@ -5,7 +5,7 @@ import { readManifest } from './manifest.js'
 import { removeDirIfExists } from './copy.js'
 import { removeGitignoreBlock, predictGitignoreStrip, LOCAL_DIRS } from './gitignore.js'
 import { confirm, select, closePrompts, c } from './prompt.js'
-import { stripManagedBlockFromFile, predictStrip } from './managed-block.js'
+import { stripManagedBlockFromFile, predictStripFile } from './managed-block.js'
 import { resolveManagedPaths } from './managed-paths.js'
 import { stripManagedMcpServers, getMcpConfigRelPath, willKeepSomethingAfterStrip } from './mcp.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
@@ -66,9 +66,22 @@ async function previewCoOwned(
   for (const p of mergedPaths) {
     const abs = resolve(projectRoot, p)
     if (!existsSync(abs)) continue
-    const { outcome, legacyGenerated } = predictStrip(await readFile(abs, 'utf8'))
+    const { outcome, legacyGenerated, staleRemains } = await predictStripFile(abs)
     if (outcome === 'stripped') {
-      out.push({ path: p, outcome, note: 'the OpenCastle block; your own writing stays' })
+      // "Your own writing stays" is only true when what stays is theirs. On a
+      // file upgraded from a pre-marker release, the superseded instruction set
+      // sits above our block with no marker to delimit it, so the strip cannot
+      // take it and the preview must not imply it did: 197 of the 201 surviving
+      // lines were ours, still advertising directories this same command had
+      // deleted, and with the manifest gone nothing could find them again.
+      out.push({
+        path: p,
+        outcome,
+        note: staleRemains
+          ? 'the OpenCastle block; your own writing stays — but a superseded instruction' +
+            ' set from an older release stays too, and only you can tell where it ends'
+          : 'the OpenCastle block; your own writing stays',
+      })
     } else {
       out.push({
         path: p,
@@ -295,8 +308,14 @@ export default async function remove({ args }: CliContext): Promise<void> {
   // Co-owned files hold the user's own writing above our block. Take back the
   // block; delete the file only if nothing of theirs remains.
   let stripped = 0
+  const staleLeft: string[] = []
   for (const p of mergedPaths) {
-    const outcome = await stripManagedBlockFromFile(resolve(projectRoot, p))
+    const abs = resolve(projectRoot, p)
+    // Asked before the strip, because afterwards the markers are gone and
+    // nothing can identify the superseded half again — including `doctor`,
+    // which needs a manifest this command is about to remove.
+    if (existsSync(abs) && (await predictStripFile(abs)).staleRemains) staleLeft.push(p)
+    const outcome = await stripManagedBlockFromFile(abs)
     if (outcome === 'deleted') removed++
     else if (outcome === 'stripped') stripped++
   }
@@ -365,6 +384,16 @@ export default async function remove({ args }: CliContext): Promise<void> {
       `${stripped > 0 ? `, kept your content in ${stripped} file(s)` : ''}` +
       `${gitignoreResult === 'removed' ? ' + .gitignore block' : ''}.`,
   )
+  if (staleLeft.length > 0) {
+    console.log(
+      `\n  ${c.yellow('!')} ${staleLeft.length} file(s) still hold a superseded instruction set` +
+        ` from an older OpenCastle release:\n`,
+    )
+    for (const p of staleLeft) console.log(`     ${c.dim(p)}`)
+    console.log(
+      `     ${c.dim('It has no markers, so this command cannot tell it from your own writing.')}`,
+    )
+  }
   for (const p of unreadable) {
     console.log(`  ${c.yellow('!')} Left ${p} alone — it is not valid JSON.`)
   }

@@ -18,7 +18,16 @@ export async function readManifest(
     const path = resolve(projectRoot, rel);
     if (!existsSync(path)) continue;
 
-    const content = await readFile(path, 'utf8');
+    // Read inside the guard too. A directory wearing the manifest's name took
+    // every command down with a bare `✗ EISDIR`, naming nothing, before
+    // `doctor` printed a single check — the same shape hardened twice already
+    // in the checks this file feeds.
+    let content: string;
+    try {
+      content = await readFile(path, 'utf8');
+    } catch {
+      throw new UnreadableConfigError(rel);
+    }
     try {
       return JSON.parse(content) as Manifest;
     } catch {

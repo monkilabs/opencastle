@@ -97,23 +97,34 @@ function ensureRL(): void {
  * multiple lines in a single chunk.
  */
 async function nextLine(prompt: string): Promise<string> {
-  // Once stdin has ended, every further question answers itself with the
-  // default. Re-creating a readline interface over an ended stream never emits
-  // `close` again, so the promise never settled: the *second* prompt in a
-  // non-interactive run hung until node gave up with "Detected unsettled
-  // top-level await" and exit 13. One prompt worked, which is why it was missed.
+  // Answers already delivered come first, *then* the ended-stream guard.
+  //
+  // Piped input arrives in one chunk: the first line settles the pending
+  // prompt, the rest queue here, and `close` fires immediately after. Testing
+  // `_stdinEnded` before draining the queue therefore threw away every answer
+  // but the first and substituted each prompt's default — and `init`'s
+  // "Overwrite existing files?" defaults to yes, so `printf 'y\nn\n' |
+  // opencastle init` overwrote the files the user had just declined to
+  // overwrite, without echoing the `n` it discarded. The comment above the
+  // buffer says no data is ever lost.
+  if (_lineBuffer.length > 0) {
+    stdout.write(prompt);
+    const line = _lineBuffer.shift()!;
+    // Echo the buffered answer for non-TTY so logs read naturally
+    if (!stdin.isTTY) stdout.write(line + '\n');
+    return line;
+  }
+
+  // Only now: with nothing queued and the stream closed, every further question
+  // answers itself with the default. Re-creating a readline interface over an
+  // ended stream never emits `close` again, so the promise never settled — the
+  // *second* prompt in a non-interactive run hung until node gave up.
   if (_stdinEnded) {
     stdout.write(prompt + '\n');
     return '';
   }
   ensureRL();
   stdout.write(prompt);
-  if (_lineBuffer.length > 0) {
-    const line = _lineBuffer.shift()!;
-    // Echo the buffered answer for non-TTY so logs read naturally
-    if (!stdin.isTTY) stdout.write(line + '\n');
-    return line;
-  }
   return new Promise<string>((resolve) => {
     _lineResolver = resolve;
   });

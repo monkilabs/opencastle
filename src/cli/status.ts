@@ -182,7 +182,12 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     }
   }
 
-  for (const target of targets) target.drifted = drifted.has(target.ide)
+  // A comparison we could not run is not "not drifted". `nextCommand` was
+  // fixed for this and these two fields were not, so the per-target line still
+  // read "up to date" and `--json` still said `"stale": false` — the machine
+  // surface asserting health nobody had established.
+  if (checkFailed) stale = true
+  for (const target of targets) target.drifted = checkFailed ? true : drifted.has(target.ide)
 
   // Assistants configured in the repo that this install does not compile for.
   const managedIdes = new Set(adapters.map((a) => a.ide))

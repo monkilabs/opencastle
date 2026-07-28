@@ -147,7 +147,16 @@ export async function scaffoldMcpConfig(
     // this. An unguarded throw left the framework tree written and the manifest
     // absent, which the front door then read as "not set up" — pointing at the
     // `init` that had just crashed. One file, two readers, one hardened.
-    const existingContent = await readFile(destPath, 'utf8');
+    // The read is guarded as well as the parse. Guarding one and not the other
+    // meant an unreadable config took `sync` down with a bare `✗ EACCES` while
+    // `doctor`, `status` and `sync --check` — which only ever call `existsSync`
+    // on this path — all reported the project healthy.
+    let existingContent: string;
+    try {
+      existingContent = await readFile(destPath, 'utf8');
+    } catch {
+      throw new UnreadableConfigError(destRelPath);
+    }
     let existing: Record<string, unknown>;
     try {
       existing = JSON.parse(existingContent) as Record<string, unknown>;
@@ -326,7 +335,12 @@ export async function stripManagedMcpServers(
   const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
   if (!existsSync(destPath)) return 'absent';
 
-  const before = await readFile(destPath, 'utf8');
+  let before: string;
+  try {
+    before = await readFile(destPath, 'utf8');
+  } catch {
+    return 'unreadable';
+  }
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(before) as Record<string, unknown>;
@@ -377,7 +391,12 @@ export async function rebuildMcpConfig(
   // filename — after the adapters had already rewritten the framework
   // directories and before the manifest was written, so the sync was half
   // applied. `remove` already names the file and carries on; so does this.
-  const before = await readFile(destPath, 'utf8');
+  let before: string;
+  try {
+    before = await readFile(destPath, 'utf8');
+  } catch {
+    throw new UnreadableConfigError(destRelPath);
+  }
   let existing: Record<string, unknown>;
   try {
     existing = JSON.parse(before) as Record<string, unknown>;
