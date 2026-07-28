@@ -187,7 +187,21 @@ function comparePath(
     // perfectly, so a stale body in it was reported as "no command will change
     // these" — and one `sync` changed it. Only a file the writer will not touch
     // at all belongs in that category.
-    const diagnosis = diagnoseManagedFile(readFileSync(actual, 'utf8'))
+    // A file we cannot read is drift only a person can clear, not a crash.
+    let actualText: string
+    try {
+      actualText = readFileSync(actual, 'utf8')
+    } catch (err) {
+      drift.push({
+        ide,
+        path: managedPath,
+        kind: 'unreducible',
+        detail: `cannot be read — ${(err as Error).message}`,
+        fix: 'fix the permissions or replace the file; this one needs a person',
+      })
+      return 1
+    }
+    const diagnosis = diagnoseManagedFile(actualText)
     drift.push({
       ide,
       path: managedPath,
@@ -306,7 +320,23 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
   {
     const gi = resolve(projectRoot, '.gitignore')
     if (existsSync(gi)) {
-      const giText = readFileSync(gi, 'utf8')
+      // Guarded like every other read of a user file. An unreadable
+      // `.gitignore` made `sync` exit 1 while this command, `doctor` and
+      // `status` all exited 0 — the same shape as the `.mcp.json` twin fixed a
+      // round ago, one file over.
+      let giText: string | null = null
+      try {
+        giText = readFileSync(gi, 'utf8')
+      } catch (err) {
+        drift.push({
+          ide: 'all',
+          path: '.gitignore',
+          kind: 'unreducible',
+          detail: `cannot be read — ${(err as Error).message}`,
+          fix: 'fix the permissions or replace the file; this one needs a person',
+        })
+      }
+      if (giText !== null) {
       // The block's *contents*, not only its structure. Deleting `.env` from
       // inside it left every surface green while `.env` became committable —
       // the one co-owned file whose loss cannot be noticed by reading it, with
@@ -328,6 +358,7 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
           detail: d.detail,
           fix: d.fix,
         })
+      }
       }
     }
   }

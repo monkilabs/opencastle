@@ -763,7 +763,7 @@ say "CLAIM 6d — no surface calls a project healthy while another is red"
 # status/doctor divergence — and the route that found three of them. `status`
 # derived its verdict from half of `doctor`'s checks and treated a comparison
 # that *threw* as "no drift".
-for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-matrix; do
+for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-matrix unreadable-mcp unreadable-gitignore mcp-is-a-dir; do
   new "c6d-$fault"; printf '# R\n' > CLAUDE.md
   node $CLI init --yes >/dev/null 2>&1
   case $fault in
@@ -772,6 +772,11 @@ for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-ma
     unreadable-root)      chmod 000 CLAUDE.md ;;
     unreadable-matrix)    rm -f .opencastle/agents/skill-matrix.json
                           mkdir -p .opencastle/agents/skill-matrix.json ;;
+    # Each of these was the twin of a guard added a round earlier: the same
+    # shape, one file over, still unguarded.
+    unreadable-mcp)       chmod 000 .mcp.json ;;
+    unreadable-gitignore) chmod 000 .gitignore ;;
+    mcp-is-a-dir)         rm -f .mcp.json; mkdir .mcp.json ;;
   esac
   node $CLI doctor >/dev/null 2>&1; dr=$?
   node $CLI sync --check >/dev/null 2>&1; ck=$?
@@ -788,6 +793,7 @@ for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-ma
   echo "$out" | grep -qE "at async|Node\.js v" && bad "$fault: printed a stack trace" \
                                                || ok "$fault: failed cleanly"
   chmod 755 .claude/agents 2>/dev/null; chmod 644 CLAUDE.md 2>/dev/null
+  chmod 644 .mcp.json .gitignore 2>/dev/null
 done
 
 say "CLAIM 14b — anything called unreducible really is"

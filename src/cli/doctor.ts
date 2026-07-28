@@ -349,7 +349,17 @@ async function syncWouldClearThis(projectRoot: string, hidden: string[]): Promis
   const path = resolve(projectRoot, '.gitignore');
   if (!existsSync(path)) return false;
 
-  const content = await readFile(path, 'utf8');
+  // Guarded like every other read of a user file. An unreadable `.gitignore`
+  // made `sync` exit 1 while this command, `sync --check` and `status` all
+  // exited 0 — the same shape as the `.mcp.json` twin fixed one round ago, one
+  // file over. `checkTornBlocks` already reports the file itself; this only has
+  // to avoid crashing on the way past.
+  let content: string;
+  try {
+    content = await readFile(path, 'utf8');
+  } catch {
+    return false;
+  }
   // Being inside a block of ours is not enough — `sync` has to be willing to
   // rewrite that block. On an unreducible `.gitignore` it is not, so the
   // "run sync" remedy was a no-op that failed identically on every run, four
