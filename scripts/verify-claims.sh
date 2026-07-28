@@ -837,6 +837,57 @@ node $CLI remove --all --yes >/dev/null 2>&1
 cmp -s "$ROOT/enc.orig" CLAUDE.md && ok "root file byte-identical" \
   || { bad "a non-UTF-8 byte was rewritten"; xxd CLAUDE.md | head -1; }
 
+say "CLAIM 13c — upgrading a real previous-release install"
+# Synthesised the way the previous release actually wrote it, rather than with a
+# fixture this branch produces. Round 15's worst defect lived exactly here: the
+# stale-half warning excluded the population it was written for, and every
+# surface called the result healthy.
+c13c_seed() {
+  # A pre-marker root file: our old banner, our old header, our old opening line.
+  printf '# Project Instructions\n\nAll conventions, architecture, and project context are embedded below. Skills are in `.claude/skills/`.\n\n## Agent Definitions\n\n- API Designer\n\n## Available Skills\n\n- backbone-scaffolding\n' > CLAUDE.md
+}
+for shape in rules-above rules-below untouched; do
+  new "c13c-$shape"; c13c_seed
+  case $shape in
+    rules-above) python3 -c "
+import pathlib;p=pathlib.Path('CLAUDE.md');p.write_text('# MY OWN RULES'+chr(10)*2+'Never force-push main.'+chr(10)*2+p.read_text())" ;;
+    rules-below) printf '\n## MY OWN RULES\n\nNever force-push main.\n' >> CLAUDE.md ;;
+  esac
+  out=$(node $CLI init --yes 2>&1 | plain)
+
+  case $shape in
+    rules-above)
+      # Their writing came first, so the file is appended to rather than
+      # replaced — and the superseded half is still in there.
+      grep -q 'MY OWN RULES' CLAUDE.md && ok "$shape: their rules kept" || bad "$shape: their rules lost"
+      echo "$out" | grep -qi "earlier version" && ok "$shape: the stale half was reported" \
+                                               || bad "$shape: nothing said about the stale half"
+      node $CLI doctor >/dev/null 2>&1 && bad "$shape: doctor calls it healthy" \
+                                       || ok "$shape: doctor names it"
+      node $CLI sync --check >/dev/null 2>&1 && bad "$shape: the CI gate passes it" \
+                                             || ok "$shape: the CI gate fails it"
+      node $CLI 2>&1 | plain | grep -q "Everything is current" \
+        && bad "$shape: status green while others are red" || ok "$shape: status agrees"
+      ;;
+    rules-below|untouched)
+      # No marker, and the whole file is ours: adopted, loudly, with a backup.
+      echo "$out" | grep -qi "earlier version" && ok "$shape: the adoption was reported" \
+                                               || bad "$shape: adopted in silence"
+      [ -f CLAUDE.md.opencastle-backup ] && ok "$shape: a backup was written" \
+                                         || bad "$shape: adopted with no backup"
+      if [ "$shape" = rules-below ]; then
+        grep -q 'MY OWN RULES' CLAUDE.md.opencastle-backup \
+          && ok "$shape: their appended text is in the backup" \
+          || bad "$shape: their appended text is nowhere"
+      fi
+      node $CLI sync --check >/dev/null 2>&1 && ok "$shape: clean afterwards" \
+                                             || bad "$shape: drift after adoption"
+      ;;
+  esac
+  [ "$(grep -c -- "$END" CLAUDE.md)" = "1" ] && ok "$shape: exactly one block" \
+                                             || bad "$shape: $(grep -c -- "$END" CLAUDE.md) blocks"
+done
+
 say "CLAIM 12d — a failing init leaves the install coherent too"
 # CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
 # emptied every framework directory before writing a byte.

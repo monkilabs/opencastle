@@ -10,6 +10,8 @@ import {
   END_MARKER as GITIGNORE_END,
 } from './gitignore.js'
 import {
+  carriesLegacyBody,
+  stripManagedBlock,
   hasManagedBlock,
   extractManagedBlock,
   countManagedBlocks,
@@ -43,6 +45,8 @@ export interface Drift {
   kind: DriftKind
   /** The classifier's own words, so the checker and `doctor` cannot diverge. */
   detail?: string
+  /** What resolves it, per entry — these do not share a remedy. */
+  fix?: string
 }
 
 export interface CheckReport {
@@ -178,7 +182,10 @@ function comparePath(
       ide,
       path: managedPath,
       kind: diagnosis.state === 'unreducible' ? 'unreducible' : 'changed',
-      ...(diagnosis.state === 'unreducible' && { detail: diagnosis.detail }),
+      ...(diagnosis.state === 'unreducible' && {
+        detail: diagnosis.detail,
+        fix: diagnosis.fix,
+      }),
     })
   }
   return 1
@@ -216,6 +223,47 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
     }
   }
 
+  // A whole instruction set from an older release, sitting above our block.
+  //
+  // `sameContent` compares the block and finds it correct, so this passed the
+  // documented CI gate while `doctor` failed on the same file — two full sets
+  // of instructions the assistant reads, the stale one naming personas the
+  // upgrade had just deleted. Reported here as needing a person, because only
+  // they can tell where their own writing ends.
+  {
+    const manifestForRoots = await readManifest(projectRoot)
+    if (manifestForRoots) {
+      const { resolveManagedPaths } = await import('./managed-paths.js')
+      for (const rel of (await resolveManagedPaths(manifestForRoots)).merged) {
+        const abs = resolve(projectRoot, rel)
+        if (!existsSync(abs)) continue
+        let text: string
+        try {
+          text = readFileSync(abs, 'utf8')
+        } catch {
+          continue
+        }
+        // Only when the structure is otherwise clean, which is how `doctor`
+        // asks it. A torn file's residue is *this* release's body orphaned by a
+        // missing end marker, not an older release's — reporting it here called
+        // it "from an older OpenCastle release" and re-flagged a state the torn
+        // diagnosis already owns.
+        if (diagnoseManagedFile(text).state !== 'clean') continue
+        if (!carriesLegacyBody(stripManagedBlock(text))) continue
+        if (drift.some((d) => d.path === rel)) continue
+        drift.push({
+          ide: 'all',
+          path: rel,
+          kind: 'unreducible',
+          detail: 'contains a whole instruction set from an older OpenCastle release,' +
+            ' above the managed block',
+          fix: 'delete the generated text above the OpenCastle block — it is superseded,' +
+            ' and only you can tell where your own writing ends',
+        })
+      }
+    }
+  }
+
   // `.gitignore` is co-owned and is the one file whose loss cannot be noticed
   // by reading it, yet the documented CI gate never looked at it: a
   // `.gitignore` the writer refuses to reduce left `doctor` red and this
@@ -225,7 +273,13 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
     if (existsSync(gi)) {
       const d = diagnoseManagedFile(readFileSync(gi, 'utf8'), GITIGNORE_START, GITIGNORE_END)
       if (d.state === 'unreducible') {
-        drift.push({ ide: 'all', path: '.gitignore', kind: 'unreducible', detail: d.detail })
+        drift.push({
+          ide: 'all',
+          path: '.gitignore',
+          kind: 'unreducible',
+          detail: d.detail,
+          fix: d.fix,
+        })
       }
     }
   }
@@ -276,11 +330,16 @@ function render(report: CheckReport): void {
     // The classifier's sentence, not a second one written here. The hard-coded
     // line said "more than one block" about files that had exactly one, while
     // `doctor` — reading the same classifier — described them correctly.
+    // Per entry, including the remedy. A single trailing sentence was printed
+    // for every state here — "keep one start/end pair" over a file whose
+    // problem was a superseded instruction set — which is the same hard-coded
+    // wording that told users a file held more than one block when it held one.
     for (const d of unreducible) {
       console.log(`    ${c.red('!')} ${d.path} ${c.dim(`(${d.ide})`)}`)
       if (d.detail) console.log(`      ${c.dim(d.detail)}`)
+      if (d.fix) console.log(`      ${c.dim(`→ ${d.fix}`)}`)
     }
-    console.log(`    ${c.dim('Keep one start/end pair and delete the rest.')}\n`)
+    console.log('')
   }
 
   // Only when something here is actually fixable by it. `sync` was printed
