@@ -25,10 +25,25 @@ import { blockRegions, orphanMarkers } from './managed-block.js'
  * knows what a pattern matches.
  */
 
-const RULES = ['node_modules', '.env.local', 'secrets/prod.key', 'dist/', '*.tmp']
+// Negations are the point: `!keep.txt` only exempts anything if it comes *after*
+// the pattern it exempts, so a rule that survives in the wrong position is still
+// a behaviour change. Nothing here may move.
+const RULES = [
+  'node_modules',
+  '.env.local',
+  'secrets/prod.key',
+  'dist/',
+  '*.tmp',
+  'keep.txt',
+  'logs/a.log',
+]
 
 const PIECES = [
   'node_modules\n',
+  '*.txt\n',
+  '!keep.txt\n',
+  'logs/\n',
+  '!logs/a.log\n',
   '.env.local\n',
   'secrets/prod.key\n',
   'dist/\n',
@@ -129,6 +144,33 @@ describe('.gitignore holds the same invariants as a root file', () => {
               `pass ${pass}: stopped ignoring ${rule}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(readFileSync(file, 'utf8'))}`,
             ).toBe(true)
           }
+        }
+
+        // And every line of theirs is still there, the same number of times.
+        // Git's answer can be preserved by accident — a duplicated rule gives
+        // the same result — so the file itself is checked as well.
+        const ownedNow = new Set<number>()
+        const finalText = readFileSync(file, 'utf8')
+        for (const r of blockRegions(finalText, START_MARKER, END_MARKER)) {
+          const from = finalText.slice(0, r.start).split('\n').length - 1
+          const to = finalText.slice(0, r.end).split('\n').length - 1
+          for (let i = from; i <= to; i++) ownedNow.add(i)
+        }
+        const survived = finalText.split('\n').filter((_, i) => !ownedNow.has(i))
+        // Marker lines excluded: a marker that pairs with nothing sits outside
+        // every *region*, so `blockRegions` does not call it owned — but it is
+        // still a line this tool wrote, and taking it back is not losing
+        // anything of the user's.
+        const wrote = original
+          .split('\n')
+          .filter((_, i) => !ownedLines.has(i))
+          .filter((l) => l.trim() !== '')
+          .filter((l) => !l.startsWith(START_MARKER) && !l.startsWith(END_MARKER))
+        for (const line of new Set(wrote)) {
+          expect(
+            survived.filter((l) => l === line).length,
+            `lost or duplicated ${JSON.stringify(line)}\nfrom ${JSON.stringify(original)}`,
+          ).toBe(wrote.filter((l) => l === line).length)
         }
       }
     },
