@@ -12,7 +12,7 @@ import type { PluginConfig } from '../orchestrator/plugins/types.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde, detectAssistantConfigs } from './detect.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { IDE_LABELS } from './types.js'
-import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
+import type { CliContext, CopyResults, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { bootstrapCustomizations } from './bootstrap.js'
 import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
 import { resolveManagedPaths, declaredManagedPaths } from './managed-paths.js'
@@ -375,6 +375,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const adoptedRoots: string[] = []
   const repairedRoots: string[] = []
   const damagedRoots: string[] = []
+  const severedRoots: string[] = []
   const staleRoots: string[] = []
   const tornRoots: string[] = []
   // Generated config that exists but will not parse — a hand-written
@@ -382,6 +383,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // this. Named at the end instead of aborting: the abort left the framework
   // tree written with no manifest beside it, and never said which file.
   const unreadable: string[] = []
+  const failedTargets: Array<{ ide: string; message: string }> = []
 
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
@@ -393,9 +395,23 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     // was recoverable, because `sync --check` compares content and not version
     // numbers, but a command that writes a version it did not compile is
     // asserting something it has not done.
-    const results = isReinit
-      ? await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
-      : await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo)
+    // One target failing must not abort the others, and must not abort the
+    // manifest. The loop had no guard, and the manifest is written after it, so
+    // a second target throwing — an unwritable `.github/copilot-instructions.md`
+    // is enough — left the first target's 78 files on disk with no manifest at
+    // all: the front door said "not set up", `sync` said to run `init`, `init`
+    // failed the same way, and `remove --all` refused to uninstall what it had
+    // just installed. Single-target installs write the root file first and so
+    // throw before anything lands, which is why this only showed up with two.
+    let results: CopyResults
+    try {
+      results = isReinit
+        ? await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
+        : await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo)
+    } catch (err) {
+      failedTargets.push({ ide, message: (err as Error).message })
+      continue
+    }
     totalCreated += results.created.length
     totalSkipped += results.skipped.length
     skippedPaths.push(...results.skipped)
@@ -406,6 +422,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     adoptedRoots.push(...(results.adopted ?? []))
     repairedRoots.push(...(results.repaired ?? []))
     damagedRoots.push(...(results.damagedRoots ?? []))
+    severedRoots.push(...(results.severedRoots ?? []))
     staleRoots.push(...(results.staleRoots ?? []))
     tornRoots.push(...(results.tornRoots ?? []))
 
@@ -509,6 +526,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   // ── Summary ─────────────────────────────────────────────────────
   console.log(`  ${c.green('✓')} Created ${c.bold(String(totalCreated))} files`)
+  for (const { ide, message } of failedTargets) {
+    console.log(`  ${c.red('✗')} ${IDE_LABELS[ide as IdeChoice] ?? ide} could not be installed:`)
+    console.log(`     ${c.dim(message)}`)
+    console.log(`     ${c.dim('Fix that, then run opencastle sync.')}`)
+  }
   for (const file of unreadable) {
     const [name, why] = file.split('\u0000')
     console.log(
@@ -523,6 +545,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   if (gitignoreResult === 'created') {
     console.log(`  ${c.green('✓')} Created .gitignore with OpenCastle entries`)
+  } else if (gitignoreResult === 'severed') {
+    console.log(
+      `  ${c.yellow('!')} Left .gitignore alone — a marker there pairs with nothing.`,
+    )
+    console.log(`     ${c.dim('Restore the missing marker, or delete the rules beside it, then sync.')}`)
   } else if (gitignoreResult === 'updated' || gitignoreResult === 'repaired') {
     console.log(`  ${c.green('✓')} Updated .gitignore with OpenCastle entries`)
   }
@@ -549,6 +576,22 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   // `sync` says both of these loudly; `init` said neither, so the one command
   // most likely to meet a pre-0.36 file was the one that replaced it in silence.
+  if (severedRoots.length > 0) {
+    console.log(
+      `\n  ${c.yellow('⚠')}  Nothing was written to ${new Set(severedRoots).size} file(s):\n`,
+    )
+    for (const p of [...new Set(severedRoots)]) {
+      console.log(`     ${c.dim(relative(projectRoot, p))}`)
+    }
+    console.log(
+      `     ${c.dim('An OpenCastle marker is there with no matching one, so the generated')}`,
+    )
+    console.log(
+      `     ${c.dim('text beside it has nothing delimiting it. Restore the missing marker,')}`,
+    )
+    console.log(`     ${c.dim('or delete that text, and run sync again.')}`)
+  }
+
   if (damagedRoots.length > 0) {
     // Two blocks and unpaired markers in one file. Reducing it means cutting,
     // and cutting here can sweep the user's own text into a block; so the tool

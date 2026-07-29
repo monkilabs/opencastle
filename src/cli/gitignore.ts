@@ -84,7 +84,12 @@ const LOCAL_ONLY = [
 // `git status`, which left it one `git clean -xdf` from gone.
 
 /** A line only our generated block contains — the marker that it is ours. */
-const GENERATED_SENTINEL = 'Generated assistant config is committed on purpose'
+export const GENERATED_SENTINEL = 'Generated assistant config is committed on purpose'
+
+/** Is a block of ours in this `.gitignore`, whatever state its markers are in? */
+export function hasOurRules(content: string): boolean {
+  return content.includes(GENERATED_SENTINEL)
+}
 
 export function buildBlock(): string {
   return [
@@ -173,7 +178,7 @@ export async function updateGitignore(
   // a complete block — `.env` included — in the user's file.
   // Same test as the root files: a stray marker only means "severed" when our
   // rules are actually in the file with nothing delimiting them.
-  if (orphans.length > 0 && existing.includes(GENERATED_SENTINEL)) return 'severed'
+  if (orphans.length > 0 && hasOurRules(existing)) return 'severed'
 
   // Append block to existing file
   // One newline, same reasoning as the root-file merge: normalising the user's

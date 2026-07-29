@@ -75,6 +75,9 @@ export interface CopyResults {
    */
   damagedRoots?: string[];
 
+  /** Root files `sync` declined to write to: our body is there with no markers. */
+  severedRoots?: string[];
+
   unreadable?: string[];
 
   /**

@@ -280,7 +280,12 @@ function markerOffsets(content: string, marker: string): number[] {
   for (;;) {
     const at = content.indexOf(marker, from)
     if (at === -1) return out
-    if (at === bom || content[at - 1] === '\n') out.push(at)
+    // `\r` as well as `\n`. A file saved with classic Mac line endings has no
+    // `\n` at all, so no marker was at a line start, no block was found, and
+    // `sync` appended a second one — 20KB becoming 40KB with every surface
+    // green. Round 17's BOM defect through a different alphabet entry, in the
+    // same reader.
+    if (at === bom || content[at - 1] === '\n' || content[at - 1] === '\r') out.push(at)
     from = at + marker.length
   }
 }
@@ -528,6 +533,16 @@ export function diagnoseManagedFile(
   content: string,
   startMarker: string = BLOCK_START,
   endMarker: string = BLOCK_END,
+  /**
+   * How to tell whether a body of ours is in this file.
+   *
+   * Defaulted to the root-file fingerprints, which is why `severed` could never
+   * fire for `.gitignore`: the writer refused to touch such a file while the
+   * classifier called it ordinary drift, so both surfaces prescribed a `sync`
+   * that printed "✓ Updated .gitignore" and changed nothing, forever. The
+   * writer already had the right predicate; it just was not the classifier's.
+   */
+  bodyPresent: (text: string) => boolean = carriesLegacyBody,
 ): FileDiagnosis {
   const blocks = blockRegions(content, startMarker, endMarker).length
   const strays = orphanMarkers(content, startMarker, endMarker).length
@@ -567,7 +582,7 @@ export function diagnoseManagedFile(
   // they have ever installed — refusing to write to that file would mean the
   // tool could not install at all. What makes it severed is our body sitting
   // there with its delimiters gone.
-  if (strays > 0 && blocks === 0 && carriesLegacyBody(content)) {
+  if (strays > 0 && blocks === 0 && bodyPresent(content)) {
     return {
       state: 'severed',
       fixable: false,
@@ -969,6 +984,7 @@ export function recordMerge(
     staleRoots?: string[]
     tornRoots?: string[]
     damagedRoots?: string[]
+    severedRoots?: string[]
   },
   path: string,
   merge: MergeResult,
@@ -976,6 +992,11 @@ export function recordMerge(
   if (merge.staleGeneratedContent) (results.staleRoots ??= []).push(path)
   if (merge.orphanMarker) (results.tornRoots ??= []).push(path)
   if (merge.damaged) (results.damagedRoots ??= []).push(path)
+  // Set by the writer and read by nobody, so a root file `sync` had declined to
+  // write to was announced with the *torn* wording — "text beside it may be
+  // stale output; only you can tell" — beside "✓ Updated 0 framework files",
+  // while `doctor` and the gate both said plainly that nothing was written.
+  if (merge.severed) (results.severedRoots ??= []).push(path)
 
   if (merge.action === 'adopted') {
     results.created.push(path)

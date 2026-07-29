@@ -10,6 +10,7 @@ import {
   START_MARKER as GITIGNORE_START,
   END_MARKER as GITIGNORE_END,
   buildBlock as buildGitignoreBlock,
+  hasOurRules,
 } from './gitignore.js'
 import {
   blockRegions,
@@ -325,7 +326,20 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
   // `.gitignore` the writer refuses to reduce left `doctor` red and this
   // command green, so CI passed over the exact state a person has to resolve.
   {
+    // Only inside a git repository. Ignore rules mean nothing outside one, and
+    // `.gitignore` is written by the commands rather than by the adapters — so
+    // a tree compiled by an adapter alone has never had one and its absence is
+    // not a finding.
     const gi = resolve(projectRoot, '.gitignore')
+    const inGitRepo = existsSync(resolve(projectRoot, '.git'))
+    if (inGitRepo && !existsSync(gi)) {
+      drift.push({
+        ide: 'all',
+        path: '.gitignore',
+        kind: 'missing',
+        detail: '.env and the run artefacts are not ignored without it',
+      })
+    }
     if (existsSync(gi)) {
       // Guarded like every other read of a user file. An unreadable
       // `.gitignore` made `sync` exit 1 while this command, `doctor` and
@@ -363,7 +377,12 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       // rescue directory all stopped being ignored, `.env` became committable,
       // and every surface reported health. The case the check was written for
       // was caught and the bigger one beside it was not.
-      if (actual === null || actual.trim() !== wanted.trim()) {
+      // Not when the file is severed: `sync` will not write to it, so calling
+      // this "edited in place (your change will be lost on the next sync)" and
+      // prescribing `sync` was false twice over. The structural arm below
+      // reports it correctly.
+      const giState = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END, hasOurRules).state
+      if (giState !== 'severed' && (actual === null || actual.trim() !== wanted.trim())) {
         drift.push({
           ide: 'all',
           path: '.gitignore',
@@ -374,7 +393,7 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
           }),
         })
       }
-      const d = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END)
+      const d = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END, hasOurRules)
       // A second block is invisible to the content comparison above, which only
       // ever looks at the last region — so a doubled `.gitignore` was red on
       // `doctor` and green here. `doubled` is fixable, so it is ordinary drift

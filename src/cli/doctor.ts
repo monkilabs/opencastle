@@ -17,6 +17,7 @@ import {
 import {
   START_MARKER as GITIGNORE_START,
   END_MARKER as GITIGNORE_END,
+  hasOurRules,
 } from './gitignore.js';
 import { UnreadableConfigError } from './types.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
@@ -53,13 +54,34 @@ interface CheckResult {
 async function checkGitignoreBlock(projectRoot: string): Promise<CheckResult> {
   const label = 'Local artefacts are ignored';
   const path = resolve(projectRoot, '.gitignore');
-  if (!existsSync(path)) return { label, ok: true, warning: false };
+  // The file gone entirely is the larger version of the block gone, and it read
+  // as healthy: "✓ Local artefacts are ignored" over a project where nothing
+  // was ignored and `.env` was staged by `git add -A`.
+  if (!existsSync(path)) {
+    // Only inside a git repository — see the matching gate in `sync-check`.
+    if (!existsSync(resolve(projectRoot, '.git'))) {
+      return { label, ok: true, warning: false };
+    }
+    return {
+      label,
+      ok: false,
+      detail: '.gitignore is missing — .env and the run artefacts are not ignored',
+      fix: 'opencastle sync',
+    };
+  }
 
   let content: string;
   try {
     content = await readFile(path, 'utf8');
-  } catch {
-    return { label, ok: true, warning: false };
+  } catch (err) {
+    // Not `ok: true`. A file we could not read is not a file we have checked;
+    // this only passed because another check further down happened to fail too.
+    return {
+      label,
+      ok: false,
+      detail: `.gitignore cannot be read — ${(err as Error).message}`,
+      fix: 'fix the permissions or replace the file; this one needs a person',
+    };
   }
 
   const { blockRegions } = await import('./managed-block.js');
@@ -418,7 +440,7 @@ async function syncWouldClearThis(projectRoot: string, hidden: string[]): Promis
   // and a stray marker is still rewritten by `sync`, so sending that user to
   // hand-edit was the same conflation the drift checker had: "can the structure
   // be reduced" is not "will sync rewrite the block".
-  if (diagnoseManagedFile(content, GITIGNORE_START, GITIGNORE_END).state === 'unreducible') {
+  if (diagnoseManagedFile(content, GITIGNORE_START, GITIGNORE_END, hasOurRules).state === 'unreducible') {
     return false;
   }
   const { blockRegions } = await import('./managed-block.js');
@@ -515,9 +537,13 @@ async function checkTornBlocks(
   // surface ever looked at — so a `.gitignore` the writer had declined to
   // reduce sat there while `doctor` failed on a *different* check with a remedy
   // that could not work, and nothing named the real problem.
-  const files: Array<{ rel: string; markers: [string, string] }> = [
-    ...managed.merged.map((rel) => ({ rel, markers: [BLOCK_START, BLOCK_END] as [string, string] })),
-    { rel: '.gitignore', markers: [GITIGNORE_START, GITIGNORE_END] as [string, string] },
+  type Reader = [string, string, (text: string) => boolean]
+  const files: Array<{ rel: string; markers: Reader }> = [
+    ...managed.merged.map((rel) => ({
+      rel,
+      markers: [BLOCK_START, BLOCK_END, carriesLegacyBody] as Reader,
+    })),
+    { rel: '.gitignore', markers: [GITIGNORE_START, GITIGNORE_END, hasOurRules] as Reader },
   ]
 
   const found: Array<{ rel: string; diagnosis: FileDiagnosis }> = []
@@ -543,7 +569,7 @@ async function checkTornBlocks(
       })
       continue
     }
-    const diagnosis = diagnoseManagedFile(content, markers[0], markers[1])
+    const diagnosis = diagnoseManagedFile(content, markers[0], markers[1], markers[2])
     if (diagnosis.state !== 'clean') found.push({ rel, diagnosis })
     // A whole instruction set from an older release, sitting outside our block.
     // Nothing checked for this: the writer warned about it once while
@@ -555,7 +581,7 @@ async function checkTornBlocks(
     // `sync` replaces it, so calling that "needs a person" was wrong twice
     // over: it named the current release's own body as an older release's.
     else if (
-      diagnoseManagedFile(content, markers[0], markers[1]).state === 'clean' &&
+      diagnoseManagedFile(content, markers[0], markers[1], markers[2]).state === 'clean' &&
       countManagedBlocks(content) > 0 &&
       carriesLegacyBody(stripManagedBlock(content))
     ) {

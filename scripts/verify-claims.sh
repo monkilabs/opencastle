@@ -715,7 +715,7 @@ c14_check() {
   fi
 }
 
-for state in clean doubled torn unreducible gi-doubled gi-torn gi-unreducible; do
+for state in clean doubled torn unreducible gi-doubled gi-torn gi-severed gi-severed-start gi-unreducible; do
   new "c14-$state"; printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
   printf 'node_modules\nkeep-me\n' > .gitignore
   node $CLI init --yes >/dev/null 2>&1
@@ -738,6 +738,10 @@ elif state == 'gi-doubled':
     gi.write_text(g + chr(10) + gblk + chr(10))
 elif state == 'gi-torn':
     gi.write_text(g + chr(10) + GS + chr(10))
+elif state == 'gi-severed':
+    gi.write_text(g.replace(GE + chr(10), '', 1))
+elif state == 'gi-severed-start':
+    gi.write_text(g.replace(GS + chr(10), '', 1))
 elif state == 'gi-unreducible':
     gi.write_text('node_modules' + chr(10) + gblk + chr(10) + 'keep-me' + chr(10) + GS +
                   chr(10) + '.env.local' + chr(10) + gblk + chr(10) + GE + chr(10))
@@ -1029,6 +1033,45 @@ PY
                                               || bad "$state: their line was lost"
 done
 
+say "CLAIM 12h — a target that fails does not orphan the ones that worked"
+# `init` ran its adapter loop with no guard and wrote the manifest after it, so
+# a second target throwing left the first target's whole tree on disk with no
+# manifest: the front door said "not set up", `sync` said run `init`, `init`
+# failed identically, and `remove --all` refused to uninstall what it had just
+# installed. A single-target install writes the root file first and throws
+# before anything lands, which is why two targets were needed to see it.
+for fault in readonly-second dir-second; do
+  new "c12h-$fault"; mkdir -p .claude .github
+  printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
+  case $fault in
+    readonly-second) printf '# Copilot\n\nTHEIR TEXT\n' > .github/copilot-instructions.md
+                     chmod 444 .github/copilot-instructions.md ;;
+    dir-second)      rm -rf .github/copilot-instructions.md
+                     mkdir -p .github/copilot-instructions.md ;;
+  esac
+  out=$(node $CLI init --yes 2>&1 | plain)
+  files=$(find .claude -type f 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$files" -gt 0 ]; then
+    [ -f .opencastle/manifest.json ] \
+      && ok "$fault: the working target is recorded, not orphaned" \
+      || bad "$fault: $files files on disk and no manifest"
+    echo "$out" | grep -qi "could not be installed" \
+      && ok "$fault: the failing target was named" \
+      || bad "$fault: the failure was not reported"
+    node $CLI 2>&1 | plain | grep -q "not set up" \
+      && bad "$fault: the front door calls it uninstalled" \
+      || ok "$fault: the front door sees the install"
+  else
+    ok "$fault: nothing landed, so nothing to orphan"
+  fi
+  chmod 644 .github/copilot-instructions.md 2>/dev/null
+  rm -rf .github/copilot-instructions.md 2>/dev/null
+  printf '# Copilot\n' > .github/copilot-instructions.md 2>/dev/null
+  node $CLI sync --yes --force >/dev/null 2>&1
+  node $CLI doctor >/dev/null 2>&1 && ok "$fault: recovers once the fault is fixed" \
+                                   || bad "$fault: still broken after the fault is fixed"
+done
+
 say "CLAIM 12d — a failing init leaves the install coherent too"
 # CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
 # emptied every framework directory before writing a byte.
@@ -1041,13 +1084,23 @@ for cmd in "init --yes" "sync --yes --force"; do
 import pathlib
 p=pathlib.Path('CLAUDE.md'); p.write_text(p.read_text().replace('# Project Instructions','# CHANGED'))"
   chmod 444 CLAUDE.md
-  node $CLI $cmd >/dev/null 2>&1; code=$?
+  # Captured before the pipe: `$?` after `cmd | plain` is sed's exit status, not
+  # the command's, so the code was always 0 and the check below always fired.
+  out=$(node $CLI $cmd 2>&1); code=$?
+  out=$(printf '%s' "$out" | plain)
   chmod 644 CLAUDE.md
   # The injected failure has to actually bite, or "the tree survived" is true of
   # a run that simply succeeded — the assertion passes identically either way,
   # and would go on passing anywhere the chmod does not apply (CI as root).
-  [ $code -ne 0 ] && ok "$cmd: the injected failure took effect" \
-                  || bad "$cmd: exited 0 — the fixture tested nothing"
+  #
+  # "Bit" means non-zero *or* named: `init` no longer aborts on one target's
+  # failure, because doing so left the targets that had worked on disk with no
+  # manifest and nothing able to reach them. It reports and carries on.
+  if [ $code -ne 0 ] || echo "$out" | grep -qi "could not be installed"; then
+    ok "$cmd: the injected failure took effect"
+  else
+    bad "$cmd: exited 0 and said nothing — the fixture tested nothing"
+  fi
   after=$(find .claude .cursor -type f 2>/dev/null | wc -l | tr -d ' ')
   [ "$after" -gt 0 ] && ok "$cmd: framework directories still populated ($after files)" \
                      || bad "$cmd: emptied the framework directories (was $before)"

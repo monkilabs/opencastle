@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { readFile, appendFile, rename, mkdir, writeFile, unlink, copyFile, readdir, rm } from 'node:fs/promises'
 import { readManifest, writeManifest } from './manifest.js'
-import { multiselect, confirm, closePrompts, c } from './prompt.js'
+import { multiselect, confirm, closePrompts, stdinIsExhausted, c } from './prompt.js'
 import { isLegacyStack, migrateStackConfig, IDE_LABELS } from './types.js'
 import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js'
@@ -220,7 +220,16 @@ export default async function update({
     const stackNow = resolveStack({ ...manifest, ides })
     await restoreMissingCustomizations(pkgRoot, projectRoot, stackNow, ides)
     const gitignoreOutcome = await updateGitignore(projectRoot)
-    if (gitignoreOutcome !== 'unchanged') {
+    // `severed` wrote nothing, so saying "Updated .gitignore" over it was the
+    // command asserting work it had declined to do — and the only surface that
+    // could have told the user was the one printing the false line.
+    if (gitignoreOutcome === 'severed') {
+      console.log(
+        `  ${c.yellow('!')} Left .gitignore alone — a marker there pairs with nothing,` +
+          ` and the rules beside it have nothing delimiting them.`,
+      )
+      console.log(`     ${c.dim('Restore the missing marker, or delete those rules, then sync again.')}`)
+    } else if (gitignoreOutcome !== 'unchanged') {
       console.log(`  ${c.green('✓')} Updated .gitignore ${c.dim('(generated config is committed)')}`)
     }
     // A collapse here removes ignore rules, and a rule silently dropped is a
@@ -415,9 +424,19 @@ export default async function update({
   // `opencastle add sentry` already said what to do. Asking again is a keystroke
   // charged for nothing.
   if (!assumeYes) {
-    const proceed = await confirm('Proceed?')
+    // `refuse`, like `init`'s overwrite question. This one is the mainline
+    // question and it defaults to yes, so a script running `sync` with stdin
+    // closed proceeded on an answer nobody gave — and the run swept a
+    // hand-written file out of a framework directory with no backup. `--yes` is
+    // the documented way to say yes without a terminal, and it is unaffected.
+    const proceed = await confirm('Proceed?', true, 'refuse')
     if (!proceed) {
-      console.log('  Aborted.')
+      console.log(
+        stdinIsExhausted()
+          ? '  Aborted — no answer, and this run would overwrite generated files.' +
+              '\n  Re-run with --yes to proceed without being asked.'
+          : '  Aborted.',
+      )
       closePrompts()
       return
     }
@@ -433,6 +452,7 @@ export default async function update({
   const adoptedRoots: string[] = []
   const repairedRoots: string[] = []
   const damagedRoots: string[] = []
+  const severedRoots: string[] = []
   const staleRoots: string[] = []
   const tornRoots: string[] = []
   const sweptFiles: string[] = []
@@ -449,6 +469,7 @@ export default async function update({
     adoptedRoots.push(...(results.adopted ?? []))
     repairedRoots.push(...(results.repaired ?? []))
     damagedRoots.push(...(results.damagedRoots ?? []))
+    severedRoots.push(...(results.severedRoots ?? []))
     staleRoots.push(...(results.staleRoots ?? []))
     tornRoots.push(...(results.tornRoots ?? []))
     sweptFiles.push(...(results.deleted ?? []))
@@ -539,6 +560,22 @@ export default async function update({
     )
     console.log(`     ${c.dim('Merge conflict? Fix the file and run sync again.')}`)
   }
+  if (severedRoots.length > 0) {
+    console.log(
+      `\n  ${c.yellow('⚠')}  Nothing was written to ${new Set(severedRoots).size} file(s):\n`,
+    )
+    for (const p of [...new Set(severedRoots)]) {
+      console.log(`     ${c.dim(relative(projectRoot, p))}`)
+    }
+    console.log(
+      `     ${c.dim('An OpenCastle marker is there with no matching one, so the generated')}`,
+    )
+    console.log(
+      `     ${c.dim('text beside it has nothing delimiting it. Restore the missing marker,')}`,
+    )
+    console.log(`     ${c.dim('or delete that text, and run sync again.')}`)
+  }
+
   if (damagedRoots.length > 0) {
     // Two blocks and unpaired markers in one file. Reducing it means cutting,
     // and cutting here can sweep the user's own text into a block; so the tool
