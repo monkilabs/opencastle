@@ -161,7 +161,12 @@ try {
   const mod = await commands[command]()
   await mod.default({ pkgRoot, args })
 } catch (err) {
-  console.error(`\n  ✗ ${err.message}\n`)
+  // Node puts the path on the error object but not always in the message —
+  // `EISDIR` in particular reads "illegal operation on a directory, read" with
+  // nothing to act on. Every guarded reader in the codebase prefixes the
+  // filename for that reason; this is the catch-all for the ones that throw.
+  const where = err.path && !String(err.message).includes(err.path) ? ` (${err.path})` : ''
+  console.error(`\n  ✗ ${err.message}${where}\n`)
   if (args.includes('--debug')) console.error(err)
   process.exit(1)
 }

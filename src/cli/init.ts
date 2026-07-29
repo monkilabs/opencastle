@@ -458,7 +458,18 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       totalSkipped = 0
       for (const ide of ides) {
         const adapter = await IDE_ADAPTERS[ide]()
-        const results = await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
+        // Guarded like the main loop above, and for the same reason: this one
+        // was not, so a re-entry over an orphaned install that failed on the
+        // second target left 91 files on disk with no manifest and every
+        // command dead-ended — the front door saying "not set up", `sync`
+        // saying run `init`, `init` failing identically, `remove` refusing.
+        let results: CopyResults
+        try {
+          results = await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
+        } catch (err) {
+          failedTargets.push({ ide, message: (err as Error).message })
+          continue
+        }
         // `copied` too. Counting only `created` and `skipped` made this path
         // report "Created 0 files / Left 29 existing files untouched" over a
         // run that had just rewritten 78 of them — the summary asserting the
@@ -550,8 +561,8 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   if (gitignoreResult === 'repaired') {
       console.log(
-        `  ${c.yellow('!')} Collapsed a duplicated block in .gitignore; ` +
-          `.gitignore.opencastle-backup holds what was there before.`,
+        `  ${c.yellow('!')} Rewrote .gitignore's OpenCastle block and removed lines that were ` +
+          `inside it; .gitignore.opencastle-backup holds what was there before.`,
       )
   }
   if (totalSkipped > 0) {

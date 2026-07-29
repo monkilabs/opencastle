@@ -159,8 +159,28 @@ function comparePath(
       const a = join(actual, rel)
       const shown = `${managedPath.replace(/\/$/, '')}/${rel}`
       checked++
-      if (!existsSync(a)) drift.push({ ide, path: shown, kind: 'missing' })
-      else if (!sameContent(f, a)) drift.push({ ide, path: shown, kind: 'changed' })
+      if (!existsSync(a)) {
+        drift.push({ ide, path: shown, kind: 'missing' })
+        continue
+      }
+      // Guarded like the merged-root branch below. `sameContent` catches its
+      // own read failure and returns false, which turns "I could not read it"
+      // into "it drifted" — so a directory wearing a generated file's name was
+      // reported as an ordinary edit, `sync` was prescribed, `sync` exited 1 on
+      // the same path, and `doctor` called the project healthy throughout.
+      try {
+        readFileSync(a)
+      } catch (err) {
+        drift.push({
+          ide,
+          path: shown,
+          kind: 'unreducible',
+          detail: `cannot be read — ${(err as Error).message}`,
+          fix: 'fix the permissions or replace the path; this one needs a person',
+        })
+        continue
+      }
+      if (!sameContent(f, a)) drift.push({ ide, path: shown, kind: 'changed' })
     }
     // `update` deletes each framework directory before recompiling, so a file
     // someone dropped in by hand disappears on the next sync with no warning.
@@ -371,6 +391,25 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
           kind: 'unreducible',
           detail: `cannot be read — ${(err as Error).message}`,
           fix: `fix or delete ${rel}, then run opencastle sync; this one needs a person`,
+        })
+      }
+    }
+  }
+
+  // The skill matrix — the third customizable path, and the third instance of
+  // this same split. `doctor` opens and parses it; the gate never did.
+  {
+    const matrix = resolve(projectRoot, '.opencastle', 'agents', 'skill-matrix.json')
+    if (existsSync(matrix)) {
+      try {
+        JSON.parse(readFileSync(matrix, 'utf8'))
+      } catch (err) {
+        drift.push({
+          ide: 'all',
+          path: '.opencastle/agents/skill-matrix.json',
+          kind: 'unreducible',
+          detail: `cannot be read — ${(err as Error).message}`,
+          fix: 'fix or delete the file, then run opencastle sync; this one needs a person',
         })
       }
     }

@@ -227,8 +227,8 @@ export default async function update({
     // secret committed. It used to happen with no backup and no output at all.
     if (gitignoreOutcome === 'repaired') {
       console.log(
-        `  ${c.yellow('!')} Collapsed a duplicated block in .gitignore; ` +
-          `.gitignore.opencastle-backup holds what was there before.`,
+        `  ${c.yellow('!')} Rewrote .gitignore's OpenCastle block and removed lines that were ` +
+          `inside it; .gitignore.opencastle-backup holds what was there before.`,
       )
     }
   }

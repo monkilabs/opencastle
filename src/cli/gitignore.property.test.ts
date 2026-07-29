@@ -28,12 +28,15 @@ import { blockRegions, orphanMarkers } from './managed-block.js'
 // Negations are the point: `!keep.txt` only exempts anything if it comes *after*
 // the pattern it exempts, so a rule that survives in the wrong position is still
 // a behaviour change. Nothing here may move.
+// Concrete file paths, never a bare directory with a trailing slash:
+// `check-ignore` answers oddly for those — it reported `dist/` as matched by an
+// empty pattern on a CRLF file — and the question here is about files anyway.
 const RULES = [
-  'node_modules',
+  'node_modules/x',
   '.env.local',
   'secrets/prod.key',
-  'dist/',
-  '*.tmp',
+  'dist/x',
+  'a.tmp',
   'keep.txt',
   'logs/a.log',
 ]
@@ -75,16 +78,46 @@ function makeFile(seed: number): string {
   const count = 1 + Math.floor(rand() * 12)
   let text = ''
   for (let i = 0; i < count; i++) text += PIECES[Math.floor(rand() * PIECES.length)]
+  // Line endings are part of the alphabet, not a detail. A classic-Mac file has
+  // no `\n` at all, which made the whole file read as one line and every rule
+  // in it ours; and a file with no terminator at the end had the block
+  // concatenated onto its last rule. Both shipped and both were found here.
+  const r = rand()
+  if (r < 0.2) text = text.replace(/\n/g, '\r\n')
+  else if (r < 0.35) text = text.replace(/\n/g, '\r')
+  if (rand() < 0.25) text = text.replace(/(\r\n|\n|\r)$/, '')
   return text
+}
+
+/** Lines as the tool sees them: `\r\n`, `\n` and a lone `\r` all end one. */
+function splitLines(text: string): string[] {
+  return text.split(/\r\n|\n|\r/)
+}
+
+/** The file with `drop` line indices removed, terminators preserved. */
+function joinKept(text: string, drop: Set<number>): string {
+  const parts = text.split(/(\r\n|\n|\r)/)
+  let out = ''
+  let line = 0
+  for (let i = 0; i < parts.length; i += 2) {
+    if (!drop.has(line)) out += parts[i] + (parts[i + 1] ?? '')
+    line++
+  }
+  return out
 }
 
 /** Which of `RULES` git ignores, given the file on disk. */
 function ignored(dir: string): string[] {
   try {
-    const out = execFileSync('git', ['-C', dir, 'check-ignore', '--stdin'], {
-      input: RULES.join('\n') + '\n',
-      encoding: 'utf8',
-    })
+    // The machine's *global* excludes file is off. Without this the oracle
+    // answered from whatever the developer happens to ignore globally — `dist/`
+    // was reported ignored by a fixture that never mentioned it — so the test
+    // was both wrong here and unreproducible anywhere else.
+    const out = execFileSync(
+      'git',
+      ['-C', dir, '-c', 'core.excludesFile=/dev/null', 'check-ignore', '--stdin'],
+      { input: RULES.join('\n') + '\n', encoding: 'utf8' },
+    )
     return out.split('\n').filter(Boolean)
   } catch (err) {
     // Exit 1 means "none ignored", which is an answer, not a failure.
@@ -119,26 +152,35 @@ describe('.gitignore holds the same invariants as a root file', () => {
 
         // Which rules git honours *because of a line outside every block of
         // ours*. Those are the user's, and no number of syncs may drop one.
+        // Ours: every line of a complete block, and every marker line whatever
+        // it pairs with. Leaving unpaired markers in the baseline meant the
+        // baseline file still carried them — and since they begin with `#`,
+        // git read them as comments, so the two files were not comparable.
         const ownedLines = new Set<number>()
         for (const r of blockRegions(original, START_MARKER, END_MARKER)) {
-          const from = original.slice(0, r.start).split('\n').length - 1
-          const to = original.slice(0, r.end).split('\n').length - 1
+          const from = splitLines(original.slice(0, r.start)).length - 1
+          const to = splitLines(original.slice(0, r.end)).length - 1
           for (let i = from; i <= to; i++) ownedLines.add(i)
         }
-        writeFileSync(
-          file,
-          original
-            .split('\n')
-            .filter((_, i) => !ownedLines.has(i))
-            .join('\n'),
-        )
+        for (const [i, line] of splitLines(original).entries()) {
+          if (line.startsWith(START_MARKER) || line.startsWith(END_MARKER)) ownedLines.add(i)
+        }
+        writeFileSync(file, joinKept(original, ownedLines))
         const theirs = new Set(ignored(dir))
         writeFileSync(file, original)
+
+        // git does not treat a lone `\r` as a line separator, so it reads a
+        // classic-Mac `.gitignore` as a single line and honours nothing in it —
+        // before or after this tool touches it. Asking git about those files
+        // compares against a state it never had. Their bytes are still checked
+        // below, which is all that can honestly be promised for a file git
+        // cannot read.
+        const crOnly = original.includes('\r') && !original.includes('\n')
 
         for (let pass = 0; pass < 3; pass++) {
           await updateGitignore(dir)
           const now = new Set(ignored(dir))
-          for (const rule of theirs) {
+          for (const rule of crOnly ? [] : theirs) {
             expect(
               now.has(rule),
               `pass ${pass}: stopped ignoring ${rule}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(readFileSync(file, 'utf8'))}`,
@@ -152,17 +194,16 @@ describe('.gitignore holds the same invariants as a root file', () => {
         const ownedNow = new Set<number>()
         const finalText = readFileSync(file, 'utf8')
         for (const r of blockRegions(finalText, START_MARKER, END_MARKER)) {
-          const from = finalText.slice(0, r.start).split('\n').length - 1
-          const to = finalText.slice(0, r.end).split('\n').length - 1
+          const from = splitLines(finalText.slice(0, r.start)).length - 1
+          const to = splitLines(finalText.slice(0, r.end)).length - 1
           for (let i = from; i <= to; i++) ownedNow.add(i)
         }
-        const survived = finalText.split('\n').filter((_, i) => !ownedNow.has(i))
+        const survived = splitLines(finalText).filter((_, i) => !ownedNow.has(i))
         // Marker lines excluded: a marker that pairs with nothing sits outside
         // every *region*, so `blockRegions` does not call it owned — but it is
         // still a line this tool wrote, and taking it back is not losing
         // anything of the user's.
-        const wrote = original
-          .split('\n')
+        const wrote = splitLines(original)
           .filter((_, i) => !ownedLines.has(i))
           .filter((l) => l.trim() !== '')
           .filter((l) => !l.startsWith(START_MARKER) && !l.startsWith(END_MARKER))

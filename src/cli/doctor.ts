@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js';
@@ -281,6 +281,34 @@ export async function runDoctorCheck(projectRoot: string, check: DoctorCheck): P
   }
 
   if (check.countContents) {
+    // Only entries that are supposed to *be* generated files. A framework
+    // directory legitimately holds subdirectories — skills live in one folder
+    // each — so "is a directory" is only wrong for something wearing a
+    // generated file's name, which is what `countFilter` identifies. Without
+    // the filter this flagged normal structure on every healthy project.
+    if (check.countFilter) {
+      for (const entry of contents.filter((e) => e.endsWith(check.countFilter!))) {
+        const child = resolve(fullPath, entry);
+        try {
+          if (statSync(child).isDirectory()) {
+            return {
+              ok: false,
+              label: check.label,
+              detail: `${check.path}${entry} is a directory, not a generated file`,
+              fix: `remove ${check.path}${entry}, then run opencastle sync; this one needs a person`,
+            };
+          }
+          readFileSync(child);
+        } catch (err) {
+          return {
+            ok: false,
+            label: check.label,
+            detail: `${check.path}${entry} cannot be read — ${(err as Error).message}`,
+            fix: 'fix the permissions or replace it, then run opencastle sync; this one needs a person',
+          };
+        }
+      }
+    }
     const entries = contents;
     const filtered = check.countFilter
       ? entries.filter((e) => e.endsWith(check.countFilter!))
@@ -423,13 +451,10 @@ async function syncWouldClearThis(projectRoot: string, hidden: string[]): Promis
   // rewrite that block. On an unreducible `.gitignore` it is not, so the
   // "run sync" remedy was a no-op that failed identically on every run, four
   // syncs in a row, while the check that *could* explain it said nothing.
-  // Only the state the writer refuses outright. A `.gitignore` with one block
-  // and a stray marker is still rewritten by `sync`, so sending that user to
-  // hand-edit was the same conflation the drift checker had: "can the structure
-  // be reduced" is not "will sync rewrite the block".
-  if (diagnoseManagedFile(content, GITIGNORE_START, GITIGNORE_END, hasOurRules).state === 'unreducible') {
-    return false;
-  }
+  // Nothing is refused here any more. `.gitignore`'s block is rebuilt rather
+  // than maintained, so `sync` always rewrites it — this bail was left over from
+  // when the writer could decline, and it sent users to hand-edit entries that
+  // one sync clears, while a neighbouring check in the same run said "run sync".
   const { blockRegions } = await import('./managed-block.js');
   const { START_MARKER, END_MARKER } = await import('./gitignore.js');
   const regions = blockRegions(content, START_MARKER, END_MARKER);

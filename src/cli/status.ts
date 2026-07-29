@@ -92,6 +92,34 @@ async function loadAdapters(manifest: Manifest): Promise<Array<{ ide: string; ad
   return out
 }
 
+/** Is any managed path in the project unreadable? */
+async function projectIsUnreadable(
+  projectRoot: string,
+  adapters: Array<{ adapter: { getManagedPaths(): { framework: string[] } } }>,
+): Promise<boolean> {
+  const { readdirSync: read } = await import('node:fs')
+  const walk = (dir: string): boolean => {
+    let entries
+    try {
+      entries = read(dir, { withFileTypes: true })
+    } catch {
+      return true
+    }
+    for (const e of entries) {
+      if (e.isDirectory() && walk(resolve(dir, e.name))) return true
+    }
+    return false
+  }
+  for (const { adapter } of adapters) {
+    for (const p of adapter.getManagedPaths().framework) {
+      const abs = resolve(projectRoot, p.replace(/\/$/, ''))
+      if (!existsSync(abs)) continue
+      if (statSync(abs).isDirectory() ? walk(abs) : false) return true
+    }
+  }
+  return false
+}
+
 export async function buildStatusReport(pkgRoot: string, projectRoot: string): Promise<StatusReport> {
   let manifest: Awaited<ReturnType<typeof readManifest>> = null
   try {
@@ -154,7 +182,17 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     const report = await buildCheckReport(pkgRoot, projectRoot)
     stale = report.drift.length > 0
     for (const d of report.drift) drifted.add(d.ide)
-  } catch {
+  } catch (err) {
+    // The comparison could not run — but that alone does not say whose fault it
+    // is. A package without its sources is our problem and no reason to call
+    // the project unhealthy; a directory in the project we cannot read is.
+    // Recording it unconditionally made the first look like the second;
+    // recording it nowhere let a nested unreadable directory report
+    // "Everything is current" while `sync --check` exited 1 and `sync` could
+    // not run at all. So: ask the project directly.
+    if (await projectIsUnreadable(projectRoot, adapters)) {
+      checkFailed = (err as Error).message
+    }
     // Falls back to the mtime heuristic. That is a fair answer when the reason
     // we could not compile is on our side; what it must not do is answer "no
     // drift" when it could not read the project either — see the inner catch.
