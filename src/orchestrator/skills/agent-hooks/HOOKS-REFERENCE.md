@@ -40,7 +40,7 @@ Log delegation: `opencastle log --type=delegation --issue=TAS-123 --status=start
 
 | # | Action | Who |
 |---|--------|-----|
-| 1 | `opencastle doctor --fix` | Team Lead |
+| 1 | `opencastle doctor` | Team Lead |
 | 2 | `opencastle log --type session ...` | All |
 | 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if incomplete | Team Lead |
 | 4 | `rg -c "^Lesson:" .opencastle/LESSONS-LEARNED.md` — flag merge if ≥5 | All |

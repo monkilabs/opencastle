@@ -262,6 +262,63 @@ for shape in lf crlf fenced blanks no-eol-newline; do
   cmp -s "$ROOT/v-gi" .gitignore && ok "$shape: .gitignore byte-identical" || bad "$shape: .gitignore differs"
 done
 
+say "CLAIM 3g — .gitignore byte fidelity, over the alphabet that reaches it"
+# The loop above always writes a `.gitignore` ending in a newline, so the one
+# case with a stated exception was never exercised on this file. Both round-20
+# reviewers found the gap independently.
+#
+# The exception is narrow and it is not a choice: git ends a line at `\n` and
+# nowhere else, so appending our block below a last line that has no `\n` after
+# it welds our marker onto the user's last rule and the rule stops matching. One
+# byte buys their rule back, and no removal can tell afterwards whose byte it was.
+for shape in lf crlf cr no-final-nl no-final-nl-cr blanks spaces bom bom-only latin1 negation mixed empty; do
+  new "c3g-$shape"; printf '# R\n' > CLAUDE.md
+  python3 - "$shape" <<'PY2'
+import pathlib, sys
+BOM = b'\xef\xbb\xbf'
+shapes = {
+  'lf': b'node_modules\ndist\n',
+  'crlf': b'node_modules\r\ndist\r\n',
+  'cr': b'node_modules\rdist\r',
+  'no-final-nl': b'node_modules\ndist',
+  'no-final-nl-cr': b'node_modules\rdist',
+  'blanks': b'\n\n\n',
+  'spaces': b'   \n',
+  'bom': BOM + b'node_modules\n',
+  'bom-only': BOM,
+  'latin1': b'secrets-caf\xe9/\n',
+  'negation': b'*.txt\n!keep.txt\n',
+  'mixed': b'a\nb\r\nc\rd\n',
+  'empty': b'',
+}
+pathlib.Path('.gitignore').write_bytes(shapes[sys.argv[1]])
+PY2
+  cp .gitignore "$ROOT/v-gi3"
+  node $CLI init --yes >/dev/null 2>&1
+  node $CLI remove --all --yes >/dev/null 2>&1
+  if [ ! -f .gitignore ]; then
+    # Deleting is right only when nothing of theirs was there to begin with.
+    if [ ! -s "$ROOT/v-gi3" ]; then
+      ok "$shape: an empty file we filled and emptied is gone"
+    else
+      bad "$shape: their .gitignore was deleted"
+    fi
+  elif cmp -s "$ROOT/v-gi3" .gitignore; then
+    ok "$shape: byte-identical"
+  else
+    want=$(( $(wc -c < "$ROOT/v-gi3") + 1 ))
+    got=$(wc -c < .gitignore)
+    # The stated exception, and nothing wider: one added byte, and it must be the
+    # terminator on the final line. Their text is otherwise untouched.
+    if [ "$got" -eq "$want" ] && [ "$(printf '%s' "$(cat "$ROOT/v-gi3")")" = "$(printf '%s' "$(cat .gitignore)")" ]; then
+      ok "$shape: restored, plus the one line terminator git needs"
+    else
+      bad "$shape: differs beyond the stated exception ($got bytes, wanted $want)"
+      od -c "$ROOT/v-gi3" | head -3; echo ' --- became ---'; od -c .gitignore | head -3
+    fi
+  fi
+done
+
 say "CLAIM 4 — sync does not touch what it did not create"
 new c4; echo '{"name":"p","dependencies":{"@supabase/supabase-js":"^2"}}' > package.json
 node $CLI init --yes >/dev/null 2>&1
@@ -781,20 +838,38 @@ say "CLAIM 6d — no surface calls a project healthy while another is red"
 # status/doctor divergence — and the route that found three of them. `status`
 # derived its verdict from half of `doctor`'s checks and treated a comparison
 # that *threw* as "no drift".
-for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-matrix unreadable-mcp unreadable-gitignore mcp-is-a-dir; do
+# Extended with the shapes two reviewers used to find `doctor` issuing a clean
+# bill: a directory wearing a generated file's name in a check that declares no
+# `countFilter`, an unreadable skill folder one level down, and faults on the
+# customizable half of the tree. The list had no entry of either kind, which is
+# why all of them passed 427 checks.
+for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-matrix unreadable-mcp unreadable-gitignore mcp-is-a-dir dir-wearing-unfiltered-name unreadable-nested-skill unreadable-oc-agents; do
   new "c6d-$fault"; printf '# R\n' > CLAUDE.md
   node $CLI init --yes >/dev/null 2>&1
+  # The path the fixture broke, asserted to appear in whatever the tool prints.
+  # `EISDIR` is raised on the descriptor, so it carries no `.path` and the
+  # catch-all had nothing to name: `sync` died anonymously in the middle of a
+  # hundred-file install while the gate, reading the same tree, named it.
+  faulted=""
   case $fault in
-    unreadable-dir)       chmod 000 .claude/agents ;;
-    file-where-dir-belongs) rm -rf .claude/agents; printf 'oops' > .claude/agents ;;
-    unreadable-root)      chmod 000 CLAUDE.md ;;
+    unreadable-dir)       chmod 000 .claude/agents; faulted=".claude/agents" ;;
+    file-where-dir-belongs) rm -rf .claude/agents; printf 'oops' > .claude/agents; faulted=".claude/agents" ;;
+    unreadable-root)      chmod 000 CLAUDE.md; faulted="CLAUDE.md" ;;
     unreadable-matrix)    rm -f .opencastle/agents/skill-matrix.json
-                          mkdir -p .opencastle/agents/skill-matrix.json ;;
+                          mkdir -p .opencastle/agents/skill-matrix.json
+                          faulted=".opencastle/agents/skill-matrix.json" ;;
     # Each of these was the twin of a guard added a round earlier: the same
     # shape, one file over, still unguarded.
-    unreadable-mcp)       chmod 000 .mcp.json ;;
-    unreadable-gitignore) chmod 000 .gitignore ;;
-    mcp-is-a-dir)         rm -f .mcp.json; mkdir .mcp.json ;;
+    unreadable-mcp)       chmod 000 .mcp.json; faulted=".mcp.json" ;;
+    unreadable-gitignore) chmod 000 .gitignore; faulted=".gitignore" ;;
+    mcp-is-a-dir)         rm -f .mcp.json; mkdir .mcp.json; faulted=".mcp.json" ;;
+    dir-wearing-unfiltered-name)
+                          f=$(ls .claude/commands/*.md 2>/dev/null | head -1)
+                          [ -n "$f" ] && { rm -f "$f"; mkdir "$f"; faulted="$f"; } ;;
+    unreadable-nested-skill)
+                          d=$(ls -d .claude/skills/*/ 2>/dev/null | head -1)
+                          [ -n "$d" ] && { chmod 000 "$d"; faulted="${d%/}"; } ;;
+    unreadable-oc-agents) chmod 000 .opencastle/agents; faulted=".opencastle/agents" ;;
   esac
   node $CLI doctor >/dev/null 2>&1; dr=$?
   node $CLI sync --check >/dev/null 2>&1; ck=$?
@@ -807,11 +882,25 @@ for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-ma
   # of these with "run sync", and `sync` exits non-zero on the same path.
   c14_check "$fault"
   # And whatever failed, it named the file rather than dying anonymously.
+  #
+  # "No stack trace" was the whole test, which a one-line
+  # `✗ EISDIR: illegal operation on a directory, read` passes while naming nothing
+  # to act on — and two of those were live while this assertion was green. The
+  # path is what the user needs, so the path is what is asserted.
   out=$(node $CLI doctor 2>&1 | plain; node $CLI sync --yes --force 2>&1 | plain)
   echo "$out" | grep -qE "at async|Node\.js v" && bad "$fault: printed a stack trace" \
                                                || ok "$fault: failed cleanly"
+  if [ -n "$faulted" ]; then
+    echo "$out" | grep -qF "$faulted" \
+      && ok "$fault: named $faulted" \
+      || bad "$fault: never named $faulted — nothing to act on"
+  else
+    bad "$fault: the fixture recorded no path, so nothing was asserted about naming"
+  fi
   chmod 755 .claude/agents 2>/dev/null; chmod 644 CLAUDE.md 2>/dev/null
   chmod 644 .mcp.json .gitignore 2>/dev/null
+  chmod 755 .opencastle .opencastle/agents 2>/dev/null
+  chmod -R 755 .claude/skills 2>/dev/null
 done
 
 say "CLAIM 14b — anything called unreducible really is"
@@ -967,7 +1056,14 @@ say "CLAIM 15 — doctor and the CI gate never disagree"
 # They need not produce the same *exit code* — a warning is not a failure — but
 # neither may report health while the other reports a fault a person must fix.
 c15_states="clean gi-block-deleted gi-doubled gi-torn root-severed root-doubled
-            manifest-empty mcp-is-dir mcp-unparseable stale-legacy"
+            manifest-empty mcp-is-dir mcp-unparseable stale-legacy
+            gi-bom gi-bom-block-first gi-mixed-endings
+            dir-wearing-unfiltered-name unreadable-oc-agents"
+# Faults in the *tree*, as opposed to drift in the *content*. For these a green
+# `doctor` is a defect however loudly it warns about something else: the gate is
+# red because a person has to act, and this is the command that tells them so.
+c15_structural="mcp-is-dir mcp-unparseable manifest-empty root-severed
+                dir-wearing-unfiltered-name unreadable-oc-agents"
 for state in $c15_states; do
   new "c15-$state"; printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
   printf 'node_modules\n' > .gitignore
@@ -1001,6 +1097,41 @@ elif state == 'mcp-unparseable':
     for c in ('.mcp.json', '.vscode/mcp.json'):
         q = pathlib.Path(c)
         if q.exists(): q.write_text('{ not json')
+elif state == 'gi-bom':
+    # A mark in front of a file whose *first* line is a user rule.
+    gi = pathlib.Path('.gitignore')
+    gi.write_bytes(b'\xef\xbb\xbf' + gi.read_bytes())
+elif state == 'gi-bom-block-first':
+    # And in front of one whose first line is our start marker — which is exactly
+    # what `init` writes on a project that had no `.gitignore`. Two reviewers
+    # found this shape independently: every surface red, `sync` a no-op, and the
+    # diagnosis ("0 start markers") false about a file holding one complete pair.
+    gi = pathlib.Path('.gitignore')
+    body = gi.read_text()
+    at = body.index(START)
+    gi.write_bytes(b'\xef\xbb\xbf' + body[at:].encode() + body[:at].encode())
+elif state == 'gi-mixed-endings':
+    # One file, more than one terminator. Uniform conversion cannot produce it and
+    # an ordinary editing history can: a CRLF checkout with a line appended by a
+    # Unix script.
+    gi = pathlib.Path('.gitignore')
+    text = gi.read_text()
+    out, flip = [], 0
+    for line in text.split(chr(10)):
+        out.append(line + (chr(13) + chr(10) if flip % 3 == 0 else
+                           chr(13) if flip % 3 == 1 else chr(10)))
+        flip += 1
+    gi.write_text(''.join(out))
+elif state == 'dir-wearing-unfiltered-name':
+    import glob
+    for pat in ('.claude/commands/*.md', '.github/prompts/*.prompt.md'):
+        hit = sorted(glob.glob(pat))
+        if hit:
+            q = pathlib.Path(hit[0]); q.unlink(); q.mkdir()
+            break
+elif state == 'unreadable-oc-agents':
+    import os
+    os.chmod('.opencastle/agents', 0)
 elif state == 'stale-legacy':
     root.write_text('# Project Instructions' + chr(10)*2 +
                     'All conventions, architecture, and project context are embedded below.' +
@@ -1016,9 +1147,20 @@ PY
       && bad "$state: doctor=1 but the CI gate reports everything matching" \
       || ok "$state: gate is quiet but not claiming health"
   elif [ $ck -ne 0 ] && [ $dr -eq 0 ]; then
-    echo "$doc" | grep -qi "warning" \
-      && ok "$state: gate red, doctor warns about it" \
-      || bad "$state: gate=1 but doctor reports a clean bill"
+    # `grep -qi warning` used to satisfy this, and every healthy install prints
+    # "All checks passed with 1 warning(s)." — so the arm could not fail, and the
+    # property it guards is the one three round-20 findings violated.
+    #
+    # A content edit legitimately leaves `doctor` green: it checks shape and
+    # presence, the gate compares bytes. A *structural* fault does not — if the
+    # tree is malformed, the command people run when something is wrong has to
+    # say so. Which kind each state is, is known here, so it is asserted here.
+    case " $c15_structural " in
+      *" $state "*)
+        bad "$state: a structural fault, and doctor reports a clean bill" ;;
+      *)
+        ok "$state: content drift — gate red, doctor legitimately quiet" ;;
+    esac
   else
     ok "$state: both surfaces agree ($dr/$ck)"
   fi
@@ -1031,6 +1173,7 @@ PY
   fi
   grep -q 'MY OWN RULE' CLAUDE.md 2>/dev/null && ok "$state: their line survived" \
                                               || bad "$state: their line was lost"
+  chmod 755 .opencastle .opencastle/agents 2>/dev/null
 done
 
 say "CLAIM 12h — a target that fails does not orphan the ones that worked"
@@ -1080,7 +1223,11 @@ say "CLAIM 16 — .gitignore converges from any damage, in one sync"
 # maintained, and the worst case of a mistake is a duplicate ignore rule git
 # does not care about rather than a second set of instructions an assistant
 # obeys. One sync must fix all of these, and a second must change nothing.
-for shape in doubled torn-end torn-start block-gone rules-gone file-gone crlf both-gone reordered marker-trailing; do
+# `bom`, `bom-first` and `mixed-endings` were the gaps. This list is the alphabet
+# CLAIM 16 explores, and a shape absent from it is a shape nothing checks: a mark
+# in front of our own opening marker left every surface red with `sync` a no-op,
+# and a file mixing terminators was not a fixed point of the command CI runs twice.
+for shape in doubled torn-end torn-start block-gone rules-gone file-gone crlf cr-only both-gone reordered marker-trailing bom bom-first mixed-endings; do
   new "c16-$shape"; printf '# R\n' > CLAUDE.md
   printf 'node_modules\nkeep-me\n' > .gitignore
   node $CLI init --yes >/dev/null 2>&1
@@ -1102,9 +1249,21 @@ elif s == 'crlf':           p.write_bytes(t.replace(chr(10), chr(13)+chr(10)).en
 elif s == 'both-gone':      p.write_text(t.replace(GS+chr(10), '', 1).replace(GE+chr(10), '', 1))
 elif s == 'reordered':      p.write_text(b + chr(10) + 'node_modules' + chr(10) + 'keep-me' + chr(10))
 elif s == 'marker-trailing': p.write_text(t.replace(GS, GS + ' and a note', 1))
+elif s == 'cr-only':        p.write_bytes(t.replace(chr(10), chr(13)).encode())
+elif s == 'bom':            p.write_bytes(b'\xef\xbb\xbf' + t.encode())
+elif s == 'bom-first':
+    at = t.index(GS)
+    p.write_bytes(b'\xef\xbb\xbf' + t[at:].encode() + t[:at].encode())
+elif s == 'mixed-endings':
+    parts, flip, out = t.split(chr(10)), 0, []
+    for line in parts:
+        out.append(line + (chr(13) + chr(10) if flip % 3 == 0 else
+                           chr(13) if flip % 3 == 1 else chr(10)))
+        flip += 1
+    p.write_bytes(''.join(out).encode())
 PY
   node $CLI sync --yes --force >/dev/null 2>&1
-  git check-ignore -q .env && ok "$shape: .env is ignored again" || bad "$shape: .env still committable"
+  git -c core.excludesFile=/dev/null check-ignore -q .env && ok "$shape: .env is ignored again" || bad "$shape: .env still committable"
   [ "$(grep -c -- '>>> OpenCastle managed' .gitignore)" = "1" ] \
     && ok "$shape: exactly one block" \
     || bad "$shape: $(grep -c -- '>>> OpenCastle managed' .gitignore) blocks"

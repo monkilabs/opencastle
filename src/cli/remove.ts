@@ -230,8 +230,21 @@ export default async function remove({ args }: CliContext): Promise<void> {
     // disappear is the preview lying, so each outcome is predicted rather than
     // assumed. `previewCoOwned` reads the same files the strip functions will.
     const coOwned = await previewCoOwned(projectRoot, mergedPaths, mcpPaths, mcpOwner)
-    const alsoDeleted = coOwned.filter((e) => e.outcome === 'deleted')
-    const kept = coOwned.filter((e) => e.outcome === 'stripped')
+
+    // `.gitignore` joins the same two lists as every other co-owned file, rather
+    // than being appended after them. Printed last, its deletion line landed
+    // *under* the "Edited, not deleted" heading — the preview filing a file it
+    // was about to unlink under the one heading that promises it will survive.
+    const gitignoreOutcome = await predictGitignoreStrip(projectRoot)
+    const gitignoreEntry =
+      gitignoreOutcome === 'deleted'
+        ? { path: '.gitignore', outcome: 'deleted' as const, note: 'it holds nothing but our block' }
+        : gitignoreOutcome === 'stripped'
+          ? { path: '.gitignore', outcome: 'stripped' as const, note: 'the OpenCastle block' }
+          : null
+    const entries = gitignoreEntry ? [...coOwned, gitignoreEntry] : coOwned
+    const alsoDeleted = entries.filter((e) => e.outcome === 'deleted')
+    const kept = entries.filter((e) => e.outcome === 'stripped')
 
     for (const e of alsoDeleted) {
       console.log(`    ${c.red('-')} ${c.dim(e.path)} ${c.dim(`— ${e.note}`)}`)
@@ -242,13 +255,6 @@ export default async function remove({ args }: CliContext): Promise<void> {
       for (const e of kept) {
         console.log(`    ${c.yellow('~')} ${c.dim(e.path)} ${c.dim(`— removes ${e.note}`)}`)
       }
-    }
-    const gitignoreOutcome = await predictGitignoreStrip(projectRoot)
-    if (gitignoreOutcome === 'deleted') {
-      console.log(`    ${c.red('-')} ${c.dim('.gitignore')} ${c.dim('— it holds nothing but our block')}`)
-    } else if (gitignoreOutcome === 'stripped') {
-      if (kept.length === 0) console.log(`\n  ${c.bold('Edited, not deleted')}\n`)
-      console.log(`    ${c.yellow('~')} ${c.dim('.gitignore')} ${c.dim('— removes the OpenCastle block')}`)
     }
     console.log()
   }
@@ -377,12 +383,23 @@ export default async function remove({ args }: CliContext): Promise<void> {
     removed++
   }
 
+  // Asked before acting, because after the strip there is nothing left to ask.
+  // The summary said "+ .gitignore block" either way, which describes an edit —
+  // so a run that had just unlinked the whole file reported taking a block out
+  // of it, exactly the same wording as a run that left the user's rules in place.
+  const gitignoreWas = await predictGitignoreStrip(projectRoot)
   const gitignoreResult = await removeGitignoreBlock(projectRoot)
 
+  const gitignoreNote =
+    gitignoreResult !== 'removed'
+      ? ''
+      : gitignoreWas === 'deleted'
+        ? ' + deleted .gitignore'
+        : ' + .gitignore block'
   console.log(
     `\n  ${c.green('✓')} Removed ${removed} path(s)` +
       `${stripped > 0 ? `, kept your content in ${stripped} file(s)` : ''}` +
-      `${gitignoreResult === 'removed' ? ' + .gitignore block' : ''}.`,
+      `${gitignoreNote}.`,
   )
   if (staleLeft.length > 0) {
     console.log(

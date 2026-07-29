@@ -3,7 +3,7 @@ import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile, rename } fro
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
-import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { mergeCopyResults, copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeAdapter, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
@@ -126,6 +126,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
    * N" line should say what changed, not how many files were visited.
    */
   async function emit(
+    projectRoot: string,
     destPath: string,
     content: string,
     overwrite: boolean,
@@ -133,7 +134,25 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
   ): Promise<void> {
     ;(results.visited ??= []).push(destPath)
     if (existsSync(destPath)) {
-      if (!overwrite || (await readFile(destPath, 'utf8')) === content) {
+      // Named and skipped, like a config that will not parse — and for the same
+      // reason. This read is only an optimisation ("is it already what we would
+      // write?"), but on a directory wearing a generated file's name it threw
+      // `EISDIR`, which Node raises on the descriptor and therefore carries no
+      // `.path`. The catch-all in `bin/cli.mjs` had nothing to print, so `sync`
+      // died with `✗ EISDIR: illegal operation on a directory, read` in the
+      // middle of a hundred-file install, naming nothing to act on, while the
+      // gate reading the same tree named the path correctly.
+      let existing: string
+      try {
+        existing = await readFile(destPath, 'utf8')
+      } catch {
+        ;(results.unreadable ??= []).push(
+          `${relative(projectRoot, destPath)}\u0000unreadable`,
+        )
+        results.skipped.push(destPath)
+        return
+      }
+      if (!overwrite || existing === content) {
         results.skipped.push(destPath)
         return
       }
@@ -284,7 +303,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (excludedAgents.has(file)) continue
         const destPath = resolve(destAgents, file)
         const content = await readFile(resolve(agentsDir, file), 'utf8')
-        await emit(destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
@@ -307,15 +326,15 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
           resolve(destSkills, entry.name),
           { overwrite }
         )
-        // All three, not two. With `overwrite` false a rewritten file was
-        // impossible, so dropping `copied` cost nothing; the moment `update`
-        // started recompiling in place, every skill it actually refreshed went
-        // unrecorded — and the sweep, which deletes whatever the compile did
-        // not account for, removed all 43 of them.
-        results.created.push(...sub.created)
-        results.copied.push(...sub.copied)
-        results.skipped.push(...sub.skipped)
-        if (sub.visited) (results.visited ??= []).push(...sub.visited)
+        // All of them, and asked rather than listed. With `overwrite` false a
+        // rewritten file was impossible, so dropping `copied` cost nothing; the
+        // moment `update` started recompiling in place, every skill it actually
+        // refreshed went unrecorded — and the sweep, which deletes whatever the
+        // compile did not account for, removed all 43 of them. Naming four
+        // instead of three only moved the deadline: `unreadable` was added later
+        // and went missing here too, so `sync` skipped a file it could not read
+        // and reported nothing.
+        mergeCopyResults(results, sub)
       }
     }
 
@@ -330,7 +349,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const pluginDestDir = resolve(destSkills, id)
         await mkdir(pluginDestDir, { recursive: true })
         const destPath = resolve(pluginDestDir, 'SKILL.md')
-        await emit(destPath, await readFile(skillPath, 'utf8'), overwrite, results)
+        await emit(projectRoot, destPath, await readFile(skillPath, 'utf8'), overwrite, results)
       }
     }
 
@@ -344,7 +363,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const name = basename(file, '.prompt.md') || basename(file, '.md')
         const destPath = resolve(destPrompts, `${name}.md`)
         const content = await readFile(resolve(promptDir, file), 'utf8')
-        await emit(destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
@@ -359,7 +378,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const name = basename(file, '.md')
         const destPath = resolve(destWf, `${config.workflowPrefix}${name}.md`)
         const content = await readFile(resolve(wfDir, file), 'utf8')
-        await emit(destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 

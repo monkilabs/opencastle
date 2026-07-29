@@ -381,7 +381,27 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       if (seen.has(rel)) continue
       seen.add(rel)
       const abs = resolve(projectRoot, rel)
-      if (!existsSync(abs)) continue
+      // `existsSync` is false both for a file that is absent and for one whose
+      // parent we cannot read, and only the first is a reason to skip. Asking
+      // for the stat separates them: an error here is a fault to report, not an
+      // absence to pass over. This is the twin of the skill-matrix guard below.
+      if (!existsSync(abs)) {
+        try {
+          statSync(abs)
+        } catch (err) {
+          const e = err as { code?: string }
+          if (e.code === 'EACCES' || e.code === 'EPERM') {
+            drift.push({
+              ide,
+              path: rel,
+              kind: 'unreducible',
+              detail: `cannot be read — ${(err as Error).message}`,
+              fix: `fix the permissions on ${rel}, then run opencastle sync; this one needs a person`,
+            })
+          }
+        }
+        continue
+      }
       try {
         JSON.parse(readFileSync(abs, 'utf8'))
       } catch (err) {
@@ -398,9 +418,32 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
 
   // The skill matrix — the third customizable path, and the third instance of
   // this same split. `doctor` opens and parses it; the gate never did.
+  //
+  // Not gated on `existsSync`, which is the mistake the guard above still makes.
+  // `existsSync` is false for a file inside a directory we cannot read, so
+  // `chmod 000 .opencastle/agents` skipped the check entirely and the gate
+  // printed "✓ 79 generated files match their sources" over a tree where `sync`,
+  // `init` and `doctor`'s own remedy all exit 1. A green CI on a broken install.
   {
-    const matrix = resolve(projectRoot, '.opencastle', 'agents', 'skill-matrix.json')
-    if (existsSync(matrix)) {
+    const holder = resolve(projectRoot, '.opencastle', 'agents')
+    const matrix = resolve(holder, 'skill-matrix.json')
+    let unreadableHolder: Error | null = null
+    if (existsSync(holder)) {
+      try {
+        readdirSync(holder)
+      } catch (err) {
+        unreadableHolder = err as Error
+      }
+    }
+    if (unreadableHolder) {
+      drift.push({
+        ide: 'all',
+        path: '.opencastle/agents/',
+        kind: 'unreducible',
+        detail: `cannot be read — ${unreadableHolder.message}`,
+        fix: 'fix the permissions on .opencastle/agents/, then run opencastle sync; this one needs a person',
+      })
+    } else if (existsSync(matrix)) {
       try {
         JSON.parse(readFileSync(matrix, 'utf8'))
       } catch (err) {

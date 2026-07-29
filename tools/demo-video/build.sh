@@ -50,7 +50,7 @@ SCENE_TEXTS=(
   "Hi! In this tutorial, I'll show you how to set up OpenCastle in your project, configure it for your stack, and start working on your first feature."
   "Let's start in a fresh project. Run npx opencastle init. The CLI will ask you a few questions about your IDE, your database, project management, and notifications. I'll pick VS Code, Supabase, Linear, and Slack."
   "That one command created everything you need. Eighteen agents, a developer, database engineer, security expert, and more. Twenty seven skills loaded on demand. Eight workflow templates. And your MCP servers are pre-configured for Supabase, Linear, and Slack."
-  "OpenCastle includes an observability dashboard. Run opencastle dashboard to see your agent sessions, delegation success rates, and model usage. It reads from the same logs your agents write, no extra setup needed."
+  "OpenCastle includes an observability dashboard. Run opencastle convoy dashboard to see your agent sessions, delegation success rates, and model usage. It reads from the same logs your agents write, no extra setup needed."
   "That's the basics. One command to install, a dashboard to track your agents, and a team of specialists ready to work. Visit opencastle.dev to learn more, or just run npx opencastle init to get started."
   "Thanks for watching! Happy building."
 )

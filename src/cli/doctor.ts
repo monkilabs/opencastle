@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js';
@@ -136,6 +136,26 @@ async function checkCustomizations(projectRoot: string): Promise<CheckResult> {
 async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
   const path = resolve(projectRoot, '.opencastle', 'agents', 'skill-matrix.json');
   if (!existsSync(path)) {
+    // "Not found" only if the directory holding it can actually be looked in.
+    // `existsSync` is false for a file inside a directory we lack permission to
+    // read, so `chmod 000 .opencastle/agents` was reported as a missing file with
+    // "run opencastle sync" as the cure — advice that exits 1 on the same path,
+    // every time, while the file it says is missing is sitting there. The stat
+    // failing is a different fact from the file being absent, and only one of
+    // them is something `sync` can fix.
+    const holder = resolve(projectRoot, '.opencastle', 'agents');
+    if (existsSync(holder)) {
+      try {
+        readdirSync(holder);
+      } catch (err) {
+        return {
+          ok: false,
+          label: 'Skill matrix',
+          detail: `.opencastle/agents/ cannot be read — ${(err as Error).message}`,
+          fix: 'fix the permissions on .opencastle/agents/, then run opencastle sync; this one needs a person',
+        };
+      }
+    }
     return { ok: false, label: 'Skill matrix', detail: 'File not found at .opencastle/agents/skill-matrix.json' };
   }
   const { readFile } = await import('node:fs/promises');
@@ -247,6 +267,83 @@ async function checkDotEnv(projectRoot: string, manifest: Manifest | null): Prom
 
 // ── Generic adapter-driven checks ────────────────────────────────
 
+/**
+ * A name with an extension is a generated file, never a directory.
+ *
+ * No directory this compiler creates has a dot in its name — skill folders are
+ * `memory-merger`, agent folders are bare slugs — on any of the three adapter
+ * families. `adapter-contract.test.ts` asserts that across all seven targets, so
+ * this is a property of the output and not a guess about it.
+ *
+ * It matters because `countFilter` was doing this job and only six of the
+ * fourteen `countContents` checks declare one. On the other eight — every
+ * commands, prompts, workflows and skills directory — a directory wearing a
+ * generated file's name was counted as one of the files, and `doctor` issued a
+ * clean bill while `sync` exited 1 on the same path and the gate called it
+ * unfixable by any command.
+ */
+function mustBeFile(name: string, check: DoctorCheck): boolean {
+  return check.countFilter ? name.endsWith(check.countFilter) : /\.[A-Za-z0-9]+$/.test(name);
+}
+
+/**
+ * Every entry under a counted directory, to the bottom.
+ *
+ * `readdir` on the top level was the whole check, so a skill whose folder could
+ * not be read — `chmod 000 .claude/skills/memory-merger` — was invisible here
+ * while `sync` died on it and `status` sent the user to this command. The gate
+ * recurses; the diagnostic did not.
+ */
+function verifySubtree(
+  dir: string,
+  check: DoctorCheck,
+  entries: string[],
+  prefix: string,
+): CheckResult | null {
+  const cannotRead = (shown: string, err: unknown): CheckResult => ({
+    ok: false,
+    label: check.label,
+    detail: `${check.path}${shown} cannot be read — ${(err as Error).message}`,
+    fix: `fix the permissions or replace ${check.path}${shown}, then run opencastle sync; this one needs a person`,
+  });
+
+  for (const entry of entries) {
+    const child = resolve(dir, entry);
+    const shown = `${prefix}${entry}`;
+    let isDir: boolean;
+    try {
+      isDir = statSync(child).isDirectory();
+    } catch (err) {
+      return cannotRead(shown, err);
+    }
+    if (isDir) {
+      if (mustBeFile(entry, check)) {
+        return {
+          ok: false,
+          label: check.label,
+          detail: `${check.path}${shown} is a directory, not a generated file`,
+          fix: `remove ${check.path}${shown}, then run opencastle sync; this one needs a person`,
+        };
+      }
+      let kids: string[];
+      try {
+        kids = readdirSync(child);
+      } catch (err) {
+        return cannotRead(shown, err);
+      }
+      const deeper = verifySubtree(child, check, kids, `${shown}/`);
+      if (deeper) return deeper;
+    } else {
+      try {
+        readFileSync(child);
+      } catch (err) {
+        return cannotRead(shown, err);
+      }
+    }
+  }
+  return null;
+}
+
 /** Run a single DoctorCheck against the filesystem. */
 export async function runDoctorCheck(projectRoot: string, check: DoctorCheck): Promise<CheckResult> {
   const fullPath = resolve(projectRoot, check.path);
@@ -281,34 +378,8 @@ export async function runDoctorCheck(projectRoot: string, check: DoctorCheck): P
   }
 
   if (check.countContents) {
-    // Only entries that are supposed to *be* generated files. A framework
-    // directory legitimately holds subdirectories — skills live in one folder
-    // each — so "is a directory" is only wrong for something wearing a
-    // generated file's name, which is what `countFilter` identifies. Without
-    // the filter this flagged normal structure on every healthy project.
-    if (check.countFilter) {
-      for (const entry of contents.filter((e) => e.endsWith(check.countFilter!))) {
-        const child = resolve(fullPath, entry);
-        try {
-          if (statSync(child).isDirectory()) {
-            return {
-              ok: false,
-              label: check.label,
-              detail: `${check.path}${entry} is a directory, not a generated file`,
-              fix: `remove ${check.path}${entry}, then run opencastle sync; this one needs a person`,
-            };
-          }
-          readFileSync(child);
-        } catch (err) {
-          return {
-            ok: false,
-            label: check.label,
-            detail: `${check.path}${entry} cannot be read — ${(err as Error).message}`,
-            fix: 'fix the permissions or replace it, then run opencastle sync; this one needs a person',
-          };
-        }
-      }
-    }
+    const fault = verifySubtree(fullPath, check, contents, '');
+    if (fault) return fault;
     const entries = contents;
     const filtered = check.countFilter
       ? entries.filter((e) => e.endsWith(check.countFilter!))

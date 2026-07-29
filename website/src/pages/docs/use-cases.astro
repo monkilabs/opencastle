@@ -347,7 +347,7 @@ tasks:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ opencastle convoy run .opencastle/convoys/portfolio.convoy.yml --dry-run</code></pre>
+              <pre><code>$ opencastle convoy --file .opencastle/convoys/portfolio.convoy.yml --dry-run</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Convoy: portfolio  ·  12 tasks  ·  dry-run mode
@@ -375,7 +375,7 @@ tasks:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ opencastle convoy run .opencastle/convoys/portfolio.convoy.yml</code></pre>
+              <pre><code>$ opencastle convoy --file .opencastle/convoys/portfolio.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  ◎ Convoy started  ·  portfolio  ·  convoy_id=cvy_3kx9
@@ -757,7 +757,7 @@ tasks:
             <p class="recipe-section__body">Start the convoy — agents will run tasks in parallel where possible, each in an isolated git worktree. Tasks that pass their gates are merged back automatically; failed tasks go to the dead-letter queue.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/user-authentication.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy --file .opencastle/convoys/user-authentication.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Phase 1: api-auth
@@ -1020,7 +1020,7 @@ $ npx opencastle init</code></pre>
             <p class="recipe-section__body">Preview the convoy execution plan with <code>--dry-run</code> on the <code>run</code> command. This shows the dependency graph and execution order without writing any code.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/rest-api-task-management.convoy.yml --dry-run</code></pre>
+              <pre><code>$ npx opencastle convoy --file .opencastle/convoys/rest-api-task-management.convoy.yml --dry-run</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Convoy: rest-api-task-management  ·  8 tasks  ·  dry-run mode
@@ -1044,7 +1044,7 @@ $ npx opencastle init</code></pre>
             <p class="recipe-section__body">Run the convoy to execute the plan. Each task runs in an isolated git worktree so agents work in parallel without conflicts. Tasks that pass their gates are merged back automatically; failed tasks go to the dead-letter queue.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/rest-api-task-management.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy --file .opencastle/convoys/rest-api-task-management.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Phase 1: setup-project
@@ -1357,8 +1357,8 @@ Server-side notification API with a database migration and a UI inbox component.
             <p class="recipe-section__body">Once the PRD looks right, preview the execution plan and run:</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/user-notifications.convoy.yml --dry-run
-$ npx opencastle convoy run .opencastle/convoys/user-notifications.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy --file .opencastle/convoys/user-notifications.convoy.yml --dry-run
+$ npx opencastle convoy --file .opencastle/convoys/user-notifications.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Phase 1: db-migration

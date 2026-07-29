@@ -1,4 +1,4 @@
-import { resolve, relative } from 'node:path'
+import { isAbsolute, resolve, relative } from 'node:path'
 import { readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { multiselect, confirm, closePrompts, c } from './prompt.js'
@@ -16,6 +16,7 @@ import type { CliContext, CopyResults, IdeChoice, TechTool, TeamTool, StackConfi
 import { bootstrapCustomizations } from './bootstrap.js'
 import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
 import { resolveManagedPaths, declaredManagedPaths } from './managed-paths.js'
+import { noteUnreadable } from './unreadable-report.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -416,7 +417,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     totalSkipped += results.skipped.length
     skippedPaths.push(...results.skipped)
     for (const file of results.unreadable ?? []) {
-      if (!unreadable.includes(file)) unreadable.push(file)
+      noteUnreadable(unreadable, file)
     }
 
     adoptedRoots.push(...(results.adopted ?? []))
@@ -477,7 +478,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
         totalCreated += results.created.length + results.copied.length
         totalSkipped += results.skipped.length
         for (const file of results.unreadable ?? []) {
-          if (!unreadable.includes(file)) unreadable.push(file)
+          noteUnreadable(unreadable, file)
         }
       }
     }
@@ -543,7 +544,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     console.log(`     ${c.dim('Fix that, then run opencastle sync.')}`)
   }
   for (const file of unreadable) {
-    const [name, why] = file.split('\u0000')
+    const [abs, why] = file.split('\u0000')
+    // Reported project-relative, whichever layer recorded it. `copyDir` works in
+    // absolute paths and the MCP scaffolder in relative ones, so the same report
+    // mixed `/private/tmp/…/.github/prompts/x.md` with `.mcp.json`.
+    const name = isAbsolute(abs) ? relative(projectRoot, abs) : abs
     console.log(
       `  ${c.yellow('!')} Left ${name} alone — ` +
         (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),

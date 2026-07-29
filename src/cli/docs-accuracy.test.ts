@@ -10,6 +10,7 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { resolve, join } from 'node:path'
 import { describe, it, expect } from 'vitest'
+import { execFileSync } from 'node:child_process'
 
 const repoRoot = resolve(import.meta.dirname, '..', '..')
 const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8')
@@ -54,6 +55,17 @@ function replacedCommands(): string[] {
   const start = cliSource.indexOf('const REPLACED = {')
   const body = cliSource.slice(start, cliSource.indexOf('\n}', start))
   return [...body.matchAll(/^\s{2}(?:'([^']+)'|([a-zA-Z_][\w-]*)):/gm)].map((m) => m[1] ?? m[2])
+}
+
+/** Files under `dir` with any of `exts`, recursively. */
+function contentFilesFor(dir: string, exts: string[], out: string[] = []): string[] {
+  if (!existsSync(dir)) return out
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name)
+    if (entry.isDirectory()) contentFilesFor(p, exts, out)
+    else if (exts.some((e) => entry.name.endsWith(e))) out.push(p)
+  }
+  return out
 }
 
 describe('README counts match the tree', () => {
@@ -149,7 +161,11 @@ describe('shipped content instructs only commands that exist', () => {
     // catches an invention.
     const real = new Set([...visibleCommands(), ...hiddenCommands()])
     // Subcommands of `convoy`, which the dispatcher never sees directly.
-    const subcommands = new Set(['resume', 'retry', 'dashboard', 'run', 'plan'])
+    // `run` was in this list and is not a convoy subcommand — `convoy --help`
+    // names plan, resume, retry and dashboard. Listed here, it excused 23
+    // occurrences of `opencastle convoy run <spec>`, which consumes `run` as the
+    // task string and then rejects the spec path as an unknown option.
+    const subcommands = new Set(['resume', 'retry', 'dashboard', 'plan'])
     const offenders: string[] = []
     for (const file of files) {
       for (const hit of file.text.matchAll(/opencastle ([a-z][a-z-]{2,})/g)) {
@@ -405,5 +421,77 @@ describe('quickstart stays runnable', () => {
     expect(shown, 'quickstart does not show the marker').toBeTruthy()
     expect(BLOCK_START).toContain('OpenCastle managed')
     expect(shown![0]).toBe(BLOCK_START)
+  })
+})
+
+/**
+ * Every flag our own documentation tells you to pass is one the command declares.
+ *
+ * The checks above validate the first word after `opencastle` and stop there, so
+ * a line could name a real command and then hand it something it has never heard
+ * of. Four did. `opencastle doctor --fix` exits 0 having repaired nothing — the
+ * flag is not rejected, it is ignored, so an agent following the hooks protocol
+ * believes it fixed the project. `opencastle init --ide claude-code` likewise
+ * installs whatever was auto-detected and says nothing about the argument.
+ *
+ * `--help` is the command's own statement of what it accepts, so it is the oracle.
+ * A flag that works but is undocumented fails this too, and that is the right
+ * outcome: the fix is to document it.
+ */
+describe('documented flags are flags the command declares', () => {
+  const GLOBAL = new Set(['--help', '-h', '--debug', '--version', '-v'])
+
+  function helpFlags(cmd: string): Set<string> {
+    const out = new Set<string>(GLOBAL)
+    let text: string
+    try {
+      text = execFileSync('node', [join(repoRoot, 'bin', 'cli.mjs'), cmd, '--help'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch (err) {
+      text = String((err as { stdout?: string }).stdout ?? '')
+    }
+    // A command may declare that it takes arbitrary flags, and one does: `log`
+    // records `--<field> <value>` pairs straight into the event, which is the
+    // point of it. The placeholder in its own help is that declaration, so it is
+    // read as one rather than special-cased by name here.
+    if (/--<[a-z]/.test(text)) return new Set(['*'])
+    for (const m of text.matchAll(/(--[a-z][a-z0-9-]*)/g)) out.add(m[1])
+    return out
+  }
+
+  const scanned = [
+    ...contentFilesFor(join(repoRoot, 'src', 'orchestrator'), ['.md']),
+    ...contentFilesFor(join(repoRoot, 'tools'), ['.md', '.sh', '.tape']),
+    ...contentFilesFor(join(repoRoot, 'website', 'src'), ['.astro', '.md', '.mdx']),
+    ...['README.md', 'ARCHITECTURE.md']
+      .map((f) => join(repoRoot, f))
+      .filter((f) => existsSync(f)),
+  ].map((p) => ({ rel: p.slice(repoRoot.length + 1), text: readFileSync(p, 'utf8') }))
+
+  it('has content to check', () => {
+    expect(scanned.length).toBeGreaterThan(0)
+  })
+
+  it('passes no flag a command does not declare', () => {
+    const real = new Set([...visibleCommands(), ...hiddenCommands()])
+    const cache = new Map<string, Set<string>>()
+    const offenders: string[] = []
+    for (const file of scanned) {
+      // One command line at a time, stopping at anything that ends a shell word
+      // list — a pipe, a redirect, a backtick, a closing tag or end of line.
+      for (const hit of file.text.matchAll(/(?:npx )?opencastle ([a-z][a-z-]*)((?:[ \t]+[^\n`|<>&]*)?)/g)) {
+        const cmd = hit[1]
+        if (!real.has(cmd)) continue
+        if (!cache.has(cmd)) cache.set(cmd, helpFlags(cmd))
+        const allowed = cache.get(cmd)!
+        for (const f of hit[2].matchAll(/(?<![\w-])(--[a-z][a-z0-9-]*)/g)) {
+          if (allowed.has('*')) continue
+          if (!allowed.has(f[1])) offenders.push(`${file.rel}: opencastle ${cmd} … ${f[1]}`)
+        }
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([])
   })
 })

@@ -90,8 +90,8 @@ Health thresholds, escalation path, Error Recovery Playbook, Circuit Breaker: se
 Use OpenCastle CLI (`npx opencastle` or `bin/cli.mjs`):
 
 ```bash
-opencastle convoy run --file convoy.yml --dry-run
-opencastle convoy run --file convoy.yml --verbose
+opencastle convoy --file convoy.yml --dry-run
+opencastle convoy --file convoy.yml --verbose
 opencastle convoy resume
 opencastle convoy
 opencastle convoy retry
@@ -101,7 +101,7 @@ opencastle convoy retry
 
 ```bash
 if [ $? -ne 0 ]; then
-  echo "convoy run failed — inspect .opencastle/convoy.log" \
+  echo "convoy failed — inspect .opencastle/convoy.log" \
 	 && tail -n 200 .opencastle/convoy.log && exit 1
 fi
 

@@ -7,6 +7,7 @@ import {
   updateGitignore,
   removeGitignoreBlock,
   predictGitignoreStrip,
+  gitignoreNeedsRebuild,
   START_MARKER,
   END_MARKER,
 } from './gitignore.js'
@@ -83,10 +84,34 @@ function makeFile(seed: number): string {
   // in it ours; and a file with no terminator at the end had the block
   // concatenated onto its last rule. Both shipped and both were found here.
   const r = rand()
-  if (r < 0.2) text = text.replace(/\n/g, '\r\n')
-  else if (r < 0.35) text = text.replace(/\n/g, '\r')
+  if (r < 0.15) text = text.replace(/\n/g, '\r\n')
+  else if (r < 0.3) text = text.replace(/\n/g, '\r')
+  else if (r < 0.65) {
+    // Mixed line by line, which converting the whole file at once cannot
+    // produce — and a file that mixes endings is ordinary: a CRLF checkout with
+    // one line appended by a Unix script. Three defects hid behind the uniform
+    // alphabet. The block took its ending from the file's *first* terminator,
+    // which in a mixed file is arbitrary; a `\r` written in front of a surviving
+    // `\n` re-read as one CRLF, so `sync` twice gave two different files; and
+    // the checker normalised CRLF before composing, so it picked a different
+    // ending than the writer and reported drift `sync` would not clear.
+    text = text.replace(/\n/g, () => {
+      const p = rand()
+      return p < 0.34 ? '\n' : p < 0.67 ? '\r\n' : '\r'
+    })
+  }
   if (rand() < 0.25) text = text.replace(/(\r\n|\n|\r)$/, '')
   return text
+}
+
+/**
+ * A leading byte-order mark, which is the only place a BOM can be.
+ *
+ * Kept out of `makeFile` because the rule-preservation test does its own line
+ * bookkeeping and a mark in front of a marker belongs to neither side of it.
+ */
+function withBom(seed: number, text: string): string {
+  return lcg(seed * 7919)() < 0.2 ? '﻿' + text : text
 }
 
 /** Lines as the tool sees them: `\r\n`, `\n` and a lone `\r` all end one. */
@@ -229,11 +254,21 @@ describe('.gitignore holds the same invariants as a root file', () => {
       // convergence for some inputs, and the exceptions were where the defects
       // lived.
       for (const seed of SEEDS) {
-        const original = makeFile(seed)
+        const original = withBom(seed, makeFile(seed))
         writeFileSync(file, original)
 
         await updateGitignore(dir)
         const once = readFileSync(file, 'utf8')
+
+        // The seam, asserted directly rather than left for a reviewer to trip
+        // over: after `sync` writes, the reader every surface shares must be
+        // satisfied. A BOM'd file was already correct and `gitignoreNeedsRebuild`
+        // said otherwise — so `sync --check`, `doctor` and `status` all reported
+        // drift while `sync` replied "unchanged". Drift no command could clear.
+        expect(
+          gitignoreNeedsRebuild(once),
+          `seed ${seed}: sync wrote, and the check still wants a rebuild\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(once)}`,
+        ).toBe('')
         expect(
           blockRegions(once, START_MARKER, END_MARKER).length,
           `seed ${seed}: one write left ${blockRegions(once, START_MARKER, END_MARKER).length} blocks\nfrom ${JSON.stringify(original)}`,
@@ -251,10 +286,57 @@ describe('.gitignore holds the same invariants as a root file', () => {
   )
 
   it(
+    'leaves our own rules in force, as git reads them and not as we spell them',
+    async () => {
+      // The promise this file exists to keep, asked of the only authority on it.
+      //
+      // Every other test here compares text, and text was never the question:
+      // git ends a line at `\n` and nowhere else, so on a file with no `\n` in it
+      // the entire block — markers, comments and all sixteen rules — was one line
+      // beginning with `#`. A comment. `.env` was ignored by nothing, `sync`
+      // printed "✓ Updated", and `doctor` and `sync --check` were green because
+      // the characters were all present and in the right order. 1017 of 4000
+      // generated files were in that state.
+      const MUST_IGNORE = [
+        '.env',
+        '.opencastle/logs/run.txt',
+        '.opencastle/runs/a',
+        '.opencastle/x.db',
+        '.opencastle.removed/a',
+      ]
+      for (const seed of SEEDS) {
+        const original = withBom(seed, makeFile(seed))
+        writeFileSync(file, original)
+        await updateGitignore(dir)
+
+        let out = ''
+        try {
+          out = execFileSync(
+            'git',
+            ['-C', dir, '-c', 'core.excludesFile=/dev/null', 'check-ignore', '--stdin'],
+            { input: MUST_IGNORE.join('\n') + '\n', encoding: 'utf8' },
+          )
+        } catch (err) {
+          const e = err as { status?: number; stdout?: string }
+          if (e.status === 1) out = e.stdout ?? ''
+          else throw err
+        }
+        const ignoring = new Set(out.split('\n').filter(Boolean))
+        const inert = MUST_IGNORE.filter((p) => !ignoring.has(p))
+        expect(
+          inert,
+          `seed ${seed}: git does not ignore ${inert.join(', ')}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(readFileSync(file, 'utf8'))}`,
+        ).toEqual([])
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
     'leaves nothing of ours behind, and the preview says what the action does',
     async () => {
       for (const seed of SEEDS) {
-        writeFileSync(file, makeFile(seed))
+        writeFileSync(file, withBom(seed, makeFile(seed)))
         await updateGitignore(dir)
 
         // The preview and the action, from the same state — these have diverged

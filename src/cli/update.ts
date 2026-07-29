@@ -1,4 +1,4 @@
-import { resolve, relative, join, dirname } from 'node:path'
+import { isAbsolute, resolve, relative, join, dirname } from 'node:path'
 import { existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { readFile, appendFile, rename, mkdir, writeFile, unlink, copyFile, readdir, rm } from 'node:fs/promises'
@@ -22,6 +22,7 @@ import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig, RepoInfo } from './types.js'
 import { UnreadableConfigError } from './types.js'
+import { noteUnreadable } from './unreadable-report.js'
 
 const UPDATE_HELP = `
   opencastle update [options]
@@ -422,13 +423,21 @@ export default async function update({
     // the documented way to say yes without a terminal, and it is unaffected.
     const proceed = await confirm('Proceed?', true, 'refuse')
     if (!proceed) {
+      const noAnswer = stdinIsExhausted()
       console.log(
-        stdinIsExhausted()
+        noAnswer
           ? '  Aborted — no answer, and this run would overwrite generated files.' +
               '\n  Re-run with --yes to proceed without being asked.'
           : '  Aborted.',
       )
       closePrompts()
+      // Non-zero when nobody was there to answer. A person who types "n" chose
+      // this outcome and 0 is right; a script with stdin closed did not choose
+      // anything, and it got a success code for a sync that never happened —
+      // the drift the run was launched to clear still there, and CI none the
+      // wiser. The two cases print different sentences and now also differ in
+      // the only thing automation reads.
+      if (noAnswer) process.exit(1)
       return
     }
   }
@@ -467,7 +476,7 @@ export default async function update({
     // The adapters skip a config they cannot parse instead of throwing; the
     // report below is the only place the user learns which file to fix.
     for (const file of results.unreadable ?? []) {
-      if (!unreadable.includes(file)) unreadable.push(file)
+      noteUnreadable(unreadable, file)
     }
   }
 
@@ -491,7 +500,7 @@ export default async function update({
           await step()
         } catch (err) {
           if (!(err instanceof UnreadableConfigError)) throw err
-          if (!unreadable.includes(err.file)) unreadable.push(err.file)
+          noteUnreadable(unreadable, err.file)
         }
       }
     }
@@ -544,7 +553,11 @@ export default async function update({
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
   }
   for (const file of unreadable) {
-    const [name, why] = file.split('\u0000')
+    const [abs, why] = file.split('\u0000')
+    // Reported project-relative, whichever layer recorded it. `copyDir` works in
+    // absolute paths and the MCP scaffolder in relative ones, so the same report
+    // mixed `/private/tmp/…/.github/prompts/x.md` with `.mcp.json`.
+    const name = isAbsolute(abs) ? relative(projectRoot, abs) : abs
     console.log(
       `  ${c.yellow('!')} Left ${name} alone — ` +
         (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),

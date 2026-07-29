@@ -43,10 +43,10 @@
 
 ## Scene 4 — Dashboard (terminal + browser)
 
-**Visual:** Run `npx opencastle dashboard --seed` in terminal, then browser opens showing the dashboard UI with session data, charts, and delegation timeline.
+**Visual:** Run `npx opencastle convoy dashboard` in terminal, then browser opens showing the dashboard UI with session data, charts, and delegation timeline.
 
 **Narration:**
-> "OpenCastle includes an observability dashboard. Run opencastle dashboard to see your agent sessions, delegation success rates, and model usage. It reads from the same logs your agents write — no extra setup needed."
+> "OpenCastle includes an observability dashboard. Run opencastle convoy dashboard to see your agent sessions, delegation success rates, and model usage. It reads from the same logs your agents write — no extra setup needed."
 
 ---
 

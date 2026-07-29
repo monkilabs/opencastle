@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { mkdir, readFile, writeFile, copyFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
-import { copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { mergeCopyResults, copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getAgentTransform } from '../stack-config.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
@@ -130,9 +130,7 @@ export async function install(
     const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
 
     const sub = await copyDir(srcDir, destDir, { filter, transform })
-    results.copied.push(...sub.copied)
-    results.skipped.push(...sub.skipped)
-    results.created.push(...sub.created)
+    mergeCopyResults(results, sub)
   }
 
   // Plugin skills → .github/skills/<plugin-id>/
@@ -215,9 +213,7 @@ export async function update(
     const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
 
     const sub = await copyDir(srcDir, destDir, { overwrite: true, filter, transform })
-    results.copied.push(...sub.copied)
-    results.created.push(...sub.created)
-    results.skipped.push(...sub.skipped)
+    mergeCopyResults(results, sub)
     for (const abs of sub.visited ?? []) visited.add(abs)
   }
 

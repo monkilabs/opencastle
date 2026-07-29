@@ -137,11 +137,11 @@ function ourLineIndices(content: string): Set<number> {
     // marker here and was one there, so the two readers disagreed about where a
     // block ended and this one swallowed a rule of the user's that sat between
     // them.
-    if (line.startsWith(START_MARKER)) {
+    if (isStartLine(line)) {
       // A second start before an end: the first one pairs with nothing.
       if (openedAt !== null) ours.add(openedAt)
       openedAt = i
-    } else if (line.startsWith(END_MARKER)) {
+    } else if (isEndLine(line)) {
       if (openedAt === null) {
         ours.add(i)
       } else {
@@ -201,6 +201,38 @@ function joinLines(lines: Array<{ text: string; eol: string }>): string {
   return lines.map((l) => l.text + l.eol).join('')
 }
 
+/**
+ * The terminator to write our own lines with: the file's commonest, not its first.
+ *
+ * "First" was a first-case-only assumption. Files that mix endings are ordinary —
+ * a CRLF checkout with one line appended by a Unix script — and there the opening
+ * line's terminator says nothing about the rest. Two things went wrong. `sync`
+ * rewrote our whole block into that arbitrary ending; and where it replaced a
+ * `\r\n`-terminated line with a `\r`-terminated one, the orphaned `\n` began a
+ * new line, so a second `sync` produced a different file from the first. A
+ * command this branch tells CI to run twice was not a fixed point.
+ *
+ * Majority is stable by construction: our block is written in it, which can only
+ * widen its lead, so the next run picks the same one. Ties go to `\n` — and after
+ * one write it is no longer a tie.
+ */
+function dominantEol(lines: Array<{ text: string; eol: string }>): string {
+  const tally = new Map<string, number>()
+  for (const { eol } of lines) {
+    if (eol !== '') tally.set(eol, (tally.get(eol) ?? 0) + 1)
+  }
+  let best = '\n'
+  let most = 0
+  for (const candidate of ['\n', '\r\n', '\r']) {
+    const n = tally.get(candidate) ?? 0
+    if (n > most) {
+      best = candidate
+      most = n
+    }
+  }
+  return best
+}
+
 /** The lines present in `before` and absent from `after`, with multiplicity. */
 function removedLines(before: string, after: string): string[] {
   const left = new Map<string, number>()
@@ -214,15 +246,61 @@ function removedLines(before: string, after: string): string[] {
   return gone
 }
 
-/** Everything in `content` that is not ours, in order, byte for byte. */
-/** A leading BOM removed, so the first line is testable like any other. */
-function stripBom(content: string): string {
-  if (content.startsWith(BOM_BYTES)) return content.slice(BOM_BYTES.length)
-  return content.startsWith('\ufeff') ? content.slice(1) : content
-}
-
 const BOM_BYTES = Buffer.from('\ufeff', 'utf8').toString('latin1')
 
+/**
+ * A leading byte-order mark, in whichever spelling this caller is holding.
+ *
+ * Two, because the surfaces do not agree on the string space: `updateGitignore`
+ * reads bytes, so a BOM arrives as the three characters `\u00ef\u00bb\u00bf`, while
+ * `sync --check` reads UTF-8 and gets the single U+FEFF. A helper that knew only
+ * one of them would harden exactly one caller \u2014 which is how this defect got in.
+ */
+function leadingBom(content: string): string {
+  if (content.startsWith(BOM_BYTES)) return BOM_BYTES
+  return content.startsWith('\ufeff') ? '\ufeff' : ''
+}
+
+/** A leading BOM removed, so the first line is testable like any other. */
+function stripBom(content: string): string {
+  return content.slice(leadingBom(content).length)
+}
+
+/**
+ * The file as it should be: the mark it opens with, then the composition.
+ *
+ * The writer and the checker call this, and that is the whole point. A BOM
+ * belongs to the file and not to any line, so it has to be set aside before the
+ * lines are read and put back afterwards. `updateGitignore` did that inline and
+ * `gitignoreNeedsRebuild` did not, so a BOM'd `.gitignore` that was already
+ * correct was reported as drift by `sync --check`, `doctor` and `status` \u2014 with
+ * `sync` replying "unchanged", because the writer could see it was right. Drift
+ * the prescribed command cannot clear, and a message ("0 start markers") that
+ * was not true of the file either.
+ */
+function rebuilt(content: string, block: string): string {
+  const bom = leadingBom(content)
+  return bom + compose(content.slice(bom.length), block)
+}
+
+/**
+ * Opens or closes a block of ours.
+ *
+ * `startsWith`, not equality, and named once so no reader can hold a different
+ * opinion. The count in `gitignoreNeedsRebuild` used equality while
+ * `ourLineIndices` used this, so a marker carrying trailing text was ours to one
+ * and the user's to the other, and the diagnosis named a state the file was not
+ * in.
+ */
+function isStartLine(line: string): boolean {
+  return line.startsWith(START_MARKER)
+}
+
+function isEndLine(line: string): boolean {
+  return line.startsWith(END_MARKER)
+}
+
+/** Everything in `content` that is not ours, in order, byte for byte. */
 function withoutOurLines(content: string): string {
   const ours = ourLineIndices(content)
   if (ours.size === 0) return content
@@ -255,23 +333,73 @@ function compose(content: string, block: string): string {
   const ours = ourLineIndices(content)
   const lines = splitLines(content)
   // The terminator the file already uses, so a CRLF file stays CRLF.
-  const eol = lines.find((l) => l.eol !== '')?.eol ?? '\n'
-  const blockLines = block.split('\n').map((text) => ({ text, eol }))
+  const eol = dominantEol(lines)
+  // Except that ours must contain `\n`, whatever the rest of the file does.
+  //
+  // Git ends a line at `\n` and nowhere else — a bare `\r` is just another
+  // character in the pattern. So on a classic-Mac `.gitignore` the whole block
+  // was one line to git, which begins with `#`: a comment. Every rule in it was
+  // inert. `sync` reported "✓ Updated", `doctor` and `sync --check` were green
+  // because they compare text and the text was right, and `.env` was not ignored
+  // by anything. The one promise this file exists to keep, silently unkept.
+  const blockEol = eol.includes('\n') ? eol : '\n'
+  const blockLines = block.split('\n').map((text) => ({ text, eol: blockEol }))
 
   if (ours.size === 0) {
     // A terminator first if the file has none. `content.endsWith(lastLine.eol)`
     // was the test, and `eol` is the empty string for a file that does not end
     // in one — so it was always true, no separator was added, and the block was
     // concatenated straight onto the user's last rule: `node_modules# >>> …`.
-    const body = content === '' || /(\r\n|\n|\r)$/.test(content) ? content : content + eol
-    return body + block.split('\n').join(eol) + eol
+    //
+    // And the separator has to be one git counts. A file whose last line ended
+    // in a bare `\r` looked terminated to that test, so nothing was inserted —
+    // but git reads no line break there, and the user's last rule came out as
+    // `secrets/\r# >>> OpenCastle managed …`: one pattern, matching nothing. The
+    // rule stopped being honoured with no visible change to the file. Completing
+    // the `\r` into a `\r\n` costs one byte and git then ends the line, dropping
+    // the trailing CR from the pattern itself.
+    const body =
+      content === '' || /\n$/.test(content)
+        ? content
+        : /\r$/.test(content)
+          ? content + '\n'
+          : content + blockEol
+    return body + block.split('\n').join(blockEol) + blockEol
   }
 
   const firstOurs = Math.min(...ours)
+
+  // How the block is separated from whatever comes after it — asked about the
+  // insertion boundary, not about the last line of ours in the file. Those are
+  // different whenever a stray marker sits lower down, and taking the stray
+  // one's terminator meant taking a stray one at EOF, which has none:
+  // `# <<< OpenCastle managed <<<.env.local`. The user's rule, swallowed by our
+  // closing marker.
+  //
+  // If anything follows, the separator is one git counts. A bare `\r` is not:
+  // it would weld the marker to their next rule for git while looking correct in
+  // an editor, and a `\r` emitted in front of a surviving `\n` is a single CRLF
+  // on the next read, not two lines — which is how `sync` twice came to produce
+  // two different files. If nothing follows, the block is the end of the file and
+  // inherits what was there, so a file that ended without a terminator still does.
+  const tailFollows = lines.some((_, i) => i > firstOurs && !ours.has(i))
+  const closing = tailFollows ? blockEol : lines[Math.max(...ours)].eol
   const out: Array<{ text: string; eol: string }> = []
   for (const [i, line] of lines.entries()) {
-    if (i === firstOurs) out.push(...blockLines)
-    if (!ours.has(i)) out.push(line)
+    if (i === firstOurs) {
+      out.push(
+        ...blockLines.map((l, k) => (k === blockLines.length - 1 ? { text: l.text, eol: closing } : l)),
+      )
+    }
+    if (!ours.has(i)) {
+      // The same question on the other side of the block. The user's last rule
+      // above it, terminated with a bare `\r`, ran straight into our opening
+      // marker for git — one pattern, matching nothing, their rule silently
+      // inert. The append path was taught this; the path that rebuilds in place
+      // was not.
+      const weldsIntoBlock = i === firstOurs - 1 && line.eol !== '' && !line.eol.includes('\n')
+      out.push(weldsIntoBlock ? { text: line.text, eol: '\r\n' } : line)
+    }
   }
   return joinLines(out)
 }
@@ -297,13 +425,9 @@ export async function updateGitignore(
   } catch (err) {
     throw new UnreadableConfigError('.gitignore', 'unreadable')
   }
-  // Split off a leading BOM and put it back at the end. It belongs to the file
-  // rather than to any line, and if it happened to sit in front of one of our
-  // markers, removing that line would otherwise take the BOM with it.
-  const bom = raw.startsWith(BOM_BYTES) ? BOM_BYTES : ''
-  const existing = bom ? raw.slice(bom.length) : raw
+  const existing = stripBom(raw)
   const residue = withoutOurLines(existing)
-  const next = bom + compose(existing, block)
+  const next = rebuilt(raw, block)
 
   // Compared against the file as it was read, BOM included — and, failing that,
   // against the question every surface asks. `gitignoreNeedsRebuild` normalises
@@ -342,10 +466,23 @@ export async function predictGitignoreStrip(
   const path = resolve(projectRoot, '.gitignore')
   if (!existsSync(path)) return 'absent'
 
-  const existing = await readBytes(path)
-  const remainder = withoutOurLines(existing)
-  if (remainder === existing) return 'absent'
-  return remainder.trim() ? 'stripped' : 'deleted'
+  // Guarded like the writer's read, and for the same reason — the twin it was
+  // not applied to. `updateGitignore` learned to name an unreadable `.gitignore`
+  // while these two, which `remove` calls first, still died bare: `remove --all`
+  // could not be completed by any flag, and the message named nothing, because
+  // Node sets no `.path` on an `EISDIR` from `read` for the fallback to find.
+  let existing: string
+  try {
+    existing = await readBytes(path)
+  } catch {
+    throw new UnreadableConfigError('.gitignore', 'unreadable')
+  }
+  // The BOM survives the strip, for the same reason it survives a rebuild: it is
+  // the file's, not the line's.
+  const bom = leadingBom(existing)
+  const remainder = withoutOurLines(existing.slice(bom.length))
+  if (bom + remainder === existing) return 'absent'
+  return bom + remainder === '' ? 'deleted' : 'stripped'
 }
 
 /**
@@ -361,11 +498,23 @@ export async function removeGitignoreBlock(
   const gitignorePath = resolve(projectRoot, '.gitignore')
   if (!existsSync(gitignorePath)) return 'unchanged'
 
-  const existing = await readBytes(gitignorePath)
-  const updated = withoutOurLines(existing)
+  let existing: string
+  try {
+    existing = await readBytes(gitignorePath)
+  } catch {
+    throw new UnreadableConfigError('.gitignore', 'unreadable')
+  }
+  const bom = leadingBom(existing)
+  const residue = withoutOurLines(existing.slice(bom.length))
+  const updated = bom + residue
   if (updated === existing) return 'unchanged'
 
-  if (updated.trim().length === 0) {
+  // Deleted only when nothing at all is left — not when nothing *printable* is.
+  // `.trim()` was the test, so a `.gitignore` whose entire content was a newline
+  // before OpenCastle ever ran was removed by the uninstall: a file the user had,
+  // gone, on the grounds that its content did not look like much. What is left
+  // after our lines come out is theirs, whatever it spells.
+  if (updated.length === 0) {
     const { rm } = await import('node:fs/promises')
     await rm(gitignorePath, { force: true })
     return 'removed'
@@ -391,13 +540,16 @@ export async function removeGitignoreBlock(
  */
 export function gitignoreNeedsRebuild(content: string): string {
   const normalise = (s: string): string => s.replace(/\r\n/g, '\n')
-  const current = normalise(content)
-  const wanted = compose(current, buildBlock())
-  if (current === wanted) return ''
+  // Normalised on both sides of the comparison, and `rebuilt` handed the file
+  // exactly as the writer sees it. Normalising the *input* was the defect: it
+  // changes which terminator the composition picks, so on a file that mixes
+  // endings the checker composed a file the writer never would, and reported
+  // drift `sync` then declined to clear.
+  if (normalise(content) === normalise(rebuilt(content, buildBlock()))) return ''
 
-  const lines = splitLines(current).map((l) => l.text)
-  const starts = lines.filter((l) => l === START_MARKER).length
-  const ends = lines.filter((l) => l === END_MARKER).length
+  const lines = splitLines(stripBom(content)).map((l) => l.text)
+  const starts = lines.filter(isStartLine).length
+  const ends = lines.filter(isEndLine).length
   if (starts === 0 && ends === 0) {
     return '.gitignore has no OpenCastle block — .env and the run artefacts are not ignored'
   }

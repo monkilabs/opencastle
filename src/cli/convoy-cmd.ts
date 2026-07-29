@@ -26,12 +26,15 @@ const CONVOY_HELP = `
     opencastle convoy resume             Continue the last interrupted run
     opencastle convoy retry              Re-run the failed tasks of the last run
     opencastle convoy dashboard          Open the run viewer
+    opencastle convoy --file <spec>       Execute a spec you wrote by hand
 
   Options:
-    --dry-run       Plan only; do not execute
-    --verbose       Stream agent output
-    --json          Machine-readable status
-    --help, -h      Show this help
+    --file, -f <path>  Run a spec file instead of planning from a task
+    --prd <path>       Plan from a PRD written earlier
+    --dry-run          Plan only; do not execute
+    --verbose          Stream agent output
+    --json             Machine-readable status
+    --help, -h         Show this help
 
   This namespace is experimental and may change or be removed.
 `

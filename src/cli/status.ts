@@ -92,7 +92,16 @@ async function loadAdapters(manifest: Manifest): Promise<Array<{ ide: string; ad
   return out
 }
 
-/** Is any managed path in the project unreadable? */
+/**
+ * Is any managed path in the project unreadable?
+ *
+ * `.opencastle/` is included, and that is the whole point of the second list.
+ * This walked only the *framework* paths, so the directory the compiler reads its
+ * own inputs from was invisible to the check written to stop `status` reporting
+ * health over an unreadable tree: `chmod 000 .opencastle/agents` gave "✓ up to
+ * date" while `sync`, `init` and `doctor`'s remedy all exited 1. The tool's own
+ * half of the project is as capable of being unreadable as the generated half.
+ */
 async function projectIsUnreadable(
   projectRoot: string,
   adapters: Array<{ adapter: { getManagedPaths(): { framework: string[] } } }>,
@@ -110,12 +119,18 @@ async function projectIsUnreadable(
     }
     return false
   }
-  for (const { adapter } of adapters) {
-    for (const p of adapter.getManagedPaths().framework) {
-      const abs = resolve(projectRoot, p.replace(/\/$/, ''))
-      if (!existsSync(abs)) continue
-      if (statSync(abs).isDirectory() ? walk(abs) : false) return true
+  const roots = adapters.flatMap(({ adapter }) => adapter.getManagedPaths().framework)
+  for (const p of [...roots, '.opencastle/']) {
+    const abs = resolve(projectRoot, p.replace(/\/$/, ''))
+    if (!existsSync(abs)) continue
+    let isDir: boolean
+    try {
+      isDir = statSync(abs).isDirectory()
+    } catch {
+      // The stat itself failing is the strongest possible answer.
+      return true
     }
+    if (isDir ? walk(abs) : false) return true
   }
   return false
 }

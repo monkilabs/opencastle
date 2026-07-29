@@ -9,7 +9,35 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const pkgRoot = resolve(__dirname, '..')
 
-const [, , command, ...args] = process.argv
+const [, , command, ...rawArgs] = process.argv
+
+/**
+ * `--flag=value` and `--flag value` are the same thing.
+ *
+ * Every command parses by matching the literal token, so only the space form
+ * worked — and the `=` form is what our own shipped documentation tells agents to
+ * run. `opencastle log --type=delegation …`, the line in the agent-hooks protocol
+ * that fires on every delegation, exited 1 with "--type is required" because
+ * `--type=delegation` is not the token `--type`. Split once, here, so no command
+ * can disagree about which forms it accepts.
+ *
+ * Only the first `=` splits, so a value may contain one. `--` alone is left as
+ * it is, and a bare `=` in a positional is untouched.
+ */
+function expandEqualsForm(argv) {
+  const out = []
+  for (const arg of argv) {
+    if (arg.startsWith('--') && arg.length > 2 && arg.includes('=')) {
+      const at = arg.indexOf('=')
+      out.push(arg.slice(0, at), arg.slice(at + 1))
+    } else {
+      out.push(arg)
+    }
+  }
+  return out
+}
+
+const args = expandEqualsForm(rawArgs)
 
 // node:sqlite is still flagged experimental and prints a warning on import. It is
 // an implementation detail of the convoy store, so it should not appear in the

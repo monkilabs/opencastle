@@ -19,6 +19,50 @@ async function sameFile(a: string, b: string): Promise<boolean> {
 /**
  * Recursively copy a directory tree.
  */
+/**
+ * Fold one `CopyResults` into another, every field, named by the source.
+ *
+ * Four call sites each enumerated the three or four fields they cared about, so
+ * every field added since went missing at whichever of them the caller forgot.
+ * `unreadable` was dropped for anything below a directory's top level, so `sync`
+ * skipped a file it could not read and said nothing; `visited` was dropped by two
+ * of them, and `visited` is what the sweep consults before deleting output whose
+ * source is gone — the exact mechanism that once deleted 43 skill files.
+ *
+ * Enumerating fields is the defect, not the particular fields chosen: the list
+ * goes stale the moment one is added, and nothing fails to compile when it does.
+ * This asks the object what it has. It is the same argument as `recordMerge` one
+ * layer up, which exists because an adapter dropped a `MergeResult` field.
+ */
+export function mergeCopyResults(into: CopyResults, from: CopyResults): void {
+  const target = into as unknown as Record<string, string[] | undefined>;
+  for (const [key, value] of Object.entries(from)) {
+    if (!Array.isArray(value)) continue;
+    target[key] = [...(target[key] ?? []), ...(value as string[])];
+  }
+}
+
+/**
+ * Is the destination already this text?
+ *
+ * `false` means "no, write it"; `true` means "yes, skip". A destination we cannot
+ * read answers neither, so it is recorded as unreadable and reported — the same
+ * treatment a config that will not parse gets, and for the same reason: aborting
+ * here leaves a part-written install and names no file.
+ */
+async function sameText(
+  destPath: string,
+  wanted: string,
+  results: CopyResults,
+): Promise<boolean> {
+  try {
+    return (await readFile(destPath, 'utf8')) === wanted;
+  } catch {
+    (results.unreadable ??= []).push(`${destPath}\u0000unreadable`);
+    return true;
+  }
+}
+
 export async function copyDir(
   src: string,
   dest: string,
@@ -41,10 +85,7 @@ export async function copyDir(
         filter,
         transform,
       });
-      results.copied.push(...sub.copied);
-      results.skipped.push(...sub.skipped);
-      results.created.push(...sub.created);
-      if (sub.visited) (results.visited ??= []).push(...sub.visited);
+      mergeCopyResults(results, sub);
     } else {
       const exists = existsSync(destPath);
       if (exists && !overwrite) {
@@ -66,7 +107,14 @@ export async function copyDir(
         // `copied` into "Updated N framework files", and counting every file
         // visited made a sync that rewrote nothing indistinguishable from one
         // that rewrote everything.
-        if (exists && (await readFile(destPath, 'utf8')) === transformed) {
+        // Named and skipped rather than fatal. This read only answers "is it
+        // already what we would write?", but a directory wearing a generated
+        // file's name made it throw `EISDIR` — which Node raises on the
+        // descriptor, so it carries no `.path` for the catch-all in
+        // `bin/cli.mjs` to print. `sync` died mid-install with
+        // `✗ EISDIR: illegal operation on a directory, read` and nothing to act
+        // on, while `sync --check`, reading the same tree, named the path.
+        if (exists && (await sameText(destPath, transformed, results))) {
           results.skipped.push(destPath);
           continue;
         }
@@ -74,9 +122,20 @@ export async function copyDir(
         results[exists ? 'copied' : 'created'].push(destPath);
       } else {
         (results.visited ??= []).push(destPath);
-        if (exists && (await sameFile(srcPath, destPath))) {
-          results.skipped.push(destPath);
-          continue;
+        // The twin of the guard above: `sameFile` reads both sides.
+        if (exists) {
+          let same: boolean;
+          try {
+            same = await sameFile(srcPath, destPath);
+          } catch {
+            (results.unreadable ??= []).push(`${destPath}\u0000unreadable`);
+            results.skipped.push(destPath);
+            continue;
+          }
+          if (same) {
+            results.skipped.push(destPath);
+            continue;
+          }
         }
         await copyFile(srcPath, destPath);
         results[exists ? 'copied' : 'created'].push(destPath);
