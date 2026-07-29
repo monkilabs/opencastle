@@ -384,22 +384,57 @@ function compose(content: string, block: string): string {
   // inherits what was there, so a file that ended without a terminator still does.
   const tailFollows = lines.some((_, i) => i > firstOurs && !ours.has(i))
   const closing = tailFollows ? blockEol : lines[Math.max(...ours)].eol
-  const out: Array<{ text: string; eol: string }> = []
+
+  // Which of their lines git currently reads as a line of its own.
+  //
+  // Git splits on `\n` and nowhere else, so one of its lines can span several of
+  // ours. A line of theirs begins a git line when everything before it ends in a
+  // `\n`. Recorded from the file as it stands, because that — not what the file
+  // would say without our block in it — is what the project is honouring right
+  // now, and what must still be true afterwards.
+  const startsGitLine = new Set<number>()
+  {
+    let before = ''
+    for (const [i, line] of lines.entries()) {
+      if (before === '' || before.endsWith('\n')) startsGitLine.add(i)
+      before += line.text + line.eol
+    }
+  }
+
+  const out: Array<{ text: string; eol: string; src?: number }> = []
   for (const [i, line] of lines.entries()) {
     if (i === firstOurs) {
       out.push(
         ...blockLines.map((l, k) => (k === blockLines.length - 1 ? { text: l.text, eol: closing } : l)),
       )
     }
-    if (!ours.has(i)) {
-      // The same question on the other side of the block. The user's last rule
-      // above it, terminated with a bare `\r`, ran straight into our opening
-      // marker for git — one pattern, matching nothing, their rule silently
-      // inert. The append path was taught this; the path that rebuilds in place
-      // was not.
-      const weldsIntoBlock = i === firstOurs - 1 && line.eol !== '' && !line.eol.includes('\n')
-      out.push(weldsIntoBlock ? { text: line.text, eol: '\r\n' } : line)
-    }
+    // Their lines go back exactly as they came, terminators included.
+    if (!ours.has(i)) out.push({ ...line, src: i })
+  }
+
+  // A line git read as a line still is one.
+  //
+  // Their `\r`-terminated line is not a line break to git, so it only ever began
+  // one because something after it supplied a `\n` — and that something was
+  // sometimes a block of ours. Take the block out and two of their lines join:
+  //
+  //   secrets/prod.key\r  <block>  build\r\n   →   secrets/prod.key\rbuild\r\n
+  //
+  // which is a single pattern matching nothing. `build` was live and is now dead,
+  // and nothing about the file looks wrong. Removing lines of ours must not change
+  // where their lines begin, so where a `\n` we took away was doing that work, one
+  // byte puts it back.
+  //
+  // Only this direction is repaired. Two lines of theirs that git had already
+  // welded stay welded — nothing of ours was between them, so nothing we do
+  // separates them — and reviving a dead rule is its own kind of wrong: a
+  // resurrected `!keep.txt` un-ignores a file the project had been ignoring.
+  for (let k = 1; k < out.length; k++) {
+    const here = out[k]
+    if (here.src === undefined || !startsGitLine.has(here.src)) continue
+    const above = out[k - 1]
+    if (above.eol === '' || above.eol.includes('\n')) continue
+    out[k - 1] = { ...above, eol: `${above.eol}\n` }
   }
   return joinLines(out)
 }

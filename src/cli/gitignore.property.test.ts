@@ -169,18 +169,14 @@ describe('.gitignore holds the same invariants as a root file', () => {
   const SEEDS = Array.from({ length: 800 }, (_, i) => i + 1)
 
   it(
-    'never stops honouring a rule the user wrote outside our block',
+    'keeps every line the user wrote outside our block, once each',
     async () => {
       for (const seed of SEEDS) {
         const original = makeFile(seed)
         writeFileSync(file, original)
 
-        // Which rules git honours *because of a line outside every block of
-        // ours*. Those are the user's, and no number of syncs may drop one.
         // Ours: every line of a complete block, and every marker line whatever
-        // it pairs with. Leaving unpaired markers in the baseline meant the
-        // baseline file still carried them — and since they begin with `#`,
-        // git read them as comments, so the two files were not comparable.
+        // it pairs with.
         const ownedLines = new Set<number>()
         for (const r of blockRegions(original, START_MARKER, END_MARKER)) {
           const from = splitLines(original.slice(0, r.start)).length - 1
@@ -190,30 +186,29 @@ describe('.gitignore holds the same invariants as a root file', () => {
         for (const [i, line] of splitLines(original).entries()) {
           if (line.startsWith(START_MARKER) || line.startsWith(END_MARKER)) ownedLines.add(i)
         }
-        writeFileSync(file, joinKept(original, ownedLines))
-        const theirs = new Set(ignored(dir))
-        writeFileSync(file, original)
 
-        // git does not treat a lone `\r` as a line separator, so it reads a
-        // classic-Mac `.gitignore` as a single line and honours nothing in it —
-        // before or after this tool touches it. Asking git about those files
-        // compares against a state it never had. Their bytes are still checked
-        // below, which is all that can honestly be promised for a file git
-        // cannot read.
-        const crOnly = original.includes('\r') && !original.includes('\n')
+        // This test used to also ask git which rules survived, against a baseline
+        // built by deleting our lines — "what their file would do if we were not
+        // in it". That baseline turned out to be unachievable, in both directions
+        // at once, and the mixed-ending alphabet made it say so:
+        //
+        //   their-rule\r  <our block>  other-rule\n
+        //
+        // Git ends a line only at `\n`, so with our block deleted those two are a
+        // single welded line, and with our block present they are two. Inserting
+        // anything between two welded lines unwelds them; nothing can be inserted
+        // that does not. So "their lines behave as if we were absent" cannot be
+        // held, and holding it in one direction broke it in the other — the fix
+        // that stopped a live rule going dead also revived a dead `!keep.txt`,
+        // which un-ignores a file the project had been ignoring.
+        //
+        // What can be promised is monotone and is what a user actually relies on:
+        // no sync stops honouring what the file was honouring before it ran. That
+        // is the test below, with `check-ignore -v` for attribution. What is left
+        // here is the textual half, which needs no oracle.
+        for (let pass = 0; pass < 3; pass++) await updateGitignore(dir)
 
-        for (let pass = 0; pass < 3; pass++) {
-          await updateGitignore(dir)
-          const now = new Set(ignored(dir))
-          for (const rule of crOnly ? [] : theirs) {
-            expect(
-              now.has(rule),
-              `pass ${pass}: stopped ignoring ${rule}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(readFileSync(file, 'utf8'))}`,
-            ).toBe(true)
-          }
-        }
-
-        // And every line of theirs is still there, the same number of times.
+        // Every line of theirs is still there, the same number of times.
         // Git's answer can be preserved by accident — a duplicated rule gives
         // the same result — so the file itself is checked as well.
         const ownedNow = new Set<number>()
@@ -326,6 +321,103 @@ describe('.gitignore holds the same invariants as a root file', () => {
         expect(
           inert,
           `seed ${seed}: git does not ignore ${inert.join(', ')}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(readFileSync(file, 'utf8'))}`,
+        ).toEqual([])
+      }
+    },
+    TIMEOUT,
+  )
+
+  it(
+    'never moves where a line of theirs begins, as git counts lines',
+    async () => {
+      // The property the other tests could not see, because both obvious
+      // baselines are wrong. Deleting our lines first promotes whatever sat above
+      // our block to be the last line, and git strips a trailing `\r` from a last
+      // line — so a rule that was welded and dead in the real file looks live in
+      // the model. Not deleting them credits the user with rules sitting inside
+      // our own block, which we replace by design.
+      //
+      // `check-ignore -v` reports the line number that matched, so attribution is
+      // exact: a probe counts as theirs only when the line responsible is one no
+      // line of ours overlaps. What it caught: their `\r`-terminated rule and the
+      // rule below it were separated by our block, which was supplying the `\n`
+      // git needed. Replacing the block joined them into one dead pattern —
+      // `secrets/prod.key\rbuild` — and a live rule went silently inert.
+      const ignoredBy = (): Map<string, number> => {
+        let out = ''
+        try {
+          out = execFileSync(
+            'git',
+            ['-C', dir, '-c', 'core.excludesFile=/dev/null', 'check-ignore', '-v', '--stdin'],
+            { input: RULES.join('\n') + '\n', encoding: 'utf8' },
+          )
+        } catch (err) {
+          const e = err as { status?: number; stdout?: string }
+          if (e.status === 1) out = e.stdout ?? ''
+          else throw err
+        }
+        const hits = new Map<string, number>()
+        for (const row of out.split('\n').filter(Boolean)) {
+          const tab = row.lastIndexOf('\t')
+          if (tab === -1) continue
+          const m = /^(.*):(\d+):/.exec(row.slice(0, tab))
+          if (m) hits.set(row.slice(tab + 1), Number(m[2]))
+        }
+        return hits
+      }
+
+      /** Git line numbers (1-based) that no line of ours overlaps. */
+      const unambiguous = (text: string): Set<number> => {
+        const owned = new Set<number>()
+        for (const r of blockRegions(text, START_MARKER, END_MARKER)) {
+          const from = splitLines(text.slice(0, r.start)).length - 1
+          const to = splitLines(text.slice(0, r.end)).length - 1
+          for (let i = from; i <= to; i++) owned.add(i)
+        }
+        for (const [i, line] of splitLines(text).entries()) {
+          if (line.startsWith(START_MARKER) || line.startsWith(END_MARKER)) owned.add(i)
+        }
+        const ranges: Array<[number, number]> = []
+        const re = /\r\n|\n|\r/g
+        let at = 0
+        let idx = 0
+        for (let m = re.exec(text); m !== null; m = re.exec(text)) {
+          if (owned.has(idx)) ranges.push([at, m.index + m[0].length])
+          at = m.index + m[0].length
+          idx++
+        }
+        if (owned.has(idx)) ranges.push([at, text.length])
+
+        const ok = new Set<number>()
+        let start = 0
+        let gitLine = 1
+        for (let i = 0; i <= text.length; i++) {
+          if (i === text.length || text[i] === '\n') {
+            const end = i === text.length ? i : i + 1
+            if (end > start && !ranges.some(([a, b]) => a < end && b > start)) ok.add(gitLine)
+            start = end
+            gitLine++
+            if (i === text.length) break
+          }
+        }
+        return ok
+      }
+
+      for (const seed of SEEDS) {
+        const original = makeFile(seed)
+        writeFileSync(file, original)
+        const before = ignoredBy()
+        const theirLines = unambiguous(original)
+        const theirs = [...before]
+          .filter(([, ln]) => theirLines.has(ln))
+          .map(([probe]) => probe)
+
+        await updateGitignore(dir)
+        const after = new Set(ignoredBy().keys())
+        const lost = theirs.filter((p) => !after.has(p))
+        expect(
+          lost,
+          `seed ${seed}: git stopped ignoring ${lost.join(', ')}\nfrom ${JSON.stringify(original)}\ngot ${JSON.stringify(readFileSync(file, 'utf8'))}`,
         ).toEqual([])
       }
     },
