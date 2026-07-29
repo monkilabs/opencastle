@@ -220,16 +220,7 @@ export default async function update({
     const stackNow = resolveStack({ ...manifest, ides })
     await restoreMissingCustomizations(pkgRoot, projectRoot, stackNow, ides)
     const gitignoreOutcome = await updateGitignore(projectRoot)
-    // `severed` wrote nothing, so saying "Updated .gitignore" over it was the
-    // command asserting work it had declined to do — and the only surface that
-    // could have told the user was the one printing the false line.
-    if (gitignoreOutcome === 'severed') {
-      console.log(
-        `  ${c.yellow('!')} Left .gitignore alone — a marker there pairs with nothing,` +
-          ` and the rules beside it have nothing delimiting them.`,
-      )
-      console.log(`     ${c.dim('Restore the missing marker, or delete those rules, then sync again.')}`)
-    } else if (gitignoreOutcome !== 'unchanged') {
+    if (gitignoreOutcome !== 'unchanged') {
       console.log(`  ${c.green('✓')} Updated .gitignore ${c.dim('(generated config is committed)')}`)
     }
     // A collapse here removes ignore rules, and a rule silently dropped is a

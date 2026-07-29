@@ -110,124 +110,140 @@ export function buildBlock(): string {
  * - If `.gitignore` already contains an OpenCastle block, replaces it
  *   (handles re-init or IDE switch cleanly).
  */
+/**
+ * Which line indices belong to this tool.
+ *
+ * Line-based, and independent of the root files' `cutBlock`. Sharing that gave
+ * `.gitignore` a heuristic about reclaiming blank lines that was designed for a
+ * file whose block is *maintained in place*, and it welded `.env.local` into a
+ * comment once already. Here the answer is simply: every line of a complete
+ * block, and every marker line that pairs with nothing. Marker lines are text
+ * this tool wrote; everything else is the user's and is returned untouched.
+ */
+function ourLineIndices(content: string): Set<number> {
+  const lines = content.split('\n')
+  const ours = new Set<number>()
+  let openedAt: number | null = null
+  for (const [i, line] of lines.entries()) {
+    // `startsWith`, not equality — the same test `markerOffsets` applies. With
+    // exact matching a line carrying our marker plus trailing text was not a
+    // marker here and was one there, so the two readers disagreed about where a
+    // block ended and this one swallowed a rule of the user's that sat between
+    // them.
+    if (line.startsWith(START_MARKER)) {
+      // A second start before an end: the first one pairs with nothing.
+      if (openedAt !== null) ours.add(openedAt)
+      openedAt = i
+    } else if (line.startsWith(END_MARKER)) {
+      if (openedAt === null) {
+        ours.add(i)
+      } else {
+        for (let k = openedAt; k <= i; k++) ours.add(k)
+        openedAt = null
+      }
+    }
+  }
+  if (openedAt !== null) ours.add(openedAt)
+
+  // Blank lines sitting *between* two things of ours are ours too.
+  //
+  // Nothing of the user's is adjacent to them — their nearest non-blank
+  // neighbour is one of our lines in both directions — so claiming them takes
+  // nothing that was written by anyone else. Without this, repairing a doubled
+  // block left the separator between the two copies behind, and the user's file
+  // came back from an uninstall one blank line longer than it went in.
+  for (const [i, line] of lines.entries()) {
+    if (ours.has(i) || line.trim() !== '') continue
+    let before = i - 1
+    while (before >= 0 && lines[before].trim() === '') before--
+    let after = i + 1
+    while (after < lines.length && lines[after].trim() === '') after++
+    if (before >= 0 && after < lines.length && ours.has(before) && ours.has(after)) {
+      ours.add(i)
+    }
+  }
+  return ours
+}
+
+/** Everything in `content` that is not ours, in order, byte for byte. */
+function withoutOurLines(content: string): string {
+  const ours = ourLineIndices(content)
+  if (ours.size === 0) return content
+  return content
+    .split('\n')
+    .filter((_, i) => !ours.has(i))
+    .join('\n')
+}
+
+/**
+ * The file as it should look: every line of the user's where they put it, and
+ * exactly one current block where the first of ours was.
+ *
+ * Composed rather than patched, which is the point of this rewrite. Our block
+ * here is a *constant* — `buildBlock()` takes no arguments and holds nothing
+ * per-project — so there is never anything inside it worth preserving, and
+ * rebuilding it is always correct. That removes the entire class of defects
+ * this file kept producing: no region to maintain, so no collapse, no promotion
+ * of stray markers, no `torn`/`severed`/`unreducible` states, and nothing for
+ * two readers to disagree about.
+ *
+ * The block goes back where it was, not at the end. Moving it would relocate
+ * every rule the user had written *below* it, which is both a change to their
+ * file and a difference the comparison would report forever.
+ *
+ * The worst case of getting it wrong is also different from a root file's. A
+ * stale instruction set left in a root file is two sets of rules the assistant
+ * obeys; a stale *ignore rule* left here is a duplicate line git does not care
+ * about. So this never refuses to write — it always converges in one run, which
+ * is what every earlier version could not promise.
+ */
+function compose(content: string, block: string): string {
+  const ours = ourLineIndices(content)
+  const lines = content.split('\n')
+  const blockLines = block.split('\n')
+
+  if (ours.size === 0) {
+    // Never had one: append, keeping their file exactly as it is above.
+    const body = content === '' || content.endsWith('\n') ? content : `${content}\n`
+    return `${body}${block}\n`
+  }
+
+  const firstOurs = Math.min(...ours)
+  const out: string[] = []
+  for (const [i, line] of lines.entries()) {
+    if (i === firstOurs) out.push(...blockLines)
+    if (!ours.has(i)) out.push(line)
+  }
+  return out.join('\n')
+}
+
 export async function updateGitignore(
-  projectRoot: string
-): Promise<'created' | 'updated' | 'unchanged' | 'repaired' | 'severed'> {
+  projectRoot: string,
+): Promise<'created' | 'updated' | 'unchanged' | 'repaired'> {
   const gitignorePath = resolve(projectRoot, '.gitignore')
   const block = asBytes(buildBlock())
 
   if (!existsSync(gitignorePath)) {
-    await writeBytes(gitignorePath, block + '\n')
+    await writeBytes(gitignorePath, compose('', block))
     return 'created'
   }
 
   const existing = await readBytes(gitignorePath)
+  const residue = withoutOurLines(existing)
+  const next = compose(existing, block)
 
-  // Same region model as the root files, rather than a second reading of the
-  // same idea. A doubled block — the "keep both sides" merge outcome — used to
-  // survive every sync here and outlive an uninstall, leaving a file whose whole
-  // contents were text this tool wrote.
-  const regions = blockRegions(existing, START_MARKER, END_MARKER)
-  const orphans = orphanMarkers(existing, START_MARKER, END_MARKER)
-  if (regions.length > 0) {
-    // The last block, as the root files do. This kept the *first* and they kept
-    // the last — one idea, two readings, and the two files consequently failed
-    // on mirror-image inputs, which is how each stayed out of the other's
-    // fixtures.
-    const keep = regions[regions.length - 1]
+  if (next === existing) return 'unchanged'
 
-    // Extras are cut only when nothing is unpaired, and every edit is computed
-    // against `existing` and applied back to front.
-    //
-    // Cutting and then re-reading `blockRegions` of the cut text — which is
-    // what this did — promotes a stray start marker beside a stray end marker
-    // into a block, and the following sync deletes everything between them.
-    // Here that is the user's ignore rules, and a dropped rule is a committed
-    // secret. `stripAllBlocks` was fixed for this; the writer was not, so two
-    // ordinary syncs removed `.env.local` from a file that had been protecting
-    // it, with no backup and no line of output.
-    const doomed = orphans.length === 0 ? regions.filter((r) => r.start !== keep.start) : []
-    const edits: Array<{ start: number; end: number; text?: string }> = [
-      ...doomed.map((r) => ({ start: r.start, end: r.end })),
-      { start: keep.start, end: keep.end, text: block },
-    ].sort((a, b) => b.start - a.start)
+  // A backup only when we took away more than one current block — a second
+  // block, a stray marker, or rules someone had put inside ours. Replacing our
+  // own block with an identical-shaped one needs no copy.
+  const removedLines = existing.split('\n').length - residue.split('\n').length
+  const ownBlockLines = block.split('\n').length
+  const repaired = removedLines > ownBlockLines
+  if (repaired) await writeBytes(`${gitignorePath}.opencastle-backup`, existing)
 
-    let updated = existing
-    for (const edit of edits) {
-      updated =
-        edit.text === undefined
-          ? cutBlockRegion(updated, edit.start, edit.end)
-          : updated.slice(0, edit.start) + edit.text + updated.slice(edit.end)
-    }
-
-    if (updated === existing) return 'unchanged'
-    // A backup, which this file never had. The root files write one before
-    // collapsing and `.gitignore` did not — so the one co-owned file whose
-    // loss cannot be noticed by reading it was also the one with no way back.
-    if (doomed.length > 0) {
-      await writeBytes(`${gitignorePath}.opencastle-backup`, existing)
-    }
-    await writeBytes(gitignorePath, updated)
-    return doomed.length > 0 ? 'repaired' : 'updated'
-  }
-
-  // Never append into a severed file, for the reason `writeManagedBlock` gives:
-  // the markers that delimited our rules are gone but the rules are still
-  // there, so appending writes a second block underneath the first. Here that
-  // also means two copies of the ignore list, and `remove --all` later leaving
-  // a complete block — `.env` included — in the user's file.
-  // Same test as the root files: a stray marker only means "severed" when our
-  // rules are actually in the file with nothing delimiting them.
-  if (orphans.length > 0 && hasOurRules(existing)) return 'severed'
-
-  // Append block to existing file
-  // One newline, same reasoning as the root-file merge: normalising the user's
-  // file ending is information we cannot give back.
-  await writeBytes(gitignorePath, `${existing}\n${block}\n`)
-  return 'updated'
-}
-
-/**
- * Remove the OpenCastle managed block from `.gitignore`.
- *
- * - No-op if no `.gitignore` exists or no block is present.
- * - Cleans up resulting double blank lines.
- * - Deletes `.gitignore` if the file becomes empty after removal.
- * - Returns 'removed' or 'unchanged'.
- */
-/**
- * Every managed block and stray marker removed — the one implementation.
- *
- * `remove`'s preview used to predict this with a lazy regex of its own, which
- * matched a single block. On a `.gitignore` holding two (the "keep both sides"
- * merge outcome) the preview promised an edit and the action unlinked the file.
- */
-function withoutManagedBlocks(content: string): string {
-  // Decided once, applied back to front — see `stripAllBlocks`. Removing a
-  // block here can leave a stray start marker adjacent to a stray end marker
-  // and the re-scan would read them as a block, taking the user's ignore rules
-  // in between. `.gitignore` is where that costs the most: a rule silently
-  // dropped is a secret committed.
-  const cuts = [
-    ...blockRegions(content, START_MARKER, END_MARKER).map((r) => ({
-      start: r.start,
-      end: r.end,
-      lone: false,
-    })),
-    ...orphanMarkers(content, START_MARKER, END_MARKER).map((at) => ({
-      start: at,
-      end: at + (content.startsWith(START_MARKER, at) ? START_MARKER.length : END_MARKER.length),
-      lone: true,
-    })),
-  ].sort((a, b) => b.start - a.start)
-
-  let updated = content
-  for (const cut of cuts) {
-    updated = cut.lone
-      ? cutMarkerLine(updated, cut.start, cut.end)
-      : cutBlockRegion(updated, cut.start, cut.end)
-  }
-  return updated
+  await writeBytes(gitignorePath, next)
+  return repaired ? 'repaired' : 'updated'
 }
 
 /** What `removeGitignoreBlock` would leave behind, without writing anything. */
@@ -238,26 +254,31 @@ export async function predictGitignoreStrip(
   if (!existsSync(path)) return 'absent'
 
   const existing = await readBytes(path)
-  const remainder = withoutManagedBlocks(existing)
+  const remainder = withoutOurLines(existing)
   if (remainder === existing) return 'absent'
   return remainder.trim() ? 'stripped' : 'deleted'
 }
 
+/**
+ * Take every line of ours back out.
+ *
+ * The same function the preview uses, on the same bytes — these diverged twice
+ * before, once leaving the user with a deleted file the preview had promised to
+ * keep.
+ */
 export async function removeGitignoreBlock(
-  projectRoot: string
+  projectRoot: string,
 ): Promise<'removed' | 'unchanged'> {
   const gitignorePath = resolve(projectRoot, '.gitignore')
   if (!existsSync(gitignorePath)) return 'unchanged'
 
   const existing = await readBytes(gitignorePath)
-
-  const updated = withoutManagedBlocks(existing)
-
+  const updated = withoutOurLines(existing)
   if (updated === existing) return 'unchanged'
 
-  if (!updated.trim()) {
-    const { unlink } = await import('node:fs/promises')
-    await unlink(gitignorePath)
+  if (updated.trim().length === 0) {
+    const { rm } = await import('node:fs/promises')
+    await rm(gitignorePath, { force: true })
     return 'removed'
   }
 
@@ -265,3 +286,34 @@ export async function removeGitignoreBlock(
   return 'removed'
 }
 
+
+/**
+ * Why `.gitignore` would be rewritten, or empty when it is already right.
+ *
+ * The single reader every surface shares — `doctor`, `sync --check` and the
+ * status line. They each used to work this out for themselves and disagreed in
+ * every combination: one red while another was green, a remedy that was a
+ * no-op, a state reported by nothing. There is one question here and now one
+ * function answering it.
+ *
+ * Line endings are normalised for the comparison, because a Git for Windows
+ * checkout rewrites the committed file to CRLF and a byte comparison made every
+ * such clone permanently red with a fix that produced nothing to commit.
+ */
+export function gitignoreNeedsRebuild(content: string): string {
+  const normalise = (s: string): string => s.replace(/\r\n/g, '\n')
+  const current = normalise(content)
+  const wanted = compose(current, buildBlock())
+  if (current === wanted) return ''
+
+  const lines = current.split('\n')
+  const starts = lines.filter((l) => l === START_MARKER).length
+  const ends = lines.filter((l) => l === END_MARKER).length
+  if (starts === 0 && ends === 0) {
+    return '.gitignore has no OpenCastle block — .env and the run artefacts are not ignored'
+  }
+  if (starts !== 1 || ends !== 1) {
+    return `.gitignore has ${starts} start and ${ends} end marker(s) — its ignore rules may not be in force`
+  }
+  return '.gitignore\'s OpenCastle block is out of date'
+}

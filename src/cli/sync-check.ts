@@ -6,12 +6,7 @@ import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { getMcpConfigRelPath } from './mcp.js'
 import { resolveStack } from './stack-config.js'
-import {
-  START_MARKER as GITIGNORE_START,
-  END_MARKER as GITIGNORE_END,
-  buildBlock as buildGitignoreBlock,
-  hasOurRules,
-} from './gitignore.js'
+import { gitignoreNeedsRebuild } from './gitignore.js'
 import {
   blockRegions,
   carriesLegacyBody,
@@ -321,110 +316,44 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
     }
   }
 
-  // `.gitignore` is co-owned and is the one file whose loss cannot be noticed
-  // by reading it, yet the documented CI gate never looked at it: a
-  // `.gitignore` the writer refuses to reduce left `doctor` red and this
-  // command green, so CI passed over the exact state a person has to resolve.
+  // `.gitignore`, through the one function every surface reads.
+  //
+  // This section used to reproduce the diagnosis itself — a content comparison
+  // here, a structural one there, an `unreducible` arm, a `severed` arm — and
+  // each piece disagreed with `doctor` in a different way. Our block there is a
+  // constant, so every difference is fixed by rebuilding it and there is
+  // nothing a person has to resolve: one question, one answer, ordinary drift.
   {
-    // Only inside a git repository. Ignore rules mean nothing outside one, and
-    // `.gitignore` is written by the commands rather than by the adapters — so
-    // a tree compiled by an adapter alone has never had one and its absence is
-    // not a finding.
     const gi = resolve(projectRoot, '.gitignore')
     const inGitRepo = existsSync(resolve(projectRoot, '.git'))
-    if (inGitRepo && !existsSync(gi)) {
-      drift.push({
-        ide: 'all',
-        path: '.gitignore',
-        kind: 'missing',
-        detail: '.env and the run artefacts are not ignored without it',
-      })
-    }
-    if (existsSync(gi)) {
-      // Guarded like every other read of a user file. An unreadable
-      // `.gitignore` made `sync` exit 1 while this command, `doctor` and
-      // `status` all exited 0 — the same shape as the `.mcp.json` twin fixed a
-      // round ago, one file over.
-      let giText: string | null = null
-      try {
-        giText = readFileSync(gi, 'utf8')
-      } catch (err) {
+    if (inGitRepo) {
+      if (!existsSync(gi)) {
         drift.push({
           ide: 'all',
           path: '.gitignore',
-          kind: 'unreducible',
-          detail: `cannot be read — ${(err as Error).message}`,
-          fix: 'fix the permissions or replace the file; this one needs a person',
+          kind: 'missing',
+          detail: '.env and the run artefacts are not ignored without it',
         })
-      }
-      if (giText !== null) {
-      // The block's *contents*, not only its structure. Deleting `.env` from
-      // inside it left every surface green while `.env` became committable —
-      // the one co-owned file whose loss cannot be noticed by reading it, with
-      // its content checked by nothing.
-      // Normalised, for the reason `sameContent` gives above: a Git for Windows
-      // checkout rewrites every committed file to CRLF, so a byte comparison
-      // reported `.gitignore` as drifted on every run there — and `sync`'s
-      // "fix" produced nothing to commit, because git normalises on staging.
-      // Permanently red CI with an uncommittable remedy, which is exactly the
-      // failure `normaliseEndings` exists to prevent, on the comparison added
-      // one commit after it.
-      const wanted = normaliseEndings(buildGitignoreBlock())
-      const region = extractRegion(giText, GITIGNORE_START, GITIGNORE_END)
-      const actual = region === null ? null : normaliseEndings(region)
-      // `null` — the block removed altogether — is the *larger* deletion, and it
-      // fell straight through this test: `.env`, the run artefacts and the
-      // rescue directory all stopped being ignored, `.env` became committable,
-      // and every surface reported health. The case the check was written for
-      // was caught and the bigger one beside it was not.
-      // Not when the file is severed: `sync` will not write to it, so calling
-      // this "edited in place (your change will be lost on the next sync)" and
-      // prescribing `sync` was false twice over. The structural arm below
-      // reports it correctly.
-      const giState = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END, hasOurRules).state
-      if (giState !== 'severed' && (actual === null || actual.trim() !== wanted.trim())) {
-        drift.push({
-          ide: 'all',
-          path: '.gitignore',
-          kind: 'changed',
-          ...(actual === null && {
-            detail: 'the OpenCastle block is gone, so .env and the run artefacts are no' +
-              ' longer ignored',
-          }),
-        })
-      }
-      const d = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END, hasOurRules)
-      // A second block is invisible to the content comparison above, which only
-      // ever looks at the last region — so a doubled `.gitignore` was red on
-      // `doctor` and green here. `doubled` is fixable, so it is ordinary drift
-      // and `sync` clears it.
-      if (d.state === 'doubled' && !drift.some((x) => x.path === '.gitignore')) {
-        drift.push({ ide: 'all', path: '.gitignore', kind: 'changed', detail: d.detail })
-      }
-      // `unreducible` only, matching how root files are weighted twenty lines
-      // up. `!d.fixable` includes `torn`, so a lone stray marker — the state
-      // deliberately downgraded to a warning because the commonest way to get
-      // one is a file documenting the convention — still failed CI here,
-      // permanently, on the very file this gate was added for. `doctor` called
-      // the same bytes healthy throughout.
-      if (d.state === 'unreducible' || d.state === 'severed') {
-        drift.push({
-          ide: 'all',
-          path: '.gitignore',
-          kind: 'unreducible',
-          detail: d.detail,
-          fix: d.fix,
-        })
-      }
+      } else {
+        try {
+          const why = gitignoreNeedsRebuild(readFileSync(gi, 'utf8'))
+          if (why) drift.push({ ide: 'all', path: '.gitignore', kind: 'changed', detail: why })
+        } catch (err) {
+          drift.push({
+            ide: 'all',
+            path: '.gitignore',
+            kind: 'unreducible',
+            detail: `cannot be read — ${(err as Error).message}`,
+            fix: 'fix the permissions or replace the file; this one needs a person',
+          })
+        }
       }
     }
   }
 
-  // The MCP configs, which `doctor` opens and parses and this gate never did.
+  // The MCP configs, which `doctor` opens and parses and this gate did not.
   // A `.mcp.json` that is a directory left `doctor` red and CI green — the same
-  // split closed for `.gitignore` two commits ago, on the other customizable
-  // path. They are not compiled, so there is nothing to diff; what can be
-  // checked is that they are readable and parse.
+  // split closed for `.gitignore`, on the other customizable path.
   {
     const seen = new Set<string>()
     for (const ide of ides) {

@@ -545,11 +545,6 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   if (gitignoreResult === 'created') {
     console.log(`  ${c.green('✓')} Created .gitignore with OpenCastle entries`)
-  } else if (gitignoreResult === 'severed') {
-    console.log(
-      `  ${c.yellow('!')} Left .gitignore alone — a marker there pairs with nothing.`,
-    )
-    console.log(`     ${c.dim('Restore the missing marker, or delete the rules beside it, then sync.')}`)
   } else if (gitignoreResult === 'updated' || gitignoreResult === 'repaired') {
     console.log(`  ${c.green('✓')} Updated .gitignore with OpenCastle entries`)
   }

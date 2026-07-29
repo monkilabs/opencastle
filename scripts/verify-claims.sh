@@ -1072,6 +1072,56 @@ for fault in readonly-second dir-second; do
                                    || bad "$fault: still broken after the fault is fixed"
 done
 
+say "CLAIM 16 — .gitignore converges from any damage, in one sync"
+# Every shape `.gitignore` has failed in across the review history, asserted
+# together. It was failing repeatedly because it was being maintained with the
+# root files' machinery — collapse, torn, severed, unreducible — and none of
+# that is needed here: our block is a constant, so it is rebuilt rather than
+# maintained, and the worst case of a mistake is a duplicate ignore rule git
+# does not care about rather than a second set of instructions an assistant
+# obeys. One sync must fix all of these, and a second must change nothing.
+for shape in doubled torn-end torn-start block-gone rules-gone file-gone crlf both-gone reordered marker-trailing; do
+  new "c16-$shape"; printf '# R\n' > CLAUDE.md
+  printf 'node_modules\nkeep-me\n' > .gitignore
+  node $CLI init --yes >/dev/null 2>&1
+  printf 'S=1\n' > .env
+  python3 - "$shape" <<'PY'
+import pathlib, re, sys
+GS = '# >>> OpenCastle managed (do not edit) >>>'
+GE = '# <<< OpenCastle managed <<<'
+p = pathlib.Path('.gitignore'); t = p.read_text()
+b = re.search(re.escape(GS) + '.*?' + re.escape(GE), t, re.S).group(0)
+s = sys.argv[1]
+if s == 'doubled':          p.write_text(t + chr(10) + b + chr(10))
+elif s == 'torn-end':       p.write_text(t.replace(GE + chr(10), '', 1))
+elif s == 'torn-start':     p.write_text(t.replace(GS + chr(10), '', 1))
+elif s == 'block-gone':     p.write_text(re.sub(re.escape(GS)+'.*?'+re.escape(GE), '', t, flags=re.S).strip() + chr(10))
+elif s == 'rules-gone':     p.write_text(t.replace(chr(10) + '.env' + chr(10), chr(10), 1))
+elif s == 'file-gone':      p.unlink()
+elif s == 'crlf':           p.write_bytes(t.replace(chr(10), chr(13)+chr(10)).encode())
+elif s == 'both-gone':      p.write_text(t.replace(GS+chr(10), '', 1).replace(GE+chr(10), '', 1))
+elif s == 'reordered':      p.write_text(b + chr(10) + 'node_modules' + chr(10) + 'keep-me' + chr(10))
+elif s == 'marker-trailing': p.write_text(t.replace(GS, GS + ' and a note', 1))
+PY
+  node $CLI sync --yes --force >/dev/null 2>&1
+  git check-ignore -q .env && ok "$shape: .env is ignored again" || bad "$shape: .env still committable"
+  [ "$(grep -c -- '>>> OpenCastle managed' .gitignore)" = "1" ] \
+    && ok "$shape: exactly one block" \
+    || bad "$shape: $(grep -c -- '>>> OpenCastle managed' .gitignore) blocks"
+  node $CLI sync --check >/dev/null 2>&1 && ok "$shape: the gate is green" || bad "$shape: gate still red"
+  node $CLI doctor >/dev/null 2>&1 && ok "$shape: doctor is green" || bad "$shape: doctor still red"
+  # The user's own rule survives everything except their own deletion of the file.
+  case $shape in
+    file-gone) ok "$shape: (their rules went with the file they deleted)" ;;
+    *) grep -q 'keep-me' .gitignore && ok "$shape: their rule survived" || bad "$shape: their rule was lost" ;;
+  esac
+  # And it is a fixed point.
+  cp .gitignore "$ROOT/c16.$shape"
+  node $CLI sync --yes --force >/dev/null 2>&1
+  cmp -s "$ROOT/c16.$shape" .gitignore && ok "$shape: a second sync changes nothing" \
+                                       || bad "$shape: not idempotent"
+done
+
 say "CLAIM 12d — a failing init leaves the install coherent too"
 # CLAIM 12b tests `sync` only, which is why `init` shipped a re-init path that
 # emptied every framework directory before writing a byte.

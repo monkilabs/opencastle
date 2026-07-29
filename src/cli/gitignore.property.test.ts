@@ -136,26 +136,32 @@ describe('.gitignore holds the same invariants as a root file', () => {
   )
 
   it(
-    'converges on one block unless the file is torn, and never grows',
+    'converges on exactly one current block from any damage, in one write',
     async () => {
+      // Unconditional, and in *one* pass. Our block here is a constant, so it is
+      // rebuilt rather than maintained and there is no shape this file can be in
+      // that a single `sync` does not resolve — no torn, severed or unreducible
+      // state, because none of that machinery applies to a block with nothing
+      // per-project inside it. Every earlier version could only promise
+      // convergence for some inputs, and the exceptions were where the defects
+      // lived.
       for (const seed of SEEDS) {
         const original = makeFile(seed)
         writeFileSync(file, original)
 
         await updateGitignore(dir)
-        await updateGitignore(dir)
         const once = readFileSync(file, 'utf8')
+        expect(
+          blockRegions(once, START_MARKER, END_MARKER).length,
+          `seed ${seed}: one write left ${blockRegions(once, START_MARKER, END_MARKER).length} blocks\nfrom ${JSON.stringify(original)}`,
+        ).toBe(1)
+        expect(
+          orphanMarkers(once, START_MARKER, END_MARKER).length,
+          `seed ${seed}: a stray marker survived`,
+        ).toBe(0)
+
         await updateGitignore(dir)
         expect(readFileSync(file, 'utf8'), `seed ${seed}: not a fixed point`).toBe(once)
-
-        const blocks = blockRegions(once, START_MARKER, END_MARKER).length
-        if (orphanMarkers(original, START_MARKER, END_MARKER).length > 0) {
-          expect(blocks, `seed ${seed}: a torn file grew`).toBeLessThanOrEqual(
-            Math.max(1, blockRegions(original, START_MARKER, END_MARKER).length),
-          )
-        } else {
-          expect(blocks, `seed ${seed}: ${JSON.stringify(original)}`).toBe(1)
-        }
       }
     },
     TIMEOUT,

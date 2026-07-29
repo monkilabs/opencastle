@@ -50,18 +50,25 @@ interface CheckResult {
 
 // ── Individual checks ─────────────────────────────────────────
 
-/** Is our `.gitignore` block present and current? */
+/**
+ * Is our `.gitignore` block present and current?
+ *
+ * The whole of what there is to ask. Our block there is a constant, so any
+ * difference — missing file, missing block, edited block, a second block, a
+ * stray marker — is fixed by rebuilding it, which one `sync` does. There is no
+ * state here that needs a person, which is why this file no longer appears in
+ * the torn/severed/unreducible diagnosis at all.
+ */
 async function checkGitignoreBlock(projectRoot: string): Promise<CheckResult> {
   const label = 'Local artefacts are ignored';
   const path = resolve(projectRoot, '.gitignore');
-  // The file gone entirely is the larger version of the block gone, and it read
-  // as healthy: "✓ Local artefacts are ignored" over a project where nothing
-  // was ignored and `.env` was staged by `git add -A`.
+
+  // Only inside a git repository: ignore rules mean nothing outside one, and
+  // `.gitignore` is written by the commands rather than by the adapters, so a
+  // tree compiled by an adapter alone has never had one.
+  if (!existsSync(resolve(projectRoot, '.git'))) return { label, ok: true, warning: false };
+
   if (!existsSync(path)) {
-    // Only inside a git repository — see the matching gate in `sync-check`.
-    if (!existsSync(resolve(projectRoot, '.git'))) {
-      return { label, ok: true, warning: false };
-    }
     return {
       label,
       ok: false,
@@ -74,8 +81,6 @@ async function checkGitignoreBlock(projectRoot: string): Promise<CheckResult> {
   try {
     content = await readFile(path, 'utf8');
   } catch (err) {
-    // Not `ok: true`. A file we could not read is not a file we have checked;
-    // this only passed because another check further down happened to fail too.
     return {
       label,
       ok: false,
@@ -84,27 +89,9 @@ async function checkGitignoreBlock(projectRoot: string): Promise<CheckResult> {
     };
   }
 
-  const { blockRegions } = await import('./managed-block.js');
-  const { buildBlock, START_MARKER, END_MARKER } = await import('./gitignore.js');
-  const regions = blockRegions(content, START_MARKER, END_MARKER);
-  if (regions.length === 0) {
-    return {
-      label,
-      ok: false,
-      detail: '.gitignore has no OpenCastle block — .env and the run artefacts are not ignored',
-      fix: 'opencastle sync',
-    };
-  }
-  const r = regions[regions.length - 1];
-  const normalise = (s: string): string => s.replace(/\r\n/g, '\n').trim();
-  if (normalise(content.slice(r.start, r.end)) !== normalise(buildBlock())) {
-    return {
-      label,
-      ok: false,
-      detail: '.gitignore\'s OpenCastle block has been edited — some artefacts may not be ignored',
-      fix: 'opencastle sync',
-    };
-  }
+  const { gitignoreNeedsRebuild } = await import('./gitignore.js');
+  const why = gitignoreNeedsRebuild(content);
+  if (why) return { label, ok: false, detail: why, fix: 'opencastle sync' };
   return { label, ok: true, warning: false };
 }
 
@@ -537,14 +524,17 @@ async function checkTornBlocks(
   // surface ever looked at — so a `.gitignore` the writer had declined to
   // reduce sat there while `doctor` failed on a *different* check with a remedy
   // that could not work, and nothing named the real problem.
+  // Root files only. `.gitignore` used to be diagnosed with this same machinery
+  // and it was the wrong machinery: these states exist because a root file's
+  // block holds a large per-project body that has to be *maintained in place*,
+  // so a damaged one cannot safely be rebuilt. `.gitignore`'s block is a
+  // constant, so it is always rebuilt and never diagnosed — see
+  // `checkGitignoreBlock`, which asks the only question that matters there.
   type Reader = [string, string, (text: string) => boolean]
-  const files: Array<{ rel: string; markers: Reader }> = [
-    ...managed.merged.map((rel) => ({
-      rel,
-      markers: [BLOCK_START, BLOCK_END, carriesLegacyBody] as Reader,
-    })),
-    { rel: '.gitignore', markers: [GITIGNORE_START, GITIGNORE_END, hasOurRules] as Reader },
-  ]
+  const files: Array<{ rel: string; markers: Reader }> = managed.merged.map((rel) => ({
+    rel,
+    markers: [BLOCK_START, BLOCK_END, carriesLegacyBody] as Reader,
+  }))
 
   const found: Array<{ rel: string; diagnosis: FileDiagnosis }> = []
   for (const { rel, markers } of files) {
