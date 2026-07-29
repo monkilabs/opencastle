@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
+import { getMcpConfigRelPath } from './mcp.js'
 import { resolveStack } from './stack-config.js'
 import {
   START_MARKER as GITIGNORE_START,
@@ -374,6 +375,13 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
         })
       }
       const d = diagnoseManagedFile(giText, GITIGNORE_START, GITIGNORE_END)
+      // A second block is invisible to the content comparison above, which only
+      // ever looks at the last region — so a doubled `.gitignore` was red on
+      // `doctor` and green here. `doubled` is fixable, so it is ordinary drift
+      // and `sync` clears it.
+      if (d.state === 'doubled' && !drift.some((x) => x.path === '.gitignore')) {
+        drift.push({ ide: 'all', path: '.gitignore', kind: 'changed', detail: d.detail })
+      }
       // `unreducible` only, matching how root files are weighted twenty lines
       // up. `!d.fixable` includes `torn`, so a lone stray marker — the state
       // deliberately downgraded to a warning because the commonest way to get
@@ -389,6 +397,33 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
           fix: d.fix,
         })
       }
+      }
+    }
+  }
+
+  // The MCP configs, which `doctor` opens and parses and this gate never did.
+  // A `.mcp.json` that is a directory left `doctor` red and CI green — the same
+  // split closed for `.gitignore` two commits ago, on the other customizable
+  // path. They are not compiled, so there is nothing to diff; what can be
+  // checked is that they are readable and parse.
+  {
+    const seen = new Set<string>()
+    for (const ide of ides) {
+      const rel = getMcpConfigRelPath(ide as IdeChoice)
+      if (seen.has(rel)) continue
+      seen.add(rel)
+      const abs = resolve(projectRoot, rel)
+      if (!existsSync(abs)) continue
+      try {
+        JSON.parse(readFileSync(abs, 'utf8'))
+      } catch (err) {
+        drift.push({
+          ide,
+          path: rel,
+          kind: 'unreducible',
+          detail: `cannot be read — ${(err as Error).message}`,
+          fix: `fix or delete ${rel}, then run opencastle sync; this one needs a person`,
+        })
       }
     }
   }

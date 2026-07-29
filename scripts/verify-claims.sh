@@ -237,7 +237,7 @@ for shape in lf crlf fenced blanks no-eol-newline; do
     no-eol-newline) printf '# A\n\nUse pnpm.' > CLAUDE.md ;;
   esac
   printf 'node_modules\n\n\ndist/\n' > .gitignore
-  cp CLAUDE.md /tmp/v-root; cp .gitignore /tmp/v-gi
+  cp CLAUDE.md "$ROOT/v-root"; cp .gitignore "$ROOT/v-gi"
   node $CLI init --yes >/dev/null 2>&1
   node $CLI remove --all --yes >/dev/null 2>&1
   # A file that never ended in a newline gets one back, and only that. Our
@@ -245,21 +245,21 @@ for shape in lf crlf fenced blanks no-eol-newline; do
   # so removal cannot tell whose newline it is looking at; it declines to delete
   # rather than guess. Everything else must match byte for byte.
   if [ "$shape" = no-eol-newline ]; then
-    want=$(( $(wc -c < /tmp/v-root) + 1 ))
+    want=$(( $(wc -c < "$ROOT/v-root") + 1 ))
     got=$(wc -c < CLAUDE.md)
-    if [ "$(cat /tmp/v-root)" = "$(cat CLAUDE.md)" ] && [ "$got" -eq "$want" ]; then
+    if [ "$(cat "$ROOT/v-root")" = "$(cat CLAUDE.md)" ] && [ "$got" -eq "$want" ]; then
       ok "$shape: restored, plus the one newline it will not guess about"
     else
       bad "$shape: differs beyond the stated exception ($got bytes, wanted $want)"
-      diff /tmp/v-root CLAUDE.md | head -4
+      diff "$ROOT/v-root" CLAUDE.md | head -4
     fi
-  elif cmp -s /tmp/v-root CLAUDE.md; then
+  elif cmp -s "$ROOT/v-root" CLAUDE.md; then
     ok "$shape: root file byte-identical"
   else
     bad "$shape: root file differs"
-    diff /tmp/v-root CLAUDE.md | head -4
+    diff "$ROOT/v-root" CLAUDE.md | head -4
   fi
-  cmp -s /tmp/v-gi .gitignore && ok "$shape: .gitignore byte-identical" || bad "$shape: .gitignore differs"
+  cmp -s "$ROOT/v-gi" .gitignore && ok "$shape: .gitignore byte-identical" || bad "$shape: .gitignore differs"
 done
 
 say "CLAIM 4 — sync does not touch what it did not create"
@@ -951,6 +951,82 @@ p = pathlib.Path(sys.argv[1]); p.write_bytes(b'\xef\xbb\xbf' + p.read_bytes())" 
   else
     ok "$ide: uninstall removed the file"
   fi
+done
+
+say "CLAIM 15 — doctor and the CI gate never disagree"
+# Stated once, over every damage shape the suite knows. Four findings in rounds
+# 15-17 were instances of this one property failing, each reported separately
+# because nothing asserted the property itself: a torn .gitignore red on one
+# surface and green on the other, a doubled .gitignore the reverse, an MCP
+# config that is a directory, a manifest naming no target.
+#
+# They need not produce the same *exit code* — a warning is not a failure — but
+# neither may report health while the other reports a fault a person must fix.
+c15_states="clean gi-block-deleted gi-doubled gi-torn root-severed root-doubled
+            manifest-empty mcp-is-dir mcp-unparseable stale-legacy"
+for state in $c15_states; do
+  new "c15-$state"; printf '# House rules\n\nMY OWN RULE\n' > CLAUDE.md
+  printf 'node_modules\n' > .gitignore
+  node $CLI init --yes >/dev/null 2>&1
+  python3 - "$START" "$END" "$state" <<'PY'
+import pathlib, re, sys, json
+S, E, state = sys.argv[1], sys.argv[2], sys.argv[3]
+GS = '# >>> OpenCastle managed (do not edit) >>>'
+GE = '# <<< OpenCastle managed <<<'
+root = pathlib.Path('CLAUDE.md'); gi = pathlib.Path('.gitignore')
+def block(p, s, e):
+    return re.search(re.escape(s) + '.*?' + re.escape(e), p.read_text(), re.S).group(0)
+if state == 'gi-block-deleted':
+    gi.write_text(re.sub(re.escape(GS) + '.*?' + re.escape(GE), '', gi.read_text(), flags=re.S).strip() + chr(10))
+elif state == 'gi-doubled':
+    gi.write_text(gi.read_text() + chr(10) + block(gi, GS, GE) + chr(10))
+elif state == 'gi-torn':
+    gi.write_text(gi.read_text().replace(GE + chr(10), '', 1))
+elif state == 'root-severed':
+    root.write_text(root.read_text().replace(E + chr(10), '', 1))
+elif state == 'root-doubled':
+    root.write_text(root.read_text() + chr(10) + block(root, S, E) + chr(10))
+elif state == 'manifest-empty':
+    pathlib.Path('.opencastle/manifest.json').write_text('{"version":"0.35.3","ides":[]}')
+elif state == 'mcp-is-dir':
+    import os, shutil
+    for c in ('.mcp.json', '.vscode/mcp.json'):
+        q = pathlib.Path(c)
+        if q.exists(): q.unlink(); q.mkdir()
+elif state == 'mcp-unparseable':
+    for c in ('.mcp.json', '.vscode/mcp.json'):
+        q = pathlib.Path(c)
+        if q.exists(): q.write_text('{ not json')
+elif state == 'stale-legacy':
+    root.write_text('# Project Instructions' + chr(10)*2 +
+                    'All conventions, architecture, and project context are embedded below.' +
+                    chr(10)*2 + root.read_text())
+PY
+  doc=$(node $CLI doctor 2>&1 | plain); node $CLI doctor >/dev/null 2>&1; dr=$?
+  chk=$(node $CLI sync --check 2>&1 | plain); node $CLI sync --check >/dev/null 2>&1; ck=$?
+  st=$(node $CLI 2>&1 | plain)
+
+  # Neither surface may call the project healthy while the other names a fault.
+  if [ $dr -ne 0 ] && [ $ck -eq 0 ]; then
+    echo "$chk" | grep -q "match their sources" \
+      && bad "$state: doctor=1 but the CI gate reports everything matching" \
+      || ok "$state: gate is quiet but not claiming health"
+  elif [ $ck -ne 0 ] && [ $dr -eq 0 ]; then
+    echo "$doc" | grep -qi "warning" \
+      && ok "$state: gate red, doctor warns about it" \
+      || bad "$state: gate=1 but doctor reports a clean bill"
+  else
+    ok "$state: both surfaces agree ($dr/$ck)"
+  fi
+
+  # And status never contradicts either of them.
+  if [ $dr -ne 0 ] || [ $ck -ne 0 ]; then
+    echo "$st" | grep -q "Everything is current" \
+      && bad "$state: status green while doctor=$dr gate=$ck" \
+      || ok "$state: status agrees"
+  fi
+  grep -q 'MY OWN RULE' CLAUDE.md 2>/dev/null && ok "$state: their line survived" \
+                                              || bad "$state: their line was lost"
 done
 
 say "CLAIM 12d — a failing init leaves the install coherent too"

@@ -532,7 +532,11 @@ export default async function update({
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
   }
   for (const file of unreadable) {
-    console.log(`  ${c.yellow('!')} Left ${file} alone — it is not valid JSON.`)
+    const [name, why] = file.split('\u0000')
+    console.log(
+      `  ${c.yellow('!')} Left ${name} alone — ` +
+        (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),
+    )
     console.log(`     ${c.dim('Merge conflict? Fix the file and run sync again.')}`)
   }
   if (damagedRoots.length > 0) {

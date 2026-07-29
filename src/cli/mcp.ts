@@ -155,7 +155,7 @@ export async function scaffoldMcpConfig(
     try {
       existingContent = await readFile(destPath, 'utf8');
     } catch {
-      throw new UnreadableConfigError(destRelPath);
+      throw new UnreadableConfigError(destRelPath, 'unreadable');
     }
     let existing: Record<string, unknown>;
     try {
@@ -274,7 +274,9 @@ export async function scaffoldMcpConfigInto(
     results[result.action].push(result.path);
   } catch (err) {
     if (!(err instanceof UnreadableConfigError)) throw err;
-    (results.unreadable ??= []).push(err.file);
+    (results.unreadable ??= []).push(
+      err.reason === 'unreadable' ? `${err.file}\u0000unreadable` : err.file,
+    );
   }
 }
 
@@ -395,7 +397,7 @@ export async function rebuildMcpConfig(
   try {
     before = await readFile(destPath, 'utf8');
   } catch {
-    throw new UnreadableConfigError(destRelPath);
+    throw new UnreadableConfigError(destRelPath, 'unreadable');
   }
   let existing: Record<string, unknown>;
   try {

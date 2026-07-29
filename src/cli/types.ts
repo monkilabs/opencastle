@@ -219,8 +219,21 @@ export const IDE_LABELS: Record<IdeChoice, string> = {
  * the framework directories and before the manifest was written.
  */
 export class UnreadableConfigError extends Error {
-  constructor(public readonly file: string) {
-    super(`${file} is not valid JSON`);
+  /**
+   * Why it could not be read.
+   *
+   * "It is not valid JSON" was printed for a path that was a *directory* — the
+   * remedy offered ("fix the file") did not match the fault, and the user had
+   * nothing to act on.
+   */
+  readonly reason: 'unparseable' | 'unreadable';
+
+  constructor(
+    public readonly file: string,
+    reason: 'unparseable' | 'unreadable' = 'unparseable',
+  ) {
+    super(`Cannot read ${file}`);
     this.name = 'UnreadableConfigError';
+    this.reason = reason;
   }
 }

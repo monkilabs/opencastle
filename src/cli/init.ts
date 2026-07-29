@@ -510,7 +510,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // ── Summary ─────────────────────────────────────────────────────
   console.log(`  ${c.green('✓')} Created ${c.bold(String(totalCreated))} files`)
   for (const file of unreadable) {
-    console.log(`  ${c.yellow('!')} Left ${file} alone — it is not valid JSON.`)
+    const [name, why] = file.split('\u0000')
+    console.log(
+      `  ${c.yellow('!')} Left ${name} alone — ` +
+        (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),
+    )
     // `--force` is not decoration. A plain `sync` short-circuits when nothing
     // has drifted, and the MCP config is a customizable path the drift checker
     // does not compare — so the servers were never added, and every command
