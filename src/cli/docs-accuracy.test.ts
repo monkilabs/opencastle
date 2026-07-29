@@ -161,11 +161,12 @@ describe('shipped content instructs only commands that exist', () => {
     // catches an invention.
     const real = new Set([...visibleCommands(), ...hiddenCommands()])
     // Subcommands of `convoy`, which the dispatcher never sees directly.
-    // `run` was in this list and is not a convoy subcommand — `convoy --help`
-    // names plan, resume, retry and dashboard. Listed here, it excused 23
-    // occurrences of `opencastle convoy run <spec>`, which consumes `run` as the
-    // task string and then rejects the spec path as an unknown option.
-    const subcommands = new Set(['resume', 'retry', 'dashboard', 'plan'])
+    // `run` belongs here after all: `convoy run --file <spec>` is the form that
+    // reads a spec, and it is what the runtime's own resume hint prints. Removing
+    // it from this list, on the reasoning that `convoy --help` did not name it,
+    // sent every mention to `convoy --file` — a form the parser never read, which
+    // answered a missing file with the status screen and exit 0.
+    const subcommands = new Set(['resume', 'retry', 'dashboard', 'plan', 'run'])
     const offenders: string[] = []
     for (const file of files) {
       for (const hit of file.text.matchAll(/opencastle ([a-z][a-z-]{2,})/g)) {
@@ -441,11 +442,15 @@ describe('quickstart stays runnable', () => {
 describe('documented flags are flags the command declares', () => {
   const GLOBAL = new Set(['--help', '-h', '--debug', '--version', '-v'])
 
-  function helpFlags(cmd: string): Set<string> {
+  // The command *path*, not the first word. `convoy run --file` is read by `run`,
+  // and asking `convoy --help` about it says the flag does not exist — which is
+  // how a correct line came to be reported as an error, and how the wrong "fix"
+  // (rewriting every mention to `convoy --file`) got made.
+  function helpFlags(path: string[]): Set<string> {
     const out = new Set<string>(GLOBAL)
     let text: string
     try {
-      text = execFileSync('node', [join(repoRoot, 'bin', 'cli.mjs'), cmd, '--help'], {
+      text = execFileSync('node', [join(repoRoot, 'bin', 'cli.mjs'), ...path, '--help'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -484,12 +489,80 @@ describe('documented flags are flags the command declares', () => {
       for (const hit of file.text.matchAll(/(?:npx )?opencastle ([a-z][a-z-]*)((?:[ \t]+[^\n`|<>&]*)?)/g)) {
         const cmd = hit[1]
         if (!real.has(cmd)) continue
-        if (!cache.has(cmd)) cache.set(cmd, helpFlags(cmd))
-        const allowed = cache.get(cmd)!
+        // A bare word straight after the command is a subcommand, and its own
+        // `--help` is the authority on the flags it reads.
+        const sub = /^\s+([a-z][a-z-]*)(?=\s|$)/.exec(hit[2])?.[1]
+        const path = sub ? [cmd, sub] : [cmd]
+        const key = path.join(' ')
+        if (!cache.has(key)) cache.set(key, helpFlags(path))
+        const allowed = cache.get(key)!
         for (const f of hit[2].matchAll(/(?<![\w-])(--[a-z][a-z0-9-]*)/g)) {
           if (allowed.has('*')) continue
           if (!allowed.has(f[1])) offenders.push(`${file.rel}: opencastle ${cmd} … ${f[1]}`)
         }
+      }
+    }
+    expect([...new Set(offenders)]).toEqual([])
+  })
+})
+
+/**
+ * Every flag a command *declares* is one it actually reads.
+ *
+ * The guard above is one-directional — it asks whether documented flags appear in
+ * `--help` — and that is exactly how `--file` and `--prd` came to be declared in
+ * `convoy --help` while the parser had no case for either. Both were accepted and
+ * ignored: `convoy --file spec.yml` printed the status screen and exited without
+ * reading the file, or checking that it existed. Eleven mentions in shipped agent
+ * instructions were then "verified" against the very help text that was wrong,
+ * because a declared flag whitelists itself.
+ *
+ * `--help` is a promise. This checks the code keeps it.
+ */
+describe('declared flags are flags the parser reads', () => {
+  // A command and every module it hands work to. Delegates count: `sync --json`
+  // is read in `sync-check.ts`, not in `sync.ts`, and leaving that out made this
+  // test report a working flag as unread — a false alarm about the very thing it
+  // was written to catch.
+  const MODULES: Record<string, string[]> = {
+    init: ['init.ts'],
+    sync: ['sync.ts', 'update.ts', 'sync-check.ts'],
+    add: ['add.ts'],
+    doctor: ['doctor.ts'],
+    remove: ['remove.ts'],
+    convoy: ['convoy-cmd.ts'],
+    log: ['log.ts'],
+    lesson: ['lesson.ts'],
+  }
+  // Read by the entrypoint for every command, not by the modules.
+  const HANDLED_BY_BIN = new Set(['--help', '--version', '--debug'])
+
+  it('reads every flag it prints in --help', () => {
+    const offenders: string[] = []
+    for (const [cmd, files] of Object.entries(MODULES)) {
+      const sources = files
+        .map((f) => join(repoRoot, 'src', 'cli', f))
+        .filter((f) => existsSync(f))
+        .map((f) => readFileSync(f, 'utf8'))
+      if (sources.length === 0) continue
+
+      let help: string
+      try {
+        help = execFileSync('node', [join(repoRoot, 'bin', 'cli.mjs'), cmd, '--help'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+      } catch (err) {
+        help = String((err as { stdout?: string }).stdout ?? '')
+      }
+      // Only the Options block: the usage lines name subcommands and paths, and a
+      // flag documented as belonging to a subcommand is that subcommand's to read.
+      const options = /\n\s*Options:\n([\s\S]*?)(\n\s*\n|$)/.exec(help)?.[1] ?? ''
+      for (const m of options.matchAll(/(--[a-z][a-z0-9-]*)/g)) {
+        const flag = m[1]
+        if (HANDLED_BY_BIN.has(flag)) continue
+        if (sources.some((s) => s.includes(`'${flag}'`) || s.includes(`"${flag}"`))) continue
+        offenders.push(`${cmd} --help declares ${flag}, and ${files.join('/')} never reads it`)
       }
     }
     expect([...new Set(offenders)]).toEqual([])

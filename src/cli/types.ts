@@ -140,6 +140,19 @@ export interface Manifest {
   installedAt: string;
   updatedAt: string;
   managedPaths?: ManagedPaths;
+  /**
+   * Co-owned config files this install created from nothing.
+   *
+   * The uninstall needs to tell "a file that holds only our servers, because we
+   * wrote it" from "a file that holds only our servers, because the user's copy
+   * was empty when we found it". Emptiness cannot distinguish them, and guessing
+   * deleted `opencode.json` — OpenCode's entire project config — and a
+   * `{"mcpServers": {}}` left by Claude Code, both committed, with no backup.
+   *
+   * Absent on manifests written before this field existed, and absence means
+   * "unknown", which is treated as "not ours to delete".
+   */
+  createdConfigs?: string[];
   stack?: StackConfig;
   repoInfo?: RepoInfo;
 }

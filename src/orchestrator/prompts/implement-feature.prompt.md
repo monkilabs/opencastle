@@ -42,7 +42,7 @@ Every subtask must be tracked. **No issue = no implementation.** This step produ
 All project-related work executes via the convoy engine — regardless of subtask count.
 
 1. **Generate the spec** — use the `generate-convoy` prompt with the decomposed task list. The spec IS the implementation plan; even single-task fixes go through convoy for observability.
-2. **Hand the spec to the user** — tell them to run: `npx opencastle convoy -f .opencastle/convoys/<name>.convoy.yml`
+2. **Hand the spec to the user** — tell them to run: `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml`
 3. **The convoy engine handles** isolated git worktrees, parallel execution, merge queue ordering, crash recovery, and structured logging automatically.
 4. **After convoy completes** — proceed to Step 4 (validation) and Step 5 (delivery/PR).
 

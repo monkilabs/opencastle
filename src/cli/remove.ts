@@ -60,6 +60,9 @@ async function previewCoOwned(
   // whether a file survives — in the pair of functions whose whole purpose is
   // agreeing.
   ideFor: Map<string, IdeChoice>,
+  // Which of these the install created. A file that ends up empty is not
+  // evidence that it was ours, and the manifest is the only thing that knows.
+  createdConfigs: Set<string>,
 ): Promise<CoOwnedPreview[]> {
   const out: CoOwnedPreview[] = []
 
@@ -96,17 +99,31 @@ async function previewCoOwned(
   for (const p of mcpPaths) {
     const abs = resolve(projectRoot, p)
     if (!existsSync(abs)) continue
+    const oursToDelete = createdConfigs.has(p)
     let keepsSomething = true
+    let tookAnything = false
     try {
       const parsed = JSON.parse(await readFile(abs, 'utf8')) as Record<string, unknown>
+      // Captured before the predicate runs — it edits `parsed` in place.
+      const untouched = JSON.stringify(parsed)
       keepsSomething = willKeepSomethingAfterStrip(parsed, ideFor.get(p))
+      tookAnything = JSON.stringify(parsed) !== untouched
     } catch {
       // Unreadable JSON is left alone entirely, so it certainly survives.
       out.push({ path: p, outcome: 'stripped', note: 'nothing — the file could not be parsed' })
       continue
     }
+    // The same three-way answer the action gives, computed the same way. The
+    // preview asked only "will anything be left", so a config that was already
+    // empty before OpenCastle ran was previewed as "it holds only our MCP
+    // servers" — a sentence that was false about the file it was describing, and
+    // the justification for deleting it.
+    if (!tookAnything) {
+      out.push({ path: p, outcome: 'stripped', note: 'nothing — no MCP server of ours is in it' })
+      continue
+    }
     out.push(
-      keepsSomething
+      keepsSomething || !oursToDelete
         ? { path: p, outcome: 'stripped', note: 'our MCP servers; the rest of the file stays' }
         : { path: p, outcome: 'deleted', note: 'it holds only our MCP servers' },
     )
@@ -195,6 +212,9 @@ export default async function remove({ args }: CliContext): Promise<void> {
   )
   const mcpOwner = new Map(ides.map((ide) => [getMcpConfigRelPath(ide), ide]))
   const mcpPaths = new Set(mcpOwner.keys())
+  // An install from before this field existed records nothing, and absence means
+  // "unknown" — which is treated as "not ours to delete".
+  const createdConfigs = new Set(manifest.createdConfigs ?? [])
   const frameworkPaths = managed.framework.filter((p) => !mcpPaths.has(p))
   // `.opencastle/` is handled explicitly below, so drop it here — listing it in
   // both places printed it twice and counted it twice in "Removed N path(s)".
@@ -229,7 +249,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
     // block is deleted. Announcing "your own writing stays" over a file about to
     // disappear is the preview lying, so each outcome is predicted rather than
     // assumed. `previewCoOwned` reads the same files the strip functions will.
-    const coOwned = await previewCoOwned(projectRoot, mergedPaths, mcpPaths, mcpOwner)
+    const coOwned = await previewCoOwned(projectRoot, mergedPaths, mcpPaths, mcpOwner, createdConfigs)
 
     // `.gitignore` joins the same two lists as every other co-owned file, rather
     // than being appended after them. Printed last, its deletion line landed
@@ -331,7 +351,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
   // the file.
   const unreadable: string[] = []
   for (const ide of ides) {
-    const outcome = await stripManagedMcpServers(projectRoot, ide)
+    const outcome = await stripManagedMcpServers(projectRoot, ide, createdConfigs.has(getMcpConfigRelPath(ide)))
     if (outcome === 'deleted') removed++
     else if (outcome === 'stripped') stripped++
     else if (outcome === 'unreadable') unreadable.push(getMcpConfigRelPath(ide))

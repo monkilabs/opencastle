@@ -6,7 +6,7 @@ import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
 import { getRequiredMcpEnvVars, getCustomizationsTransform } from './stack-config.js'
-import { stripManagedMcpServers } from './mcp.js'
+import { getMcpConfigRelPath, stripManagedMcpServers } from './mcp.js'
 import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
 import type { PluginConfig } from '../orchestrator/plugins/types.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde, detectAssistantConfigs } from './detect.js'
@@ -263,6 +263,16 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
 
   const ides = selection.ides
+
+  // Sampled before anything is written: which co-owned MCP configs already
+  // existed. Recorded in the manifest below so the uninstall knows which files
+  // are ours to delete and which are the user's to leave alone.
+  const mcpConfigsBefore = new Map<string, boolean>(
+    ides.map((ide) => {
+      const rel = getMcpConfigRelPath(ide as IdeChoice)
+      return [rel, existsSync(resolve(projectRoot, rel))]
+    }),
+  )
   const techTools = selection.techTools
   const teamTools = selection.teamTools
 
@@ -527,6 +537,16 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // ── Write manifest ──────────────────────────────────────────────
   const manifest = createManifest(pkg.version, ides[0], ides)
   manifest.managedPaths = allManagedPaths
+  // Which co-owned configs this install brought into existence. The uninstall
+  // cannot work it out later: a file holding only our servers looks the same
+  // whether we wrote it or the user's copy was empty when we arrived, and
+  // guessing deleted two committed files. `scaffoldMcpConfig` reports 'created'
+  // for a merge into an existing file as well, so the answer has to come from
+  // whether the path existed before the adapters ran.
+  manifest.createdConfigs = [...mcpConfigsBefore]
+    .filter(([, existed]) => !existed)
+    .map(([rel]) => rel)
+    .filter((rel) => existsSync(resolve(projectRoot, rel)))
   manifest.stack = stack
   manifest.repoInfo = combinedRepoInfo
   await writeManifest(projectRoot, manifest)

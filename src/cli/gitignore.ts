@@ -300,11 +300,72 @@ function isEndLine(line: string): boolean {
   return line.startsWith(END_MARKER)
 }
 
+/**
+ * Which of their lines git currently reads as a line of its own.
+ *
+ * Git splits on `\n` and nowhere else, so one of its lines can span several of
+ * ours. A line begins a git line when everything before it ends in a `\n`. Taken
+ * from the file as it stands, because that — not what the file would say without
+ * our block in it — is what the project is honouring right now.
+ */
+function gitLineStarts(lines: Array<{ text: string; eol: string }>): Set<number> {
+  const starts = new Set<number>()
+  let before = ''
+  for (const [i, line] of lines.entries()) {
+    if (before === '' || before.endsWith('\n')) starts.add(i)
+    before += line.text + line.eol
+  }
+  return starts
+}
+
+/**
+ * A line git read as a line still is one.
+ *
+ * Their `\r`-terminated line is not a line break to git, so it only ever began
+ * one because something after it supplied a `\n` — and that something was
+ * sometimes a block of ours. Take our lines out and two of theirs join:
+ *
+ *   secrets/prod.key\r  <block>  build\r\n   →   secrets/prod.key\rbuild\r\n
+ *
+ * a single pattern matching nothing. `build` was live and is now dead, and
+ * nothing about the file looks wrong. So where a `\n` we removed was marking a
+ * boundary, one byte puts it back.
+ *
+ * Shared by the writer and the remover. It was written for `compose` alone, and
+ * the uninstall path — which removes strictly more of our lines and so creates
+ * strictly more of these boundaries — went without it: 153 files in 2000 lost a
+ * rule to `remove --all` against 26 to `sync`. The worse half, unguarded, one
+ * function away from the guard.
+ *
+ * Only this direction is repaired. Two lines git had already welded stay welded —
+ * nothing of ours sits between them, so nothing we do separates them — and
+ * reviving a dead rule is its own kind of wrong: a resurrected `!keep.txt`
+ * un-ignores a file the project had been ignoring.
+ */
+function keepGitLineStarts(
+  out: Array<{ text: string; eol: string; src?: number }>,
+  starts: Set<number>,
+): void {
+  for (let k = 1; k < out.length; k++) {
+    const here = out[k]
+    if (here.src === undefined || !starts.has(here.src)) continue
+    const above = out[k - 1]
+    if (above.eol === '' || above.eol.includes('\n')) continue
+    out[k - 1] = { ...above, eol: `${above.eol}\n` }
+  }
+}
+
 /** Everything in `content` that is not ours, in order, byte for byte. */
 function withoutOurLines(content: string): string {
   const ours = ourLineIndices(content)
   if (ours.size === 0) return content
-  return joinLines(splitLines(content).filter((_, i) => !ours.has(i)))
+  const lines = splitLines(content)
+  const starts = gitLineStarts(lines)
+  const out = lines
+    .map((line, i) => ({ ...line, src: i }))
+    .filter((_, i) => !ours.has(i))
+  keepGitLineStarts(out, starts)
+  return joinLines(out)
 }
 
 /**
@@ -385,21 +446,7 @@ function compose(content: string, block: string): string {
   const tailFollows = lines.some((_, i) => i > firstOurs && !ours.has(i))
   const closing = tailFollows ? blockEol : lines[Math.max(...ours)].eol
 
-  // Which of their lines git currently reads as a line of its own.
-  //
-  // Git splits on `\n` and nowhere else, so one of its lines can span several of
-  // ours. A line of theirs begins a git line when everything before it ends in a
-  // `\n`. Recorded from the file as it stands, because that — not what the file
-  // would say without our block in it — is what the project is honouring right
-  // now, and what must still be true afterwards.
-  const startsGitLine = new Set<number>()
-  {
-    let before = ''
-    for (const [i, line] of lines.entries()) {
-      if (before === '' || before.endsWith('\n')) startsGitLine.add(i)
-      before += line.text + line.eol
-    }
-  }
+  const startsGitLine = gitLineStarts(lines)
 
   const out: Array<{ text: string; eol: string; src?: number }> = []
   for (const [i, line] of lines.entries()) {
@@ -412,30 +459,7 @@ function compose(content: string, block: string): string {
     if (!ours.has(i)) out.push({ ...line, src: i })
   }
 
-  // A line git read as a line still is one.
-  //
-  // Their `\r`-terminated line is not a line break to git, so it only ever began
-  // one because something after it supplied a `\n` — and that something was
-  // sometimes a block of ours. Take the block out and two of their lines join:
-  //
-  //   secrets/prod.key\r  <block>  build\r\n   →   secrets/prod.key\rbuild\r\n
-  //
-  // which is a single pattern matching nothing. `build` was live and is now dead,
-  // and nothing about the file looks wrong. Removing lines of ours must not change
-  // where their lines begin, so where a `\n` we took away was doing that work, one
-  // byte puts it back.
-  //
-  // Only this direction is repaired. Two lines of theirs that git had already
-  // welded stay welded — nothing of ours was between them, so nothing we do
-  // separates them — and reviving a dead rule is its own kind of wrong: a
-  // resurrected `!keep.txt` un-ignores a file the project had been ignoring.
-  for (let k = 1; k < out.length; k++) {
-    const here = out[k]
-    if (here.src === undefined || !startsGitLine.has(here.src)) continue
-    const above = out[k - 1]
-    if (above.eol === '' || above.eol.includes('\n')) continue
-    out[k - 1] = { ...above, eol: `${above.eol}\n` }
-  }
+  keepGitLineStarts(out, startsGitLine)
   return joinLines(out)
 }
 

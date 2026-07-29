@@ -287,6 +287,19 @@ function mustBeFile(name: string, check: DoctorCheck): boolean {
 }
 
 /**
+ * A name with no extension inside a counted directory is a directory.
+ *
+ * The dot test rather than `!mustBeFile`, which is a different question. With a
+ * `countFilter` set, "does not match the filter" is true of any stray file the
+ * user dropped in — `notes.txt` in `.github/agents/` — and reporting that as a
+ * missing directory is both wrong and unhelpful; the count already objects to it.
+ * Only the absence of an extension says "the compiler puts a folder here".
+ */
+function mustBeDirectory(name: string): boolean {
+  return !/\.[A-Za-z0-9]+$/.test(name);
+}
+
+/**
  * Every entry under a counted directory, to the bottom.
  *
  * `readdir` on the top level was the whole check, so a skill whose folder could
@@ -315,6 +328,28 @@ function verifySubtree(
       isDir = statSync(child).isDirectory();
     } catch (err) {
       return cannotRead(shown, err);
+    }
+    if (!isDir && mustBeDirectory(entry)) {
+      // The mirror of the question below, and it was asked nowhere.
+      //
+      // A plain file wearing a generated *directory's* name — `.claude/skills/
+      // memory-merger` as a file — passed every check here: it is not a name that
+      // must be a file, and reading it succeeded. So `doctor` issued a clean bill
+      // while `sync` died on `EEXIST … mkdir` every time it ran, for ever, and the
+      // gate filed the path under "Added by hand (deleted on the next sync)" when
+      // the next sync deletes nothing and aborts. Two reviewers found it
+      // independently; it was the only shape in either round where `doctor` was
+      // green over a tree no command could repair.
+      //
+      // Sound in both directions because no directory this compiler creates has a
+      // dot in its name and no file it creates lacks one — asserted over all seven
+      // targets in `adapter-contract.test.ts`.
+      return {
+        ok: false,
+        label: check.label,
+        detail: `${check.path}${shown} is a file, not a directory of generated files`,
+        fix: `remove ${check.path}${shown}, then run opencastle sync; this one needs a person`,
+      };
     }
     if (isDir) {
       if (mustBeFile(entry, check)) {

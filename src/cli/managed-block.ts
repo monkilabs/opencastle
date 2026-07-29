@@ -133,9 +133,25 @@ function withoutBom(text: string): string {
   return text.startsWith('\ufeff') ? text.slice(1) : text
 }
 
+/**
+ * Lines, split the way `markerOffsets` splits them.
+ *
+ * `split('\n')` was the shared mistake in every predicate below. A file saved
+ * with classic-Mac endings has no `\n` in it at all, so it came back as one long
+ * line and no fingerprint could match — which meant a root file carrying the
+ * previous release's entire instruction set above our block was invisible to
+ * `sync`, `doctor`, `sync --check` and `status` alike. All four green, the
+ * assistant reading two contradictory instruction sets, and nothing to tell the
+ * user the older one was there. `markerOffsets` was taught the lone `\r` two
+ * rounds ago; the three readers beside it, built on the same bytes, were not.
+ */
+function contentLines(content: string): string[] {
+  return withoutBom(content).split(/\r\n|\n|\r/)
+}
+
 /** First line with content, ignoring comments that are not our own banner. */
 function firstMeaningfulLine(content: string): string {
-  for (const raw of withoutBom(content).split('\n')) {
+  for (const raw of contentLines(content)) {
     const line = raw.trim()
     if (!line) continue
     if (line.startsWith('<!--')) {
@@ -217,7 +233,7 @@ function looksLikeLegacyGenerated(
  * comment opener and any decoration in front of the words come off first.
  */
 function hasLegacyOpeningLine(content: string): boolean {
-  return withoutBom(content).split('\n').some((line) => {
+  return contentLines(content).some((line) => {
     const trimmed = line.trim()
     const inComment = trimmed.startsWith('<!--')
     const opener = trimmed.replace(/^<!--\s*/, '').replace(/^[^A-Za-z#]+/, '')
@@ -249,7 +265,7 @@ function hasLegacyOpeningLine(content: string): boolean {
  * that talks about it.
  */
 export function carriesLegacyBody(content: string): boolean {
-  const lines = withoutBom(content).split('\n').map((l) => l.trim())
+  const lines = contentLines(content).map((l) => l.trim())
   const hasHeader = lines.some((l) => LEGACY_GENERATED_HEADERS.includes(l))
   return hasHeader && hasLegacyOpeningLine(content)
 }

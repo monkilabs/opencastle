@@ -26,15 +26,15 @@ const CONVOY_HELP = `
     opencastle convoy resume             Continue the last interrupted run
     opencastle convoy retry              Re-run the failed tasks of the last run
     opencastle convoy dashboard          Open the run viewer
-    opencastle convoy --file <spec>       Execute a spec you wrote by hand
+    opencastle convoy run -f <spec>      Execute a spec you wrote by hand
 
   Options:
-    --file, -f <path>  Run a spec file instead of planning from a task
-    --prd <path>       Plan from a PRD written earlier
-    --dry-run          Plan only; do not execute
-    --verbose          Stream agent output
-    --json             Machine-readable status
-    --help, -h         Show this help
+    --dry-run       Plan only; do not execute
+    --verbose       Stream agent output
+    --json          Machine-readable status
+    --help, -h      Show this help
+
+  run and plan take their own options — try: opencastle convoy run --help
 
   This namespace is experimental and may change or be removed.
 `
@@ -174,7 +174,27 @@ export default async function convoy(ctx: CliContext): Promise<void> {
       break
   }
 
-  // A bare flag set with no subcommand is a status query.
+  // A bare flag set with no subcommand is a status query — but only for flags
+  // this level actually reads. `--file` and `--prd` belong to `run` and `plan`,
+  // and falling into the status screen meant `convoy --file spec.yml` printed
+  // "No runs yet" and exited without reading the file, or looking for it: the
+  // value was never touched, so a path that did not exist produced no error. Our
+  // own shipped instructions named that form.
+  const SUBCOMMAND_FLAGS = new Map([
+    ['--file', 'run'],
+    ['-f', 'run'],
+    ['--prd', 'plan'],
+    ['--resume', 'resume'],
+    ['--retry-failed', 'retry'],
+  ])
+  const misplaced = args.find((a) => SUBCOMMAND_FLAGS.has(a))
+  if (misplaced) {
+    const owner = SUBCOMMAND_FLAGS.get(misplaced)!
+    console.error(`  ${c.red('✗')} ${misplaced} belongs to \`opencastle convoy ${owner}\`.`)
+    console.error(`  ${c.dim('Try:')} opencastle convoy ${owner} ${args.slice(args.indexOf(misplaced)).join(' ')}`)
+    process.exit(1)
+  }
+
   if (sub.startsWith('--')) {
     renderStatus(readLastRun(process.cwd()), args.includes('--json'))
     return

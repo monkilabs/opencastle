@@ -90,8 +90,8 @@ Health thresholds, escalation path, Error Recovery Playbook, Circuit Breaker: se
 Use OpenCastle CLI (`npx opencastle` or `bin/cli.mjs`):
 
 ```bash
-opencastle convoy --file convoy.yml --dry-run
-opencastle convoy --file convoy.yml --verbose
+opencastle convoy run --file convoy.yml --dry-run
+opencastle convoy run --file convoy.yml --verbose
 opencastle convoy resume
 opencastle convoy
 opencastle convoy retry

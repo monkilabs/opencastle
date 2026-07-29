@@ -59,7 +59,7 @@ Every bug gets tracked. Create tracker issue with:
 All bug fixes execute via convoy engine — even single-task fixes — for observability, crash recovery.
 
 1. **Generate a convoy spec** — use the `generate-convoy` prompt with the root cause analysis, fix approach, and file paths as context.
-2. **Hand the spec to the user** — tell them to run: `npx opencastle convoy -f .opencastle/convoys/<name>.convoy.yml`
+2. **Hand the spec to the user** — tell them to run: `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml`
 3. **After convoy completes** — proceed to Step 5 (validation).
 
 #### Convoy Task Prompt Must Include

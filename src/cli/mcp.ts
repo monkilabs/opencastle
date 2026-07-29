@@ -333,6 +333,7 @@ export function willKeepSomethingAfterStrip(
 export async function stripManagedMcpServers(
   projectRoot: string,
   ide: IdeChoice,
+  createdByUs = false,
 ): Promise<'deleted' | 'stripped' | 'absent' | 'unreadable'> {
   const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
   if (!existsSync(destPath)) return 'absent';
@@ -356,18 +357,35 @@ export async function stripManagedMcpServers(
   // A copy to compare against: `willKeepSomethingAfterStrip` edits `parsed` in
   // place, so this is the only record of what the file said before.
   const untouched = JSON.stringify(parsed);
+  const keepsSomething = willKeepSomethingAfterStrip(parsed, ide);
 
-  if (!willKeepSomethingAfterStrip(parsed, ide)) {
+  // Nothing of ours was in there, so there is nothing to do — and in particular
+  // nothing to delete.
+  //
+  // This test used to run *after* the delete branch, and the delete branch asks
+  // only whether the object ends up with no keys. A config that was already empty
+  // before OpenCastle ever ran — `{}`, or the `{"mcpServers": {}}` Claude Code
+  // leaves behind when you remove the last project server — is empty by that
+  // measure, so `remove --all` unlinked it: a file the user had committed, gone,
+  // with no backup, while the preview explained that it "holds only our MCP
+  // servers". `opencode.json` is OpenCode's entire project config.
+  //
+  // Emptiness was never the question. Whether anything of ours came out is. This
+  // is the same correction `.gitignore` got four files away, where `.trim()` was
+  // deciding that a file holding a single newline did not look like much.
+  //
+  // It also keeps byte fidelity: re-serialising reformatted a hand-written
+  // one-line `opencode.json` on every uninstall, for a strip that took nothing.
+  if (JSON.stringify(parsed) === untouched) return 'absent';
+
+  // Deleted only if we created it. A file that ends up empty is not evidence that
+  // it was ours — the user's own copy may have been empty when we found it — and
+  // the manifest is the only thing that actually knows. An old manifest has no
+  // such record, and "unknown" is treated as "not ours".
+  if (!keepsSomething && createdByUs) {
     await rm(destPath, { force: true });
     return 'deleted';
   }
-
-  // Only rewrite when a server of ours actually came out. `opencode.json` is
-  // OpenCode's whole project config, and re-serialising it reformatted a
-  // hand-written one-line file on every uninstall — 10 bytes in, 15 out, for a
-  // strip that took nothing. Byte fidelity is a claim this tool makes about
-  // co-owned files, and a JSON config is one of those.
-  if (JSON.stringify(parsed) === untouched) return 'absent';
 
   await writeFile(destPath, JSON.stringify(parsed, null, 2) + '\n');
   return 'stripped';
