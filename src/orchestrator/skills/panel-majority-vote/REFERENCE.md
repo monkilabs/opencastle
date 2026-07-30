@@ -2,8 +2,6 @@
 
 ## Panel — Weighted Consensus Variant (Reference)
 
-Use this reference when a simple head-count majority is insufficient and domain expertise must influence the verdict.
-
 ### When to Use
 
 | Decision Type | Mode |

@@ -28,5 +28,87 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      # Before the tests, not after them. `bin/cli.mjs` loads from `dist/`, and
+      # four test files drive the CLI as a subprocess — so with no build they
+      # either skip (three of them, silently: 13 tests that looked green in CI
+      # while asserting nothing) or fail confusingly (the two that ask the CLI for
+      # its own `--help`). Building first means every one of them actually runs.
+      - name: Build CLI
+        run: npm run cli:build
+
       - name: Run tests
         run: npm test
+
+      # The claim the README makes: init a project, and `sync --check` on the
+      # committed output is clean. Runs the local build, not the published one.
+      - name: Compile-and-check round trip
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          git -C "$scratch" init -q
+          cd "$scratch"
+          printf '# House rules\n\nNEVER_TOUCH_PAYMENTS\n\n```text\nkeep\n\n\n\nthese\n```\n' > CLAUDE.md
+          cp CLAUDE.md /tmp/before
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" init --yes
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" init --yes
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --check
+
+          # The generated config must be committed and must survive a clone —
+          # the only shape that catches a .gitignore still hiding it.
+          git -c user.email=ci@example.com -c user.name=ci add -A
+          git -c user.email=ci@example.com -c user.name=ci commit -qm generated
+          git clone -q "$scratch" "$scratch-clone"
+          cd "$scratch-clone"
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --check
+          cd "$scratch"
+
+          # And removal returns the user's half byte for byte, not merely with
+          # the sentinel still somewhere in it.
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" remove --all --yes
+          diff /tmp/before CLAUDE.md
+
+      # Three review rounds found the same gap: every fixture was in the shape
+      # the current code writes, so nothing exercised what an install that
+      # already exists actually has on disk. This starts from that shape.
+      - name: Upgrade from a pre-0.36 install
+        run: |
+          set -euo pipefail
+          scratch="$(mktemp -d)"
+          git -C "$scratch" init -q
+          cd "$scratch"
+          mkdir -p .opencastle .claude/agents
+
+          # A root file the released version generated in full, with team notes
+          # appended below it — the case that has no marker to separate them.
+          printf '# Project Instructions\n\nAll conventions, architecture, and project context are embedded below.\n\n## Our team additions\n\nNEVER_TOUCH_PAYMENTS\n' > CLAUDE.md
+          printf 'retired\n' > .claude/agents/copywriter.agent.md
+          cat > .opencastle/manifest.json <<'JSON'
+          {"version":"0.35.2","ide":"claude-code","ides":["claude-code"],
+           "installedAt":"2026-01-01T00:00:00.000Z","updatedAt":"2026-01-01T00:00:00.000Z",
+           "stack":{"ides":["claude-code"],"techTools":[],"teamTools":[]},
+           "managedPaths":{"framework":["CLAUDE.md",".claude/agents/"],"customizable":[".opencastle/"]}}
+          JSON
+          printf 'node_modules\n\n# >>> OpenCastle managed (do not edit) >>>\nCLAUDE.md\n.claude/agents/\n# <<< OpenCastle managed <<<\n' > .gitignore
+
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --yes
+
+          # The appended notes are recoverable, the block is not doubled, the
+          # generated config is no longer hidden, and the check is clean.
+          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md.opencastle-backup
+          test "$(grep -c 'OpenCastle managed — regenerated' CLAUDE.md)" = "1"
+          ! git check-ignore -q CLAUDE.md
+          ! git check-ignore -q .claude/agents/architect.agent.md
+          git check-ignore -q .opencastle/logs
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" sync --check
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" doctor
+
+          # And the destructive commands keep it recoverable too.
+          node "$GITHUB_WORKSPACE/bin/cli.mjs" remove --all --yes
+          grep -q NEVER_TOUCH_PAYMENTS CLAUDE.md.opencastle-backup
+
+      # Drives the CLI against the branch's stated claims — one block per file
+      # from any starting content, byte fidelity, uninstall completeness, dry
+      # runs writing nothing. Seven review rounds found defects that unit tests
+      # passed over because they called the function rather than the command.
+      - name: Verify the claims through the CLI
+        run: npm run verify:claims

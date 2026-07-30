@@ -6,7 +6,7 @@ import { createConvoyEngine, evaluateReviewLevel, runConvoyGuard } from './engin
 import { recoverNdjson, createEventEmitter } from './events.js'
 import type { ConvoyEngineOptions, DiffStats } from './engine.js'
 import { createConvoyStore } from './store.js'
-import type { AgentAdapter, Task, TaskSpec, ExecuteResult, ExecuteOptions } from '../types.js'
+import type { AgentAdapter, Task, TaskSpec, ExecuteResult } from './spec-types.js'
 import type { WorktreeManager } from './worktree.js'
 import type { MergeQueue } from './merge.js'
 import type { TaskRecord } from './types.js'
@@ -102,6 +102,7 @@ function makeSpec(
 function makeEngine(opts: ConvoyEngineOptions): ReturnType<typeof createConvoyEngine> {
   return createConvoyEngine({
     logsDir: join(tmpDir, 'logs'),  // prevents test data in production logs
+    basePath: tmpDir,               // ditto for the .opencastle/ ledgers
     _ensureBranch: vi.fn().mockResolvedValue(undefined),
     _convoyWorktreeDir: null,
     ...opts,
@@ -2000,25 +2001,25 @@ describe('evaluateReviewLevel', () => {
     expect(level).toBe('panel')
   })
 
-  it('routes to panel for database-engineer agent', () => {
+  it('routes to panel for data-engineer agent', () => {
     const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'database-engineer' }),
+      makeTaskRecord({ agent: 'data-engineer' }),
       makeDiffStats(),
     )
     expect(level).toBe('panel')
   })
 
-  it('routes to auto-pass for documentation-writer agent', () => {
+  it('routes to auto-pass for writer agent', () => {
     const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'documentation-writer' }),
+      makeTaskRecord({ agent: 'writer' }),
       makeDiffStats(),
     )
     expect(level).toBe('auto-pass')
   })
 
-  it('routes to auto-pass for copywriter agent', () => {
+  it('routes to auto-pass for writer agent', () => {
     const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'copywriter' }),
+      makeTaskRecord({ agent: 'writer' }),
       makeDiffStats(),
     )
     expect(level).toBe('auto-pass')
@@ -3290,7 +3291,7 @@ describe('convoy-level worktree when branch is set', () => {
   it('runs successfully when _convoyWorktreeDir is null and branch is set', async () => {
     const adapter = makeAdapter()
     const spec = makeSpec({ branch: 'feature-x' })
-    const engine = createConvoyEngine({
+    const engine = makeEngine({
       spec,
       specYaml: 'name: test',
       adapter,
@@ -3841,76 +3842,3 @@ describe('contract retry', () => {
 
 // ── Compaction continuation ───────────────────────────────────────────────────
 
-describe('compaction continuation', () => {
-  it('re-enqueues without incrementing retries when threshold exceeded', async () => {
-    const adapter = makeAdapter()
-    adapter.execute
-      .mockResolvedValueOnce({ success: true, output: 'phase 1 done', exitCode: 0, usage: { total_tokens: 170_000 } })
-      .mockResolvedValueOnce({ success: true, output: 'all done', exitCode: 0, usage: { total_tokens: 1_000 } })
-
-    const engine = makeEngine({
-      spec: makeSpec(
-        { defaults: { compaction: { enabled: true, token_threshold_pct: 80, summary_max_tokens: 2000 } } },
-        [{ model: 'claude-sonnet-4-6', max_retries: 0 }],
-      ),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-    const result = await engine.run()
-    expect(result.status).toBe('done')
-    expect(adapter.execute).toHaveBeenCalledTimes(2)
-
-    const store = createConvoyStore(dbPath)
-    const events = store.getEvents(result.convoyId)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-
-    // Compaction event emitted
-    const compactedEvent = events.find(e => e.type === 'context_compacted')
-    expect(compactedEvent).toBeDefined()
-
-    // Task completed successfully and retries were NOT incremented by compaction
-    expect(tasks[0].status).toBe('done')
-    expect(tasks[0].retries).toBe(0)
-  })
-
-  it('fails with context_exhausted when max compactions reached', async () => {
-    const adapter = makeAdapter()
-    // All calls return high token count — will exhaust compaction budget after 3+1 calls
-    adapter.execute.mockResolvedValue({
-      success: true,
-      output: 'partial work',
-      exitCode: 0,
-      usage: { total_tokens: 170_000 },
-    })
-
-    const engine = makeEngine({
-      spec: makeSpec(
-        { defaults: { compaction: { enabled: true, token_threshold_pct: 80, summary_max_tokens: 2000 } } },
-        [{ model: 'claude-sonnet-4-6', max_retries: 0 }],
-      ),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-    const result = await engine.run()
-    expect(result.status).toBe('failed')
-
-    const store = createConvoyStore(dbPath)
-    const events = store.getEvents(result.convoyId)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-
-    const exhaustedEvent = events.find(e => {
-      if (e.type !== 'task_failed') return false
-      try { return (JSON.parse(e.data as string) as { reason: string }).reason === 'context_exhausted' } catch { return false }
-    })
-    expect(exhaustedEvent).toBeDefined()
-    expect(tasks[0].status).toBe('failed')
-  })
-})

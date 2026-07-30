@@ -27,7 +27,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ## Phase 1: Source Analysis
 
-**Agent:** Data Expert (via sub-agent)
+**Agent:** Data Engineer (via sub-agent)
 **Type:** Sub-agent (inline)
 
 ### Steps
@@ -51,7 +51,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ## Phase 2: Crawling
 
-**Agent:** Data Expert
+**Agent:** Data Engineer
 **Type:** Background agent (may be long-running)
 
 ### Steps
@@ -72,7 +72,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ## Phase 3: Processing
 
-**Agent:** Data Expert (via sub-agent)
+**Agent:** Data Engineer (via sub-agent)
 **Type:** Sub-agent (sequential — depends on Phase 2 output)
 
 ### Steps
@@ -119,7 +119,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ## Phase 5: Import
 
-**Agent:** Data Expert (via sub-agent)
+**Agent:** Data Engineer (via sub-agent)
 **Type:** Sub-agent (inline — need immediate feedback)
 
 ### Steps

@@ -24,7 +24,7 @@ export const config: PluginConfig = {
       'Teams/mcp_graph_teams_getChannel', 'Teams/mcp_graph_teams_postChannelMessage',
       'Teams/mcp_graph_teams_replyToChannelMessage', 'Teams/mcp_graph_teams_listChannelMessages',
     ],
-    'release-manager': [
+    'devops-expert': [
       'Teams/mcp_graph_chat_postMessage', 'Teams/mcp_graph_chat_listChats',
       'Teams/mcp_graph_teams_listTeams', 'Teams/mcp_graph_teams_listChannels',
       'Teams/mcp_graph_teams_postChannelMessage', 'Teams/mcp_graph_teams_replyToChannelMessage',

@@ -1,7 +1,8 @@
-import { resolve } from 'node:path';
+import { resolve, relative } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { TechTool, TeamTool, StackConfig, CopyDirOptions, RepoInfo } from './types.js';
+import { isLegacyStack, migrateStackConfig, UnreadableConfigError } from './types.js';
 import {
   PLUGINS,
   TECH_PLUGINS,
@@ -11,7 +12,7 @@ import {
   ALL_PLUGIN_SKILL_NAMES,
   getSelectedSkillNames,
 } from '../orchestrator/plugins/index.js';
-import type { PluginConfig } from '../orchestrator/plugins/types.js';
+import type {} from '../orchestrator/plugins/types.js';
 
 // ── Tool registries (derived from plugins) ────────────────────
 
@@ -71,6 +72,61 @@ const MCP_ENV_REQUIREMENTS: McpEnvRequirement[] = Object.values(PLUGINS)
 /**
  * Skills to EXCLUDE — all tool-specific skills that are NOT selected.
  */
+/**
+ * The StackConfig a manifest implies — one answer, for every caller.
+ *
+ * `sync` and `sync --check` used to derive this differently. The checker
+ * substituted an empty stack when the field was missing; the compiler passed
+ * `undefined` straight through, and the adapters read `undefined` as "no stack
+ * selected, so exclude nothing and include every plugin". A manifest without a
+ * `stack` therefore compiled to one tree and was checked against another: `sync`
+ * grew the skills directory, the check reported the surplus as drift forever,
+ * and running `sync` again changed nothing. Absorbing states like that are worth
+ * more than the one line it takes to avoid them.
+ */
+/**
+ * Is this variable set, from the shell or from the project's `.env`?
+ *
+ * `sync` counted a value in `.env` as satisfied while `doctor` looked only at
+ * `process.env`, so a correctly configured project failed the check and was told
+ * to run `sync` — a command that cannot set an environment variable. A diagnosis
+ * that prescribes something incapable of fixing it is worse than no diagnosis.
+ */
+export function isEnvVarSatisfied(envVar: string, envFileContents: string): boolean {
+  if (process.env[envVar]) return true
+  return new RegExp(`^\\s*(?:export\\s+)?${envVar}\\s*=\\s*\\S`, 'm').test(envFileContents)
+}
+
+export function resolveStack(manifest: {
+  ide?: string
+  ides?: string[]
+  stack?: StackConfig
+}): StackConfig {
+  const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter(
+    (id): id is string => Boolean(id),
+  )
+  if (!manifest.stack) {
+    return { ides: ides as StackConfig['ides'], techTools: [], teamTools: [] }
+  }
+
+  // A v1 manifest stores `{ cms, db, pm, notifications }` and has no
+  // `techTools`. `update` migrated it in memory and everything downstream was
+  // fine; `buildCheckReport` re-reads the manifest from disk, so it handed the
+  // v1 object straight to a consumer that spreads `stack.techTools` and got
+  // "stack.techTools is not iterable" — a crash in the command this branch
+  // makes the CI entry point. Migration belongs at the read, not at one caller.
+  const stack = isLegacyStack(manifest.stack)
+    ? migrateStackConfig(manifest.stack, ides[0])
+    : manifest.stack
+
+  return {
+    ...stack,
+    techTools: stack.techTools ?? [],
+    teamTools: stack.teamTools ?? [],
+    ides: (stack.ides?.length ? stack.ides : ides) as StackConfig['ides'],
+  }
+}
+
 export function getExcludedSkills(stack: StackConfig): Set<string> {
   const selectedIds = [...stack.techTools, ...stack.teamTools] as string[];
   const includedSkills = new Set(getSelectedSkillNames(selectedIds));
@@ -85,7 +141,7 @@ export function getIncludedPluginIds(stack: StackConfig): Set<string> {
 }
 
 /**
- * Agents to EXCLUDE — content-engineer if no CMS, database-engineer if no DB.
+ * Agents to EXCLUDE — content-engineer if no CMS, data-engineer if no DB.
  */
 export function getExcludedAgents(stack: StackConfig): Set<string> {
   const excluded = new Set<string>();
@@ -93,7 +149,7 @@ export function getExcludedAgents(stack: StackConfig): Set<string> {
   const hasDb = stack.techTools.some((t) => (DB_TOOLS as readonly string[]).includes(t));
 
   if (!hasCms) excluded.add('content-engineer.agent.md');
-  if (!hasDb) excluded.add('database-engineer.agent.md');
+  if (!hasDb) excluded.add('data-engineer.agent.md');
 
   return excluded;
 }
@@ -280,7 +336,16 @@ export async function updateSkillMatrixFile(
   const matrixPath = getSkillMatrixPath(projectRoot, ide);
   if (!matrixPath || !existsSync(matrixPath)) return false;
 
-  const content = await readFile(matrixPath, 'utf8');
+  // The read is guarded as well as the parse. Hardening the parse and leaving
+  // the read bare meant a directory where the file should be took `sync` down
+  // with a bare `✗ EISDIR: illegal operation on a directory, read` — naming
+  // nothing, from a command that had already written the framework tree.
+  let content: string;
+  try {
+    content = await readFile(matrixPath, 'utf8');
+  } catch (err) {
+    throw new UnreadableConfigError(relative(projectRoot, matrixPath));
+  }
   const updated = updateSkillMatrixContent(content, stack);
   if (updated !== content) {
     await writeFile(matrixPath, updated);
@@ -294,8 +359,22 @@ export async function updateSkillMatrixFile(
  * Pure function — sets slot entries for all plugin-mapped subcategories.
  * Supports multiple plugins per slot (e.g. multiple databases).
  */
+/** Every skill name a plugin owns — the entries the compiler is allowed to replace. */
+const PLUGIN_SKILL_NAMES = new Set(
+  Object.values(PLUGINS)
+    .map((p) => p.skillName)
+    .filter((s): s is string => Boolean(s)),
+);
+
 export function updateSkillMatrixContent(content: string, stack: StackConfig): string {
-  const data: SkillMatrixData = JSON.parse(content);
+  let data: SkillMatrixData;
+  try {
+    data = JSON.parse(content) as SkillMatrixData;
+  } catch {
+    // Same reasoning as the MCP config: this file is committed, so it is a merge
+    // conflict candidate, and dying here left the sync half applied.
+    throw new UnreadableConfigError('.opencastle/agents/skill-matrix.json');
+  }
   const allTools = [...stack.techTools, ...stack.teamTools] as string[];
 
   for (const [subCategory, slotName] of Object.entries(SUBCATEGORY_TO_SLOT)) {
@@ -314,7 +393,17 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
       .filter((e): e is SkillMatrixEntry => e !== null);
 
     if (data.bindings[slotName]) {
-      data.bindings[slotName].entries = entries;
+      // Merge, not replace. `skill-matrix.md` tells users "to switch tech, update
+      // only the binding entries", and this ran on every sync, so the edit the
+      // documentation asks for was erased by the next recompile — in the
+      // directory the drift checker calls theirs.
+      //
+      // Ownership is decidable without asking: an entry is ours exactly when its
+      // skill is one a plugin ships. Anything else the user wrote, and it stays.
+      const theirs = (data.bindings[slotName].entries ?? []).filter(
+        (e) => !PLUGIN_SKILL_NAMES.has(e.skill),
+      );
+      data.bindings[slotName].entries = [...entries, ...theirs];
     }
   }
 

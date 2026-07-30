@@ -34,8 +34,8 @@
   "license": "MIT",
   "author": "Filip Mares",
   "scripts": {
-    "build": "npm run cli:build && npm run dashboard:build",
-    "cli:build": "tsc",
+    "build": "npm run cli:build && npm run dashboard:etl:empty && npm run dashboard:build",
+    "cli:build": "rm -rf dist && tsc",
     "test": "vitest run",
     "dashboard:generate-demo-db": "tsx src/dashboard/scripts/generate-demo-db.ts --out .opencastle/convoy-demo.db --events-out .opencastle/convoy-demo.events.ndjson",
     "dashboard:etl": "tsx src/dashboard/scripts/etl.ts --db .opencastle/convoy-demo.db --out src/dashboard/public/data --events .opencastle/convoy-demo.events.ndjson",
@@ -46,8 +46,12 @@
     "website:dev": "astro dev --root website",
     "website:build": "astro build --root website",
     "website:preview": "astro preview --root website",
-    "build:plugins": "tsx scripts/build-plugins.ts",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "dashboard:etl:empty": "tsx src/dashboard/scripts/etl.ts --db .opencastle/__no_demo_db__ --out src/dashboard/public/data",
+    "verify:claims": "npm run cli:build && bash scripts/verify-claims.sh",
+    "matrix": "npm run cli:build && node scripts/command-matrix.mjs --tier=1",
+    "matrix:full": "npm run cli:build && node scripts/command-matrix.mjs --tier=2",
+    "matrix:all": "npm run cli:build && node scripts/command-matrix.mjs --tier=3"
   },
   "engines": {
     "node": ">=22.5.0"
@@ -67,13 +71,5 @@
     "@github/copilot-sdk": "^0.1.30",
     "valibot": "^1.2.0",
     "yaml": "^2.8.2"
-  },
-  "peerDependencies": {
-    "@anthropic-ai/agent-sdk": ">=0.1.0"
-  },
-  "peerDependenciesMeta": {
-    "@anthropic-ai/agent-sdk": {
-      "optional": true
-    }
   }
 }

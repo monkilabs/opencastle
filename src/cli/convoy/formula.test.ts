@@ -3,7 +3,6 @@ import {
   rmSync,
   realpathSync,
   writeFileSync,
-  mkdirSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

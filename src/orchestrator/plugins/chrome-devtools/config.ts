@@ -18,7 +18,7 @@ export const config: PluginConfig = {
   envVars: [],
   agentToolMap: {
     'performance-expert': ['chrome-devtools/*'],
-    'seo-specialist': ['chrome-devtools/*'],
+    'writer': ['chrome-devtools/*'],
     'testing-expert': ['chrome-devtools/*'],
     'ui-ux-expert': ['chrome-devtools/*'],
   },

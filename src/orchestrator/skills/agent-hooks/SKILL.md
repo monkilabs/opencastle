@@ -1,6 +1,6 @@
 ---
 name: agent-hooks
-description: "Four lifecycle hooks every agent runs: on-session-start scans LESSONS-LEARNED.md, resumes checkpoints; on-pre-delegate verifies tracker issues, file partitions; on-post-delegate runs fast-review, CI checks; on-session-end executes session guard, writes logs. Use when starting a new session, running pre-flight checks before delegation, coordinating between agents, reviewing a completed handoff, or wrapping up a session. Trigger terms: multi-agent setup, delegate tasks, agent coordination, session management, run pre-flight checks, start a new session, coordinate between agents, wrap up session"
+description: "Four lifecycle hooks every agent runs: on-session-start scans LESSONS-LEARNED.md, resumes checkpoints; on-pre-delegate verifies tracker issues, file partitions; on-post-delegate runs fast-review, CI checks; on-session-end runs the health checks, writes logs. Use when starting a new session, running pre-flight checks before delegation, coordinating between agents, reviewing a completed handoff, or wrapping up a session. Trigger terms: multi-agent setup, delegate tasks, agent coordination, session management, run pre-flight checks, start a new session, coordinate between agents, wrap up session"
 ---
 
 # Agent Lifecycle Hooks
@@ -31,11 +31,13 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for extended startup checks (approv
 
 ## on-session-end
 
-> **⛔ HARD GATE** — See [logging-mandatory](../../snippets/logging-mandatory.md). Load **observability-logging** for the Pre-Response Quality Gate.
+> **HARD GATE** — every session gets a record in `.opencastle/logs/events.ndjson`,
+> written before you yield, one per task, never batched retrospectively. Load
+> **observability-logging** for the Pre-Response Quality Gate.
 
 | # | Action |
 |---|--------|
-| 1 | `opencastle doctor --fix` (session guard) |
+| 1 | `opencastle doctor` |
 | 2 | `opencastle log --type session ...` |
 | 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if work is incomplete |
 | 4 | Flag for memory merge if 5+ new lessons |
@@ -72,7 +74,5 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for detailed verification commands.
 
 ## Anti-Patterns
 
-| Anti-pattern | Impact |
-|---|---|
-| Batch-logging retrospectively | Loses per-task provenance |
-| Partial post-delegate checks | False positives — build passes but ACs fail |
+- Batch-logging retrospectively — loses per-task provenance.
+- Running only part of on-post-delegate — build passes while ACs fail.

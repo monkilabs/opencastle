@@ -61,15 +61,28 @@ See [project.instructions.md](../.opencastle/project.instructions.md).
 
 ## Discovered Issues Policy
 
-> Inherits: [discovered-issues-policy](../snippets/discovered-issues-policy.md)
+**No issue gets ignored.** An untracked bug found during work is a quality-gate failure.
 
-See **git-workflow** skill for full tracking procedure.
+When you hit a bug unrelated to your current task:
+
+1. Search `.opencastle/KNOWN-ISSUES.md`, and the task tracker if tools are available. Already tracked? Move on.
+2. Not tracked, and it is an upstream or platform limitation you cannot fix → add it to `.opencastle/KNOWN-ISSUES.md` with all six fields: Issue ID, Status, Severity, Evidence, Root Cause, Solution Options.
+3. Not tracked, and it is fixable → open a tracker ticket labelled `bug` with symptoms, reproduction steps, and affected files. No tracker available? Add a `**Discovered Issues**` section to your output.
+
+A pre-existing issue is not somebody else's problem. If it is not tracked, track it.
 
 ## Observability Logging
 
-> Inherits: [logging-mandatory](../snippets/logging-mandatory.md)
+**Hard gate (Constitution rule 6).** Every session gets a record in
+`.opencastle/logs/events.ndjson`. No threshold, no "too small to log".
 
-Load **observability-logging** skill for CLI commands and schemas.
+- Log **before yielding** to the user — it is the last action before you respond.
+- Log **per task**, not per conversation. Three tasks means three records.
+- Never batch-log retrospectively across sessions.
+- `opencastle log --type session ...`, then confirm the append landed:
+  `tail -1 .opencastle/logs/events.ndjson`.
+
+Load **observability-logging** for the record schemas and the other record types.
 
 ## Self-Improvement Protocol
 
@@ -78,9 +91,19 @@ Load **observability-logging** skill for CLI commands and schemas.
 ## Universal Agent Rules
 
 1. Never delegate (specialists complete their own work)
-2. Follow Discovered Issues Policy
+2. Follow the Discovered Issues Policy above
 3. Read and update lessons
-4. Log every session (Constitution rule #6)
+4. Log every session (Constitution rule 6)
+
+## Standard Closing Items
+
+Every agent ends its output contract with these, after its own domain-specific items:
+
+- **Observability logged** — the `session` record always; `delegation`, `review`,
+  `panel`, or `dispute` records if any of those happened
+- **Discovered issues** — anything found per the policy above, and what you did about it
+- **Lessons applied** — which entries in `.opencastle/LESSONS-LEARNED.md` shaped this
+  work, and any new one you added
 
 ## Pre-Response Quality Gate
 

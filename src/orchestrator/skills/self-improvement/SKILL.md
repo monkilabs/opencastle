@@ -40,18 +40,17 @@ rg "missing CRON_SECRET" .opencastle/LESSONS-LEARNED.md || true
 
 ## Categories & Severity
 
-Category, severity tables moved to [LESSON-CATEGORIES.md](LESSON-CATEGORIES.md). Use that file when tagging lessons.
+Valid `--category` and `--severity` values, tagging format: [LESSON-CATEGORIES.md](LESSON-CATEGORIES.md).
 
 ## Quality Rules
 
 - Include exact error messages, commands, tool parameters
-- Show wrong **and** correct approaches — the contrast is actionable
-- Explain why (root cause)
+- Always fill both `--wrong` and `--correct` — the contrast is what makes the lesson usable
 - One lesson per entry; code blocks mandatory for commands
 
 ## Anti-Patterns
 
-Never skip reading lessons · Never fix without documenting · Never write vague entries · Never duplicate · Never defer to end of session
+Never duplicate an existing lesson · Never defer logging to end of session
 
 ## Agent Memory
 

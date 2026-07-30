@@ -8,24 +8,18 @@ const DEMO_URL = 'https://www.opencastle.dev/dashboard';
 
 const agents = [
   { name: 'Team Lead', tier: 'premium' },
-  { name: 'Developer', tier: 'quality' },
-  { name: 'UI/UX Expert', tier: 'quality' },
-  { name: 'Security Expert', tier: 'quality' },
-  { name: 'Architect', tier: 'quality' },
+  { name: 'Architect', tier: 'premium' },
+  { name: 'Security Expert', tier: 'premium' },
+  { name: 'Developer', tier: 'standard' },
+  { name: 'UI/UX Expert', tier: 'standard' },
+  { name: 'Data Engineer', tier: 'standard' },
   { name: 'Content Engineer', tier: 'standard' },
-  { name: 'Database Engineer', tier: 'standard' },
+  { name: 'Testing Expert', tier: 'standard' },
   { name: 'Performance Expert', tier: 'standard' },
-  { name: 'API Designer', tier: 'standard' },
+  { name: 'DevOps & Release', tier: 'standard' },
   { name: 'Researcher', tier: 'standard' },
-  { name: 'Testing Expert', tier: 'fast' },
-  { name: 'Data Expert', tier: 'fast' },
-  { name: 'DevOps Expert', tier: 'fast' },
-  { name: 'Release Manager', tier: 'fast' },
-  { name: 'Documentation Writer', tier: 'economy' },
+  { name: 'Writer', tier: 'economy' },
   { name: 'Reviewer', tier: 'economy' },
-  { name: 'Copywriter', tier: 'economy' },
-  { name: 'SEO Specialist', tier: 'economy' },
-  { name: 'Session Guard', tier: 'economy' },
 ];
 
 const features = [
@@ -39,13 +33,13 @@ const features = [
     icon: 'agents',
     title: 'Specialist Agents',
     description:
-      'From frontend developer to security expert, each with curated tools, model tiers, and domain-specific skills.',
+      'From frontend developer to security expert, each with curated tools, a capability tier, and domain-specific skills.',
   },
   {
     icon: 'skills',
     title: 'On-Demand Skills',
     description:
-      'Modular knowledge files loaded per task. Keeps context windows lean while enabling deep domain expertise. Stack-specific skills are auto-selected during init. All 51 skills scored 100 on the tessl Skill Evaluator.',
+      'Modular knowledge files loaded per task. Keeps context windows lean while enabling deep domain expertise. Stack-specific skills are auto-selected during init from what your repository actually uses.',
   },
   {
     icon: 'workflows',
@@ -229,16 +223,20 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         <div class="hero__illustration">
           <img src={illustration.src} alt="OpenCastle illustration" width="360" />
         </div>
-        <span class="hero__badge">Open Source · Free for Non-Commercial Use</span>
+        <span class="hero__badge">Open Source · MIT Licensed</span>
         <h1 class="hero__title">
-          AI agents that build
+          Write your AI config once.
           <br />
-          <span class="hero__title-gradient">software together.</span>
+          <span class="hero__title-gradient">Use it in every assistant.</span>
         </h1>
         <p class="hero__description">
-          OpenCastle turns <b>GitHub Copilot</b>, <b>Cursor</b>, <b>Claude Code</b>, <b>OpenCode</b>, <b>Windsurf</b>, <b>Codex</b>, and <b>Antigravity</b> into
-          coordinated multi-agent development teams. One orchestrator.
-          Multiple specialists. Zero chaos.
+          Your team's assistant config is scattered across seven formats —
+          <code>CLAUDE.md</code>, <code>.cursor/rules</code>,
+          <code>copilot-instructions.md</code> — saying almost the same thing and
+          drifting apart. OpenCastle compiles one source into all of them for
+          <b>Claude Code</b>, <b>Copilot</b>, <b>Cursor</b>, <b>Windsurf</b>,
+          <b>OpenCode</b>, <b>Codex</b>, and <b>Antigravity</b>, and tells you when
+          they fall out of sync.
         </p>
         <div class="hero__actions">
           <a
@@ -307,47 +305,35 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             </div>
           ))}
         </div>
+        <p class="tier-intro">
+          Agents declare a capability tier, not a model. Your assistant picks the
+          model — it knows which ones your account can reach and what they cost
+          today. A pinned model name can only be wrong later.
+        </p>
         <div class="tier-grid">
           <div class="tier-card">
             <div class="tier-card__tier tier-card__tier--premium">
               Premium
             </div>
-            <div class="tier-card__model">Claude Opus 4.6</div>
             <div class="tier-card__use">
-              Orchestration
-            </div>
-          </div>
-          <div class="tier-card">
-            <div class="tier-card__tier tier-card__tier--quality">
-              Quality
-            </div>
-            <div class="tier-card__model">Claude Sonnet 4.6</div>
-            <div class="tier-card__use">
-              Coding, UI, security, architecture
+              Orchestration, architecture, security review — the hardest reasoning
             </div>
           </div>
           <div class="tier-card">
             <div class="tier-card__tier tier-card__tier--standard">
               Standard
             </div>
-            <div class="tier-card__model">Gemini 3.1 Pro</div>
             <div class="tier-card__use">
-              Analysis, schemas, exploration
-            </div>
-          </div>
-          <div class="tier-card">
-            <div class="tier-card__tier tier-card__tier--fast">Fast</div>
-            <div class="tier-card__model">GPT-5.3-Codex</div>
-            <div class="tier-card__use">
-              Testing, pipelines, terminal
+              Feature work, schemas, UI, tests — the bulk of the work
             </div>
           </div>
           <div class="tier-card">
             <div class="tier-card__tier tier-card__tier--economy">
               Economy
             </div>
-            <div class="tier-card__model">GPT-5 mini</div>
-            <div class="tier-card__use">Docs, reviews, SEO</div>
+            <div class="tier-card__use">
+              Review passes, docs, copy — high volume, low ambiguity
+            </div>
           </div>
         </div>
       </div>
@@ -380,9 +366,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 <span class="code-comment"># Select Team Tools:       Linear / Jira / Trello / Slack / Teams / Notion</span>
 
 <span class="code-comment"># Key commands</span>
-<span class="code-folder">$ npx opencastle update     </span><span class="code-comment"># Update framework, preserve customizations</span>
-<span class="code-folder">$ npx opencastle start      </span><span class="code-comment"># Go from idea to convoy spec (PRD → validate → convoy)</span>
-<span class="code-folder">$ npx opencastle dashboard  </span><span class="code-comment"># View observability dashboard</span>
+<span class="code-folder">$ npx opencastle sync     </span><span class="code-comment"># Update framework, preserve customizations</span>
+<span class="code-folder">$ npx opencastle add stripe  </span><span class="code-comment"># Adopt a tool and recompile</span>
+<span class="code-folder">$ npx opencastle convoy dashboard  </span><span class="code-comment"># View observability dashboard</span>
 <span class="code-folder">$ npx opencastle doctor     </span><span class="code-comment"># Check system health and configuration</span>
 
 <span class="code-comment"># See all commands: <a href="/docs/cli">docs/cli</a></span></pre>
@@ -394,7 +380,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <!-- ==================== Convoy Engine ==================== -->
     <section class="section section--border-top" id="convoy">
       <div class="container">
-        <span class="section__label">Convoy Engine</span>
+        <span class="section__label">Convoy Engine · Experimental</span>
         <h2 class="section__title">
           Convoy Engine. Crash-safe. Isolated. Observable.
         </h2>
@@ -403,6 +389,11 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           crash-recoverable orchestrator backed by SQLite WAL-mode persistence.
           Each worker gets its own git worktree — no shared mutable state.
           Define your batch in <code>convoy.yml</code>, run it overnight, and resume exactly where you left off.
+        </p>
+        <p class="section__subtitle">
+          <strong>This part is experimental and may change.</strong> The compiler above
+          does not depend on it — native background and cloud agents now cover much of
+          what it was built for.
         </p>
         <div class="autonomous-grid">
           <div class="code-block">
@@ -425,7 +416,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 
 <span class="code-key">tasks:</span>
   - <span class="code-key">id:</span> migrate-db
-    <span class="code-key">agent:</span> database-engineer
+    <span class="code-key">agent:</span> data-engineer
     <span class="code-key">prompt:</span> <span class="code-string">|
       Create a new migration for a reviews table.</span>
     <span class="code-key">timeout:</span> 10m
@@ -554,7 +545,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           Plugins for your entire stack.
         </h2>
         <p class="section__subtitle">
-          OpenCastle ships with 31+ plugins — each bundling skills, MCP
+          OpenCastle ships with 30 plugins — each bundling skills, MCP
           server configs, and agent tool mappings for popular tools and services.
           Choose your stack during onboarding and the CLI wires everything up.
         </p>
@@ -807,13 +798,15 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <!-- ==================== Quality Gates ==================== -->
     <section class="section section--border-top" id="quality">
       <div class="container">
-        <span class="section__label">Quality Gates</span>
+        <span class="section__label">Quality Gates · Convoy</span>
         <h2 class="section__title">
           No code ships without verification.
         </h2>
         <p class="section__subtitle">
-          Multi-layered validation gates — from secret scanning to final smoke tests —
-          with structured dispute escalation when agents can't converge.
+          When the convoy engine runs work for you, it puts it through layered
+          validation — secret scanning through final smoke test — escalating to a
+          structured dispute when agents cannot converge. These gates apply to convoy
+          runs, not to the compiler.
         </p>
         <div class="quality-grid">
           <div class="quality-card">
@@ -907,13 +900,13 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           A complete orchestration framework, out of the box.
         </h2>
         <p class="section__subtitle">
-          86K+ words of curated knowledge, and everything
+          57K words of curated knowledge, and everything
           you need to run a coordinated AI development team — from agent
           definitions to quality gates.
         </p>
         <div class="stats-row" style="margin-top: 32px">
           <div class="stat">
-            <div class="stat__value">19</div>
+            <div class="stat__value">13</div>
             <div class="stat__label">Specialist Agents</div>
           </div>
           <div class="stat">
@@ -921,14 +914,12 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             <div class="stat__label">IDE Adapters</div>
           </div>
           <div class="stat">
-            <div class="stat__value">50+</div>
-            <div class="stat__label">On-Demand Skills</div>
+            <div class="stat__value">57</div>
+            <div class="stat__label">Skills &amp; Integrations</div>
           </div>
           <div class="stat">
-            <a href="https://tessl.io/registry?q=opencastle" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: inherit;">
-              <div class="stat__value">100</div>
-              <div class="stat__label">tessl Skill Score</div>
-            </a>
+            <div class="stat__value">1</div>
+            <div class="stat__label">Source of truth</div>
           </div>
         </div>
       </div>
@@ -1056,7 +1047,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <footer class="footer">
       <div class="footer__inner">
         <span class="footer__copyright">
-          BSL 1.1 License · Filip Mares · 2026
+          MIT License · Filip Mares · 2026
         </span>
         <ul class="footer__links">
           <li>

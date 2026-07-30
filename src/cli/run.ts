@@ -6,8 +6,9 @@ import { parseTaskSpecText, isConvoySpec, isPipelineSpec } from './run/schema.js
 import { createExecutor, buildPhases } from './run/executor.js'
 import { getAdapter, detectAdapter } from './run/adapters/index.js'
 import { createReporter, printExecutionPlan } from './run/reporter.js'
-import { c, confirm, closePrompts } from './prompt.js'
-import type { CliContext, RunOptions } from './types.js'
+import { c } from './prompt.js'
+import type { CliContext } from './types.js'
+import type { RunOptions } from './convoy/spec-types.js'
 import type { ConvoyResult } from './convoy/engine.js'
 import type { PipelineResult } from './convoy/pipeline.js'
 import { EngineAlreadyRunningError } from './convoy/lock.js'
@@ -19,7 +20,7 @@ function formatTokens(n: number): string {
 }
 
 const HELP = `
-  opencastle run [options]
+  opencastle convoy run [options]
 
   Process a task queue from a spec file, delegating to AI agents autonomously.
   Version 1 specs use the Convoy Engine; legacy specs use the standard executor.
@@ -203,7 +204,7 @@ function printAdapterError(detectionFailed: boolean, adapterName: string): void 
         `    • opencode   — https://opencode.ai\n` +
         `    • codex      — npm install -g @openai/codex\n` +
         `\n` +
-        `    Or specify an adapter explicitly: opencastle run --adapter <name>`
+        `    Or specify an adapter explicitly: opencastle convoy run --adapter <name>`
     )
   } else {
     const hints: Record<string, string> = {
@@ -387,7 +388,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       if (convoy && (convoy.status === 'failed' || convoy.status === 'done')) {
         store.updateConvoyStatus(entry.convoy_id, 'running', {})
       }
-      console.log(`  \u2713 Task ${entry.task_id} reset to pending. Run 'opencastle run --resume' to execute.`)
+      console.log(`  \u2713 Task ${entry.task_id} reset to pending. Run 'opencastle convoy run --resume' to execute.`)
     } finally {
       store.close()
     }
@@ -481,7 +482,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
   if (opts.retryFailed) {
     if (!existsSync(dbPath)) {
       console.error('  ✗ No convoy database found at .opencastle/convoy.db')
-      console.error('    Run a convoy spec first: opencastle run convoy.yml')
+      console.error('    Run a convoy spec first: opencastle convoy run -f convoy.yml')
       process.exit(1)
     }
     const { createConvoyStore } = await import('./convoy/store.js')
@@ -573,7 +574,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
   if (opts.resume) {
     if (!existsSync(dbPath)) {
       console.error('  ✗ No convoy database found at .opencastle/convoy.db')
-      console.error('    Run a convoy spec first: opencastle run convoy.yml')
+      console.error('    Run a convoy spec first: opencastle convoy run -f convoy.yml')
       process.exit(1)
     }
     const { createConvoyStore } = await import('./convoy/store.js')
@@ -761,14 +762,14 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       template = parseFormula(formulaPath)
     } catch (err: unknown) {
       console.error(`  ✗ ${(err as Error).message}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle run --formula ${opts.formula}`)
+      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run --formula ${opts.formula}`)
       process.exit(1)
     }
 
     const validation = validateTemplate(template)
     if (!validation.valid) {
       console.error(`  ✗ Invalid formula template:\n  • ${validation.errors.join('\n  • ')}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle run --formula ${opts.formula}`)
+      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run --formula ${opts.formula}`)
       process.exit(1)
     }
 
@@ -790,7 +791,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       spec = substituteVariables(template, opts.setVars)
     } catch (err: unknown) {
       console.error(`  ✗ ${(err as Error).message}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle run --formula ${opts.formula}`)
+      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run --formula ${opts.formula}`)
       process.exit(1)
     }
     specText = yamlStringify(spec)
@@ -806,7 +807,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       } else {
         console.error(`  ✗ Cannot read task spec file: ${e.message}`)
       }
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
+      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
       process.exit(1)
     }
 
@@ -814,7 +815,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       spec = parseTaskSpecText(specText)
     } catch (err: unknown) {
       console.error(`  ✗ ${(err as Error).message}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
+      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
       process.exit(1)
     }
   }
@@ -866,7 +867,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
   const available = await adapter.isAvailable()
   if (!available) {
     printAdapterError(detectionFailed, spec.adapter)
-    console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file}`)
+    console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
     process.exit(1)
   }
 
@@ -906,7 +907,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     } catch (err) {
       if (err instanceof EngineAlreadyRunningError) {
         console.error(`  ✗ ${err.message}`)
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file} --resume`)
+        console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file} --resume`)
         process.exit(1)
       }
       throw err
@@ -917,7 +918,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       console.log(`  ${c.dim('Dashboard:')} ${pipelineDashboardResult.url}`)
       console.log(`\n  Press Ctrl+C to stop`)
       if (pipelineResult.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
       }
       const exitCode = pipelineResult.status !== 'done' ? 1 : 0
       process.on('SIGINT', () => {
@@ -927,7 +928,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       })
     } else {
       if (pipelineResult.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
       }
       process.exit(pipelineResult.status !== 'done' ? 1 : 0)
     }
@@ -989,7 +990,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     } catch (err) {
       if (err instanceof EngineAlreadyRunningError) {
         console.error(`  ✗ ${err.message}`)
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle run -f ${opts.file} --resume`)
+        console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file} --resume`)
         process.exit(1)
       }
       throw err
@@ -1000,7 +1001,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       console.log(`  ${c.dim('Dashboard:')} ${dashboardResult.url}`)
       console.log(`\n  Press Ctrl+C to stop`)
       if (result.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
       }
       const exitCode = result.status !== 'done' ? 1 : 0
       process.on('SIGINT', () => {
@@ -1010,7 +1011,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       })
     } else {
       if (result.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle run -f ${opts.file} --retry-failed`)
+        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
       }
       process.exit(result.status !== 'done' ? 1 : 0)
     }

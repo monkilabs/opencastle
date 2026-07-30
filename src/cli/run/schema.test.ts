@@ -667,9 +667,9 @@ describe('applyDefaults — convoy spec (version: 1)', () => {
       name: 'test',
       version: 1,
       defaults: { agent: 'ui-ux-expert' },
-      tasks: [{ id: 'a', prompt: 'x', agent: 'api-designer' }],
+      tasks: [{ id: 'a', prompt: 'x', agent: 'developer' }],
     })
-    expect(spec.tasks![0].agent).toBe('api-designer')
+    expect(spec.tasks![0].agent).toBe('developer')
   })
 
   it('merges defaults.timeout into tasks', () => {
@@ -1223,7 +1223,7 @@ describe('guard config', () => {
   it('accepts a valid guard config', () => {
     const result = validateSpec({
       ...baseSpec,
-      guard: { enabled: true, agent: 'session-guard', checks: ['observability', 'cleanup'] },
+      guard: { enabled: true, agent: 'reviewer', checks: ['observability', 'cleanup'] },
     })
     expect(result.valid).toBe(true)
     expect(result.errors).toHaveLength(0)
@@ -1339,7 +1339,7 @@ describe('review defaults validation', () => {
         review_heuristics: {
           panel_paths: ['auth/', 'security/'],
           panel_agents: ['security-expert'],
-          auto_pass_agents: ['copywriter'],
+          auto_pass_agents: ['writer'],
           auto_pass_max_lines: 20,
           auto_pass_max_files: 3,
         },
@@ -2025,5 +2025,81 @@ describe('validateSpec — browser_test config', () => {
     })
     expect(result.valid).toBe(false)
     expect(result.errors).toContainEqual(expect.stringContaining('baselines_dir'))
+  })
+})
+
+/**
+ * Keys the engine used to honour and no longer does.
+ *
+ * Before this, `defaults.compaction` simply stopped being validated: a spec
+ * carrying it passed, ran, and quietly did none of what it asked for. A spec
+ * author has no way to tell that apart from success.
+ */
+describe('retired spec keys', () => {
+  const base = {
+    name: 'test-convoy',
+    tasks: [{ id: 't1', agent: 'developer', prompt: 'do the thing' }],
+  }
+
+  it('warns rather than failing on a retired key', () => {
+    const result = validateSpec({ ...base, defaults: { compaction: { enabled: true } } })
+    expect(result.valid).toBe(true)
+    expect(result.warnings?.join('\n')).toContain('defaults.compaction')
+    expect(result.warnings?.join('\n')).toContain('ignored')
+  })
+
+  it('warns for each retired key present', () => {
+    const result = validateSpec({
+      ...base,
+      defaults: { compaction: {}, inject_lessons: true, snippets: ['a'] },
+    })
+    expect(result.warnings).toHaveLength(3)
+  })
+
+  it('says nothing about keys the spec does not use', () => {
+    const result = validateSpec({ ...base, defaults: { timeout: '10m' } })
+    expect(result.valid).toBe(true)
+    expect(result.warnings ?? []).toEqual([])
+  })
+})
+
+describe('branch is validated where it enters', () => {
+  /**
+   * The engine passes `spec.branch` to `git worktree add -b <branch>`, and git
+   * reads a leading-dash value as an option: `--upload-pack=echo` arrives at
+   * `git branch` as an unknown flag. `execFile` takes an argv array so there is no
+   * shell, but the value is untrusted spec input reaching a git invocation, and
+   * the validation that existed for it — in the engine's `ensureBranch` — was
+   * never called from anywhere.
+   */
+  const withBranch = (branch: unknown): unknown => ({
+    name: 'demo',
+    branch,
+    tasks: [{ id: 't1', prompt: 'do a thing' }],
+  })
+
+  it('rejects a name git would read as an option', () => {
+    for (const bad of ['--upload-pack=echo', '-c', '--help']) {
+      const r = validateSpec(withBranch(bad))
+      expect(r.valid, `accepted ${bad}`).toBe(false)
+      expect(r.errors.join(' ')).toMatch(/branch/)
+    }
+  })
+
+  it('rejects shell metacharacters even though no shell is involved', () => {
+    for (const bad of ['main; rm -rf /', 'main$(id)', 'main`id`', 'main|tee']) {
+      expect(validateSpec(withBranch(bad)).valid, `accepted ${bad}`).toBe(false)
+    }
+  })
+
+  it('accepts the names people actually use', () => {
+    for (const good of ['main', 'feat/add-search', 'release-1.2.3', 'user_x/thing', 'v2.0']) {
+      const r = validateSpec(withBranch(good))
+      expect(r.valid, `rejected ${good}: ${r.errors.join(' ')}`).toBe(true)
+    }
+  })
+
+  it('still rejects a non-string', () => {
+    expect(validateSpec(withBranch(42)).valid).toBe(false)
   })
 })

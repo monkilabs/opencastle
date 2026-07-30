@@ -65,6 +65,7 @@ export function computeVisibleWindow(
 let _rl: Interface | null = null;
 const _lineBuffer: string[] = [];
 let _lineResolver: ((_line: string) => void) | null = null;
+let _stdinEnded = false;
 
 function ensureRL(): void {
   if (_rl) return;
@@ -80,6 +81,7 @@ function ensureRL(): void {
   });
   _rl.on('close', () => {
     _rl = null;
+    _stdinEnded = true;
     // Resolve any pending prompt with empty string → triggers defaults
     if (_lineResolver) {
       const resolve = _lineResolver;
@@ -95,14 +97,34 @@ function ensureRL(): void {
  * multiple lines in a single chunk.
  */
 async function nextLine(prompt: string): Promise<string> {
-  ensureRL();
-  stdout.write(prompt);
+  // Answers already delivered come first, *then* the ended-stream guard.
+  //
+  // Piped input arrives in one chunk: the first line settles the pending
+  // prompt, the rest queue here, and `close` fires immediately after. Testing
+  // `_stdinEnded` before draining the queue therefore threw away every answer
+  // but the first and substituted each prompt's default — and `init`'s
+  // "Overwrite existing files?" defaults to yes, so `printf 'y\nn\n' |
+  // opencastle init` overwrote the files the user had just declined to
+  // overwrite, without echoing the `n` it discarded. The comment above the
+  // buffer says no data is ever lost.
   if (_lineBuffer.length > 0) {
+    stdout.write(prompt);
     const line = _lineBuffer.shift()!;
     // Echo the buffered answer for non-TTY so logs read naturally
     if (!stdin.isTTY) stdout.write(line + '\n');
     return line;
   }
+
+  // Only now: with nothing queued and the stream closed, every further question
+  // answers itself with the default. Re-creating a readline interface over an
+  // ended stream never emits `close` again, so the promise never settled — the
+  // *second* prompt in a non-interactive run hung until node gave up.
+  if (_stdinEnded) {
+    stdout.write(prompt + '\n');
+    return '';
+  }
+  ensureRL();
+  stdout.write(prompt);
   return new Promise<string>((resolve) => {
     _lineResolver = resolve;
   });
@@ -301,13 +323,32 @@ async function selectNumbered(
  */
 export async function confirm(
   message: string,
-  defaultYes = true
+  defaultYes = true,
+  /**
+   * What an exhausted stream means for this question.
+   *
+   * `'default'` is right for a question whose default changes nothing. For one
+   * whose default *destroys* something, silence is not consent: a piped run
+   * that stopped short of the question would take the destructive branch with
+   * nothing echoed, so a hand edit disappeared because the answer never
+   * arrived. Those questions pass `'refuse'` and the caller aborts. `--yes` is
+   * explicit consent and skips the prompt entirely, so it is unaffected.
+   */
+  onEndOfInput: 'default' | 'refuse' = 'default'
 ): Promise<boolean> {
   const hint = defaultYes ? '[Y/n]' : '[y/N]';
   const answer = await nextLine(`  ${message} ${hint} `);
 
-  if (!answer.trim()) return defaultYes;
+  if (!answer.trim()) {
+    if (onEndOfInput === 'refuse' && stdinIsExhausted()) return false;
+    return defaultYes;
+  }
   return answer.trim().toLowerCase().startsWith('y');
+}
+
+/** True when stdin has closed and nothing is queued — nobody is going to answer. */
+export function stdinIsExhausted(): boolean {
+  return _stdinEnded && _lineBuffer.length === 0;
 }
 
 // ── Multiselect ───────────────────────────────────────────────────

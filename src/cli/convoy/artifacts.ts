@@ -46,10 +46,10 @@ function sanitizeSegment(input: string): string {
 
 // ── Core ──────────────────────────────────────────────────────────────────────
 
-export function getArtifactDir(convoyId: string, taskId: string): string {
+export function getArtifactDir(convoyId: string, taskId: string, basePath?: string): string {
   const safeConvoyId = sanitizeSegment(convoyId)
   const safeTaskId = sanitizeSegment(taskId)
-  return join(process.cwd(), '.opencastle', 'artifacts', safeConvoyId, safeTaskId) + '/'
+  return join(basePath ?? process.cwd(), '.opencastle', 'artifacts', safeConvoyId, safeTaskId) + '/'
 }
 
 export function writeArtifact(
@@ -140,8 +140,8 @@ export function extractArtifactRefs(taskId: string, convoyId: string, output: st
   return refs
 }
 
-export function pruneArtifacts(keepCount: number): { removed: number; freed_bytes: number } {
-  const artifactsRoot = join(process.cwd(), '.opencastle', 'artifacts')
+export function pruneArtifacts(keepCount: number, basePath?: string): { removed: number; freed_bytes: number } {
+  const artifactsRoot = join(basePath ?? process.cwd(), '.opencastle', 'artifacts')
   if (!existsSync(artifactsRoot)) return { removed: 0, freed_bytes: 0 }
 
   const convoyDirs = readdirSync(artifactsRoot)

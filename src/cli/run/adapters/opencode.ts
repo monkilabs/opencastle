@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Task, ExecuteOptions, ExecuteResult, TokenUsage } from '../../types.js'
+import type { Task, ExecuteOptions, ExecuteResult, TokenUsage } from '../../convoy/spec-types.js'
 
 /** Adapter name */
 export const name = 'opencode'

@@ -149,7 +149,7 @@ export interface BrowserTestConfig {
 }
 export interface GuardConfig {
   enabled?: boolean      // default: true
-  agent?: string         // optional agent name (e.g. 'session-guard')
+  agent?: string         // optional agent name (e.g. 'reviewer')
   checks?: string[]      // e.g. ['observability', 'cleanup', 'cost-report']
 }
 

@@ -42,19 +42,18 @@ awk '/src\/lib\/search\// { if (match($0, /[0-9]+/)) { n = substr($0, RSTART, RL
   .opencastle/AGENT-EXPERTISE.md > tmp && mv tmp .opencastle/AGENT-EXPERTISE.md
 ```
 
-## Workflow
+After each task also append file relationships to `.opencastle/KNOWLEDGE-GRAPH.md`. On DLQ failure, the Weak Area entry must carry the failure ID and a link to its logs.
 
-1. **Before delegating:** Read `.opencastle/AGENT-EXPERTISE.md`; check Strong/Weak areas; add concise `Agent Context` to prompt.
-  - Validate: selected agent has Strong area matching task or no conflicting Weak entries.
-2. **After task completes:** Update expertise (success → Strong, 2+ retries → Weak, files → Familiarity); append file relationships to `.opencastle/KNOWLEDGE-GRAPH.md`.
-  - Validate: expertise file contains new entry; timestamp is today's date.
-3. **On DLQ failure:** Add Weak Area with reference to failure ID, link to logs.
-  - Validate: failure ID, link appear in Weak Area entry.
+## Validation Checkpoints
+
+- Before delegating: chosen agent has a Strong area matching the task and no conflicting Weak entry.
+- After completion: expertise file has the new entry, timestamped today.
+- After pruning: `rg "— [0-9]+ tasks" .opencastle/AGENT-EXPERTISE.md` shows no stale paths.
 
 ## Pruning
 
 Prune entries older than 6 months; remove familiarity for deleted paths; consolidate duplicates.
- - Validate: run `rg "— [0-9]+ tasks" .opencastle/AGENT-EXPERTISE.md` after pruning to confirm no stale paths remain.
+
 ## Knowledge Graph
 
 File dependency graph, cross-agent relationships. See [KNOWLEDGE-GRAPH.md](./KNOWLEDGE-GRAPH.md) for entity types, templates, triggers, queries.

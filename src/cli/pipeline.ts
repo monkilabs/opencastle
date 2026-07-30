@@ -8,7 +8,7 @@ import type { PromptStepOptions } from './plan.js'
 import { cleanupAdapters } from './run/adapters/index.js'
 import type { CliContext } from './types.js'
 import { parseYaml, validateSpec } from './run/schema.js'
-import { buildConvoyYaml, parseTaskPlanWithReason, parsePatches, applyPatches, deriveSpecEnrichment, detectJsonTruncation } from './convoy/spec-builder.js'
+import { buildConvoyYaml, parseTaskPlanWithReason, parsePatches, applyPatches, deriveSpecEnrichment } from './convoy/spec-builder.js'
 import type { TaskPlan, SpecEnrichment } from './convoy/spec-builder.js'
 
 export interface ConvoyGroup {
@@ -45,7 +45,6 @@ function extractRelevantPrdSections(prdContent: string, phases: number[]): strin
   // Sections to include condensed
   const condenseSection = ['user stories & acceptance criteria', 'implementation scope', 'success criteria', 'risks & open questions']
 
-  let currentSection = ''
   let inTaskBreakdown = false
   let inRelevantPhase = false
   let skipSection = false
@@ -55,7 +54,6 @@ function extractRelevantPrdSections(prdContent: string, phases: number[]): strin
     const h2Match = line.match(/^## (.+)/)
     if (h2Match) {
       const heading = h2Match[1].trim().toLowerCase()
-      currentSection = heading
       inTaskBreakdown = heading === 'task breakdown'
       inRelevantPhase = false
       skipSection = false
@@ -293,7 +291,7 @@ export function topologicalSortGroups(groups: ConvoyGroup[]): ConvoyGroup[] {
 }
 
 const HELP = `
-  opencastle start [options]
+  opencastle convoy plan [options]
 
   Run the full convoy generation pipeline from a feature prompt:
 
@@ -476,7 +474,7 @@ async function fixPrd(
     console.log(
       c.dim(`\n  PRD saved to ${relPath(prdPath)} with best available fixes.`) +
         c.dim(`\n  You can re-validate later with:\n`) +
-        `    opencastle start --prd ${relPath(prdPath)}${adapterFlag ? ` --adapter ${adapterFlag}` : ''}\n`
+        `    opencastle convoy plan --prd ${relPath(prdPath)}${adapterFlag ? ` --adapter ${adapterFlag}` : ''}\n`
     )
   }
 }
@@ -517,7 +515,7 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
     ...(mcpServers.length ? { mcpServers } : {}),
   }
 
-  console.log(c.bold('\n  opencastle start\n'))
+  console.log(c.bold('\n  opencastle convoy\n'))
 
   // ── Step 1: Generate PRD ──────────────────────────────────────────────────
   let prdPath: string
@@ -806,8 +804,8 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
         console.log(`    ${relPath(masterSpecPath)} ${c.dim('(master)')}`)
         console.log()
         console.log(
-          `  ${c.dim('Preview:')} npx opencastle run -f ${relPath(masterSpecPath)} --dry-run\n` +
-            `  ${c.dim('Execute:')} npx opencastle run -f ${relPath(masterSpecPath)}\n`
+          `  ${c.dim('Preview:')} npx opencastle convoy run -f ${relPath(masterSpecPath)} --dry-run\n` +
+            `  ${c.dim('Execute:')} npx opencastle convoy run -f ${relPath(masterSpecPath)}\n`
         )
 
         try {
@@ -939,7 +937,7 @@ async function fixViaPatch(
   console.log(
     c.dim(`\n  Spec saved to ${relPath(specPath)} with best available fixes.`) +
     c.dim(`\n  You can re-validate later with:\n`) +
-    `    opencastle plan --file ${relPath(specPath)} --template validate-convoy\n`
+    `    opencastle convoy run --file ${relPath(specPath)} --dry-run\n`
   )
   return currentPlan
 }
@@ -1104,8 +1102,8 @@ async function printFinalSummary(
   console.log(`  PRD:           ${prd}`)
   console.log(`  Convoy spec:   ${spec}\n`)
   console.log(
-    `  ${c.dim('Preview:')} npx opencastle run -f ${spec} --dry-run\n` +
-      `  ${c.dim('Execute:')} npx opencastle run -f ${spec}\n`
+    `  ${c.dim('Preview:')} npx opencastle convoy run -f ${spec} --dry-run\n` +
+      `  ${c.dim('Execute:')} npx opencastle convoy run -f ${spec}\n`
   )
 
   try {

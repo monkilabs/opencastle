@@ -1,6 +1,5 @@
-import { readFile } from 'node:fs/promises'
 import { parse as yamlParse } from 'yaml'
-import type { TaskSpec, ValidationResult } from '../types.js'
+import type { TaskSpec, ValidationResult } from '../convoy/spec-types.js'
 
 /**
  * Parse a YAML string into a JS object.
@@ -122,11 +121,25 @@ function validateBrowserTestConfig(value: unknown, prefix: string, errors: strin
 /**
  * Validate a parsed spec object.
  */
+/**
+ * Keys an earlier build honoured and this one does not.
+ *
+ * Silently accepting them is worse than rejecting them: the spec looks valid, the
+ * run proceeds, and the behaviour the author asked for never happens. Rejecting
+ * them outright would break specs that are otherwise fine, so they warn.
+ */
+const RETIRED_DEFAULTS: Record<string, string> = {
+  compaction: 'context compaction was removed; the adapter manages its own context',
+  inject_lessons: 'lessons are read from .opencastle/LESSONS-LEARNED.md by the agent itself',
+  snippets: 'snippets were folded into skills',
+}
+
 export function validateSpec(spec: unknown): ValidationResult {
   const errors: string[] = []
+  const warnings: string[] = []
 
   if (!spec || typeof spec !== 'object') {
-    return { valid: false, errors: ['Spec must be a YAML object'] }
+    return { valid: false, errors: ['Spec must be a YAML object'], warnings }
   }
 
   const s = spec as RawSpec
@@ -185,6 +198,9 @@ export function validateSpec(spec: unknown): ValidationResult {
       errors.push('`defaults` must be an object')
     } else {
       const d = s.defaults as Record<string, unknown>
+      for (const [key, why] of Object.entries(RETIRED_DEFAULTS)) {
+        if (d[key] !== undefined) warnings.push(`\`defaults.${key}\` is ignored — ${why}`)
+      }
       if (d.timeout !== undefined && isNaN(parseTimeout(d.timeout as string))) {
         errors.push(
           '`defaults.timeout` must be in format: <number><s|m|h> (e.g. "10m")'
@@ -291,30 +307,6 @@ export function validateSpec(spec: unknown): ValidationResult {
         validateBrowserTestConfig(d.browser_test, 'defaults.browser_test', errors)
       }
 
-      // compaction config validation (Phase 44)
-      if (d.compaction !== undefined) {
-        if (!d.compaction || typeof d.compaction !== 'object' || Array.isArray(d.compaction)) {
-          errors.push('`defaults.compaction` must be an object')
-        } else {
-          const comp = d.compaction as Record<string, unknown>
-          if (comp.enabled !== undefined && typeof comp.enabled !== 'boolean') {
-            errors.push('`defaults.compaction.enabled` must be a boolean')
-          }
-          if (comp.token_threshold_pct !== undefined) {
-            const pct = Number(comp.token_threshold_pct)
-            if (!Number.isFinite(pct) || pct < 1 || pct > 100) {
-              errors.push('`defaults.compaction.token_threshold_pct` must be a number between 1 and 100')
-            }
-          }
-          if (comp.summary_max_tokens !== undefined) {
-            const smt = Number(comp.summary_max_tokens)
-            if (!Number.isInteger(smt) || smt < 1) {
-              errors.push('`defaults.compaction.summary_max_tokens` must be a positive integer')
-            }
-          }
-        }
-      }
-
       // review_stages validation (Phase 40 — two-stage review toggle)
       if (d.review_stages !== undefined && typeof d.review_stages !== 'boolean') {
         errors.push('`defaults.review_stages` must be a boolean')
@@ -412,8 +404,26 @@ export function validateSpec(spec: unknown): ValidationResult {
   }
 
   // branch
+  //
+  // Shape as well as type. The engine hands this straight to
+  // `git worktree add -b <branch>`, and git reads a leading-dash value as an
+  // *option*: `branch: --upload-pack=…` reaches `git branch` as an unknown flag.
+  // There is no shell involved — `execFile` takes an argv array — so this is
+  // argument injection rather than command injection, but the value is still
+  // untrusted input from a spec file reaching a git invocation.
+  //
+  // `ensureBranch` in the engine had exactly this validation and was never called
+  // (its only reference is a test stub), so the check lived nowhere near the place
+  // the value is used. Deliberately narrower than git's own refname rules: a
+  // convoy branch is generated or hand-written, and nothing needs the exotic half
+  // of what git permits.
   if (s.branch !== undefined && typeof s.branch !== 'string') {
     errors.push('`branch` must be a string')
+  } else if (typeof s.branch === 'string' && !/^[A-Za-z0-9._/][A-Za-z0-9._/-]*$/.test(s.branch)) {
+    errors.push(
+      '`branch` must be a plain branch name: letters, digits, dot, underscore, slash and dash, ' +
+        'and it may not begin with a dash',
+    )
   }
 
   // guard config validation
@@ -447,17 +457,17 @@ export function validateSpec(spec: unknown): ValidationResult {
   if (!isPipeline) {
     if (!s.tasks || !Array.isArray(s.tasks) || s.tasks.length === 0) {
       errors.push('`tasks` is required and must be a non-empty array')
-      return { valid: false, errors }
+      return { valid: false, errors, warnings }
     }
   } else if (s.tasks !== undefined && (!Array.isArray(s.tasks) || s.tasks.length === 0)) {
     // Pipeline spec may omit tasks entirely, but if present they must be non-empty
     errors.push('`tasks`, when provided, must be a non-empty array')
-    return { valid: false, errors }
+    return { valid: false, errors, warnings }
   }
 
   // Skip per-task validation when pipeline spec has no tasks
   if (isPipeline && !s.tasks) {
-    return { valid: errors.length === 0, errors }
+    return { valid: errors.length === 0, errors, warnings }
   }
 
   const taskIds = new Set<string>()
@@ -576,7 +586,7 @@ export function validateSpec(spec: unknown): ValidationResult {
     if (cycleErr) errors.push(cycleErr)
   }
 
-  return { valid: errors.length === 0, errors }
+  return { valid: errors.length === 0, errors, warnings }
 }
 
 /**
@@ -709,29 +719,13 @@ export function parseTaskSpecText(text: string): TaskSpec {
     throw new Error(`YAML parse error: ${(err as Error).message}`)
   }
 
-  const { valid, errors } = validateSpec(spec)
+  const { valid, errors, warnings } = validateSpec(spec)
   if (!valid) {
     throw new Error(`Invalid task spec:\n  • ${errors.join('\n  • ')}`)
   }
-
-  return applyDefaults(spec)
-}
-
-/**
- * Read, parse, validate, and return a typed task spec from a YAML file.
- * @throws If file cannot be read, parsed, or spec is invalid
- */
-export async function parseTaskSpec(filePath: string): Promise<TaskSpec> {
-  let text: string
-  try {
-    text = await readFile(filePath, 'utf8')
-  } catch (err: unknown) {
-    const e = err as Error & { code?: string }
-    if (e.code === 'ENOENT') {
-      throw new Error(`Task spec file not found: ${filePath}`)
-    }
-    throw new Error(`Cannot read task spec file: ${e.message}`)
+  for (const warning of warnings ?? []) {
+    console.warn(`  ⚠ ${warning}`)
   }
 
-  return parseTaskSpecText(text)
+  return applyDefaults(spec)
 }

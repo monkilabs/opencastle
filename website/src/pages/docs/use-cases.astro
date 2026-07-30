@@ -238,13 +238,13 @@ $ npx opencastle init</code></pre>
             <div class="recipe-step__number">2</div>
             <h3 class="recipe-section__heading">Step 2: Describe your project</h3>
             <p class="recipe-section__body">
-              Run <code>opencastle start</code> with a plain-English description of what you want
+              Run <code>opencastle convoy "&lt;task&gt;"</code> with a plain-English description of what you want
               to build. OpenCastle generates a product requirements document, validates it, decomposes
               it into an executable convoy spec, and validates that too — all automatically.
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ opencastle start --text "Build a personal portfolio website with a home \
+              <pre><code>$ opencastle convoy "Build a personal portfolio website with a home \
   page featuring a hero section and recent projects, an about page with bio \
   and skills, a projects page with filterable cards, and a contact page with \
   a form. Use modern design, dark mode support, responsive layout, and SEO \
@@ -252,7 +252,7 @@ $ npx opencastle init</code></pre>
             </div>
             <p class="recipe-section__body">The start command runs up to seven steps (fix steps are skipped when validation passes):</p>
             <div class="recipe-output">
-              <pre><code>  opencastle start
+              <pre><code>  opencastle convoy
 
   [1/7] Generating PRD…
   ✓ PRD written to .opencastle/prds/portfolio.prd.md
@@ -347,7 +347,7 @@ tasks:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ opencastle run -f .opencastle/convoys/portfolio.convoy.yml --dry-run</code></pre>
+              <pre><code>$ opencastle convoy run --file .opencastle/convoys/portfolio.convoy.yml --dry-run</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Convoy: portfolio  ·  12 tasks  ·  dry-run mode
@@ -375,7 +375,7 @@ tasks:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ opencastle run -f .opencastle/convoys/portfolio.convoy.yml</code></pre>
+              <pre><code>$ opencastle convoy run --file .opencastle/convoys/portfolio.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  ◎ Convoy started  ·  portfolio  ·  convoy_id=cvy_3kx9
@@ -394,7 +394,7 @@ tasks:
             </div>
             <div class="recipe-tip">
               <strong>Note:</strong> If your machine sleeps or the process is interrupted, resume any time
-              with <code>opencastle run -f portfolio.convoy.yml --resume</code>.
+              with <code>opencastle convoy resume</code>.
               Use <code>--retry-failed</code> to re-run only tasks that failed.
             </div>
           </section>
@@ -409,7 +409,7 @@ tasks:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal — new tab</div>
-              <pre><code>$ opencastle dashboard</code></pre>
+              <pre><code>$ opencastle convoy dashboard</code></pre>
             </div>
             <p class="recipe-section__body">
               The dashboard opens at <code>http://localhost:4300</code> and shows:
@@ -422,7 +422,7 @@ tasks:
             </ul>
             <div class="recipe-tip">
               <strong>Tip:</strong> The dashboard also starts automatically when you run
-              <code>opencastle run</code> — it opens in your browser alongside the convoy execution.
+              <code>opencastle convoy</code> — it opens in your browser alongside the convoy execution.
             </div>
           </section>
 
@@ -476,7 +476,7 @@ $ gh pr create --title "feat: personal portfolio (convoy cvy_3kx9)"</code></pre>
               <div class="recipe-troubleshooting__item">
                 <p class="recipe-troubleshooting__problem">A task keeps failing</p>
                 <p class="recipe-troubleshooting__solution">
-                  Check the dead-letter queue: <code>opencastle run --dlq-list</code>. It shows the
+                  Check the dead-letter queue: <code>opencastle convoy</code>. It shows the
                   error, the agent's last output, and which gate failed. Fix the spec or the gate config,
                   then retry with <code>--retry-failed</code>.
                 </p>
@@ -485,7 +485,7 @@ $ gh pr create --title "feat: personal portfolio (convoy cvy_3kx9)"</code></pre>
                 <p class="recipe-troubleshooting__problem">Need to change scope mid-run</p>
                 <p class="recipe-troubleshooting__solution">
                   Stop the convoy with <code>Ctrl+C</code> — the state is saved to <code>.opencastle/convoy.db</code>.
-                  Edit the spec YAML — add, remove, or adjust tasks. Then resume: <code>opencastle run --resume</code>.
+                  Edit the spec YAML — add, remove, or adjust tasks. Then resume: <code>opencastle convoy resume</code>.
                   Already-completed tasks are not re-run.
                 </p>
               </div>
@@ -657,11 +657,11 @@ $ npx opencastle doctor</code></pre>
             <p class="recipe-section__body">Create Linear issues from a PRD generated by the <code>start</code> command. The pipeline generates a PRD, validates it, assesses complexity, and produces a convoy spec with tasks you can map to Linear issues.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle start --text "Add user authentication with login, sessions, and role-based access"</code></pre>
+              <pre><code>$ npx opencastle convoy "Add user authentication with login, sessions, and role-based access"</code></pre>
             </div>
             <p class="recipe-section__body">The start command runs up to seven steps (fix steps are skipped when validation passes):</p>
             <div class="recipe-output">
-              <pre><code>  opencastle start
+              <pre><code>  opencastle convoy
 
   [1/7] Generating PRD…
   ✓ PRD written to .opencastle/prds/user-authentication.prd.md
@@ -757,7 +757,7 @@ tasks:
             <p class="recipe-section__body">Start the convoy — agents will run tasks in parallel where possible, each in an isolated git worktree. Tasks that pass their gates are merged back automatically; failed tasks go to the dead-letter queue.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle run -f .opencastle/convoys/user-authentication.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/user-authentication.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Phase 1: api-auth
@@ -785,7 +785,7 @@ tasks:
             <p class="recipe-section__body">Open the dashboard to review task logs, diffs and per-task gate results. Confirm each task’s branch and the associated Linear issue before opening a consolidated PR.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle run --status</code></pre>
+              <pre><code>$ npx opencastle convoy</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Task         · Status   · Issue     · Branch
@@ -938,15 +938,15 @@ $ npx opencastle init</code></pre>
           <section class="recipe-section recipe-step" id="api-step-2">
             <div class="recipe-step__number">2</div>
             <h3 class="recipe-section__heading">Step 2: Describe the API</h3>
-            <p class="recipe-section__body">Run <code>opencastle start</code> with a description of the API. The start command generates a PRD, validates it, assesses complexity, and produces a convoy spec — all automatically.</p>
+            <p class="recipe-section__body">Run <code>opencastle convoy "&lt;task&gt;"</code> with a description of the API. The start command generates a PRD, validates it, assesses complexity, and produces a convoy spec — all automatically.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle start --text "Build a REST API for a task management app \
+              <pre><code>$ npx opencastle convoy "Build a REST API for a task management app \
   with users, projects, and tasks. Include JWT authentication, role-based \
   access control, input validation with Zod, and comprehensive test coverage."</code></pre>
             </div>
             <div class="recipe-output">
-              <pre><code>  opencastle start
+              <pre><code>  opencastle convoy
 
   [1/7] Generating PRD…
   ✓ PRD written to .opencastle/prds/rest-api-task-management.prd.md
@@ -1020,7 +1020,7 @@ $ npx opencastle init</code></pre>
             <p class="recipe-section__body">Preview the convoy execution plan with <code>--dry-run</code> on the <code>run</code> command. This shows the dependency graph and execution order without writing any code.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle run -f .opencastle/convoys/rest-api-task-management.convoy.yml --dry-run</code></pre>
+              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/rest-api-task-management.convoy.yml --dry-run</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Convoy: rest-api-task-management  ·  8 tasks  ·  dry-run mode
@@ -1044,7 +1044,7 @@ $ npx opencastle init</code></pre>
             <p class="recipe-section__body">Run the convoy to execute the plan. Each task runs in an isolated git worktree so agents work in parallel without conflicts. Tasks that pass their gates are merged back automatically; failed tasks go to the dead-letter queue.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle run -f .opencastle/convoys/rest-api-task-management.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/rest-api-task-management.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Phase 1: setup-project
@@ -1068,7 +1068,7 @@ $ npx opencastle init</code></pre>
   ✓ Convoy complete  ·  8/8 tasks passed  ·  total 12m 36s
   Dashboard: http://localhost:4300</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> If an agent fails, the convoy will retry automatically. To resume after an interruption, use <code>npx opencastle run --resume</code>. Use <code>--retry-failed</code> to re-run only tasks that failed.</div>
+            <div class="recipe-tip"><strong>Tip:</strong> If an agent fails, the convoy will retry automatically. To resume after an interruption, use <code>npx opencastle convoy resume</code>. Use <code>--retry-failed</code> to re-run only tasks that failed.</div>
           </section>
 
           <!-- Step 6 -->
@@ -1110,7 +1110,7 @@ $ npm test
 $ git push -u origin feat/rest-api-task-management
 $ gh pr create --title "feat: REST API for task management" --body "Generated by OpenCastle convoy"</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Use iterative PR feedback from reviewers to refine the PRD and re-run <code>opencastle start</code> rather than full regenerations. For quick tweaks, use the <code>/quick-refinement</code> prompt template in your IDE.</div>
+            <div class="recipe-tip"><strong>Tip:</strong> Use iterative PR feedback from reviewers to refine the PRD and re-run <code>opencastle convoy "&lt;task&gt;"</code> rather than full regenerations. For quick tweaks, use the <code>/quick-refinement</code> prompt template in your IDE.</div>
           </section>
 
           <!-- Tips & Troubleshooting -->
@@ -1131,7 +1131,7 @@ $ gh pr create --title "feat: REST API for task management" --body "Generated by
               </div>
               <div class="recipe-troubleshooting__item">
                 <p class="recipe-troubleshooting__problem">Want to add more endpoints later</p>
-                <p class="recipe-troubleshooting__solution">Run <code>npx opencastle start --text "..."</code> with a description of the new endpoints. This generates a new PRD and convoy spec for the additions. For quick changes, use the <code>/quick-refinement</code> prompt template in your IDE chat.</p>
+                <p class="recipe-troubleshooting__solution">Run <code>npx opencastle convoy "..."</code> with a description of the new endpoints. This generates a new PRD and convoy spec for the additions. For quick changes, use the <code>/quick-refinement</code> prompt template in your IDE chat.</p>
               </div>
             </div>
           </section>
@@ -1298,12 +1298,12 @@ $ gh pr create --title "feat: REST API for task management" --body "Generated by
             <p class="recipe-section__body">Write a PRD describing a small, scoped feature. You can either create it manually or use the <code>start</code> command to generate one from a description. Reference existing code paths so agents understand context.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle start --text "Add user notifications with a server-side API \
+              <pre><code>$ npx opencastle convoy "Add user notifications with a server-side API \
   at /api/notifications and a UI inbox component. Include a database migration \
   for a notifications table and unit tests for both API and UI."</code></pre>
             </div>
             <div class="recipe-output">
-              <pre><code>  opencastle start
+              <pre><code>  opencastle convoy
 
   [1/7] Generating PRD…
   ✓ PRD written to .opencastle/prds/user-notifications.prd.md
@@ -1357,8 +1357,8 @@ Server-side notification API with a database migration and a UI inbox component.
             <p class="recipe-section__body">Once the PRD looks right, preview the execution plan and run:</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle run -f .opencastle/convoys/user-notifications.convoy.yml --dry-run
-$ npx opencastle run -f .opencastle/convoys/user-notifications.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/user-notifications.convoy.yml --dry-run
+$ npx opencastle convoy run --file .opencastle/convoys/user-notifications.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  Phase 1: db-migration
@@ -1476,7 +1476,7 @@ $ git push -u origin chore/opencastle-config</code></pre>
 
     <footer class="footer">
       <div class="footer__inner">
-        <span class="footer__copyright">BSL 1.1 License · Filip Mares · 2026</span>
+        <span class="footer__copyright">MIT License · Filip Mares · 2026</span>
         <ul class="footer__links">
           <li><a href="/docs/">Docs</a></li>
           <li><a href="https://github.com/monkilabs/opencastle" target="_blank" rel="noopener noreferrer">GitHub</a></li>

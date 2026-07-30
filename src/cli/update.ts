@@ -1,15 +1,26 @@
-import { resolve } from 'node:path'
+import { isAbsolute, resolve, relative, join, dirname } from 'node:path'
 import { existsSync } from 'node:fs'
 import { readFile, appendFile, rename, mkdir, writeFile, unlink, copyFile, readdir, rm } from 'node:fs/promises'
 import { readManifest, writeManifest } from './manifest.js'
-import { multiselect, confirm, closePrompts, c } from './prompt.js'
+import { multiselect, confirm, closePrompts, stdinIsExhausted, c } from './prompt.js'
 import { isLegacyStack, migrateStackConfig, IDE_LABELS } from './types.js'
 import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js'
-import { getRequiredMcpEnvVars, updateSkillMatrixFile } from './stack-config.js'
-import { rebuildMcpConfig } from './mcp.js'
+import { getOrchestratorRoot } from './copy.js'
+import {
+  getRequiredMcpEnvVars,
+  updateSkillMatrixFile,
+  resolveStack,
+  getCustomizationsTransform,
+  isEnvVarSatisfied,
+} from './stack-config.js'
+import { rebuildMcpConfig, getMcpConfigRelPath } from './mcp.js'
+import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
+import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
+import { UnreadableConfigError } from './types.js'
+import { noteUnreadable } from './unreadable-report.js'
 
 const UPDATE_HELP = `
   opencastle update [options]
@@ -24,6 +35,52 @@ const UPDATE_HELP = `
     --help, -h        Show this help
 `
 
+/**
+ * Add back the `.opencastle/` files a working install cannot do without.
+ *
+ * Deliberately narrow. The first attempt restored every template and then ran
+ * `bootstrapCustomizations` over the real project to prune the ones it did not
+ * need — and bootstrap, written to run exactly once, renamed and deleted on
+ * every sync, eating the user's own writing in the directory the drift checker
+ * calls theirs. The second attempt moved that to a scratch copy, which was safe
+ * but could not reproduce `init`'s pruning, so it handed back the seven
+ * templates `init` had just removed.
+ *
+ * Templates are `init`'s business. What `sync` owes is the handful of files the
+ * tool itself requires — the agent registry and the skill matrix, which a
+ * pre-0.36 install never had, and whose absence made `doctor` fail while
+ * prescribing this very command. Nothing that exists is touched.
+ */
+async function restoreMissingCustomizations(
+  pkgRoot: string,
+  projectRoot: string,
+  stack: StackConfig,
+  ides: string[],
+): Promise<void> {
+  const src = resolve(getOrchestratorRoot(pkgRoot), 'customizations')
+  if (!existsSync(src)) return
+
+  const transform = getCustomizationsTransform(stack)
+  const restored: string[] = []
+  for (const rel of REQUIRED_CUSTOMIZATIONS.map((r) => join(...r.split('/')))) {
+    const from = resolve(src, rel)
+    const to = resolve(projectRoot, '.opencastle', rel)
+    if (!existsSync(from) || existsSync(to)) continue
+    await mkdir(dirname(to), { recursive: true })
+    const body = await readFile(from, 'utf8')
+    const out = transform ? await transform(body, from) : body
+    // A transform returning null means "do not install this file".
+    if (out === null) continue
+    await writeFile(to, out)
+    restored.push(rel)
+  }
+
+  if (restored.length > 0) {
+    console.log(`  ${c.green('+')} Restored ${restored.length} missing customization file(s)`)
+    for (const ide of ides) await updateSkillMatrixFile(projectRoot, ide, stack)
+  }
+}
+
 export default async function update({
   pkgRoot,
   args,
@@ -35,7 +92,11 @@ export default async function update({
 
   const projectRoot = process.cwd()
 
-  await migrateCustomizationsDir(projectRoot)
+  // Deliberately after the dry-run flag is known: this writes and deletes, and
+  // `--dry-run` closes by printing "No files were written". It ran first, so
+  // that promise was false on exactly the installs the migration exists for.
+  const isDryRun = args.includes('--dry-run') || args.includes('--dryRun')
+  if (!isDryRun) await migrateCustomizationsDir(projectRoot)
 
   const manifest = await readManifest(projectRoot)
   if (!manifest) {
@@ -46,11 +107,21 @@ export default async function update({
   }
 
   // Determine list of IDEs to update (support legacy single-IDE manifests)
-  const ides = manifest.ides?.length ? manifest.ides : [manifest.ide]
-  const invalidIdes = ides.filter((id) => !VALID_IDES.includes(id))
+  const recordedIdes = manifest.ides?.length ? manifest.ides : [manifest.ide]
+  const invalidIdes = recordedIdes.filter((id) => !VALID_IDES.includes(id))
+  // Skipped, not fatal. `sync --check` already filters these, so refusing to run
+  // here meant the same manifest passed the check and could not be synced — and
+  // an id we no longer recognise is a reason to compile the other six targets,
+  // not to compile none of them.
   if (invalidIdes.length > 0) {
+    console.log(
+      `  ${c.yellow('!')} Skipping unknown target(s) "${invalidIdes.join(', ')}" from the manifest.`,
+    )
+  }
+  const ides = recordedIdes.filter((id): id is string => Boolean(id) && VALID_IDES.includes(id))
+  if (ides.length === 0) {
     console.error(
-      `  ${c.red('✗')} Invalid IDE(s) "${invalidIdes.join(', ')}" in .opencastle.json. Valid: ${VALID_IDES.join(', ')}`
+      `  ${c.red('✗')} No known targets in the manifest. Valid: ${VALID_IDES.join(', ')}`,
     )
     process.exit(1)
   }
@@ -65,16 +136,111 @@ export default async function update({
     await readFile(resolve(pkgRoot, 'package.json'), 'utf8')
   ) as { version: string }
 
+  // ── Recreate the local-only directories ─────────────────────────
+  // Deliberately gitignored, so a fresh clone has none of them, and only `init`
+  // used to create them: `doctor` failed on every clone and told the user to run
+  // `sync`, which did not fix it. Done before the up-to-date short-circuit,
+  // because a clean clone is precisely the case that short-circuits.
+  if (!args.includes('--dry-run') && !args.includes('--dryRun')) {
+    for (const dir of LOCAL_DIRS) {
+      await mkdir(resolve(projectRoot, dir), { recursive: true })
+    }
+  }
+
   const dryRun = args.includes('--dry-run') || args.includes('--dryRun')
   const forceFlag = args.includes('--force')
   const reconfigureFlag = args.includes('--reconfigure')
 
-  const hasVersionUpdate = manifest.version !== pkg.version || forceFlag
+  const isVersionBump = manifest.version !== pkg.version
   let wantsReconfigure = reconfigureFlag
 
-  // If no version update and no --reconfigure, offer reconfigure option
-  if (!hasVersionUpdate && !wantsReconfigure && !dryRun) {
-    console.log(`  Already up to date (v${pkg.version}).`)
+  // Whether to recompile is a question about content, not about version numbers.
+  // Sources change without a release — someone edits a skill, or edits a
+  // generated file by hand — and gating on version equality meant `sync --check`
+  // could report drift while `sync` insisted everything was up to date. Compare
+  // against a fresh compile instead; recompiling is idempotent and cheap.
+  const needsSync = await (async () => {
+    if (manifest.version !== pkg.version || forceFlag || reconfigureFlag) return true
+    // A generated config that will not parse is work outstanding, and the drift
+    // checker cannot see it: MCP configs are `customizable` paths, so they are
+    // never compared. Without this the short-circuit fired, `sync` printed
+    // "Everything matches its sources", `doctor` and `sync --check` agreed, and
+    // the file stayed broken — while the message `init` prints about it says to
+    // run `sync`. Only `--force` did anything, which is why every harness arm
+    // that passed `--force` was green.
+    for (const ide of ides) {
+      const rel = getMcpConfigRelPath(ide as IdeChoice)
+      const abs = resolve(projectRoot, rel)
+      if (!existsSync(abs)) continue
+      try {
+        JSON.parse(await readFile(abs, 'utf8'))
+      } catch {
+        return true
+      }
+    }
+    // A co-owned file in a state worth reporting is work outstanding too.
+    // `needsSync` was purely a content-drift question, so every warning that
+    // lives in the merge result — stale half, torn, damaged — was emitted by
+    // the sync that first met it and never again: the second run printed
+    // "Everything matches its sources" over the same file.
+    try {
+      const { resolveManagedPaths } = await import('./managed-paths.js')
+      const { diagnoseManagedFile, carriesLegacyBody, stripManagedBlock } =
+        await import('./managed-block.js')
+      for (const rel of (await resolveManagedPaths(manifest)).merged) {
+        const abs = resolve(projectRoot, rel)
+        if (!existsSync(abs)) continue
+        const text = await readFile(abs, 'utf8')
+        if (diagnoseManagedFile(text).state !== 'clean') return true
+        if (carriesLegacyBody(stripManagedBlock(text))) return true
+      }
+    } catch {
+      return true
+    }
+    try {
+      const { buildCheckReport } = await import('./sync-check.js')
+      const report = await buildCheckReport(pkgRoot, projectRoot)
+      return report.drift.length > 0
+    } catch {
+      // If the comparison itself fails, err towards doing the work.
+      return true
+    }
+  })()
+
+  const assumeYes = args.includes('--yes')
+
+  // Before the short-circuit, not after. `.opencastle/` is a customizable path,
+  // so a missing skill matrix is not drift and `needsSync` is false — which left
+  // `doctor` failing, prescribing this command, and this command reporting
+  // health while doing nothing. `--force` fixed it, which is a flag the
+  // diagnosis never named. The LOCAL_DIRS loop above was hoisted for exactly
+  // this reason; these belong beside it.
+  if (!dryRun) {
+    const stackNow = resolveStack({ ...manifest, ides })
+    await restoreMissingCustomizations(pkgRoot, projectRoot, stackNow, ides)
+    const gitignoreOutcome = await updateGitignore(projectRoot)
+    if (gitignoreOutcome !== 'unchanged') {
+      console.log(`  ${c.green('✓')} Updated .gitignore ${c.dim('(generated config is committed)')}`)
+    }
+    // A collapse here removes ignore rules, and a rule silently dropped is a
+    // secret committed. It used to happen with no backup and no output at all.
+    if (gitignoreOutcome === 'repaired') {
+      console.log(
+        `  ${c.yellow('!')} Rewrote .gitignore's OpenCastle block and removed lines that were ` +
+          `inside it; .gitignore.opencastle-backup holds what was there before.`,
+      )
+    }
+  }
+
+  if (!needsSync && !dryRun) {
+    console.log(`  ${c.green('✓')} Everything matches its sources (v${pkg.version}).`)
+    // `--yes` means "do not ask me anything". This one slipped the guard, so a CI
+    // runner holding stdin open would block here on an up-to-date project, and
+    // `add`, which routes through sync, asked twice for one instruction.
+    if (assumeYes) {
+      closePrompts()
+      return
+    }
     wantsReconfigure = await confirm(
       'Would you like to change your stack selections?',
       false
@@ -90,7 +256,10 @@ export default async function update({
 
   // ── Reconfigure stack if requested ──────────────────────────────
   const oldStack = manifest.stack
-  let newStack: StackConfig | undefined = manifest.stack
+  // Resolved, never undefined: the adapters read `undefined` as "include every
+  // plugin", which is not what a manifest with no stack means, and is not what
+  // the drift checker assumes either.
+  let newStack: StackConfig = resolveStack({ ...manifest, ides })
   let stackChanged = false
   let addedTools: string[] = []
   let removedTools: string[] = []
@@ -152,7 +321,7 @@ export default async function update({
   }
 
   // Nothing to do?
-  if (!hasVersionUpdate && !stackChanged) {
+  if (!needsSync && !stackChanged) {
     console.log(`  No changes to apply.`)
     closePrompts()
     return
@@ -163,7 +332,7 @@ export default async function update({
     .map((id) => IDE_LABELS[id as IdeChoice] ?? id)
     .join(', ')
 
-  if (hasVersionUpdate) {
+  if (isVersionBump) {
     console.log(
       `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'update'}: ${c.dim(`v${manifest.version}`)} → ${c.green(`v${pkg.version}`)}\n`
     )
@@ -191,22 +360,35 @@ export default async function update({
     }
   }
 
-  if (hasVersionUpdate) {
-    console.log(`  ${c.dim('Framework files will be overwritten.')}`)
+  if (needsSync) {
+    // A statement about ownership, not a prediction about this run: the count
+    // printed at the end says what actually changed, and announcing an
+    // overwrite before a sync that rewrites nothing read as a contradiction.
+    console.log(`  ${c.dim('Framework files are recompiled from source; edits there are replaced.')}`)
     console.log(`  ${c.dim('Customization files will be preserved.')}`)
   }
   console.log()
 
   // ── Dry run ─────────────────────────────────────────────────────
   if (dryRun) {
+    // The resolved classification, not the stored one — a pre-0.36 manifest lists
+    // CLAUDE.md under `framework`, so the dry run was previewing the very
+    // mislabelling the rest of this command exists to correct.
+    const preview = await resolveManagedPaths({ ...manifest, ides })
     console.log(`  ${c.dim('[dry-run]')} Framework files that would be updated:\n`)
-    for (const p of manifest.managedPaths?.framework ?? []) {
+    for (const p of preview.framework) {
       console.log(`    ${c.yellow('↻')} ${p}`)
+    }
+    if (preview.merged.length > 0) {
+      console.log(`\n  ${c.dim('[dry-run]')} Files where only the managed block changes:\n`)
+      for (const p of preview.merged) {
+        console.log(`    ${c.yellow('~')} ${p}`)
+      }
     }
     console.log(
       `\n  ${c.dim('[dry-run]')} Customization files that would be preserved:\n`
     )
-    for (const p of manifest.managedPaths?.customizable ?? []) {
+    for (const p of preview.customizable) {
       console.log(`    ${c.green('✓')} ${p}`)
     }
     if (stackChanged) {
@@ -229,57 +411,130 @@ export default async function update({
     return
   }
 
-  const proceed = await confirm('Proceed?')
-  if (!proceed) {
-    console.log('  Aborted.')
-    closePrompts()
-    return
+  // `opencastle add sentry` already said what to do. Asking again is a keystroke
+  // charged for nothing.
+  if (!assumeYes) {
+    // `refuse`, like `init`'s overwrite question. This one is the mainline
+    // question and it defaults to yes, so a script running `sync` with stdin
+    // closed proceeded on an answer nobody gave — and the run swept a
+    // hand-written file out of a framework directory with no backup. `--yes` is
+    // the documented way to say yes without a terminal, and it is unaffected.
+    const proceed = await confirm('Proceed?', true, 'refuse')
+    if (!proceed) {
+      const noAnswer = stdinIsExhausted()
+      console.log(
+        noAnswer
+          ? '  Aborted — no answer, and this run would overwrite generated files.' +
+              '\n  Re-run with --yes to proceed without being asked.'
+          : '  Aborted.',
+      )
+      closePrompts()
+      // Non-zero when nobody was there to answer. A person who types "n" chose
+      // this outcome and 0 is right; a script with stdin closed did not choose
+      // anything, and it got a success code for a sync that never happened —
+      // the drift the run was launched to clear still there, and CI none the
+      // wiser. The two cases print different sentences and now also differ in
+      // the only thing automation reads.
+      if (noAnswer) process.exit(1)
+      return
+    }
   }
 
   // ── Update each IDE ─────────────────────────────────────────────
+  // Generated config that exists but will not parse. Filled from two places —
+  // the adapters' own scaffold step and the rebuild pass below — and reported
+  // once at the end, because the user needs the filename either way.
+  const unreadable: string[] = []
   let totalCopied = 0
   let totalCreated = 0
-  const allManagedPaths = {
-    framework: [] as string[],
-    customizable: [] as string[],
-  }
-
+  const adoptedRoots: string[] = []
+  const repairedRoots: string[] = []
+  const damagedRoots: string[] = []
+  const severedRoots: string[] = []
+  const staleRoots: string[] = []
+  const tornRoots: string[] = []
+  const sweptFiles: string[] = []
   for (const ide of ides) {
     const adapter = await IDE_ADAPTERS[ide]()
-    const results = await adapter.update(pkgRoot, projectRoot, newStack)
+    // `repoInfo` matters here: `scaffoldMcpConfigInto` uses it to decide which
+    // servers belong in the config. The parameter was threaded through all
+    // three adapters and then not passed from the one place `sync` calls them,
+    // so every sync scaffolded MCP as though the repository had been detected
+    // as nothing at all — a property enforced everywhere except at the call.
+    const results = await adapter.update(pkgRoot, projectRoot, newStack, repoInfo)
     totalCopied += results.copied.length
     totalCreated += results.created.length
-
-    const managed = adapter.getManagedPaths()
-    allManagedPaths.framework.push(...managed.framework)
-    allManagedPaths.customizable.push(...managed.customizable)
-  }
-
-  // ── Handle stack changes ────────────────────────────────────────
-  if (stackChanged && newStack) {
-    // Update skill matrix for each IDE
-    for (const ide of ides) {
-      await updateSkillMatrixFile(projectRoot, ide, newStack)
-    }
-
-    // Rebuild MCP configs for each IDE
-    for (const ide of ides) {
-      await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo)
+    adoptedRoots.push(...(results.adopted ?? []))
+    repairedRoots.push(...(results.repaired ?? []))
+    damagedRoots.push(...(results.damagedRoots ?? []))
+    severedRoots.push(...(results.severedRoots ?? []))
+    staleRoots.push(...(results.staleRoots ?? []))
+    tornRoots.push(...(results.tornRoots ?? []))
+    sweptFiles.push(...(results.deleted ?? []))
+    // The adapters skip a config they cannot parse instead of throwing; the
+    // report below is the only place the user learns which file to fix.
+    for (const file of results.unreadable ?? []) {
+      noteUnreadable(unreadable, file)
     }
   }
+
+  // Deduplicated, and re-sorted by what the adapters declare today — two targets
+  // that share AGENTS.md used to record it twice, and a manifest from before
+  // root files were co-owned still files them under `framework`.
+  const allManagedPaths = await resolveManagedPaths({ ...manifest, ides })
+
+  // The skill matrix and the MCP config are compiled output like everything else,
+  // so they are regenerated whenever we recompile. Gating them on `stackChanged`
+  // — a flag only ever set inside the interactive reconfigure branch — meant
+  // `opencastle add supabase` edited the manifest, recompiled, and left the skill
+  // matrix and MCP config describing the stack from before the pack was added.
+  if (newStack) {
+    for (const ide of ides) {
+      for (const step of [
+        () => updateSkillMatrixFile(projectRoot, ide, newStack),
+        () => rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo),
+      ]) {
+        try {
+          await step()
+        } catch (err) {
+          if (!(err instanceof UnreadableConfigError)) throw err
+          noteUnreadable(unreadable, err.file)
+        }
+      }
+    }
+  }
+
+  // ── Restore any missing .opencastle/ scaffolding ────────────────
+  // Only what is *absent*. The first version of this called `copyDir` and then
+  // `bootstrapCustomizations` directly against the project, which was wrong in a
+  // way review caught and I had not: bootstrap was written to run once, and its
+  // rename and prune steps are unconditional. Restoring `database-config.md`
+  // handed bootstrap a template to rename, and the rename overwrote the user's
+  // own `supabase-config.md` — on every sync, in the directory the drift checker
+  // tells people is theirs.
+  //
+  // So the scaffolding is built somewhere else and only the missing files are
+  // copied in. Nothing that already exists is read, written, renamed, or
+  // deleted.
+
+  // ── Rewrite the .gitignore block ────────────────────────────────
+  // Not just an init-time concern. Releases before this one ignored every
+  // generated path, so an existing install upgrades, keeps CLAUDE.md untracked,
+  // and the `sync --check` job the README prescribes reports every generated
+  // file as "never generated" on a clean checkout — with a suggested fix that
+  // cannot fix it. The population that most needs the new block is the one that
+  // never runs `init` again.
 
   // ── Migrate legacy log files ────────────────────────────────────
   await migrateLegacyLogs(projectRoot)
 
   // ── Update manifest ─────────────────────────────────────────────
-  if (hasVersionUpdate) manifest.version = pkg.version
+  manifest.version = pkg.version
   manifest.ides = ides
   manifest.updatedAt = new Date().toISOString()
   manifest.managedPaths = allManagedPaths
-  if (newStack) manifest.stack = newStack
-  manifest.repoInfo = newStack
-    ? mergeStackIntoRepoInfo(repoInfo, newStack)
-    : repoInfo
+  manifest.stack = newStack
+  manifest.repoInfo = mergeStackIntoRepoInfo(repoInfo, newStack)
   await writeManifest(projectRoot, manifest)
 
   // ── Results ─────────────────────────────────────────────────────
@@ -291,27 +546,130 @@ export default async function update({
       `  ${c.green('+')} Created ${c.bold(String(totalCreated))} new files`
     )
   }
-  if (stackChanged) {
+  if (newStack && unreadable.length === 0) {
     console.log(`  ${c.green('✓')} Updated skill matrix`)
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
   }
+  for (const file of unreadable) {
+    const [abs, why] = file.split('\u0000')
+    // Reported project-relative, whichever layer recorded it. `copyDir` works in
+    // absolute paths and the MCP scaffolder in relative ones, so the same report
+    // mixed `/private/tmp/…/.github/prompts/x.md` with `.mcp.json`.
+    const name = isAbsolute(abs) ? relative(projectRoot, abs) : abs
+    console.log(
+      `  ${c.yellow('!')} Left ${name} alone — ` +
+        (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),
+    )
+    console.log(`     ${c.dim('Merge conflict? Fix the file and run sync again.')}`)
+  }
+  if (severedRoots.length > 0) {
+    console.log(
+      `\n  ${c.yellow('⚠')}  Nothing was written to ${new Set(severedRoots).size} file(s):\n`,
+    )
+    for (const p of [...new Set(severedRoots)]) {
+      console.log(`     ${c.dim(relative(projectRoot, p))}`)
+    }
+    console.log(
+      `     ${c.dim('An OpenCastle marker is there with no matching one, so the generated')}`,
+    )
+    console.log(
+      `     ${c.dim('text beside it has nothing delimiting it. Restore the missing marker,')}`,
+    )
+    console.log(`     ${c.dim('or delete that text, and run sync again.')}`)
+  }
 
-  // ── Env var notice for new tools ────────────────────────────────
-  if (stackChanged && newStack) {
+  if (damagedRoots.length > 0) {
+    // Two blocks and unpaired markers in one file. Reducing it means cutting,
+    // and cutting here can sweep the user's own text into a block; so the tool
+    // says what it sees and stops. `doctor` fails on this too.
+    console.log(
+      `\n  ${c.yellow('⚠')}  ${new Set(damagedRoots).size} file(s) hold more than one OpenCastle block and cannot be reduced safely:\n`,
+    )
+    for (const p of [...new Set(damagedRoots)]) {
+      console.log(`     ${c.dim(relative(projectRoot, p))}`)
+    }
+    console.log(`     ${c.dim('Keep one start/end pair and delete the rest.')}`)
+  }
+
+  if (repairedRoots.length > 0) {
+    // Not an adoption: nothing here came from an earlier release. The file held
+    // two complete blocks — a merge that kept both sides, most often — and the
+    // duplicate was removed so the assistant does not read two sets of rules.
+    console.log(
+      `\n  ${c.yellow('!')} Collapsed a duplicated block in ${repairedRoots.length} file(s); a .opencastle-backup is beside each:\n`,
+    )
+    for (const p of [...new Set(repairedRoots)]) {
+      console.log(`     ${c.dim(relative(projectRoot, p))}`)
+    }
+  }
+
+  if (adoptedRoots.length > 0) {
+    // Loud, because this is the one place the tool replaces a file it did not
+    // write in this run. It was generated by an older release, but anything
+    // appended to it since goes with it.
+    console.log(
+      `\n  ${c.yellow('⚠')}  Replaced ${adoptedRoots.length} file(s) generated by an earlier version:\n`,
+    )
+    for (const p of adoptedRoots) {
+      console.log(`     ${c.bold(relative(projectRoot, p))}`)
+      console.log(`     ${c.dim('└')} ${c.dim(`previous contents kept as ${relative(projectRoot, p)}.opencastle-backup`)}\n`)
+    }
+  }
+  // Anything the sweep removed that the recompile did not put back. `sync --check`
+  // warns about these beforehand, but saying nothing at the moment of deletion
+  // made the warning easy to miss — and the sweep is wider on this branch than
+  // it was on main.
+  const strays = [...new Set(sweptFiles)].filter(
+    (rel) => !existsSync(resolve(projectRoot, rel)),
+  )
+  if (strays.length > 0) {
+    // Deliberately not "files that were not generated": most of these *were*
+    // generated, by a release that still shipped them. The user cares that
+    // something was deleted and what it was, not about our provenance test.
+    console.log(`\n  ${c.yellow('!')} Removed ${strays.length} file(s) no longer produced by any source:\n`)
+    for (const rel of strays.slice(0, 10)) console.log(`     ${c.dim(rel)}`)
+    if (strays.length > 10) console.log(`     ${c.dim(`… and ${strays.length - 10} more`)}`)
+  }
+
+  if (tornRoots.length > 0) {
+    console.log(
+      `\n  ${c.yellow('⚠')}  ${new Set(tornRoots).size} file(s) carry an OpenCastle marker that opens no block:\n`,
+    )
+    for (const p of new Set(tornRoots)) {
+      console.log(`     ${c.bold(relative(projectRoot, p))}`)
+      console.log(
+        `     ${c.dim('└')} ${c.dim('text beside it may be stale generated output; only you can tell. Run')} ${c.cyan('opencastle doctor')}\n`,
+      )
+    }
+  }
+  if (staleRoots.length > 0) {
+    // We could not adopt these: the user's own writing comes first in the file,
+    // so the older release's output is stranded above our block where it still
+    // names agents and skills that no longer exist. The assistant reads both
+    // halves, so silence here is worse than the mess.
+    console.log(`\n  ${c.yellow('⚠')}  ${new Set(staleRoots).size} file(s) still contain output from an earlier version:\n`)
+    for (const p of new Set(staleRoots)) {
+      console.log(`     ${c.bold(relative(projectRoot, p))}`)
+      console.log(
+        `     ${c.dim('└')} ${c.dim('your own writing comes first, so it was not replaced. Delete everything')}`,
+      )
+      console.log(`     ${c.dim(' ')} ${c.dim('above the OpenCastle block that you did not write.')}\n`)
+    }
+  }
+
+  // ── Env var notice ──────────────────────────────────────────────
+  // Reported by what is actually missing rather than by what changed this run.
+  // The old diff-against-previous-stack version was inside the `stackChanged`
+  // gate, so `opencastle add sentry` never mentioned the token it now needs.
+  if (newStack) {
     const envVars = getRequiredMcpEnvVars(newStack, repoInfo)
-    if (envVars.length > 0) {
-      const oldEnvVars = oldStack
-        ? new Set(
-            getRequiredMcpEnvVars(oldStack, repoInfo).map((e) => e.envVar)
-          )
-        : new Set<string>()
-      const newEnvVars = envVars.filter((e) => !oldEnvVars.has(e.envVar))
-      if (newEnvVars.length > 0) {
-        console.log(`\n  ${c.yellow('⚠')}  New environment variables needed:\n`)
-        for (const { envVar, hint } of newEnvVars) {
-          console.log(`     ${c.bold(envVar)}`)
-          console.log(`     ${c.dim('└')} ${c.dim(hint)}\n`)
-        }
+    const envFile = await readFile(resolve(projectRoot, '.env'), 'utf8').catch(() => '')
+    const missing = envVars.filter(({ envVar }) => !isEnvVarSatisfied(envVar, envFile))
+    if (missing.length > 0) {
+      console.log(`\n  ${c.yellow('⚠')}  Environment variables still needed:\n`)
+      for (const { envVar, hint } of missing) {
+        console.log(`     ${c.bold(envVar)}`)
+        console.log(`     ${c.dim('└')} ${c.dim(hint)}\n`)
       }
     }
 
@@ -381,13 +739,18 @@ async function migrateCustomizationsDir(projectRoot: string): Promise<void> {
     resolve(projectRoot, '.opencode', 'customizations'),
   ]
 
-  // Copy from the first found old location (content is the same across IDEs)
+  // Copy from every old location, not just the first. The loop below deletes
+  // all four, so stopping at the first meant an empty `.github/customizations/`
+  // could shadow a populated `.claude/customizations/` — whose contents were
+  // then deleted having been copied nowhere. `copyDirMigrate` does not
+  // overwrite, so the earlier directory still wins where they overlap.
+  let migrated = false
   for (const oldDir of oldCustDirs) {
     if (!existsSync(oldDir)) continue
     await copyDirMigrate(oldDir, newOpencastleDir)
-    console.log(`  ${c.green('✓')} Migrated customizations to .opencastle/`)
-    break
+    migrated = true
   }
+  if (migrated) console.log(`  ${c.green('✓')} Migrated customizations to .opencastle/`)
 
   // Remove all old customizations directories
   for (const oldDir of oldCustDirs) {

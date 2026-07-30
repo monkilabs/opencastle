@@ -7,75 +7,29 @@ description: "Explains how to configure App Router, implement server/client comp
 
 # Next.js Framework
 
-### Critical Rule
+### Critical rule
 
-**Never use `next/dynamic` with `{ ssr: false }` inside a Server Component.** Extract the dynamic piece to a dedicated `'use client'` component and import it from server components normally.
+**Never use `next/dynamic` with `{ ssr: false }` inside a Server Component** — it crashes at build/runtime. Extract it into a `'use client'` wrapper and import that from the server normally.
 
 ```tsx
-// ✅ Correct: wrap dynamic import in a 'use client' component
 // components/MapClient.tsx
 'use client';
 import dynamic from 'next/dynamic';
 const Map = dynamic(() => import('./Map'), { ssr: false });
 export function MapClient(props: MapProps) { return <Map {...props} />; }
-
-// Then import from a Server Component as normal:
-// app/page.tsx
-import { MapClient } from '@/components/MapClient';
-export default function Page() { return <MapClient center={[0, 0]} />; }
 ```
 
-### Authenticated Routes
+### Gotchas
 
-```tsx
-// app/dashboard/page.tsx
-import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/auth';
-export default async function Page() {
-  const session = await getSession();
-  if (!session) redirect('/login');
-  // ... render dashboard
-}
-```
+- `error.tsx` must be a Client Component, and needs to exist per segment — otherwise an unhandled error takes down the page. `template.tsx` re-mounts on navigation where `layout.tsx` persists. `default.tsx` is the parallel-route fallback.
+- Independent fetches awaited in sequence become a waterfall — use `Promise.all()`. Fetching in `useEffect` where a Server Component could fetch costs an extra roundtrip plus a loading flash.
+- `getServerSideProps` / `getStaticProps` are Pages Router only; App Router uses async Server Components.
+- Auth: check the session at the top of an async Server Component and `redirect('/login')` before returning any UI. Middleware with `matcher: ['/dashboard/:path*']` covers whole subtrees.
+- Dynamic segments: `[slug]`, catch-all `[...slug]`, optional catch-all `[[...slug]]`.
+- Put providers in a `Providers` Client Component rather than growing `layout.tsx`; `'use client'` on everything defeats RSC.
 
-For middleware-based protection see `REFERENCE.md § Middleware examples`.
+### Caching layers
 
-### Server Actions
+Four tiers: per-request `fetch` memoization (automatic) → Data Cache (cross-request, cached by default, opt out with `cache: 'no-store'`) → Full Route Cache (static HTML + RSC payload at build) → client Router Cache (prefetched and visited routes). Tag with `fetch(url, { next: { tags: ['posts'] } })`, then invalidate from a Server Action via `revalidateTag('posts')` or `revalidatePath('/posts')`.
 
-```ts
-// app/actions.ts
-'use server';
-import { revalidatePath } from 'next/cache';
-export async function updatePost(id: string, data: FormData) {
-  await db.posts.update(id, Object.fromEntries(data));
-  revalidatePath('/posts');
-}
-```
-
-### Data Fetching & Caching
-
-```ts
-// Server Component — cached by default; opt out with cache: 'no-store'
-async function getPosts() {
-  const res = await fetch('/api/posts', { next: { tags: ['posts'] } });
-  return res.json() as Promise<Post[]>;
-}
-// On-demand revalidation: revalidateTag('posts') or revalidatePath('/posts')
-```
-
-Caching tiers (request memo → data cache → full route cache → router cache) and revalidation patterns are in `REFERENCE.md § Caching Details`.
-
-### Adding an Authenticated Route — Checklist
-
-1. Create `app/<route>/page.tsx` as an async Server Component.
-  - Validate: file exists and exports a default async component.
-2. Call `getSession()` at the top and `redirect('/login')` when missing.
-  - Validate: confirm there is no render path when session is falsy (no UI returned before redirect).
-3. Add `app/<route>/error.tsx` for error boundaries.
-  - Validate: `tsc --noEmit` recognizes the file and there are no missing imports.
-4. Run `tsc --noEmit` and fix type errors.
-  - Validate: `tsc --noEmit` exits with code 0.
-5. Test: access the route without an auth cookie and confirm redirect to `/login`.
-  - Validate: an unauthenticated HTTP request receives a 302/307 redirect to `/login`.
-
-Project-specific conventions and deeper tables (routing, caching, component guidance) live in [REFERENCE.md](./REFERENCE.md).
+Docs: https://nextjs.org/docs

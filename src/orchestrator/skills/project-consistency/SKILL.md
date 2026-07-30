@@ -5,11 +5,11 @@ description: "Generates shared CSS variables, validates component naming convent
 
 # Project Consistency
 
-Ensure consistency by producing shared artifacts, automated checks before parallel work begins.
+Produce shared artifacts and automated checks before parallel work begins.
 
 ## Foundation-First Principle
 
-Phase 1 (sequential): create shared artifacts (tokens, Layout, UI components). Phase 2 (parallel): every page imports from Phase 1; no new tokens or duplicated components.
+Phase 1 (sequential): `foundation-setup` creates tokens, Layout, UI library, style guide brief. Phase 2 (parallel): every page task imports from Phase 1 — no new tokens, no duplicated components.
 
 ### Foundation Artifacts & Page Rules
 
@@ -28,7 +28,7 @@ Phase 1 (sequential): create shared artifacts (tokens, Layout, UI components). P
 
 ## Convoy Integration
 
-Phase 1 (sequential): foundation-setup creates tokens, Layout, UI library, style guide brief. Phase 2 (parallel): every page task imports from Phase 1. Include these 5 references in every page prompt:
+Include these 5 Foundation References in every page prompt:
 
 ```
 1. Design tokens path   2. Layout path   3. UI components path
@@ -39,9 +39,7 @@ Prompt templates: see [TEMPLATES.md](./TEMPLATES.md).
 
 ---
 
-## Executable Examples
-
-### Example: `src/styles/tokens.css`
+## Example: `src/styles/tokens.css`
 
 ```css
 :root {
@@ -67,17 +65,7 @@ Prompt templates: see [TEMPLATES.md](./TEMPLATES.md).
 }
 ```
 
-### Minimal Button component example (React)
-
-```tsx
-import './tokens.css';
-type ButtonProps = { children: React.ReactNode; variant?: 'primary' | 'ghost'; className?: string };
-export function Button({ children, variant = 'primary', className = '' }: ButtonProps) {
-	const base = 'px-4 py-2 rounded';
-	const variantCls = variant === 'primary' ? 'bg-[var(--color-primary)] text-white' : 'bg-transparent';
-	return <button className={`${base} ${variantCls} ${className}`}>{children}</button>;
-}
-```
+UI components consume these vars only — e.g. `bg-[var(--color-primary)]`, never a literal hex.
 
 ---
 

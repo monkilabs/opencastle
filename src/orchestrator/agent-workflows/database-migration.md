@@ -27,7 +27,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ## Phase 1: Migration Planning
 
-**Agent:** Database Engineer (via sub-agent)
+**Agent:** Data Engineer (via sub-agent)
 **Type:** Sub-agent (inline)
 
 ### Steps
@@ -52,7 +52,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ## Phase 2: Migration Implementation
 
-**Agent:** Database Engineer
+**Agent:** Data Engineer
 **Type:** Sub-agent (simple changes) or Background (complex migrations)
 
 ### File Partition
@@ -84,7 +84,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ## Phase 3: Type Generation
 
-**Agent:** Database Engineer (via sub-agent)
+**Agent:** Data Engineer (via sub-agent)
 **Type:** Sub-agent (sequential — depends on Phase 2)
 
 ### Steps

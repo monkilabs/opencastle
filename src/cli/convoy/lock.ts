@@ -32,10 +32,6 @@ export function isLockStale(db: DatabaseSync): boolean {
   return checkStaleness(row)
 }
 
-export function releaseEngineLock(db: DatabaseSync): void {
-  db.exec('DELETE FROM engine_lock WHERE id = 1')
-}
-
 export function acquireEngineLock(
   db: DatabaseSync,
   _dbPath: string,

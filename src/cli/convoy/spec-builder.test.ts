@@ -56,9 +56,6 @@ describe('buildConvoyYaml', () => {
     expect(parsed.defaults.timeout).toBe('30m')
     expect(parsed.defaults.max_retries).toBe(1)
     expect(parsed.defaults.review).toBe('fast')
-    expect(parsed.defaults.inject_lessons).toBe(true)
-    expect(parsed.defaults.track_discovered_issues).toBe(true)
-    expect(parsed.defaults.avoid_weak_agents).toBe(true)
   })
 
   it('uses plan concurrency and on_failure when provided', () => {

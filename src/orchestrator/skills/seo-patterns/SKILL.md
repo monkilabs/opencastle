@@ -5,89 +5,24 @@ description: "Implements technical SEO: meta tags, JSON-LD structured data, site
 
 # SEO Patterns
 
-## Core Principles
+## Constraints
 
-- Unique `<title>` + `<meta name="description">` per public page
-- Structured data MUST pass Google's Rich Results Test before shipping
-- Server-render indexable content; canonical URL on every page
-
-## Implementation Workflow
-
-1. Add meta tags + canonical URLs in server-rendered HTML.
-   - Checkpoint: every page has unique `<title>` + description.
-2. Add JSON-LD for page type (server-rendered).
-   - Checkpoint: Rich Results Test → 0 errors.
-3. Generate sitemap + reference from `robots.txt`.
-   - Checkpoint: sitemap URL accessible, listed in `robots.txt`.
-4. Verify `robots.txt` allows public pages.
-   - Recovery: remove accidental `Disallow:` entries; resubmit sitemap.
-5. Monitor Search Console for warnings post-deploy.
-
-## Meta Tags & Open Graph
-
-```tsx
-export const metadata: Metadata = {
-  title: 'Product Name — Short Descriptor',
-  description: 'Concise 150-160 char description with primary keyword.',
-  alternates: { canonical: 'https://example.com/page-slug' },
-  openGraph: {
-    title: 'Product Name — Short Descriptor',
-    description: 'Concise description for social sharing.',
-    url: 'https://example.com/page-slug',
-    type: 'website',
-    images: [{ url: 'https://example.com/og-image.jpg', width: 1200, height: 630 }],
-  },
-  twitter: { card: 'summary_large_image', title: 'Product Name — Short Descriptor', images: ['https://example.com/og-image.jpg'] },
-  robots: { index: true, follow: true },
-};
-```
-
-**Constraints:** title 50–60 chars · description 150–160 chars · OG image 1200×630 px · `noindex` only on admin/draft pages.
+- Unique `<title>` (50–60 chars) and `<meta name="description">` (150–160 chars) on every public page — duplicates across pages are a defect.
+- Canonical URL on every page. `noindex` only on admin/draft pages.
+- Primary content must be server-rendered; client-only rendered content is not indexed.
+- OG image 1200×630 px.
+- Mobile page load under 3 s.
 
 ## Structured Data (JSON-LD)
 
-```tsx
-function StructuredData({ breadcrumbs, article }: Props) {
-  const breadcrumbLd = {
-    '@context': 'https://schema.org', '@type': 'BreadcrumbList',
-    itemListElement: breadcrumbs.map((crumb, i) => ({ '@type': 'ListItem', position: i + 1, name: crumb.label, item: crumb.url })),
-  };
-  const articleLd = {
-    '@context': 'https://schema.org', '@type': 'Article',
-    headline: article.title, description: article.summary,
-    image: article.imageUrl, datePublished: article.publishedAt,
-    dateModified: article.updatedAt, author: { '@type': 'Person', name: article.author },
-  };
-  return (
-    <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }} />
-    </>
-  );
-}
-```
+Server-rendered, and it must return 0 errors from Google's Rich Results Test (https://search.google.com/test/rich-results) before shipping. Extract to inspect locally:
 
-**Validate:** `curl -s https://example.com/page | pup 'script[type=application/ld+json] text{}' | jq .` then run Google's Rich Results Test (https://search.google.com/test/rich-results).
+```bash
+curl -s https://example.com/page | pup 'script[type=application/ld+json] text{}' | jq .
+```
 
 ## Sitemap & robots.txt
 
-- Generate XML sitemap dynamically from your data source (CMS, DB, filesystem)
-- Use **sitemap index** when >50,000 URLs or >50 MB
-- Include `<lastmod>` only if accurate
+Generate the XML sitemap dynamically from the data source (CMS, DB, filesystem) and reference it from `robots.txt` via `Sitemap: https://example.com/sitemap.xml`. Use a **sitemap index** above 50,000 URLs or 50 MB. Include `<lastmod>` only when it is accurate. `Disallow: /admin/`, `/api/`, `/preview/`.
 
-```txt
-User-agent: *
-Allow: /
-Disallow: /admin/
-Disallow: /api/
-Disallow: /preview/
-Sitemap: https://example.com/sitemap.xml
-```
-
-## Anti-Patterns
-
-- Duplicate titles across pages
-- Missing canonical URL → duplicate content
-- Client-only rendered primary content → not indexed
-- Unvalidated structured data shipped to prod
-- Page load >3s on mobile
+Post-deploy: check Search Console for warnings; remove any accidental `Disallow:` entry and resubmit the sitemap.

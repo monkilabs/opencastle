@@ -19,14 +19,14 @@ describe('checkTDD', () => {
     })
 
     it('returns skipped for exempt agent', () => {
-      const result = checkTDD(['src/foo.ts'], [], BASE_CONFIG, 'documentation-writer')
+      const result = checkTDD(['src/foo.ts'], [], BASE_CONFIG, 'writer')
       expect(result.skipped).toBe(true)
       expect(result.skip_reason).toBe('exempt_agent')
       expect(result.passed).toBe(true)
     })
 
     it('returns skipped for all exempt agents', () => {
-      for (const agent of ['documentation-writer', 'copywriter', 'seo-specialist', 'researcher']) {
+      for (const agent of ['writer', 'writer', 'writer', 'researcher']) {
         const result = checkTDD(['src/foo.ts'], [], BASE_CONFIG, agent)
         expect(result.skipped).toBe(true)
       }
@@ -267,9 +267,9 @@ describe('DEFAULT_TDD_CONFIG', () => {
   it('has expected defaults', () => {
     expect(DEFAULT_TDD_CONFIG.enabled).toBe(true)
     expect(DEFAULT_TDD_CONFIG.mode).toBe('block')
-    expect(DEFAULT_TDD_CONFIG.exempt_agents).toContain('documentation-writer')
-    expect(DEFAULT_TDD_CONFIG.exempt_agents).toContain('copywriter')
-    expect(DEFAULT_TDD_CONFIG.exempt_agents).toContain('seo-specialist')
+    expect(DEFAULT_TDD_CONFIG.exempt_agents).toContain('writer')
+    expect(DEFAULT_TDD_CONFIG.exempt_agents).toContain('writer')
+    expect(DEFAULT_TDD_CONFIG.exempt_agents).toContain('writer')
     expect(DEFAULT_TDD_CONFIG.exempt_agents).toContain('researcher')
     expect(DEFAULT_TDD_CONFIG.source_patterns).toContain('src/**/*.ts')
     expect(DEFAULT_TDD_CONFIG.test_patterns).toContain('{name}.test.ts')

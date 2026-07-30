@@ -21,7 +21,6 @@ export const config: PluginConfig = {
     'developer': ['nx-mcp-server/nx_project_details', 'nx-mcp-server/nx_workspace', 'nx-mcp-server/nx_generators'],
     'devops-expert': ['nx-mcp-server/nx_project_details', 'nx-mcp-server/nx_workspace', 'nx-mcp-server/nx_workspace_path'],
     'performance-expert': ['nx-mcp-server/nx_project_details', 'nx-mcp-server/nx_workspace'],
-    'release-manager': ['nx-mcp-server/nx_project_details', 'nx-mcp-server/nx_workspace', 'nx-mcp-server/nx_workspace_path'],
   },
   docsUrl: 'https://www.opencastle.dev/docs/plugins#nx',
   officialDocs: 'https://nx.dev/getting-started/intro',

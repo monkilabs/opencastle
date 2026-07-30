@@ -1,15 +1,45 @@
 {
   "skillDependencies": {
-    "validation-gates": ["fast-review", "browser-testing", "codebase-tool", "panel-majority-vote"],
-    "fast-review": ["observability-logging", "panel-majority-vote"],
-    "decomposition": ["panel-majority-vote", "project-consistency", "self-improvement"],
-    "agent-hooks": ["session-checkpoints", "observability-logging", "self-improvement"],
-    "orchestration-protocols": ["self-improvement", "team-lead-reference"],
-    "team-lead-reference": ["orchestration-protocols"],
-    "deployment-infrastructure": ["security-hardening", "codebase-tool"],
-    "git-workflow": ["task-management"],
-    "self-improvement": ["agent-memory"],
-    "testing-workflow": ["e2e-testing"]
+    "validation-gates": [
+      "fast-review",
+      "browser-testing",
+      "codebase-tool",
+      "panel-majority-vote"
+    ],
+    "fast-review": [
+      "observability-logging",
+      "panel-majority-vote"
+    ],
+    "decomposition": [
+      "panel-majority-vote",
+      "project-consistency",
+      "self-improvement"
+    ],
+    "agent-hooks": [
+      "session-checkpoints",
+      "observability-logging",
+      "self-improvement"
+    ],
+    "orchestration-protocols": [
+      "self-improvement",
+      "team-lead-reference"
+    ],
+    "team-lead-reference": [
+      "orchestration-protocols"
+    ],
+    "deployment-infrastructure": [
+      "security-hardening",
+      "codebase-tool"
+    ],
+    "git-workflow": [
+      "task-management"
+    ],
+    "self-improvement": [
+      "agent-memory"
+    ],
+    "testing-workflow": [
+      "e2e-testing"
+    ]
   },
   "bindings": {
     "framework": {
@@ -71,72 +101,139 @@
   },
   "agents": {
     "Developer": {
-      "slots": ["framework", "email", "payments", "notifications"],
-      "directSkills": ["validation-gates", "code-commenting", "react-development", "api-patterns"]
+      "slots": [
+        "framework",
+        "email",
+        "payments",
+        "notifications"
+      ],
+      "directSkills": [
+        "validation-gates",
+        "code-commenting",
+        "react-development",
+        "api-patterns",
+        "documentation-standards",
+        "security-hardening"
+      ]
     },
-    "Database Engineer": {
-      "slots": ["database"],
-      "directSkills": ["validation-gates", "security-hardening"]
+    "Data Engineer": {
+      "slots": [
+        "database"
+      ],
+      "directSkills": [
+        "validation-gates",
+        "security-hardening",
+        "data-engineering"
+      ]
     },
     "UI/UX Expert": {
-      "slots": ["e2e-testing", "design"],
-      "directSkills": ["validation-gates", "frontend-design", "accessibility-standards", "react-development"]
+      "slots": [
+        "e2e-testing",
+        "design"
+      ],
+      "directSkills": [
+        "validation-gates",
+        "frontend-design",
+        "accessibility-standards",
+        "react-development"
+      ]
     },
     "Content Engineer": {
-      "slots": ["cms"],
-      "directSkills": ["validation-gates"]
+      "slots": [
+        "cms"
+      ],
+      "directSkills": [
+        "validation-gates"
+      ]
     },
     "Testing Expert": {
-      "slots": ["e2e-testing", "testing"],
-      "directSkills": ["validation-gates", "testing-workflow"]
+      "slots": [
+        "e2e-testing",
+        "testing"
+      ],
+      "directSkills": [
+        "validation-gates",
+        "testing-workflow"
+      ]
     },
     "Security Expert": {
-      "slots": ["database"],
-      "directSkills": ["validation-gates", "documentation-standards", "security-hardening"]
-    },
-    "Data Expert": {
-      "slots": [],
-      "directSkills": ["validation-gates", "data-engineering"]
-    },
-    "DevOps Expert": {
-      "slots": ["deployment", "observability"],
-      "directSkills": ["validation-gates", "documentation-standards"]
+      "slots": [
+        "database"
+      ],
+      "directSkills": [
+        "validation-gates",
+        "documentation-standards",
+        "security-hardening"
+      ]
     },
     "Performance Expert": {
-      "slots": ["observability"],
-      "directSkills": ["validation-gates", "performance-optimization"]
+      "slots": [
+        "observability"
+      ],
+      "directSkills": [
+        "validation-gates",
+        "performance-optimization"
+      ]
     },
     "Architect": {
-      "slots": ["codebase-tool", "knowledge-management"],
-      "directSkills": ["documentation-standards"]
+      "slots": [
+        "codebase-tool",
+        "knowledge-management"
+      ],
+      "directSkills": [
+        "documentation-standards"
+      ]
     },
-    "Copywriter": {
-      "slots": ["cms"],
-      "directSkills": ["documentation-standards"]
+    "Writer": {
+      "slots": [
+        "cms",
+        "framework",
+        "knowledge-management"
+      ],
+      "directSkills": [
+        "documentation-standards",
+        "validation-gates",
+        "seo-patterns",
+        "code-commenting"
+      ]
     },
-    "SEO Specialist": {
-      "slots": ["framework", "cms"],
-      "directSkills": ["validation-gates", "documentation-standards", "seo-patterns"]
-    },
-    "API Designer": {
-      "slots": ["framework"],
-      "directSkills": ["validation-gates", "documentation-standards", "api-patterns", "security-hardening"]
-    },
-    "Release Manager": {
-      "slots": ["codebase-tool", "deployment"],
-      "directSkills": ["validation-gates", "documentation-standards"]
-    },
-    "Documentation Writer": {
-      "slots": ["knowledge-management"],
-      "directSkills": ["documentation-standards", "code-commenting"]
+    "DevOps & Release": {
+      "slots": [
+        "deployment",
+        "observability",
+        "codebase-tool"
+      ],
+      "directSkills": [
+        "validation-gates",
+        "documentation-standards"
+      ]
     },
     "Researcher": {
-      "slots": ["knowledge-management"],
-      "directSkills": ["context-map", "self-improvement"]
+      "slots": [
+        "knowledge-management"
+      ],
+      "directSkills": [
+        "context-map",
+        "self-improvement"
+      ]
     },
     "Team Lead (OpenCastle)": {
-      "slots": ["task-management", "knowledge-management"],
-      "directSkills": ["team-lead-reference", "session-checkpoints", "validation-gates", "fast-review", "panel-majority-vote", "context-map", "memory-merger", "agent-hooks", "decomposition", "orchestration-protocols"]
+      "slots": [
+        "task-management",
+        "knowledge-management"
+      ],
+      "directSkills": [
+        "team-lead-reference",
+        "session-checkpoints",
+        "validation-gates",
+        "fast-review",
+        "panel-majority-vote",
+        "context-map",
+        "memory-merger",
+        "agent-hooks",
+        "decomposition",
+        "orchestration-protocols"
+      ]
     }
   }
 }

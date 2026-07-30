@@ -41,7 +41,7 @@ const prompts = [
     agent: 'Team Lead (OpenCastle)',
     variables: ['{{goal}}', '{{context}}'],
     details: [
-      { heading: 'When to use', content: `<p>When you want to run <code>opencastle run</code> for autonomous convoy execution (e.g., overnight or unattended). Generates a YAML convoy spec from a high-level goal.</p>` },
+      { heading: 'When to use', content: `<p>When you want <code>opencastle convoy</code> to execute autonomously (e.g., overnight or unattended). Generates a YAML convoy spec from a high-level goal.</p>` },
       { heading: 'What it does', content: `<p>Analyzes the goal, decomposes into self-contained tasks with dependency ordering, assigns appropriate agents, and produces a valid <code>.convoy.yml</code> file. The convoy engine handles isolated git worktrees, parallel execution, crash recovery, and merge ordering automatically.</p>` },
     ],
   },
@@ -368,7 +368,7 @@ const prompts = [
     <footer class="footer">
       <div class="footer__inner">
         <span class="footer__copyright">
-          BSL 1.1 License · Filip Mares · 2026
+          MIT License · Filip Mares · 2026
         </span>
         <ul class="footer__links">
           <li><a href="/docs/">Docs</a></li>

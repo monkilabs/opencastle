@@ -2,7 +2,7 @@ import * as v from 'valibot'
 
 type AnySchema = v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>
 
-export const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
+const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
   convoy_started: v.looseObject({ name: v.optional(v.string()) }),
   convoy_finished: v.looseObject({ status: v.string() }),
   convoy_failed: v.looseObject({ status: v.string(), reason: v.optional(v.string()) }),

@@ -3,7 +3,7 @@
  * correct files based on stack selections (tech tools, team tools, IDEs).
  *
  * Tests the dynamic parts:
- *   - Excluded agents (no CMS → no content-engineer, no DB → no database-engineer)
+ *   - Excluded agents (no CMS → no content-engineer, no DB → no data-engineer)
  *   - Excluded skills (only selected plugin skills are installed)
  *   - Plugin skills (SKILL.md from plugin dirs)
  *   - MCP config generation per IDE format
@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, readFile, readdir, rm, unlink } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -51,22 +51,6 @@ async function scaffoldCustomizations(pkgRoot: string, projectRoot: string, stac
     const custTransform = getCustomizationsTransform(stack)
     await copyDir(custSrcDir, custDestDir, { transform: custTransform })
   }
-}
-
-/** Recursively list all files in a directory (relative paths). */
-async function listFilesRecursive(dir: string, prefix = ''): Promise<string[]> {
-  if (!existsSync(dir)) return []
-  const entries = await readdir(dir, { withFileTypes: true })
-  const files: string[] = []
-  for (const entry of entries) {
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
-    if (entry.isDirectory()) {
-      files.push(...await listFilesRecursive(join(dir, entry.name), rel))
-    } else {
-      files.push(rel)
-    }
-  }
-  return files.sort()
 }
 
 // ── Stack fixtures ─────────────────────────────────────────────
@@ -111,19 +95,19 @@ describe('stack-config: getExcludedAgents', () => {
   it('excludes content-engineer when no CMS tool is selected', () => {
     const excluded = getExcludedAgents(STACK_EMPTY)
     expect(excluded.has('content-engineer.agent.md')).toBe(true)
-    expect(excluded.has('database-engineer.agent.md')).toBe(true)
+    expect(excluded.has('data-engineer.agent.md')).toBe(true)
   })
 
   it('includes content-engineer when a CMS tool is selected', () => {
     const excluded = getExcludedAgents(STACK_SANITY_LINEAR)
     expect(excluded.has('content-engineer.agent.md')).toBe(false)
-    // No DB selected → database-engineer still excluded
-    expect(excluded.has('database-engineer.agent.md')).toBe(true)
+    // No DB selected → data-engineer still excluded
+    expect(excluded.has('data-engineer.agent.md')).toBe(true)
   })
 
-  it('includes database-engineer when a DB tool is selected', () => {
+  it('includes data-engineer when a DB tool is selected', () => {
     const excluded = getExcludedAgents(STACK_SUPABASE_SLACK)
-    expect(excluded.has('database-engineer.agent.md')).toBe(false)
+    expect(excluded.has('data-engineer.agent.md')).toBe(false)
     // No CMS selected → content-engineer still excluded
     expect(excluded.has('content-engineer.agent.md')).toBe(true)
   })
@@ -131,7 +115,7 @@ describe('stack-config: getExcludedAgents', () => {
   it('includes both when CMS and DB are selected', () => {
     const excluded = getExcludedAgents(STACK_FULL)
     expect(excluded.has('content-engineer.agent.md')).toBe(false)
-    expect(excluded.has('database-engineer.agent.md')).toBe(false)
+    expect(excluded.has('data-engineer.agent.md')).toBe(false)
   })
 })
 
@@ -255,9 +239,9 @@ describe('stack-config: getAgentToolInjections', () => {
     expect(teamLeadTools).toContain('linear/list_issues')
   })
 
-  it('injects supabase tools into database-engineer when supabase selected', () => {
+  it('injects supabase tools into data-engineer when supabase selected', () => {
     const injections = getAgentToolInjections(STACK_SUPABASE_SLACK)
-    const dbTools = injections.get('database-engineer')
+    const dbTools = injections.get('data-engineer')
     expect(dbTools).toBeDefined()
     expect(dbTools).toContain('supabase/apply_migration')
     expect(dbTools).toContain('supabase/execute_sql')
@@ -344,46 +328,39 @@ describe('gitignore generation', () => {
     await rm(tempDir, { recursive: true, force: true })
   })
 
-  it('creates .gitignore with framework paths ignored and customizable un-ignored', async () => {
-    const managed = {
-      framework: ['.github/copilot-instructions.md', '.github/agents/'],
-      customizable: ['.opencastle/', '.vscode/mcp.json'],
-    }
-
-    await updateGitignore(tempDir, managed)
+  it('does not ignore generated config — it must be committed for teammates and CI', async () => {
+    await updateGitignore(tempDir)
     const content = await readFile(join(tempDir, '.gitignore'), 'utf8')
 
-    // Framework paths should be ignored
-    expect(content).toContain('.github/copilot-instructions.md')
-    expect(content).toContain('.github/agents/')
-    // Customizable paths should be un-ignored
-    expect(content).toContain('!.opencastle/')
-    expect(content).toContain('!.vscode/mcp.json')
-    // Markers should be present
+    // The compiled output is committed, like a lockfile.
+    expect(content).not.toContain('.github/copilot-instructions.md')
+    expect(content).not.toContain('CLAUDE.md')
+    expect(content).not.toMatch(/^\.claude\/agents\/$/m)
+    // Secrets and run artefacts stay local.
+    expect(content).toContain('.env')
+    expect(content).toContain('.opencastle/logs/')
+    expect(content).toContain('.opencastle/*.db')
     expect(content).toContain('# >>> OpenCastle managed (do not edit) >>>')
     expect(content).toContain('# <<< OpenCastle managed <<<')
   })
 
   it('replaces existing block on re-init', async () => {
-    const managed1 = {
-      framework: ['.github/agents/'],
-      customizable: ['.vscode/mcp.json'],
-    }
-    await updateGitignore(tempDir, managed1)
-
-    const managed2 = {
-      framework: ['.github/agents/', '.github/skills/'],
-      customizable: ['.vscode/mcp.json', '.opencastle/'],
-    }
-    const result = await updateGitignore(tempDir, managed2)
-    expect(result).toBe('updated')
+    await updateGitignore(tempDir)
+    const result = await updateGitignore(tempDir)
+    expect(result).toBe('unchanged')
 
     const content = await readFile(join(tempDir, '.gitignore'), 'utf8')
-    expect(content).toContain('.github/skills/')
-    expect(content).toContain('!.opencastle/')
-    // Only one managed block
     const startCount = (content.match(/>>> OpenCastle managed/g) ?? []).length
     expect(startCount).toBe(1)
+  })
+
+  it('keeps the user\'s own gitignore rules when adding the block', async () => {
+    await writeFile(join(tempDir, '.gitignore'), 'node_modules\ndist/\n')
+    await updateGitignore(tempDir)
+    const content = await readFile(join(tempDir, '.gitignore'), 'utf8')
+    expect(content).toContain('node_modules')
+    expect(content).toContain('dist/')
+    expect(content).toContain('.opencastle/logs/')
   })
 })
 
@@ -428,7 +405,7 @@ describe('VS Code adapter install', () => {
     }
   })
 
-  it('excludes content-engineer and database-engineer agents when no CMS/DB', async () => {
+  it('excludes content-engineer and data-engineer agents when no CMS/DB', async () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
 
@@ -436,7 +413,7 @@ describe('VS Code adapter install', () => {
     const agents = await readdir(agentsDir)
 
     expect(agents).not.toContain('content-engineer.agent.md')
-    expect(agents).not.toContain('database-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
     // Others should still be present
     expect(agents).toContain('developer.agent.md')
     expect(agents).toContain('team-lead.agent.md')
@@ -449,15 +426,15 @@ describe('VS Code adapter install', () => {
 
     const agents = await readdir(join(tempDir, '.github', 'agents'))
     expect(agents).toContain('content-engineer.agent.md')
-    expect(agents).not.toContain('database-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
   })
 
-  it('includes database-engineer when DB tool is selected', async () => {
+  it('includes data-engineer when DB tool is selected', async () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(PKG_ROOT, tempDir, STACK_SUPABASE_SLACK, EMPTY_REPO_INFO)
 
     const agents = await readdir(join(tempDir, '.github', 'agents'))
-    expect(agents).toContain('database-engineer.agent.md')
+    expect(agents).toContain('data-engineer.agent.md')
     expect(agents).not.toContain('content-engineer.agent.md')
   })
 
@@ -606,7 +583,8 @@ describe('VS Code adapter install', () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('.github/copilot-instructions.md')
+    expect(paths.merged).toContain('.github/copilot-instructions.md')
+    expect(paths.framework).not.toContain('.github/copilot-instructions.md')
     expect(paths.framework).toContain('.github/agents/')
     expect(paths.framework).toContain('.github/instructions/')
     expect(paths.framework).toContain('.github/skills/')
@@ -667,7 +645,7 @@ describe('Cursor adapter install', () => {
     expect(agents).toContain('developer.mdc')
     expect(agents).toContain('team-lead.mdc')
     expect(agents).not.toContain('content-engineer.mdc') // no CMS
-    expect(agents).not.toContain('database-engineer.mdc') // no DB
+    expect(agents).not.toContain('data-engineer.mdc') // no DB
 
     // Validate .mdc structure
     const devAgent = await readFile(join(agentsDir, 'developer.mdc'), 'utf8')
@@ -733,11 +711,10 @@ describe('Cursor adapter install', () => {
     const adapter = await IDE_ADAPTERS['cursor']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('.cursorrules')
-    expect(paths.framework).toContain('.cursor/rules/agents/')
-    expect(paths.framework).toContain('.cursor/rules/skills/')
-    expect(paths.framework).toContain('.cursor/rules/general.mdc')
-    expect(paths.framework).toContain('.cursor/rules/ai-optimization.mdc')
+    expect(paths.merged).toContain('.cursorrules')
+    expect(paths.framework).not.toContain('.cursorrules')
+    // The whole rules directory, because `update` clears every rule file in it.
+    expect(paths.framework).toContain('.cursor/rules/')
 
     expect(paths.customizable).toContain('.opencastle/')
     expect(paths.customizable).toContain('.cursor/mcp.json')
@@ -783,7 +760,7 @@ describe('Claude Code adapter install', () => {
     expect(content).toContain('**Team Lead (OpenCastle)**')
     // Should NOT list excluded agents
     expect(content).not.toContain('**Content Engineer**')
-    expect(content).not.toContain('**Database Engineer**')
+    expect(content).not.toContain('**Data Engineer**')
   })
 
   it('CLAUDE.md includes content engineer when CMS selected', async () => {
@@ -792,7 +769,7 @@ describe('Claude Code adapter install', () => {
 
     const content = await readFile(join(tempDir, 'CLAUDE.md'), 'utf8')
     expect(content).toContain('**Content Engineer**')
-    expect(content).not.toContain('**Database Engineer**')
+    expect(content).not.toContain('**Data Engineer**')
   })
 
   it('CLAUDE.md lists available skills (including selected plugins)', async () => {
@@ -816,7 +793,7 @@ describe('Claude Code adapter install', () => {
     const agents = await readdir(agentsDir)
     expect(agents).toContain('developer.agent.md')
     expect(agents).not.toContain('content-engineer.agent.md')
-    expect(agents).not.toContain('database-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
 
     const devAgent = await readFile(join(agentsDir, 'developer.agent.md'), 'utf8')
     // Should NOT start with frontmatter
@@ -887,7 +864,8 @@ describe('Claude Code adapter install', () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('CLAUDE.md')
+    expect(paths.merged).toContain('CLAUDE.md')
+    expect(paths.framework).not.toContain('CLAUDE.md')
     expect(paths.framework).toContain('.claude/agents/')
     expect(paths.framework).toContain('.claude/skills/')
     expect(paths.framework).toContain('.claude/commands/')
@@ -977,7 +955,8 @@ describe('OpenCode adapter install', () => {
     const adapter = await IDE_ADAPTERS['opencode']()
     const paths = adapter.getManagedPaths()
 
-    expect(paths.framework).toContain('AGENTS.md')
+    expect(paths.merged).toContain('AGENTS.md')
+    expect(paths.framework).not.toContain('AGENTS.md')
     expect(paths.framework).toContain('.opencode/agents/')
     expect(paths.framework).toContain('.opencode/skills/')
     expect(paths.framework).toContain('.opencode/prompts/')
@@ -1070,7 +1049,8 @@ describe('Windsurf adapter install', () => {
   it('getManagedPaths returns expected Windsurf paths', async () => {
     const adapter = await IDE_ADAPTERS['windsurf']()
     const paths = adapter.getManagedPaths()
-    expect(paths.framework).toContain('.windsurfrules')
+    expect(paths.merged).toContain('.windsurfrules')
+    expect(paths.framework).not.toContain('.windsurfrules')
     expect(paths.framework.some(p => p.includes('.windsurf/rules/'))).toBe(true)
     expect(paths.customizable).toContain('.windsurf/mcp.json')
   })
@@ -1113,7 +1093,8 @@ describe('Codex adapter install', () => {
   it('getManagedPaths includes AGENTS.md and .codex dirs', async () => {
     const adapter = await IDE_ADAPTERS['codex']()
     const paths = adapter.getManagedPaths()
-    expect(paths.framework).toContain('AGENTS.md')
+    expect(paths.merged).toContain('AGENTS.md')
+    expect(paths.framework).not.toContain('AGENTS.md')
     expect(paths.framework.some(p => p.includes('.codex/'))).toBe(true)
     expect(paths.customizable).toContain('.codex/mcp.json')
   })
@@ -1156,7 +1137,8 @@ describe('Antigravity adapter install', () => {
   it('getManagedPaths includes GEMINI.md and .agents dirs', async () => {
     const adapter = await IDE_ADAPTERS['antigravity']()
     const paths = adapter.getManagedPaths()
-    expect(paths.framework).toContain('GEMINI.md')
+    expect(paths.merged).toContain('GEMINI.md')
+    expect(paths.framework).not.toContain('GEMINI.md')
     expect(paths.framework.some(p => p.includes('.agents/'))).toBe(true)
     expect(paths.customizable).toContain('.agents/mcp_config.json')
   })
@@ -1329,7 +1311,7 @@ describe('full stack configuration', () => {
     // Both conditional agents should be included
     const agents = await readdir(join(tempDir, '.github', 'agents'))
     expect(agents).toContain('content-engineer.agent.md')
-    expect(agents).toContain('database-engineer.agent.md')
+    expect(agents).toContain('data-engineer.agent.md')
 
     // All 5 plugin skills should be installed
     const skills = await readdir(join(tempDir, '.github', 'skills'))
@@ -1355,9 +1337,9 @@ describe('full stack configuration', () => {
     )
     expect(ceContent).toContain("'sanity/get_schema'")
 
-    // Agent tool injection — database-engineer should have supabase tools
+    // Agent tool injection — data-engineer should have supabase tools
     const deContent = await readFile(
-      join(tempDir, '.github', 'agents', 'database-engineer.agent.md'),
+      join(tempDir, '.github', 'agents', 'data-engineer.agent.md'),
       'utf8'
     )
     expect(deContent).toContain("'supabase/apply_migration'")

@@ -406,12 +406,11 @@ try {
     unknown: '#94a3b8',
   };
 
-  const MODEL_COLORS = {
-    'claude-opus-4-6': '#a78bfa',
-    'gpt-5-mini': '#64748b',
-    'gpt-5.3-codex': '#3b82f6',
-    'gemini-3.1-pro': '#f59e0b',
-  };
+  // Colour bars by tier rather than by a pinned model list, so a model this
+  // build has never heard of still gets a sensible colour.
+  function modelColor(name) {
+    return TIER_COLORS[deriveTier(name, null)] || '#64748b';
+  }
 
   const OUTCOME_ICONS = {
     success: '\u2713',
@@ -1303,60 +1302,52 @@ try {
     el.innerHTML = html;
   }
 
-  // ── Convoy Detail: Derive Tier from Model ────────────────
+  // ── Convoy Detail: Tier and Model Labels ─────────────────
 
-  function deriveTier(model, agent) {
-    var TIER_MAP = {
-      'claude-opus-4-6': 'premium',
-      'claude-opus-4': 'premium',
-      'claude-sonnet-4-6': 'standard',
-      'claude-sonnet-4': 'standard',
-      'claude-haiku-3-5': 'economy',
-      'claude-haiku-4': 'economy',
-      'gpt-5-mini': 'economy',
-      'gpt-5.3-codex': 'standard',
-      'gpt-5': 'standard',
-      'gemini-3.1-pro': 'standard',
-      'gemini-3.0-flash': 'economy',
-    };
-    if (model && model !== 'copilot' && model !== 'cursor' && model !== 'opencode' && model !== 'claude') {
-      if (TIER_MAP[model]) return TIER_MAP[model];
-      var m = model.toLowerCase();
-      if (m.includes('opus')) return 'premium';
-      if (m.includes('sonnet') || m.includes('pro')) return 'standard';
-      if (m.includes('haiku') || m.includes('flash') || m.includes('mini')) return 'economy';
-    }
-    // Derive from agent name when model is a generic adapter name
-    if (agent) {
-      var a = (typeof agent === 'string' ? agent : '').toLowerCase().replace(/[\s\/]+/g, '-');
-      if (a === 'architect' || a === 'team-lead' || a.includes('team-lead')) return 'premium';
-      if (a === 'reviewer' || a === 'documentation-writer' || a === 'seo-specialist' || a === 'session-guard') return 'economy';
-      if (['developer', 'ui-ux-expert', 'testing-expert', 'security-expert', 'performance-expert', 'devops-expert', 'data-expert', 'api-designer', 'copywriter', 'release-manager', 'content-engineer', 'database-engineer', 'researcher'].includes(a)) return 'standard';
-    }
-    if (!model) return 'unknown';
-    return 'utility';
+  // Adapter names the engine records when the assistant did not report a model.
+  var ADAPTER_NAMES = ['copilot', 'cursor', 'opencode', 'claude', 'codex', 'test-adapter'];
+
+  function isRealModel(model) {
+    return !!model && ADAPTER_NAMES.indexOf(model) === -1;
   }
 
+  // Agent tiers. Kept in step with src/cli/tiers.ts, which is the source of truth.
+  var PREMIUM_AGENTS = ['team-lead', 'architect', 'security-expert'];
+  // Kept in step with the agents' own frontmatter by tiers.test.ts — four of the
+  // names here outlived the agents they referred to.
+  var ECONOMY_AGENTS = ['reviewer', 'writer'];
+
+  function normalizeAgent(agent) {
+    return (typeof agent === 'string' ? agent : '').toLowerCase().replace(/[\s\/]+/g, '-');
+  }
+
+  /**
+   * Tier for a task. Prefers the reported model's family, since that is what
+   * actually ran; falls back to the agent's configured tier.
+   *
+   * No model names are listed here on purpose — a pinned list goes stale
+   * silently and used to disagree with the four other copies of it.
+   */
+  function deriveTier(model, agent) {
+    if (isRealModel(model)) {
+      var m = model.toLowerCase();
+      if (m.includes('opus') || m.includes('fable') || m.includes('mythos')) return 'premium';
+      if (m.includes('mini') || m.includes('haiku') || m.includes('flash')) return 'economy';
+      if (m.includes('sonnet') || m.includes('pro') || m.includes('codex')) return 'standard';
+    }
+    var a = normalizeAgent(agent);
+    if (!a) return model ? 'unknown' : 'unknown';
+    if (PREMIUM_AGENTS.indexOf(a) !== -1) return 'premium';
+    if (ECONOMY_AGENTS.indexOf(a) !== -1) return 'economy';
+    return 'standard';
+  }
+
+  /**
+   * Label for the model column. Reports what ran; when the assistant did not
+   * say, names the adapter rather than guessing a model.
+   */
   function deriveModel(model, agent) {
-    if (model && model !== 'copilot' && model !== 'cursor' && model !== 'opencode' && model !== 'claude') {
-      return model;
-    }
-    if (agent) {
-      var AGENT_MODEL = {
-        'developer': 'claude-sonnet-4-6', 'ui-ux-expert': 'claude-sonnet-4-6',
-        'testing-expert': 'claude-sonnet-4-6', 'security-expert': 'claude-sonnet-4-6',
-        'performance-expert': 'claude-sonnet-4-6', 'devops-expert': 'claude-sonnet-4-6',
-        'data-expert': 'claude-sonnet-4-6', 'api-designer': 'claude-sonnet-4-6',
-        'copywriter': 'claude-sonnet-4-6', 'release-manager': 'claude-sonnet-4-6',
-        'content-engineer': 'claude-sonnet-4-6', 'database-engineer': 'claude-sonnet-4-6',
-        'researcher': 'claude-sonnet-4-6',
-        'architect': 'claude-opus-4-6', 'team-lead': 'claude-opus-4-6',
-        'reviewer': 'claude-haiku-3-5', 'documentation-writer': 'claude-haiku-3-5',
-        'seo-specialist': 'claude-haiku-3-5', 'session-guard': 'claude-haiku-3-5',
-      };
-      var a = agent.toLowerCase().replace(/[\s\/]+/g, '-');
-      return AGENT_MODEL[a] || model || 'unknown';
-    }
+    if (isRealModel(model)) return model;
     return model || 'unknown';
   }
 
@@ -1572,7 +1563,7 @@ try {
       var count = entry[1];
       return '<div class="bar-row">' +
         '<span class="bar-label">' + escapeHtml(name) + '</span>' +
-        '<div class="bar-track"><div class="bar-segment" style="width: ' + ((count / maxCount) * 100).toFixed(1) + '%; background: ' + (MODEL_COLORS[name] || '#64748b') + '"></div></div>' +
+        '<div class="bar-track"><div class="bar-segment" style="width: ' + ((count / maxCount) * 100).toFixed(1) + '%; background: ' + modelColor(name) + '"></div></div>' +
         '<span class="bar-value">' + count + '</span>' +
         '</div>';
     }).join('');

@@ -38,7 +38,7 @@ grep_search("from.*config", includePattern="src/places/**")  # config deps
 
 ### 4 — Build the Map
 
-Produce compact Context Map for Team Lead, downstream agents. Example minimal map (inline):
+Produce a compact map for Team Lead and downstream agents:
 
 ```markdown
 Context Map — Feature: Add priceRange
@@ -59,7 +59,7 @@ Context Map — Feature: Add priceRange
 	- src/components/Account/**
 ```
 
-Validation checkpoint: run `grep_search`, `vscode_listCodeUsages` results into map; confirm all listed files open without errors (CI: `pnpm typecheck`). For full template, Team Lead integration snippets see REFERENCE.md in this directory.
+Validation checkpoint: every `grep_search` / `vscode_listCodeUsages` hit lands in the map; all listed files open without errors (CI: `pnpm typecheck`). Full template, depth levels, partition derivation, Team Lead integration: see [REFERENCE.md](./REFERENCE.md).
 
 ## Anti-Patterns
 

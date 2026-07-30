@@ -19,8 +19,8 @@ const HELP = `
   Numeric fields: auto-detected from value
 
   Examples:
-    opencastle log --type session --agent Developer --model claude-sonnet-4-6 --task "Fix bug" --outcome success
-    opencastle log --type delegation --session_id feat/prj-1 --agent Developer --tier fast --mechanism sub-agent --outcome success
+    opencastle log --type session --agent Developer --task "Fix bug" --outcome success
+    opencastle log --type delegation --session_id feat/prj-1 --agent Developer --tier standard --mechanism sub-agent --outcome success
     opencastle log --type panel --panel_key auth-review --verdict pass --pass_count 3 --block_count 0
 `
 
@@ -43,7 +43,7 @@ function coerceValue(key: string, raw: string): unknown {
 }
 
 /** Resolve the path to the logs directory (walks up to find .opencastle/). */
-export async function resolveLogsDir(override?: string | null): Promise<string> {
+async function resolveLogsDir(override?: string | null): Promise<string> {
   if (override) return override
   let dir = process.cwd()
   for (;;) {

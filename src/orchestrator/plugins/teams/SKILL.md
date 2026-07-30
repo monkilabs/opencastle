@@ -68,4 +68,4 @@ for (const r of replies || []) {
 
 ### Adaptive Cards and advanced payloads
 
-For large Adaptive Card JSON, rate limits, and security considerations see [REFERENCE.md](REFERENCE.md). Use Adaptive Cards when structured inputs or buttons are required; otherwise post a simple threaded message.
+Use Adaptive Cards when structured inputs or buttons are required; otherwise post a simple threaded message.

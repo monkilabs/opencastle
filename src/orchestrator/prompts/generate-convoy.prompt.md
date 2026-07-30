@@ -8,7 +8,7 @@ output: json
 
 # Generate Task Plan
 
-You are the Team Lead. User wants to run `opencastle run` to execute batch of tasks autonomously via convoy engine. Your job: produce JSON task plan. CLI will convert it to valid convoy spec — **you do not need to know YAML syntax**. Derive short, descriptive, kebab-case filename from user's goal (2–4 words max), e.g. `auth-refactor` or `add-search`.
+You are the Team Lead. User wants to run `opencastle convoy run --file <spec>` to execute batch of tasks autonomously via convoy engine. Your job: produce JSON task plan. CLI will convert it to valid convoy spec — **you do not need to know YAML syntax**. Derive short, descriptive, kebab-case filename from user's goal (2–4 words max), e.g. `auth-refactor` or `add-search`.
 
 > **⚠️ OUTPUT FORMAT: Your entire response must be a single ` ```json ` fenced code block. Do NOT output any text, explanations, summaries, or DAG diagrams before or after the JSON block. The parser only reads the ` ```json ` fence — everything else causes a failure.**
 
@@ -36,7 +36,7 @@ You are the Team Lead. User wants to run `opencastle run` to execute batch of ta
 | `gates` | array of strings | no | Shell commands run after all tasks complete; each must exit 0 |
 | `gate_retries` | integer ≥ 0 | no | Times to retry failing gates with an auto-fix task |
 
-> **Added automatically — you do not need to set these:** `version: 1`, `defaults.inject_lessons: true`, `defaults.track_discovered_issues: true`, `defaults.avoid_weak_agents: true`, `defaults.timeout: '30m'`, `defaults.max_retries: 1`, `defaults.review: 'fast'`.
+> **Added automatically — you do not need to set these:** `version: 1`, `defaults.timeout: '30m'`, `defaults.max_retries: 1`, `defaults.review: 'fast'`.
 
 ### Task Fields
 
@@ -62,7 +62,7 @@ If no pre-computed data available, assess complexity yourself: `1` (trivial), `2
 
 ### Agent Roster
 
-`api-designer` · `architect` · `content-engineer` · `copywriter` · `data-expert` · `database-engineer` · `developer` · `devops-expert` · `documentation-writer` · `performance-expert` · `release-manager` · `researcher` · `security-expert` · `seo-specialist` · `team-lead` · `testing-expert` · `ui-ux-expert`
+`developer` · `architect` · `content-engineer` · `writer` · `data-engineer` · `data-engineer` · `developer` · `devops-expert` · `writer` · `performance-expert` · `devops-expert` · `researcher` · `security-expert` · `writer` · `team-lead` · `testing-expert` · `ui-ux-expert`
 
 ---
 
@@ -77,7 +77,6 @@ Example prompt suffix when content research needed:
 
 ### Scaffolding Rule
 
-New project from scratch? You MUST load **backbone-scaffolding** skill; follow it.
 
 ---
 
@@ -103,7 +102,7 @@ For each workstream, break down into smallest meaningful unit. Follow these rule
 
    > **Common mistake:** multiple tasks depending on single `setup` task will run in parallel, conflict if sharing directory like `components/`, `app/globals.css`, or `app/layout.tsx`. Always use specific file paths or sequence conflicting tasks.
 
-5. **Appropriate agent** — pick agent whose speciality matches task (e.g. `testing-expert` for tests, `database-engineer` for migrations).
+5. **Appropriate agent** — pick agent whose speciality matches task (e.g. `testing-expert` for tests, `data-engineer` for migrations).
 6. **Realistic timeouts** — `30m` for most tasks; `1h` for large refactors; `10m` for small docs or config.
 
 ### 2.5 Foundation Phase for Multi-Page Projects
@@ -248,7 +247,7 @@ Before outputting JSON, verify **every item** below. Downstream validator will r
 - [ ] **File-specific**: Names exact files to create or modify — no vague references ("the frontend", "the codebase").
 - [ ] **Substantive**: At least 2 meaningful sentences; no stubs (`...`), no placeholders.
 - [ ] **Verifiable**: Contains acceptance criteria or explicit verification steps.
-- [ ] **Agent domain matching**: Each task's `agent` matches domain — `developer` for code, `testing-expert` for tests, `documentation-writer` for docs, `copywriter` for marketing copy, `ui-ux-expert` for UI, `database-engineer` for migrations, `security-expert` for auth/security, `data-expert` for ETL/scraping.
+- [ ] **Agent domain matching**: Each task's `agent` matches domain — `developer` for code, `testing-expert` for tests, `writer` for docs, `writer` for marketing copy, `ui-ux-expert` for UI, `data-engineer` for migrations, `security-expert` for auth/security, `data-engineer` for ETL/scraping.
 - [ ] **Content research compliance**: If prompt concerns real people, places, or organisations, includes research instruction.
 - [ ] **Foundation phase present** (multi-page only): If 2+ pages/UI sections, `foundation-setup` task exists; all page tasks depend on it with 5 mandatory Foundation References.
 
@@ -256,7 +255,7 @@ Before outputting JSON, verify **every item** below. Downstream validator will r
 
 ## Historical Performance Context
 
-When historical execution data available (via `opencastle insights --json`), Team Lead should include compact summary in context. Example:
+When historical execution data available (via convoy history in `.opencastle/convoy.db`), Team Lead should include compact summary in context. Example:
 
 ### Historical Performance (auto-generated)
 Based on {N} past convoys:

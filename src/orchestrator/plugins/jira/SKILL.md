@@ -7,76 +7,32 @@ description: "Create and update Jira issues, epics, and sprints; manage backlog 
 
 # Task Management with Jira
 
-For project-specific project keys, workflow state IDs, and board configuration, see [tracker-config.md](../../.opencastle/project/tracker-config.md).
+Project keys, workflow state IDs, and board config: [tracker-config.md](../../.opencastle/project/tracker-config.md). Docs: https://developer.atlassian.com/cloud/jira/platform/
 
-## MCP Tool Examples
+## Gotchas
 
-```json
-// Search issues
-{ "jql": "project = PROJ AND status = 'In Progress' ORDER BY priority DESC" }
+- Transitions are constrained by the project's workflow — a jump the board does not allow fails even with a valid status name. Read the workflow state IDs from `tracker-config.md` before transitioning; retry once, then stop.
+- Status names in JQL must be quoted when they contain spaces: `status = "In Progress"`.
+- A `create` call is only successful if it returns an issue key. Verify before treating the issue as tracked.
+- PR-driven status updates only happen when the GitHub/Jira integration is configured; link by putting the key (`PROJ-123`) in the branch or PR title.
 
-// Create issue
-{ "project": "PROJ", "summary": "[UI] Build PriceRangeFilter", "type": "Task", "description": "Objective: ...\nFiles: ...\nAC: ..." }
+## Conventions
 
-// Transition issue
-{ "issueKey": "PROJ-42", "status": "In Progress" }
-```
+Summary format `[Area] Short description` — e.g. `[Schema] Add priceRange field`, `[DB] Add price_range column`, `[UI] Build PriceRangeFilter`, `[Test] E2E price range filtering`.
 
-## Discovered Issues
+Every description must carry: **Objective** (one sentence), **Files (partition)** (paths this agent may modify), **Acceptance Criteria** (verifiable checklist), **Dependencies** (issue keys). Group under an Epic; use components or labels for domain grouping.
 
-Check Jira first; if untracked, create a `[Bug]` issue in Backlog with symptoms, repro steps, and affected files.
+Flow `Backlog → To Do → In Progress → In Review → Done`. Agent moves `To Do → In Progress` on start, `In Progress → Done` only after verification.
 
-## Issue Naming
+Untracked bug found mid-task: search Jira first; if absent create a `[Bug]` in Backlog with symptoms, repro steps, and affected files.
 
-Use `[Area] Short description` format in the Summary field:
-
-```
-[Schema] Add priceRange field to place type
-[DB] Add price_range column and migration
-[Query] Update query with priceRange filter
-[UI] Build PriceRangeFilter component
-[Page] Integrate price filter into /places
-[Test] E2E test price range filtering
-[Docs] Update data model documentation
-```
-
-
-## Status Workflow
-
-```
-Backlog → To Do → In Progress → In Review → Done
-```
-
-### Transition Rules
-
-- Agent (via MCP): `To Do → In Progress` on start; `In Progress → Done` on verified completion.
-- Automation: PR events auto-update status when GitHub/Jira integration is configured.
-- Link via Jira key in branch/PR title (e.g., `PROJ-123`).
-
-## Issue Descriptions
-
-Every issue must include: **Objective** (one sentence), **Files (partition)** (paths this agent may modify), **Acceptance Criteria** (verifiable checklist), **Dependencies** (issue keys).
-
-Group related issues under a Jira Epic; use components or labels for domain grouping.
-
-## Session Workflow
-
-1. Search the board (JQL) for existing in-progress work.
-2. Decompose the feature into issues; create all in Jira — verify each returns a valid issue key.
-3. Link dependencies between issues.
-4. Delegate: move issue to **In Progress** before starting; move to **Done** after verified.
-5. If creation/transition fails: retry once; check project key and workflow state IDs in [tracker-config.md](../../.opencastle/project/tracker-config.md).
-6. On resume: search by status (In Progress, To Do), read descriptions, continue.
-7. On completion: verify all Epic issues are Done, run build/lint/test, close the Epic.
-
-## JQL Quick Reference
-
-Common queries for agent workflows:
+## JQL
 
 ```jql
 project = PROJ AND status = "In Progress" ORDER BY priority DESC
-project = PROJ AND status = "To Do" ORDER BY priority DESC
 project = PROJ AND type = Bug AND status != Done ORDER BY priority DESC
 project = PROJ AND sprint in openSprints() ORDER BY priority DESC
 project = PROJ AND priority = Highest AND status != Done
 ```
+
+Session: query in-progress work first → decompose into issues → link dependencies → transition before/after each → on completion verify all Epic issues Done, run build/lint/test, close the Epic.

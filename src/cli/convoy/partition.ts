@@ -1,7 +1,7 @@
 import { statSync, realpathSync, lstatSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { normalize, join, resolve } from 'node:path'
-import type { Task } from '../types.js'
+import type { Task } from './spec-types.js'
 
 // ── Path normalization ────────────────────────────────────────────────────────
 

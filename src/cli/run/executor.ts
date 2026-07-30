@@ -11,7 +11,7 @@ import type {
   Reporter,
   Executor,
   TimeoutHandle,
-} from '../types.js'
+} from '../convoy/spec-types.js'
 
 /**
  * Topological sort of tasks based on `depends_on` edges.

@@ -47,7 +47,7 @@ Vercel supports three environment scopes — set variables for each appropriatel
 
 ### Best Practices
 
-Verify required env vars exist in production and preview scopes; see REFERENCE.md for details.
+Verify required env vars exist in production and preview scopes.
 
 ## Build Troubleshooting
 

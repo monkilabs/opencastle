@@ -2,7 +2,12 @@
 
 > Back to [README](README.md)
 
-OpenCastle turns AI coding assistants into multi-agent teams. A **Team Lead** agent decomposes work, delegates to specialist agents, and verifies results through layered quality gates — all orchestrated via the `opencastle` CLI.
+OpenCastle compiles one definition of your project's AI assistant setup —
+instructions, agents, skills, MCP servers — into the native format of every
+assistant your team uses, and reports when the generated files drift from source.
+
+An experimental convoy engine builds on the same content to run long multi-step
+work in dependency order. The compiler does not depend on it.
 
 ---
 
@@ -10,40 +15,31 @@ OpenCastle turns AI coding assistants into multi-agent teams. A **Team Lead** ag
 
 ```mermaid
 graph TB
-    TL["🏰 Team Lead<br/><sub>Claude Opus 4.7</sub><br/><sub>Analyze → Decompose → Delegate → Verify</sub>"]
+    TL["🏰 Team Lead<br/><sub>Premium tier</sub><br/><sub>Analyze → Decompose → Delegate → Verify</sub>"]
 
-    subgraph Standard["Standard Tier"]
+    subgraph Premium["Premium"]
+        ARCH[Architect]
+        SEC[Security Expert]
+    end
+
+    subgraph Standard["Standard"]
         DEV[Developer]
         UI[UI/UX Expert]
+        DATA[Data Engineer]
         CE[Content Engineer]
-        DB[Database Engineer]
-        PERF[Perf Expert]
-        API[API Designer]
-    end
-
-    subgraph Premium["Premium Tier"]
-        SEC[Security Expert]
-        ARCH[Architect]
-    end
-
-    subgraph Utility["Utility Tier"]
         TEST[Testing Expert]
-        DATA[Data Expert]
-        DEVOPS[DevOps Expert]
-        RM[Release Manager]
-    end
-
-    subgraph Economy["Economy Tier"]
-        DOCS[Docs Writer]
+        PERF[Performance Expert]
+        OPS[DevOps &amp; Release]
         RES[Researcher]
-        REV[Reviewer]
-        COPY[Copywriter]
-        SEO[SEO Specialist]
     end
 
-    TL --> Standard
+    subgraph Economy["Economy"]
+        WRITE[Writer]
+        REV[Reviewer]
+    end
+
     TL --> Premium
-    TL --> Utility
+    TL --> Standard
     TL --> Economy
 
     KB["📚 Instructions · Skills · Workflows · Prompts"]
@@ -52,14 +48,20 @@ graph TB
 
 ---
 
-## Model Tiers
+## Capability Tiers
 
-| Tier | Model | Use case |
-|------|-------|----------|
-| Premium | Claude Opus 4.7 | Architecture, security, orchestration |
-| Standard | Gemini 3.1 Pro | Features, schemas, UI |
-| Utility | GPT-5.5-Codex | Testing, data, deployment |
-| Economy | GPT-5.4 mini | Documentation |
+Agents declare a tier rather than a model. Which model serves a tier is the
+assistant's decision — it knows which models the account can reach, what they
+cost today, and which have been retired.
+
+| Tier | For |
+|------|-----|
+| Premium | Orchestration, architecture, security review — the hardest reasoning |
+| Standard | Feature work, schemas, UI, tests — the bulk of the work |
+| Economy | Review passes, docs, copy — high volume, low ambiguity |
+
+Defined once in [`src/cli/tiers.ts`](src/cli/tiers.ts); agent frontmatter carries
+`tier:` and a test asserts no shipped file names a model.
 
 ---
 
@@ -80,29 +82,23 @@ The Team Lead operates in two modes depending on task complexity:
 
 ## Agents
 
-19 specialist agents, each with a defined scope, output contract, and file partition boundary.
+13 specialist agents, each with a defined scope, output contract, and file partition boundary.
 
 | Agent | Domain |
 |-------|--------|
 | Team Lead | Orchestration — never writes code |
-| Developer | Pages, components, routing, API routes, server logic |
-| UI/UX Expert | Accessible, consistent UI components and design system |
 | Architect | Strategic architecture decisions, ADRs, system design |
-| Security Expert | Auth, authorization, RLS, security headers, input validation |
-| Testing Expert | E2E tests, integration tests, browser validation |
-| Database Engineer | Migrations, access policies, schema changes |
+| Security Expert | Auth, authorization, access policies, security headers, input validation |
+| Developer | Pages, components, routing, API routes and their contracts, server logic |
+| UI/UX Expert | Accessible, consistent UI components and design system |
+| Data Engineer | Migrations, access policies, query performance, ETL pipelines, imports |
 | Content Engineer | CMS schemas, content types, queries |
-| Data Expert | ETL pipelines, scrapers, CLI tools, data import |
-| DevOps Expert | Deployments, CI/CD, cron jobs, environment variables |
-| Performance Expert | Frontend/backend/build performance optimization |
-| API Designer | Route architecture, endpoint conventions, API docs |
-| Release Manager | Pre-release verification, changelogs, version management |
-| Documentation Writer | Project docs, roadmaps, technical guides |
+| Testing Expert | E2E tests, integration tests, browser validation |
+| Performance Expert | Frontend, backend, and build performance |
+| DevOps & Release | Deployments, CI/CD, cron jobs, pre-release verification, changelogs |
 | Researcher | Deep codebase exploration, pattern discovery, git archaeology |
-| Reviewer | Mandatory fast validation after every delegation |
-| Copywriter | UI microcopy, marketing text, error messages |
-| SEO Specialist | Meta tags, structured data, sitemaps, crawlability |
-| Session Guard | Compliance check — verifies logs, lessons, quality gates |
+| Writer | UI copy, error messages, docs, roadmaps, meta tags, structured data |
+| Reviewer | Fast validation after every delegation |
 
 ---
 
@@ -111,9 +107,8 @@ The Team Lead operates in two modes depending on task complexity:
 ```
 src/orchestrator/
 ├── agents/          # Agent definitions (.agent.md)
-├── skills/          # Reusable domain expertise (28 skills)
+├── skills/          # Reusable domain expertise
 ├── instructions/    # Cross-cutting guidelines
-├── snippets/        # Canonical rules (DRY — referenced via Inherits:)
 ├── agent-workflows/ # Multi-step workflow templates
 ├── prompts/         # Prompt templates
 ├── plugins/         # IDE marketplace plugins
@@ -122,7 +117,6 @@ src/orchestrator/
 
 **Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `react-development`, `security-hardening`, `testing-workflow`, `observability-logging`.
 
-**Snippets** are canonical rule definitions (e.g., secret scanning, output contracts, discovered-issues policy). Agents and skills reference them via `> Inherits: [rule-name](path)` pointers instead of duplicating content.
 
 ---
 
@@ -271,22 +265,13 @@ Each agent type has a defined output contract with required fields:
 - After task completion, output is validated against the contract schema
 - Invalid output triggers a retry with a corrected prompt
 
-### Compaction
-
-When a task's token usage approaches the model context window limit:
-
-1. Agent produces a `COMPACTION_SUMMARY` (phase, completed/pending steps, key decisions, files modified)
-2. Engine saves the summary as an artifact
-3. Agent resumes from pending steps via a continuation prompt
-4. Maximum 3 compactions per task; exceeding this fails the task
-
 ### Artifacts
 
 Tasks can write artifacts to `.opencastle/artifacts/{convoy-id}/{task-id}/`:
 
 - Named files with metadata (type, summary, size)
 - Downstream tasks can read upstream artifacts via dependency resolution
-- Pruned by age via `opencastle artifacts prune`
+- Pruned by age as later convoys run
 
 ---
 
@@ -308,22 +293,15 @@ The [dashboard](src/dashboard/) provides a web UI for exploring convoy runs, tas
 
 ## CLI
 
-The `opencastle` CLI manages the full lifecycle:
-
 | Command | Purpose |
 |---------|---------|
-| `init` | Bootstrap OpenCastle in a project |
-| `update` | Regenerate agent/skill files from templates |
-| `run` | Execute a convoy |
-| `plan` | Generate a convoy spec from a task description |
-| `log` | Append observability records |
-| `dashboard` | Launch the web dashboard |
-| `doctor` | Diagnose configuration issues |
-| `validate` | Validate convoy specs and project config |
-| `detect` | Detect IDE and project stack |
-| `skills` | List and manage skills |
-| `agents` | List and manage agents |
-| `lesson` | Read/write lessons learned |
-| `insights` | Query convoy analytics |
-| `artifacts` | Manage convoy artifacts |
-| `eject` | Remove OpenCastle, keeping generated files |
+| *(none)* | Project status: targets, drift, and the next command to run |
+| `init` | Set up the project from detected stack and existing assistant config |
+| `sync` | Recompile every configured target from source |
+| `add <pack>` | Adopt an integration and recompile |
+| `doctor` | Diagnose configuration problems |
+| `remove` | Remove OpenCastle, keeping or deleting generated files |
+| `convoy` | Experimental: plan and run multi-step work |
+
+`log` and `lesson` also exist but are invoked by agents from generated
+instructions rather than by people, so they are not listed in help.

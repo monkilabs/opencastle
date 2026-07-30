@@ -38,7 +38,12 @@ description: "Defines branch naming conventions, PR template requirements, commi
 
 ## Discovered Issues Policy
 
-> Inherits: [discovered-issues-policy](../../snippets/discovered-issues-policy.md)
+**No issue gets ignored.** An untracked bug found during work is a quality-gate
+failure. Search `.opencastle/KNOWN-ISSUES.md` and the tracker first; if it is not
+tracked, either add it to KNOWN-ISSUES.md with all six fields (Issue ID, Status,
+Severity, Evidence, Root Cause, Solution Options) when it is an upstream
+limitation, or open a `bug` ticket with symptoms, repro steps, and affected files
+when it is fixable.
 
 ## Task Tracking
 

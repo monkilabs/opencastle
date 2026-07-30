@@ -66,7 +66,7 @@ _(no entries yet)_
 
 ---
 
-## Database Engineer
+## Data Engineer
 
 ### Strong Areas
 
@@ -146,7 +146,7 @@ _(no entries yet)_
 
 ---
 
-## Data Expert
+## Data Engineer
 
 ### Strong Areas
 
@@ -206,7 +206,7 @@ _(no entries yet)_
 
 ---
 
-## Documentation Writer
+## Writer
 
 ### Strong Areas
 
@@ -246,7 +246,7 @@ _(no entries yet)_
 
 ---
 
-## Copywriter
+## Writer
 
 ### Strong Areas
 
@@ -266,7 +266,7 @@ _(no entries yet)_
 
 ---
 
-## SEO Specialist
+## Writer
 
 ### Strong Areas
 
@@ -286,7 +286,7 @@ _(no entries yet)_
 
 ---
 
-## API Designer
+## Developer
 
 ### Strong Areas
 
@@ -306,7 +306,7 @@ _(no entries yet)_
 
 ---
 
-## Release Manager
+## DevOps & Release
 
 ### Strong Areas
 

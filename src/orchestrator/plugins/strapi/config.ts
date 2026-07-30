@@ -26,11 +26,11 @@ export const config: PluginConfig = {
       'strapi/list_components', 'strapi/get_component_schema', 'strapi/create_component',
       'strapi/update_component',
     ],
-    'copywriter': [
+    'writer': [
       'strapi/list_content_types', 'strapi/get_content_type_schema', 'strapi/get_entries',
       'strapi/get_entry', 'strapi/update_entry', 'strapi/publish_entry',
     ],
-    'data-expert': [
+    'data-engineer': [
       'strapi/list_content_types', 'strapi/get_content_type_schema', 'strapi/get_entries',
       'strapi/get_entry', 'strapi/create_entry', 'strapi/update_entry',
     ],

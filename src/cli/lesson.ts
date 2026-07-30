@@ -180,7 +180,7 @@ export interface LessonInput {
  * Append a structured lesson to LESSONS-LEARNED.md programmatically.
  * Returns the generated lesson ID (e.g., "LES-005").
  */
-export async function appendLesson(
+async function appendLesson(
   input: LessonInput,
   customizationsDir?: string | null,
 ): Promise<string> {

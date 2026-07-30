@@ -20,17 +20,26 @@ description: "Defines 10 sequential validation gates: secret scanning, lint/test
 
 ## Gate 1: Secret Scanning
 
-> Inherits: [never-expose-secrets](../../snippets/never-expose-secrets.md)
+**Secret scan (Constitution rule 1).** Block on any token, key, password, or
+connection string in code, logs, commits, or terminal output.
 
-Scan every diff **before** any other gate.
+Scan for: AWS keys (`AKIA...`), API tokens (`sk-...`, `ghp_...`), private keys,
+database URIs, hardcoded `password`/`secret`/`api_key`/`token` assignments
+(assignments, not references), `.env` contents pasted into source, and
+base64-encoded secrets.
 
-Example tool: `gitleaks detect --source . --verbosity warn` (or CI equivalent) — fail on findings matching secrets rules.
+On a hit: block, name the file and line, and re-delegate with an instruction to use
+an environment variable. Already committed? Rotate it - git history is permanent.
+
+Not a hit: obviously fake test fixtures (`sk-test-1234567890`), documentation
+placeholders (`YOUR_API_KEY_HERE`), and pattern matches inside explanatory
+comments.
+
+Scan every diff **before** any other gate: `gitleaks detect --source . --verbosity warn` (or CI equivalent) — fail on any findings.
 
 ## Gate 2: Deterministic Checks
 
 Run for every affected project (resolve exact commands via **codebase-tool** skill): lint (with auto-fix), test, build. All must pass with zero errors.
-
-Example (project with npm scripts):
 
 ```bash
 npm run lint && npm test --silent && npm run build
@@ -54,12 +63,10 @@ npm run lint && npm test --silent && npm run build
 
 > Runs only when `package.json`, `yarn.lock`, `package-lock.json`, `pnpm-lock.yaml`, or similar lockfiles are modified.
 
-| Check | Tool / Example Command | Pass Criteria | On Failure |
-|-------|-------------------------|---------------|------------|
-| Vulnerability | `npm audit --audit-level=moderate` | No new high/critical | BLOCK — use patched version or alternative |
-| Bundle size | `npx source-map-explorer dist/*.js` or `npx bundlesize` | Frontend pkgs ≤50KB gzipped (project policy) | SHOULD-FIX; blocking if >200KB |
+- **Vulnerability:** `npm audit --audit-level=moderate` — no new high/critical, else BLOCK (patched version or alternative).
+- **Bundle size:** frontend pkgs ≤50KB gzipped (project policy) — SHOULD-FIX; blocking if >200KB.
 
-See [REFERENCE.md](REFERENCE.md) for full dependency-audit checklist (license, duplicates, maintenance, additional checks).
+Full checklist (license, duplicates, maintenance, peer deps, type coverage) with commands: [REFERENCE.md](REFERENCE.md).
 
 ## Gate 5: Fast Review
 
@@ -70,6 +77,7 @@ Spawn reviewer sub-agent (load **fast-review** skill). PASS → proceed; FAIL �
 ```bash
 rm -rf node_modules/.cache .next/cache .astro/ dist/
 ```
+
 ## Gate 7: Browser Testing
 
 UI changes require Chrome screenshots. Start dev server → verify ACs → responsive breakpoints → capture screenshots. Load **browser-testing** skill.
@@ -83,16 +91,12 @@ Additional options: see [REFERENCE.md](REFERENCE.md).
 ## Gate 8: Regression Testing
 
 1. `npm test -- --runInBand` for all affected projects
-2. Browser-test adjacent pages (navigation, routing, back-button). Identify adjacent pages by searching for route imports or links to changed path (e.g., `rg "href=\"/changed-path|import .*from '@/components/changed'"`).
-3. Check consuming apps / packages importing changed files: search repo for component or package name (e.g., `rg "from '@/components/PriceRange'|@my-org/ui-package"`) and run their tests or quick smoke builds.
+2. Browser-test adjacent pages (navigation, routing, back-button) — find them via `rg "href=\"/changed-path|import .*from '@/components/changed'"`.
+3. Find consuming apps/packages via `rg "from '@/components/PriceRange'|@my-org/ui-package"`; run their tests or smoke builds.
 
 ## Gate 9: Panel Review
 
 Load **panel-majority-vote** skill — spawns 3 isolated reviewers, majority (2/3) wins. Use for: security-sensitive changes, DB migrations, architecture decisions.
-
-```js
-runSubagent({ agentName: 'Reviewer', prompt: `Panel review 1/3: ${criteria}` });
-```
 
 ## Gate 10: Final Smoke Test
 

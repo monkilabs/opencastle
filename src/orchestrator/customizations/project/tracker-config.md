@@ -35,9 +35,9 @@ Project-specific task tracker details referenced by task management workflows.
 | `nextjs` | Developer | _TBD_ |
 | `ui` | UI/UX Expert | _TBD_ |
 | `testing` | Testing Expert | _TBD_ |
-| `docs` | Documentation Writer | _TBD_ |
+| `docs` | Writer | _TBD_ |
 | `devops` | DevOps Expert | _TBD_ |
-| `data` | Data Expert | _TBD_ |
+| `data` | Data Engineer | _TBD_ |
 | `security` | Security Expert | _TBD_ |
 | `performance` | Performance Expert | _TBD_ |
 | `architecture` | Architect | _TBD_ |

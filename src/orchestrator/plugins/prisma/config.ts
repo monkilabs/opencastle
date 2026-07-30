@@ -17,7 +17,7 @@ export const config: PluginConfig = {
   authType: 'none',
   envVars: [],
   agentToolMap: {
-    'database-engineer': ['prisma/*'],
+    'data-engineer': ['prisma/*'],
     'developer': ['prisma/*'],
   },
   docsUrl: 'https://www.opencastle.dev/docs/plugins#prisma',

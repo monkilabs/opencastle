@@ -27,7 +27,7 @@ export const config: PluginConfig = {
   ],
   agentToolMap: {
     'team-lead': ['slack/*'],
-    'release-manager': ['slack/*'],
+    'devops-expert': ['slack/*'],
   },
   docsUrl: 'https://www.opencastle.dev/docs/plugins#slack',
   officialDocs: 'https://api.slack.com/docs',

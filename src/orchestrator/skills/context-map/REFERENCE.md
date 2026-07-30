@@ -1,8 +1,7 @@
 > Parent: [SKILL.md](./SKILL.md)
 
-Context Map REFERENCE: full markdown template, Team Lead integration snippet, partition examples.
+Full context-map template, partition derivation, and Team Lead integration.
 
-Use this file for verbose context-map template referenced from `SKILL.md`.
 ## Context Map Template
 
 ## Context Map: [Task Name]

@@ -27,6 +27,10 @@ src/dashboard/public/data/**/*.ndjson
 .idea/
 .vscode/*
 
+# Per-developer assistant permissions, not team policy
+.claude/settings.json
+.claude/settings.local.json
+
 # >>> OpenCastle managed (do not edit) >>>
 .github/copilot-instructions.md
 .github/agents/
@@ -39,3 +43,6 @@ src/dashboard/public/data/**/*.ndjson
 !.vscode/mcp.json
 *.db
 # <<< OpenCastle managed <<<
+
+# Agent worktrees, created by the review panel and never part of the project.
+.claude/worktrees/

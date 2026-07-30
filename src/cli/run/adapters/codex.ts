@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import type { Task, ExecuteOptions, ExecuteResult } from '../../types.js'
+import type { Task, ExecuteOptions, ExecuteResult } from '../../convoy/spec-types.js'
 
 /** Adapter name */
 export const name = 'codex'

@@ -2,20 +2,16 @@ import { execFile as execFileCb } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   appendFileSync,
-  closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
-  openSync,
   readFileSync,
   renameSync,
   unlinkSync,
-  writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
-import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ReviewHeuristics } from '../types.js'
+import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ReviewHeuristics } from './spec-types.js'
 import { createConvoyStore, ConvoyArtifactLimitError, type ConvoyStore } from './store.js'
 import { acquireEngineLock } from './lock.js'
 import { createEventEmitter, ndjsonPathForConvoy, recoverNdjson, type ConvoyEventEmitter } from './events.js'
@@ -28,44 +24,22 @@ import { parseTimeout, parseYaml } from '../run/schema.js'
 import { getAdapter, detectAdapter } from '../run/adapters/index.js'
 import { c } from '../prompt.js'
 import { validateFilePartitions, scanSymlinks, scanNewSymlinks, normalizePath, pathsOverlap } from './partition.js'
-import { scanForSecrets, runSecretScanGate, runBlastRadiusGate, browserTestGate } from './gates.js'
-import { readLessons, captureLessons, consolidateLessons } from './lessons.js'
-import { updateExpertise, feedCircuitBreaker } from './expertise.js'
-import { buildKnowledgeGraph } from './knowledge.js'
-import { injectDiscoveredIssuesInstruction, checkDiscoveredIssues, consolidateIssues } from './issues.js'
+import {
+  scanForSecrets,
+  runSecretScanGate,
+  runBlastRadiusGate,
+  runDependencyAuditGate,
+  runRegressionTestGate,
+  browserTestGate,
+} from './gates.js'
 import { validateOutput, buildContractInstruction, buildContractRetryPrompt } from './contracts.js'
 import { runTwoStageReview } from './review-stages.js'
 import { buildIsolationPreamble, resolveDependencyResults, detectPartitionViolations } from './isolation.js'
 import { checkTDD, formatTDDFailure, DEFAULT_TDD_CONFIG } from './tdd-gate.js'
-import { runSkillRefinementCheck } from './skill-refinement.js'
 import { getArtifactDir, extractArtifactRefs } from './artifacts.js'
-import { shouldCompact, parseCompactionSummary, saveCompaction, canCompact, getMaxCompactions, generateCompactionPrompt, buildContinuationPrompt } from './compaction.js'
 import { calculateCost } from './pricing.js'
 
 const execFile = promisify(execFileCb)
-
-/** Map agent names to their default model. Used when adapters don't report model. */
-const AGENT_MODEL_MAP: Record<string, string> = {
-  'developer': 'claude-sonnet-4-6',
-  'ui-ux-expert': 'claude-sonnet-4-6',
-  'testing-expert': 'claude-sonnet-4-6',
-  'security-expert': 'claude-sonnet-4-6',
-  'performance-expert': 'claude-sonnet-4-6',
-  'devops-expert': 'claude-sonnet-4-6',
-  'data-expert': 'claude-sonnet-4-6',
-  'api-designer': 'claude-sonnet-4-6',
-  'copywriter': 'claude-sonnet-4-6',
-  'content-engineer': 'claude-sonnet-4-6',
-  'database-engineer': 'claude-sonnet-4-6',
-  'researcher': 'claude-sonnet-4-6',
-  'release-manager': 'claude-sonnet-4-6',
-  'architect': 'claude-opus-4-6',
-  'team-lead': 'claude-opus-4-6',
-  'reviewer': 'claude-haiku-3-5',
-  'documentation-writer': 'claude-haiku-3-5',
-  'seo-specialist': 'claude-haiku-3-5',
-  'session-guard': 'claude-haiku-3-5',
-}
 
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
@@ -223,47 +197,6 @@ export class CircuitBreakerManager {
 
 // ── Branch management ───────────────────────────────────────────────────────
 
-/**
- * Ensure the given branch exists and is checked out.
- * Creates the branch from HEAD if it does not yet exist.
- * Fails fast if there are uncommitted changes.
- */
-export async function ensureBranch(branchName: string, basePath: string, skipDirtyCheck = false): Promise<void> {
-  // Validate refspec — reject shell metacharacters
-  if (!/^[a-zA-Z0-9\-/_\.]+$/.test(branchName)) {
-    throw new Error(
-      `Invalid branch name "${branchName}": only alphanumeric, -, /, _, and . are allowed`,
-    )
-  }
-
-  if (!skipDirtyCheck) {
-    // Refuse to switch branches with uncommitted changes
-    // Untracked files (??) don't block branch checkout — ignore them
-    const { stdout: statusOut } = await execFile('git', ['status', '--porcelain'], {
-      cwd: basePath,
-    })
-    const trackedChanges = statusOut
-      .split('\n')
-      .filter(line => line.trim() && !line.startsWith('??'))
-      .join('\n')
-    if (trackedChanges) {
-      throw new Error(
-        `Uncommitted changes detected in "${basePath}". Commit or stash before switching branches.`,
-      )
-    }
-  }
-
-  // Check if branch already exists
-  try {
-    await execFile('git', ['rev-parse', '--verify', branchName], { cwd: basePath })
-    // Branch exists — check it out
-    await execFile('git', ['checkout', branchName], { cwd: basePath })
-  } catch {
-    // Branch does not exist — create from current HEAD
-    await execFile('git', ['checkout', '-b', branchName], { cwd: basePath })
-  }
-}
-
 // ── Convoy guard ──────────────────────────────────────────────────────────────
 
 export interface ConvoyGuardResult {
@@ -381,8 +314,8 @@ export function evaluateReviewLevel(
   allGatesPassed?: boolean,
 ): ReviewLevel {
   const panelPaths = heuristics?.panel_paths ?? ['auth/', 'security/', 'migrations/', 'rls/']
-  const panelAgents = heuristics?.panel_agents ?? ['security-expert', 'database-engineer']
-  const autoPassAgents = heuristics?.auto_pass_agents ?? ['documentation-writer']
+  const panelAgents = heuristics?.panel_agents ?? ['security-expert', 'data-engineer']
+  const autoPassAgents = heuristics?.auto_pass_agents ?? ['writer']
   const autoPassMaxLines = heuristics?.auto_pass_max_lines ?? 10
   const autoPassMaxFiles = heuristics?.auto_pass_max_files ?? 2
 
@@ -449,8 +382,8 @@ function buildDlqMarkdownEntry(
 
 // Appends a pre-scanned DLQ entry to AGENT-FAILURES.md. The caller must have
 // already verified the entry is clean via scanForSecrets — no re-scan here.
-function appendDlqMarkdownClean(marker: string, entry: string): void {
-  const mdPath = join(resolve(process.cwd()), '.opencastle', 'AGENT-FAILURES.md')
+function appendDlqMarkdownClean(marker: string, entry: string, basePath: string): void {
+  const mdPath = join(resolve(basePath), '.opencastle', 'AGENT-FAILURES.md')
   try {
     const existing = readFileSync(mdPath, 'utf8')
     if (existing.includes(marker)) return
@@ -461,14 +394,38 @@ function appendDlqMarkdownClean(marker: string, entry: string): void {
   appendFileSync(mdPath, entry)
 }
 
+/**
+ * Marks a convoy 'failed' after an unexpected throw escapes runConvoy.
+ *
+ * Both run() and resume() previously wrapped runConvoy in try/finally with no
+ * catch, so a crash left the row reading 'running' — which resume() then treats
+ * as owned by a live engine and refuses to pick up (KI-003). Best-effort: if the
+ * store is already closed or the DB is gone, the original error still wins.
+ */
+function markConvoyCrashed(
+  store: ConvoyStore,
+  events: ConvoyEventEmitter | null,
+  convoyId: string,
+  err: unknown,
+): void {
+  const reason = err instanceof Error ? err.message : String(err)
+  try {
+    store.updateConvoyStatus(convoyId, 'failed', { finished_at: new Date().toISOString() })
+  } catch { /* store may already be closed — the throw we are handling matters more */ }
+  try {
+    events?.emit('convoy_failed', { status: 'failed', reason: `engine crashed: ${reason}` }, { convoy_id: convoyId })
+  } catch { /* ditto */ }
+}
+
 function writeDisputeToMarkdown(
   disputeId: string,
   convoyId: string,
   task: TaskRecord,
   panelResults: ReviewResult[],
+  basePath: string,
   events?: ConvoyEventEmitter | null,
 ): void {
-  const mdPath = join(resolve(process.cwd()), '.opencastle', 'DISPUTES.md')
+  const mdPath = join(resolve(basePath), '.opencastle', 'DISPUTES.md')
   const marker = `<!-- dispute:${disputeId} -->`
 
   try {
@@ -502,6 +459,7 @@ function writeDisputeToMarkdown(
     return
   }
 
+  mkdirSync(dirname(mdPath), { recursive: true })
   appendFileSync(mdPath, entry)
 }
 
@@ -597,7 +555,7 @@ async function executeSteps(
     if (step.if) {
       const condMet = evaluateStepCondition(step.if, stepResults, worktreePath, basePath)
       if (!condMet) {
-        const stepId = store.insertTaskStep({
+        store.insertTaskStep({
           task_id: taskRecord.id,
           step_index: i,
           prompt: step.prompt,
@@ -911,7 +869,7 @@ async function runConvoy(
     store,
     events,
     convoyId,
-    onKill: (workerId, taskId) => {
+    onKill: (_workerId, taskId) => {
       const task = activeTaskMap.get(taskId)
       const taskAdpt = taskAdapterMap.get(taskId) ?? adapter
       if (task && typeof taskAdpt.kill === 'function') {
@@ -1018,7 +976,7 @@ async function runConvoy(
           created_at: new Date().toISOString(),
           resolved_at: null,
         })
-        appendDlqMarkdownClean(dlqMarker, dlqMdEntry)
+        appendDlqMarkdownClean(dlqMarker, dlqMdEntry, basePath)
         events.emit('dlq_entry_created', {
           dlq_id: dlqId,
           task_id: taskRecord.id,
@@ -1177,23 +1135,6 @@ async function runConvoy(
       }
     }
 
-    // ── Intelligence: circuit breaker weak-area avoidance (Phase 18.2) ─────
-    if (spec.defaults?.avoid_weak_agents) {
-      try {
-        const weakAreas = feedCircuitBreaker(taskRecord.agent, basePath)
-        const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-        const matchesWeakArea = weakAreas.some(area =>
-          taskFiles.some(f => f.toLowerCase().includes(area.toLowerCase()))
-        )
-        if (matchesWeakArea && taskRecord.retries === 0) {
-          events.emit('weak_area_skipped', { agent: taskRecord.agent, weak_areas: weakAreas, task_files: taskFiles }, { convoy_id: convoyId, task_id: taskRecord.id })
-          store.updateTaskStatus(taskRecord.id, convoyId, 'skipped', { output: `Agent "${taskRecord.agent}" has weak-area match for task files. Skipped by avoid_weak_agents policy.` })
-          completedCount++
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-      } catch { /* non-critical */ }
-    }
 
     // Create worktree (skip for copilot adapter)
     let worktreePath: string | null = null
@@ -1311,7 +1252,7 @@ async function runConvoy(
 
     // ── Artifact output instructions (Phase 43) ────────────────────────────
     try {
-      const artifactDir = getArtifactDir(convoyId, taskRecord.id)
+      const artifactDir = getArtifactDir(convoyId, taskRecord.id, basePath)
       const artifactInstructions = [
         '',
         '## Artifact Output (for large results)',
@@ -1327,20 +1268,6 @@ async function runConvoy(
       task.prompt = task.prompt + '\n' + artifactInstructions
     } catch { /* non-critical */ }
 
-    // ── Intelligence: inject lessons (Phase 18.1) ─────────────────────────
-    if (spec.defaults?.inject_lessons !== false) {
-      try {
-        const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-        const lessons = readLessons(taskRecord.agent, taskFiles, basePath)
-        if (lessons.length > 0) {
-          const lessonsBlock
-            = '\n\n---\nRelevant lessons from previous sessions:\n'
-            + lessons.join('\n\n')
-            + '\n---\n\n'
-          task.prompt = lessonsBlock + task.prompt
-        }
-      } catch { /* non-critical */ }
-    }
     // ── Intelligence: inject persistent agent identity (Phase 17.2) ────────
     const specTaskForPersistent = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
     if (specTaskForPersistent?.persistent) {
@@ -1353,10 +1280,6 @@ async function runConvoy(
           task.prompt = contextBlock + task.prompt
         }
       } catch { /* non-critical */ }
-    }
-    // ── Intelligence: inject discovered issues instruction (Phase 18.4) ────
-    if (spec.defaults?.track_discovered_issues) {
-      task.prompt = injectDiscoveredIssuesInstruction(task.prompt)
     }
 
     // ── Output contract injection ─────────────────────────────────────────
@@ -1465,7 +1388,7 @@ async function runConvoy(
         // Estimate tokens even for timed-out tasks — you still paid for them
         const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
         const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
-        const timeoutModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+        const timeoutModel = taskRecord.model ?? taskAdapter.name
         const timeoutCost = calculateCost(timeoutModel, estimatedPrompt, estimatedCompletion)
         store.withTransaction(() => {
           store.updateTaskStatus(taskRecord.id, convoyId, 'timed-out', {
@@ -1764,6 +1687,110 @@ async function runConvoy(
             }
             taskAdapterMap.delete(taskRecord.id)
             return
+          }
+        }
+
+        // Dependency audit and regression test gates
+        //
+        // Both were declared in the spec validator, implemented in full, and set to
+        // 'auto' by `spec-builder.ts` on its own — and never called from here. A
+        // spec could ask for `regression_test`, validate, run green, and never run
+        // the test suite. Nothing failed, which is the worst way for a gate to be
+        // broken. `built-in-gates.test.ts` now derives the accepted-gate list from
+        // the validator and fails if any of them is not branched on and invoked.
+        //
+        // The failure path is shared between the two rather than copied, because
+        // copying it is how the three gates above came to hold three near-identical
+        // 40-line blocks that have to be kept in step by hand.
+        const failGate = async (gate: string, label: string, output: string): Promise<void> => {
+          await removeWorktree()
+          const freshRecord = store.getTask(taskRecord.id, convoyId)!
+          if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
+            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
+              retries: freshRecord.retries + 1,
+              worker_id: null,
+              worktree: null,
+              started_at: null,
+              finished_at: null,
+              prompt: `${label} gate failed.\n${output}\n\nFix the issues and try again.`,
+            })
+            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+            process.stdout.write(
+              `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} ${label} gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
+            )
+          } else {
+            store.withTransaction(() => {
+              store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
+                finished_at: finishedAt,
+                output: `Built-in gate (${gate}) failed:\n${output}`,
+                exit_code: 1,
+              })
+              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+            })
+            completedCount++
+            process.stdout.write(
+              `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} ${label} gate failed ${elapsed} ${c.dim(`(worker ${workerId})`)}\n`,
+            )
+            events.emit(
+              'task_failed',
+              { reason: 'gate-failed', gate, worker_id: workerId },
+              { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
+            )
+            handleExhaustion(freshRecord, 'gate-failed', output)
+          }
+          taskAdapterMap.delete(taskRecord.id)
+        }
+
+        // Both gates shell out to npm, and `runGateCommand` reports a spawn failure
+        // as a non-zero exit — so without this a project that is not an npm package
+        // would have every task fail on a gate it cannot possibly satisfy. Announced
+        // and skipped, the way the browser_test gate handles a missing config.
+        const pkgJsonPath = resolve(worktreePath, 'package.json')
+        let pkgScripts: Record<string, unknown> | null = null
+        if (existsSync(pkgJsonPath)) {
+          try {
+            pkgScripts = (JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as { scripts?: Record<string, unknown> })
+              .scripts ?? {}
+          } catch {
+            pkgScripts = null
+          }
+        }
+
+        if (builtInGates.dependency_audit) {
+          if (pkgScripts === null) {
+            process.stderr.write(
+              `Warning: dependency_audit gate enabled but ${worktreePath} has no readable package.json — skipping\n`,
+            )
+          } else {
+            const auditResult = await runDependencyAuditGate(worktreePath)
+            events.emit(
+              'built_in_gate_result',
+              { gate: 'dependency_audit', passed: auditResult.passed, output: auditResult.output },
+              { convoy_id: convoyId, task_id: taskRecord.id },
+            )
+            if (!auditResult.passed) {
+              await failGate('dependency_audit', 'dependency audit', auditResult.output)
+              return
+            }
+          }
+        }
+
+        if (builtInGates.regression_test) {
+          if (pkgScripts === null || typeof pkgScripts.test !== 'string') {
+            process.stderr.write(
+              `Warning: regression_test gate enabled but no "test" script found in package.json — skipping\n`,
+            )
+          } else {
+            const regressionResult = await runRegressionTestGate(worktreePath)
+            events.emit(
+              'built_in_gate_result',
+              { gate: 'regression_test', passed: regressionResult.passed, output: regressionResult.output },
+              { convoy_id: convoyId, task_id: taskRecord.id },
+            )
+            if (!regressionResult.passed) {
+              await failGate('regression_test', 'regression test', regressionResult.output)
+              return
+            }
           }
         }
 
@@ -2111,7 +2138,7 @@ async function runConvoy(
               const onDispute = spec.defaults?.on_dispute ?? 'stop'
 
               store.updateTaskDisputeStatus(taskRecord.id, convoyId, 'disputed', disputeId)
-              writeDisputeToMarkdown(disputeId, convoyId, taskRecord, panelResults, events)
+              writeDisputeToMarkdown(disputeId, convoyId, taskRecord, panelResults, basePath, events)
 
               events.emit('dispute_opened', {
                 dispute_id: disputeId,
@@ -2168,12 +2195,6 @@ async function runConvoy(
         }
       }
 
-      // ── Intelligence: check discovered issues (Phase 18.4) ─────────────
-      if (spec.defaults?.track_discovered_issues) {
-        try {
-          checkDiscoveredIssues(taskRecord.id, events, convoyId, worktreePath ?? basePath)
-        } catch { /* non-critical */ }
-      }
 
       // ── post_task hooks ───────────────────────────────────────────────────
       if (taskHooks.length > 0) {
@@ -2346,16 +2367,6 @@ async function runConvoy(
           taskAdapterMap.delete(taskRecord.id)
           return
         }
-
-        // ── Intelligence: update expertise post-merge (Phase 18.2) ─────────
-        try {
-          updateExpertise(taskRecord.agent, { taskId: taskRecord.id, success: true, retries: taskRecord.retries, files: taskRecord.files ? JSON.parse(taskRecord.files) as string[] : [] }, basePath)
-        } catch { /* non-critical */ }
-        // ── Intelligence: build knowledge graph post-merge (Phase 18.3) ────
-        try {
-          const { stdout: diffOut } = await execFile('git', ['diff', 'HEAD~1'], { cwd: basePath })
-          buildKnowledgeGraph(diffOut, convoyId, basePath)
-        } catch { /* non-critical */ }
       }
 
       const usageExtra: Partial<{ prompt_tokens: number; completion_tokens: number; total_tokens: number }> = {}
@@ -2375,71 +2386,6 @@ async function runConvoy(
         }
       }
 
-      // ── Context compaction check (Phase 44) ─────────────────────────────
-      const compactionConfig = spec.defaults?.compaction
-      if (compactionConfig?.enabled && usageExtra.total_tokens != null && taskRecord.model) {
-        if (shouldCompact(usageExtra.total_tokens, taskRecord.model, compactionConfig)) {
-          if (canCompact(taskRecord.compaction_count)) {
-            const newCount = taskRecord.compaction_count + 1
-            store.updateTaskCompaction(taskRecord.id, convoyId, newCount)
-
-            const summaryFromOutput = parseCompactionSummary(result.output, taskRecord.id, convoyId)
-            let summaryPath: string | undefined
-            if (summaryFromOutput) {
-              try {
-                summaryPath = saveCompaction(convoyId, taskRecord.id, summaryFromOutput, newCount)
-              } catch { /* non-critical */ }
-            }
-
-            const compactionTaskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-            const compactionDepIds = taskRecord.depends_on ? JSON.parse(taskRecord.depends_on) as string[] : []
-            const compactionDepResults = resolveDependencyResults(store, convoyId, compactionDepIds)
-            const compactionPreamble = buildIsolationPreamble(
-              { id: taskRecord.id, description: taskRecord.prompt.slice(0, 200), prompt: taskRecord.prompt, files: compactionTaskFiles, agent: taskRecord.agent },
-              compactionDepResults,
-            )
-
-            const continuationPrompt = summaryPath
-              ? buildContinuationPrompt(taskRecord.prompt, summaryPath, compactionPreamble)
-              : compactionPreamble + '\n\n' + generateCompactionPrompt(taskRecord.id) + '\n\n' + taskRecord.prompt
-
-            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-              worker_id: null,
-              worktree: null,
-              started_at: null,
-              finished_at: null,
-              prompt: continuationPrompt,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-
-            events.emit('context_compacted', {
-              task_id: taskRecord.id,
-              compaction_count: newCount,
-              summary_path: summaryPath ?? '',
-              model: taskRecord.model,
-              tokens_used: usageExtra.total_tokens,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-            taskAdapterMap.delete(taskRecord.id)
-            return
-          } else {
-            // Max compactions exceeded — fail the task
-            const exhaustedAt = new Date().toISOString()
-            store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
-              finished_at: exhaustedAt,
-              output: `Context exhausted: reached maximum ${getMaxCompactions()} compactions`,
-              exit_code: 1,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: exhaustedAt })
-            events.emit('task_failed', {
-              reason: 'context_exhausted',
-              worker_id: workerId,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-            taskAdapterMap.delete(taskRecord.id)
-            return
-          }
-        }
-      }
 
       // ── Capture outputs as artifacts ────────────────────────────────────────
       if (taskRecord.outputs) {
@@ -2577,7 +2523,7 @@ async function runConvoy(
         } catch { /* non-critical */ }
       }
 
-      const taskModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+      const taskModel = taskRecord.model ?? taskAdapter.name
       const taskCost = calculateCost(taskModel, usageExtra.prompt_tokens, usageExtra.completion_tokens)
 
       store.withTransaction(() => {
@@ -2596,19 +2542,6 @@ async function runConvoy(
       if (circuitBreakerConfig) {
         circuitBreaker.recordSuccess(taskRecord.agent)
         try { store.updateConvoyCircuitState(convoyId, circuitBreaker.serialize()) } catch { /* non-critical */ }
-      }
-      // ── Intelligence: capture retry lesson (Phase 18.1) ─────────────────
-      if (taskRecord.retries > 0 && spec.defaults?.inject_lessons !== false) {
-        try {
-          captureLessons({
-            title: `Retry success for ${taskRecord.agent} on ${taskRecord.id}`,
-            category: 'convoy',
-            agent: taskRecord.agent,
-            problem: `Task ${taskRecord.id} required ${taskRecord.retries} retries`,
-            solution: 'Succeeded after retry with adjusted approach',
-            files: taskRecord.files ? JSON.parse(taskRecord.files) as string[] : undefined,
-          }, basePath)
-        } catch { /* non-critical */ }
       }
       completedCount++
       process.stdout.write(`  ${c.green('✓')} ${c.bold(`[${taskRecord.id}]`)} ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
@@ -2664,7 +2597,7 @@ async function runConvoy(
       // Estimate tokens even for failed tasks — you still paid for them
       const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
       const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
-      const failModel = taskRecord.model ?? AGENT_MODEL_MAP[taskRecord.agent.toLowerCase()] ?? taskAdapter.name
+      const failModel = taskRecord.model ?? taskAdapter.name
       const failCost = calculateCost(failModel, estimatedPrompt, estimatedCompletion)
       store.withTransaction(() => {
         store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
@@ -2680,9 +2613,6 @@ async function runConvoy(
         store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
       })
       // ── Intelligence: record failure in expertise (Phase 18.2) ──────────
-      try {
-        updateExpertise(taskRecord.agent, { taskId: taskRecord.id, success: false, retries: freshRecord.retries, files: taskRecord.files ? JSON.parse(taskRecord.files) as string[] : [] }, basePath)
-      } catch { /* non-critical */ }
       // ── Circuit breaker: record failure ────────────────────────────────────
       if (circuitBreakerConfig) {
         const { tripped } = circuitBreaker.recordFailure(taskRecord.agent)
@@ -2876,25 +2806,6 @@ async function runConvoy(
   }
 
   // ── Intelligence: post-convoy consolidation ──────────────────────────────
-  if (spec.defaults?.inject_lessons !== false) {
-    try { consolidateLessons(basePath) } catch { /* non-critical */ }
-  }
-  if (spec.defaults?.track_discovered_issues) {
-    try { consolidateIssues(basePath) } catch { /* non-critical */ }
-  }
-
-  // ── Intelligence: skill refinement check ───────────────────────────────
-  try {
-    const proposals = runSkillRefinementCheck(convoyId, basePath)
-    for (const p of proposals) {
-      events.emit('skill_refinement_proposed', {
-        skill_name: p.skill,
-        proposal_path: p.proposalPath,
-      }, { convoy_id: convoyId })
-      process.stdout.write(`  ${c.yellow('◆')} Skill refinement proposed for "${p.skill}". Review at ${p.proposalPath}\n`)
-    }
-  } catch { /* non-critical */ }
-
   // ── Final status & summary ────────────────────────────────────────────────
 
   const allTasksFinal = store.getTasksByConvoy(convoyId)
@@ -3118,6 +3029,11 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
         options._reviewRunner,
       )
+    } catch (err) {
+      // Without this, an unexpected throw from runConvoy leaves the convoy row
+      // reading 'running' forever, and a later resume() refuses to touch it.
+      markConvoyCrashed(store, events, convoyId, err)
+      throw err
     } finally {
       events.close()
       store.close()
@@ -3253,6 +3169,9 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
         options._reviewRunner,
       )
+    } catch (err) {
+      markConvoyCrashed(store, events ?? null, convoyId, err)
+      throw err
     } finally {
       events?.close()
       store.close()

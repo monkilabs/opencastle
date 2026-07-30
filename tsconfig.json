@@ -13,7 +13,9 @@
     "declarationMap": true,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
   },
   "include": ["src/cli/**/*.ts", "src/orchestrator/plugins/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/dashboard"]

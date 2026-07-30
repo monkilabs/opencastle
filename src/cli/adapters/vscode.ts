@@ -1,8 +1,9 @@
 import { resolve } from 'node:path'
-import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
-import { copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
-import { scaffoldMcpConfig } from '../mcp.js'
+import { mkdir, readFile, writeFile, copyFile, unlink, rename } from 'node:fs/promises'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { writeManagedBlock, recordMerge } from '../managed-block.js'
+import { mergeCopyResults, copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getAgentTransform } from '../stack-config.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 
@@ -32,8 +33,65 @@ const FRAMEWORK_DIRS = [
   'prompts',
 ]
 
-/** Directories scaffolded once and never overwritten. */
-const CUSTOMIZABLE_DIRS: string[] = []
+/**
+ * What to copy out of a framework source directory.
+ *
+ * Shared by `install` and `update`, which each had their own copy of this and
+ * promptly disagreed: the workflow README was filtered on install and restored
+ * on update, so a project drifted the moment it synced.
+ */
+function copyRulesFor(
+  dir: string,
+  excludedSkills: Set<string>,
+  excludedAgents: Set<string>,
+  stack?: StackConfig,
+): { filter?: (_name: string, _srcPath: string) => boolean; transform?: CopyDirOptions['transform'] } {
+  if (dir === 'skills') return { filter: (name) => !excludedSkills.has(name) }
+  if (dir === 'agents') {
+    return {
+      filter: (name) => !excludedAgents.has(name),
+      transform: stack ? getAgentTransform(stack) : undefined,
+    }
+  }
+  if (dir === 'agent-workflows') {
+    // The directory's own README documents the templates for contributors; it is
+    // not one of them, and no other adapter installs it.
+    return { filter: (name) => name !== 'README.md' }
+  }
+  return {}
+}
+
+/**
+ * Is this on-disk path one the compile just wrote, under a different spelling?
+ *
+ * macOS and Windows match filenames case-insensitively, so writing
+ * `architect.agent.md` into a directory already holding `Architect.agent.md`
+ * updates that file — under its existing name. The sweep then compared the
+ * spelling it asked for against the spelling on disk, found no match, and
+ * deleted the file it had just written. Renaming to the canonical spelling
+ * fixes both halves: the content is kept and `sync --check`, which looks for
+ * the compiler's spelling, stops reporting a file that is right there.
+ */
+async function reconcileCase(onDisk: string, visited: Set<string>): Promise<boolean> {
+  if (visited.has(onDisk)) return true
+  const lower = onDisk.toLowerCase()
+  for (const want of visited) {
+    if (want === onDisk || want.toLowerCase() !== lower) continue
+    // `resolve` is lexical and would call these two different files. Only the
+    // filesystem knows: `realpath.native` returns the real on-disk spelling, so
+    // two names for one file resolve to the same string and two genuinely
+    // different files on a case-sensitive filesystem do not.
+    if (!existsSync(want)) continue
+    try {
+      if (realpathSync.native(want) !== realpathSync.native(onDisk)) continue
+    } catch {
+      continue
+    }
+    await rename(onDisk, want)
+    return true
+  }
+  return false
+}
 
 export async function install(
   pkgRoot: string,
@@ -51,14 +109,13 @@ export async function install(
   const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
   const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-  // copilot-instructions.md
+  // copilot-instructions.md — merged, not replaced. A project that already has
+  // one keeps it; the generated content goes into a managed block below it.
   const copilotSrc = resolve(srcRoot, 'copilot-instructions.md')
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
-  if (!existsSync(copilotDest)) {
-    await writeFile(copilotDest, await readFile(copilotSrc, 'utf8'))
-    results.created.push(copilotDest)
-  } else {
-    results.skipped.push(copilotDest)
+  {
+    const merge = await writeManagedBlock(copilotDest, await readFile(copilotSrc, 'utf8'))
+    recordMerge(results, copilotDest, merge)
   }
 
   // Framework directories
@@ -67,20 +124,10 @@ export async function install(
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    // Build filter based on directory type
-    let filter: ((_name: string, _srcPath: string) => boolean) | undefined
-    let transform: CopyDirOptions['transform'] | undefined
-    if (dir === 'skills') {
-      filter = (name) => !excludedSkills.has(name)
-    } else if (dir === 'agents') {
-      filter = (name) => !excludedAgents.has(name)
-      transform = stack ? getAgentTransform(stack) : undefined
-    }
+    const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
 
     const sub = await copyDir(srcDir, destDir, { filter, transform })
-    results.copied.push(...sub.copied)
-    results.skipped.push(...sub.skipped)
-    results.created.push(...sub.created)
+    mergeCopyResults(results, sub)
   }
 
   // Plugin skills → .github/skills/<plugin-id>/
@@ -100,14 +147,14 @@ export async function install(
   }
 
   // MCP server config → .vscode/mcp.json (scaffold once)
-  const mcpResult = await scaffoldMcpConfig(
+  await scaffoldMcpConfigInto(
+    results,
     projectRoot,
     '.vscode/mcp.json',
     stack,
     repoInfo,
     'vscode'
   )
-  results[mcpResult.action].push(mcpResult.path)
 
   return results
 }
@@ -115,7 +162,8 @@ export async function install(
 export async function update(
   pkgRoot: string,
   projectRoot: string,
-  stack?: StackConfig
+  stack?: StackConfig,
+  _repoInfo?: RepoInfo
 ): Promise<CopyResults> {
   const srcRoot = getOrchestratorRoot(pkgRoot)
   const destRoot = resolve(projectRoot, '.github')
@@ -125,38 +173,45 @@ export async function update(
   const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
   const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-  // Overwrite copilot-instructions.md
+  // `.github/` may not exist: a teammate clones a repo whose generated config was
+  // never committed, and `update` used to die with ENOENT before writing anything.
+  await mkdir(destRoot, { recursive: true })
+
+  // Refresh only the managed block, leaving any surrounding user content alone.
   const copilotDest = resolve(destRoot, 'copilot-instructions.md')
-  await writeFile(
+  const rootMerge = await writeManagedBlock(
     copilotDest,
     await readFile(resolve(srcRoot, 'copilot-instructions.md'), 'utf8')
   )
-  results.copied.push(copilotDest)
+  recordMerge(results, copilotDest, rootMerge)
 
-  // Remove existing framework directories to clear stale files
+  // Note what is here before the sweep, so the command can name anything it
+  // removed that it did not generate. Only one adapter did this, so five of the
+  // seven targets deleted hand-written files in silence.
+  const beforeSweep = new Map<string, string>()
   for (const dir of FRAMEWORK_DIRS) {
-    await removeDirIfExists(resolve(destRoot, dir))
+    const abs = resolve(destRoot, dir)
+    for (const rel of filesUnderDir(abs)) beforeSweep.set(resolve(abs, rel), `.github/${dir}/${rel}`)
   }
 
-  // Re-copy framework directories
+  // Recompile over the existing tree, then sweep — not the other way round.
+  //
+  // Emptying the framework directories first meant any later failure left this
+  // target with nothing installed, and it made every file look rewritten
+  // because every file had just been created: "Updated 80 framework files" on a
+  // sync that changed nothing. Writing in place gives an honest count for free,
+  // since `copyDir` now compares bytes before it writes.
+  const visited = new Set<string>()
   for (const dir of FRAMEWORK_DIRS) {
     const srcDir = resolve(srcRoot, dir)
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    let filter: ((_name: string, _srcPath: string) => boolean) | undefined
-    let transform: CopyDirOptions['transform'] | undefined
-    if (dir === 'skills') {
-      filter = (name) => !excludedSkills.has(name)
-    } else if (dir === 'agents') {
-      filter = (name) => !excludedAgents.has(name)
-      transform = stack ? getAgentTransform(stack) : undefined
-    }
+    const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
 
     const sub = await copyDir(srcDir, destDir, { overwrite: true, filter, transform })
-    // All re-installed framework files count as "updated" (copied), not "created"
-    results.copied.push(...sub.copied, ...sub.created)
-    results.skipped.push(...sub.skipped)
+    mergeCopyResults(results, sub)
+    for (const abs of sub.visited ?? []) visited.add(abs)
   }
 
   // Plugin skills → .github/skills/<plugin-id>/ (overwrite)
@@ -167,21 +222,49 @@ export async function update(
     const pluginDestDir = resolve(destRoot, 'skills', id)
     await mkdir(pluginDestDir, { recursive: true })
     const destPath = resolve(pluginDestDir, 'SKILL.md')
-    await copyFile(skillPath, destPath)
-    results.copied.push(destPath)
+    visited.add(destPath)
+    const content = await readFile(skillPath, 'utf8')
+    const existed = existsSync(destPath)
+    // The same guard the other three write paths got. Unguarded, a directory
+    // wearing `SKILL.md`'s name took `sync` down with a bare `EISDIR` that named
+    // nothing to act on.
+    let onDisk: string | null = null
+    if (existed) {
+      try {
+        onDisk = await readFile(destPath, 'utf8')
+      } catch {
+        ;(results.unreadable ??= []).push(`${destPath}\u0000unreadable`)
+        results.skipped.push(destPath)
+        continue
+      }
+    }
+    if (onDisk === content) {
+      results.skipped.push(destPath)
+    } else {
+      await writeFile(destPath, content)
+      results[existed ? 'copied' : 'created'].push(destPath)
+    }
+  }
+
+  // Now drop output with no source left.
+  for (const abs of beforeSweep.keys()) {
+    if (await reconcileCase(abs, visited)) continue
+    if (existsSync(abs)) await unlink(abs)
   }
 
   // Customizations are NEVER overwritten during update.
+
+  for (const [abs, rel] of beforeSweep) {
+    if (!existsSync(abs)) (results.deleted ??= []).push(rel)
+  }
 
   return results
 }
 
 export function getManagedPaths(): ManagedPaths {
   return {
-    framework: [
-      '.github/copilot-instructions.md',
-      ...FRAMEWORK_DIRS.map((d) => `.github/${d}/`),
-    ],
+    framework: FRAMEWORK_DIRS.map((d) => `.github/${d}/`),
+    merged: ['.github/copilot-instructions.md'],
     customizable: [
       '.opencastle/',
       '.vscode/mcp.json',
@@ -198,4 +281,17 @@ export function getDoctorChecks(): DoctorCheck[] {
     { label: 'Agent workflows', path: '.github/agent-workflows/', type: 'dir', countContents: true },
     { label: 'Prompts directory', path: '.github/prompts/', type: 'dir', countContents: true },
   ]
+}
+
+/** Every file under a directory, relative to it. */
+function filesUnderDir(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(resolve(dir, entry.name), `${prefix}${entry.name}/`)
+      else out.push(`${prefix}${entry.name}`)
+    }
+  }
+  if (existsSync(root)) walk(root, '')
+  return out
 }

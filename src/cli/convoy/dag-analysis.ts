@@ -365,7 +365,3 @@ export function formatInsightsMarkdown(rec: DAGRecommendation): string {
 
   return lines.join('\n')
 }
-
-export function formatInsightsJSON(rec: DAGRecommendation): string {
-  return JSON.stringify(rec, null, 2)
-}

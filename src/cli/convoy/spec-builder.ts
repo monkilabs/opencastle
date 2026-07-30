@@ -144,9 +144,6 @@ export function buildConvoyYaml(plan: TaskPlan, enrichment?: SpecEnrichment): st
     timeout: '30m',
     max_retries: 1,
     review: 'fast',
-    inject_lessons: true,
-    track_discovered_issues: true,
-    avoid_weak_agents: true,
   }
 
   if (enrichment?.circuit_breaker) defaults.circuit_breaker = enrichment.circuit_breaker
@@ -202,7 +199,7 @@ export function applyPatches(plan: TaskPlan, patches: TaskPatch[]): TaskPlan {
  * Detects whether a JSON string appears to be truncated (output cut off mid-generation).
  * Returns a descriptive reason string, or null if the JSON looks complete.
  */
-export function detectJsonTruncation(jsonText: string): string | null {
+function detectJsonTruncation(jsonText: string): string | null {
   const trimmed = jsonText.trim()
   if (!trimmed) return 'empty output'
 

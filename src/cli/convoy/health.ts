@@ -1,7 +1,7 @@
 import type { ConvoyStore } from './store.js'
 import type { ConvoyEventEmitter } from './events.js'
 import type { TaskRecord } from './types.js'
-import type { AgentAdapter } from '../types.js'
+import type { AgentAdapter } from './spec-types.js'
 
 export interface HealthMonitorOptions {
   store: ConvoyStore

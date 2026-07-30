@@ -27,7 +27,7 @@ For specialist agent registry, model assignments, see [agent-registry.md](../../
 | **Fast** | Terminal-heavy tasks, E2E tests, data pipelines, agentic workflows |
 | **Economy** | Docs, simple config, formatting, boilerplate |
 
-**Selection:** Default to agent's assigned tier. Downgrade pure docs/config → Economy. Upgrade security/architecture ambiguity → Quality/Premium. Never Premium/Quality for boilerplate. 3+ parallel agents → prefer Economy/Fast/Standard.
+**Selection:** Default to the agent's registry tier. Never Premium/Quality for boilerplate. 3+ parallel agents → prefer Economy/Fast/Standard. Per-task overrides below.
 
 ## Complexity-Based Task Scoring
 
@@ -46,7 +46,7 @@ For specialist agent registry, model assignments, see [agent-registry.md](../../
 | 8 | Quality | Architecture decision, security audit, complex refactor |
 | 13 | Quality + Panel | DB migration with data transform, auth flow redesign |
 
-**Overrides:** Blocker (blocking 2+ downstream) → upgrade one tier. Security-touching → Quality+. Pure docs → Economy. Registry default takes precedence unless complexity clearly warrants change.
+**Overrides:** Blocker (blocking 2+ downstream) → upgrade one tier. Security-touching or architecture ambiguity → Quality+. Pure docs/config → Economy. Registry default takes precedence unless complexity clearly warrants change.
 
 ## Deepen-Plan Protocol
 
@@ -56,16 +56,10 @@ For specialist agent registry, model assignments, see [agent-registry.md](../../
 | 3–5 subtasks, mixed | Quick deepen — single Researcher sub-agent |
 | 6+ subtasks, unfamiliar | Full deepen — parallel Researcher sub-agents |
 
-**Quick deepen:** Fire one Researcher for exact file paths & line numbers, patterns to follow (file:line examples), relevant lessons from `LESSONS-LEARNED.md`, risks/blockers per subtask.
+**Quick deepen:** Fire one Researcher for exact file paths + line ranges, patterns to follow (file:line examples), relevant lessons from `LESSONS-LEARNED.md`, risks/blockers per subtask, dependencies verified against exact imports.
 **Full deepen:** Split by domain into parallel Researchers. See [agent-registry.md](../../.opencastle/agents/agent-registry.md) for scope examples.
 
-| Field | Before Deepen | After Deepen |
-|-------|--------------|------------------|
-| **Files** | "some component" | Exact path + line range |
-| **Pattern** | "follow existing style" | Specific file:line reference |
-| **Risks** | unknown | Known issues identified |
-| **Lessons** | unchecked | Relevant lessons applied |
-| **Dependencies** | assumed | Verified with exact imports |
+Deepen is done when no field is still a guess — "some component" → exact path + line range, "follow existing style" → specific file:line.
 
 ## Agent Output Status Handling
 

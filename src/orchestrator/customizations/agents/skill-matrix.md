@@ -7,7 +7,7 @@ Maps abstract technology capabilities to concrete skill implementations. The mat
 
 ## Data File
 
-The machine-readable bindings are in [`skill-matrix.json`](skill-matrix.json). The CLI (`opencastle init` and `opencastle update`) reads and writes this file directly. Agents should read the JSON to resolve capability slots.
+The machine-readable bindings are in [`skill-matrix.json`](skill-matrix.json). The CLI (`opencastle init` and `opencastle sync`) reads and writes this file directly. Agents should read the JSON to resolve capability slots.
 
 ## How It Works
 
@@ -50,7 +50,7 @@ When resolving, load **all** skills listed in the slot's entries.
 1. Create (or install) the Azure plugin: `plugins/azure/SKILL.md` + `plugins/azure/config.ts`
 2. Update `skill-matrix.json`: replace the database entries
 3. Update `project.instructions.md` to reflect the new tech stack
-4. **No agent files change** — Database Engineer, Security Expert still reference the `database` slot
+4. **No agent files change** — Data Engineer, Security Expert still reference the `database` slot
 
 ### Example: Migrate to an existing plugin (Linear → Jira)
 
@@ -62,25 +62,25 @@ When resolving, load **all** skills listed in the slot's entries.
 
 1. Create (or install) the Confluence plugin: `plugins/confluence/SKILL.md` + `plugins/confluence/config.ts`
 2. Update `skill-matrix.json`: replace the `knowledge-management` entries
-3. **No agent files change** — Team Lead, Researcher, Documentation Writer, and Architect still reference the `knowledge-management` slot
+3. **No agent files change** — Team Lead, Researcher, Writer, and Architect still reference the `knowledge-management` slot
 
 ## Capability Slots Reference
 
 | Slot | Description | Agents That Use It |
 |------|-------------|-------------------|
-| `framework` | SSR/SSG, routing, layouts | Developer, SEO Specialist, API Designer |
-| `database` | Schema, migrations, auth flow | Database Engineer, Security Expert |
-| `cms` | Document types, queries | Content Engineer, Copywriter, SEO Specialist |
-| `deployment` | Hosting, cron, env vars | DevOps Expert, Release Manager |
-| `codebase-tool` | Task running, linting, testing | Architect, Release Manager |
+| `framework` | SSR/SSG, routing, layouts | Developer, Writer |
+| `database` | Schema, migrations, auth flow | Data Engineer, Security Expert |
+| `cms` | Document types, queries | Content Engineer, Writer |
+| `deployment` | Hosting, cron, env vars | DevOps & Release |
+| `codebase-tool` | Task running, linting, testing | Architect, DevOps & Release |
 | `testing` | Unit testing frameworks | Testing Expert |
 | `e2e-testing` | Browser automation | UI/UX Expert, Testing Expert |
 | `task-management` | Issue tracking, workflow states | Team Lead |
-| `knowledge-management` | Knowledge base, research, ADRs, specs | Team Lead, Researcher, Documentation Writer, Architect |
+| `knowledge-management` | Knowledge base, research, ADRs, specs | Team Lead, Researcher, Writer, Architect |
 | `design` | Design tokens, component inspection, asset export | UI/UX Expert |
 | `email` | Transactional email, templates, delivery | Developer |
 | `payments` | Payment processing, subscriptions, webhooks | Developer |
-| `observability` | Error tracking, performance monitoring, tracing | DevOps Expert, Performance Expert |
+| `observability` | Error tracking, performance monitoring, tracing | DevOps & Release, Performance Expert |
 | `notifications` | Team messaging, alerts, bot integrations | Developer |
 
 ### Example: Add a second plugin
@@ -97,8 +97,8 @@ When resolving a capability slot, two failure cases can occur:
 
 In both cases, **tell the user** that the capability is unavailable and why:
 
-- *"The `database` slot has no entries in `skill-matrix.json`. Install a database plugin (e.g., `supabase`, `prisma`) via `opencastle update`, or add entries manually."*
-- *"The `database` slot references skill `convex-database`, but no matching plugin was found. Install the Convex plugin or run `opencastle update` to fix the binding."*
+- *"The `database` slot has no entries in `skill-matrix.json`. Install a database plugin (e.g., `supabase`, `prisma`) via `opencastle add <plugin>`, or add entries manually."*
+- *"The `database` slot references skill `convex-database`, but no matching plugin was found. Install the Convex plugin or run `opencastle sync` to fix the binding."*
 
 **Do NOT silently skip the slot or proceed without the skill.** The agent should surface the gap clearly so the user can resolve it.
 

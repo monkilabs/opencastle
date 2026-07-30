@@ -4,14 +4,12 @@
 
 ## on-session-start (extended checks)
 
+In addition to the four checks in SKILL.md:
+
 | # | Action |
 |---|--------|
-| 1 | `rg -n "keyword" .opencastle/LESSONS-LEARNED.md` |
-| 2 | `cat .opencastle/SESSION-CHECKPOINT.md` |
-| 3 | `rg -n "Pending Approvals" .opencastle/SESSION-CHECKPOINT.md || true` |
-| 4 | `rg -n "ERROR\|FAIL" .opencastle/AGENT-FAILURES.md || true` |
-| 5 | `jq '.bindings' .opencastle/agents/skill-matrix.json` — verify bindings present |
-| 6 | Load domain skills before writing code |
+| 5 | `rg -n "Pending Approvals" .opencastle/SESSION-CHECKPOINT.md || true` |
+| 6 | `jq '.bindings' .opencastle/agents/skill-matrix.json` — verify bindings present, then load domain skills before writing code |
 
 ## on-pre-delegate (example commands)
 
@@ -22,7 +20,7 @@
 | 3 | Upstream deps | Verify upstream tasks are marked Done in tracker |
 | 4 | Paths + AC | Include exact file paths (not globs) and acceptance criteria in prompt |
 | 5 | Self-improvement | Add `Read .opencastle/LESSONS-LEARNED.md` to prompt text |
-| 6 | Context map | `opencastle context-map` — load **context-map** skill for 5+ files |
+| 6 | Context map | Load the **context-map** skill for 5+ files |
 
 Log delegation: `opencastle log --type=delegation --issue=TAS-123 --status=started --details "spawned subagent for feature X"`
 
@@ -42,7 +40,7 @@ Log delegation: `opencastle log --type=delegation --issue=TAS-123 --status=start
 
 | # | Action | Who |
 |---|--------|-----|
-| 1 | `opencastle doctor --fix` | Team Lead |
+| 1 | `opencastle doctor` | Team Lead |
 | 2 | `opencastle log --type session ...` | All |
 | 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if incomplete | Team Lead |
 | 4 | `rg -c "^Lesson:" .opencastle/LESSONS-LEARNED.md` — flag merge if ≥5 | All |

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
-import type { Task } from '../../types.js'
+import type { Task } from '../../convoy/spec-types.js'
 
 function makeTask(): Task {
   return {

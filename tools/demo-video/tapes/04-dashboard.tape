@@ -17,7 +17,7 @@ Sleep 500ms
 Show
 
 Sleep 500ms
-Type "npx opencastle dashboard --seed"
+Type "npx opencastle convoy dashboard"
 Enter
 
 Sleep 9848ms

@@ -1,8 +1,10 @@
-import { resolve, basename } from 'node:path'
-import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
-import { copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
-import { scaffoldMcpConfig } from '../mcp.js'
+import { resolve, basename, relative } from 'node:path'
+import { mkdir, writeFile, readdir, readFile, rm, rename } from 'node:fs/promises'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { writeManagedBlock, recordMerge } from '../managed-block.js'
+import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
+import { mergeCopyResults, copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeAdapter, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { stripFrontmatter, parseFrontmatterMeta } from './frontmatter.js'
@@ -45,12 +47,129 @@ export interface SingleFileAdapterConfig {
  *
  * The only differences are directory names and file naming conventions.
  */
+/**
+ * Targets that compile to the same root file, in resolution order.
+ *
+ * OpenCode and Codex both own AGENTS.md. With both selected, each adapter wrote
+ * the file pointing at its own directory and the last one to run won — so
+ * `sync --check` compared the project against two different expected files and
+ * reported drift that no amount of syncing could clear. When a root file is
+ * shared, every adapter that shares it generates the same block, referencing the
+ * first selected owner's directory. Both trees are still installed; the index
+ * names one of them, and says so.
+ */
+const SHARED_ROOT_OWNERS: Record<string, Array<{ ide: string; dotDir: string }>> = {
+  'AGENTS.md': [
+    { ide: 'opencode', dotDir: '.opencode' },
+    { ide: 'codex', dotDir: '.codex' },
+  ],
+}
+
+/** The directory the shared root file should point at, given what is selected. */
+function referenceDir(config: SingleFileAdapterConfig, stack?: StackConfig): {
+  dir: string
+  sharedWith: string[]
+} {
+  const owners = SHARED_ROOT_OWNERS[config.rootFile] ?? []
+  const selected = new Set<string>(stack?.ides ?? [])
+  const present = owners.filter((o) => selected.has(o.ide))
+  if (present.length < 2) return { dir: config.dotDir, sharedWith: [] }
+  return { dir: present[0].dotDir, sharedWith: present.map((o) => o.dotDir) }
+}
+
+/**
+ * Is this on-disk path one the compile just wrote, under a different spelling?
+ *
+ * macOS and Windows match filenames case-insensitively, so writing
+ * `architect.agent.md` into a directory already holding `Architect.agent.md`
+ * updates that file — under its existing name. The sweep then compared the
+ * spelling it asked for against the spelling on disk, found no match, and
+ * deleted the file it had just written. Renaming to the canonical spelling
+ * fixes both halves: the content is kept and `sync --check`, which looks for
+ * the compiler's spelling, stops reporting a file that is right there.
+ */
+async function reconcileCase(onDisk: string, visited: Set<string>): Promise<boolean> {
+  if (visited.has(onDisk)) return true
+  const lower = onDisk.toLowerCase()
+  for (const want of visited) {
+    if (want === onDisk || want.toLowerCase() !== lower) continue
+    // `resolve` is lexical and would call these two different files. Only the
+    // filesystem knows: `realpath.native` returns the real on-disk spelling, so
+    // two names for one file resolve to the same string and two genuinely
+    // different files on a case-sensitive filesystem do not.
+    if (!existsSync(want)) continue
+    try {
+      if (realpathSync.native(want) !== realpathSync.native(onDisk)) continue
+    } catch {
+      continue
+    }
+    await rename(onDisk, want)
+    return true
+  }
+  return false
+}
+
 export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAdapter {
-  async function install(
+  /**
+   * Write one generated file and report what actually happened to it.
+   *
+   * `install` scaffolds and must never clobber; `update` recompiles and must,
+   * or the compiler never delivers new content to an existing install. Those
+   * two needs were served by one code path with `existsSync` hard-wired to
+   * "skip", so after the write-before-sweep reordering `sync` stopped
+   * refreshing anything: it printed "Updated 0 framework files" while
+   * `sync --check` stayed red on the very files it had just declined to write,
+   * and prescribed itself as the remedy. An upgrade got the new managed block
+   * over the previous release's agent bodies.
+   *
+   * Even when overwriting, an identical file counts as skipped — the "Updated
+   * N" line should say what changed, not how many files were visited.
+   */
+  async function emit(
+    projectRoot: string,
+    destPath: string,
+    content: string,
+    overwrite: boolean,
+    results: CopyResults
+  ): Promise<void> {
+    ;(results.visited ??= []).push(destPath)
+    if (existsSync(destPath)) {
+      // Named and skipped, like a config that will not parse — and for the same
+      // reason. This read is only an optimisation ("is it already what we would
+      // write?"), but on a directory wearing a generated file's name it threw
+      // `EISDIR`, which Node raises on the descriptor and therefore carries no
+      // `.path`. The catch-all in `bin/cli.mjs` had nothing to print, so `sync`
+      // died with `✗ EISDIR: illegal operation on a directory, read` in the
+      // middle of a hundred-file install, naming nothing to act on, while the
+      // gate reading the same tree named the path correctly.
+      let existing: string
+      try {
+        existing = await readFile(destPath, 'utf8')
+      } catch {
+        ;(results.unreadable ??= []).push(
+          `${relative(projectRoot, destPath)}\u0000unreadable`,
+        )
+        results.skipped.push(destPath)
+        return
+      }
+      if (!overwrite || existing === content) {
+        results.skipped.push(destPath)
+        return
+      }
+      await writeFile(destPath, content)
+      results.copied.push(destPath)
+      return
+    }
+    await writeFile(destPath, content)
+    results.created.push(destPath)
+  }
+
+  async function compile(
     pkgRoot: string,
     projectRoot: string,
-    stack?: StackConfig,
-    repoInfo?: RepoInfo
+    stack: StackConfig | undefined,
+    repoInfo: RepoInfo | undefined,
+    overwrite: boolean
   ): Promise<CopyResults> {
     const srcRoot = getOrchestratorRoot(pkgRoot)
     const results: CopyResults = { copied: [], skipped: [], created: [] }
@@ -58,16 +177,25 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
     const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
-    // 1. Build root instructions file
+    // 1. Build root instructions file.
+    // Always built: the content goes into a managed block, so a file the user
+    // already owns keeps its content and gains the generated section.
     const rootPath = resolve(projectRoot, config.rootFile)
-    if (!existsSync(rootPath)) {
+    const { dir: refDir, sharedWith } = referenceDir(config, stack)
+    {
       const sections: string[] = []
 
       sections.push(
         '# Project Instructions\n\n' +
         'All conventions, architecture, and project context are embedded below. ' +
-        `Skills are in \`${config.dotDir}/skills/\` — read them when a task matches. ` +
-        `Agent definitions are in \`${config.dotDir}/agents/\` — read the relevant file when adopting a persona.`
+        `Skills are in \`${refDir}/skills/\` — read them when a task matches. ` +
+        `Agent definitions are in \`${refDir}/agents/\` — read the relevant file when adopting a persona.` +
+        (sharedWith.length > 1
+          ? `\n\nThis file is shared by more than one assistant. The same content is also installed under ${sharedWith
+              .filter((d) => d !== refDir)
+              .map((d) => `\`${d}/\``)
+              .join(', ')}.`
+          : '')
       )
 
       // Always-loaded instruction files
@@ -89,6 +217,11 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         agentLines.push(
           'The following agent personas are available. Adopt the appropriate persona when asked.\n'
         )
+        agentLines.push(
+          'Each names a capability tier — what kind of model the work wants. Pick a ' +
+            'concrete model yourself; you know which ones this account can reach.\n'
+        )
+        const usedTiers = new Set<Tier>()
         for (const file of (await readdir(agentsDir)).sort()) {
           if (!file.endsWith('.md')) continue
           if (excludedAgents.has(file)) continue
@@ -97,10 +230,19 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
           )
           const name = meta['name'] ?? basename(file, '.agent.md')
           const desc = meta['description'] ?? ''
-          agentLines.push(`- **${name}**: ${desc}`)
+          const declared = meta['tier'] ?? ''
+          const tier = isTier(declared) ? declared : tierForAgent(basename(file, '.agent.md'))
+          usedTiers.add(tier)
+          agentLines.push(`- **${name}** *(${TIERS[tier].label})*: ${desc}`)
+        }
+        if (usedTiers.size > 0) {
+          agentLines.push('')
+          for (const id of TIER_IDS.filter((id) => usedTiers.has(id))) {
+            agentLines.push(`- **${TIERS[id].label}** — ${TIERS[id].purpose}`)
+          }
         }
         agentLines.push(
-          `\nFull agent definitions are in \`${config.dotDir}/agents/\`. Read the relevant file when adopting a persona.`
+          `\nFull agent definitions are in \`${refDir}/agents/\`. Read the relevant file when adopting a persona.`
         )
         sections.push(agentLines.join('\n'))
       }
@@ -116,7 +258,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
           await readdir(skillsDir, { withFileTypes: true })
         ).filter((e) => e.isDirectory())
         const skillRef = (name: string): string =>
-          `${config.dotDir}/skills/${name}/SKILL.md`
+          `${refDir}/skills/${name}/SKILL.md`
         for (const entry of subdirs.sort((a, b) =>
           a.name.localeCompare(b.name)
         )) {
@@ -145,10 +287,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         sections.push(skillLines.join('\n'))
       }
 
-      await writeFile(rootPath, sections.join('\n') + '\n')
-      results.created.push(rootPath)
-    } else {
-      results.skipped.push(rootPath)
+      const merge = await writeManagedBlock(rootPath, sections.join('\n'))
+      recordMerge(results, rootPath, merge)
     }
 
     const dotDirPath = resolve(projectRoot, config.dotDir)
@@ -162,13 +302,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (!file.endsWith('.md')) continue
         if (excludedAgents.has(file)) continue
         const destPath = resolve(destAgents, file)
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
         const content = await readFile(resolve(agentsDir, file), 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
-        results.created.push(destPath)
+        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
@@ -188,10 +323,18 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (!existsSync(skillFile)) continue
         const sub = await copyDir(
           resolve(skillsDir, entry.name),
-          resolve(destSkills, entry.name)
+          resolve(destSkills, entry.name),
+          { overwrite }
         )
-        results.created.push(...sub.created)
-        results.skipped.push(...sub.skipped)
+        // All of them, and asked rather than listed. With `overwrite` false a
+        // rewritten file was impossible, so dropping `copied` cost nothing; the
+        // moment `update` started recompiling in place, every skill it actually
+        // refreshed went unrecorded — and the sweep, which deletes whatever the
+        // compile did not account for, removed all 43 of them. Naming four
+        // instead of three only moved the deadline: `unreadable` was added later
+        // and went missing here too, so `sync` skipped a file it could not read
+        // and reported nothing.
+        mergeCopyResults(results, sub)
       }
     }
 
@@ -206,12 +349,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const pluginDestDir = resolve(destSkills, id)
         await mkdir(pluginDestDir, { recursive: true })
         const destPath = resolve(pluginDestDir, 'SKILL.md')
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
-        await copyFile(skillPath, destPath)
-        results.created.push(destPath)
+        await emit(projectRoot, destPath, await readFile(skillPath, 'utf8'), overwrite, results)
       }
     }
 
@@ -224,13 +362,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (!file.endsWith('.md')) continue
         const name = basename(file, '.prompt.md') || basename(file, '.md')
         const destPath = resolve(destPrompts, `${name}.md`)
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
         const content = await readFile(resolve(promptDir, file), 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
-        results.created.push(destPath)
+        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
@@ -244,55 +377,115 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         if (file === 'README.md') continue
         const name = basename(file, '.md')
         const destPath = resolve(destWf, `${config.workflowPrefix}${name}.md`)
-        if (existsSync(destPath)) {
-          results.skipped.push(destPath)
-          continue
-        }
         const content = await readFile(resolve(wfDir, file), 'utf8')
-        await writeFile(destPath, stripFrontmatter(content) + '\n')
-        results.created.push(destPath)
+        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
       }
     }
 
     // 7. MCP server config (scaffold once)
-    const mcpResult = await scaffoldMcpConfig(
+    await scaffoldMcpConfigInto(
+      results,
       projectRoot,
       config.mcpConfigPath,
       stack,
       repoInfo,
       config.mcpFormat
     )
-    results[mcpResult.action].push(mcpResult.path)
 
     return results
+  }
+
+  /** First install: scaffold, and never clobber a file that is already there. */
+  async function install(
+    pkgRoot: string,
+    projectRoot: string,
+    stack?: StackConfig,
+    repoInfo?: RepoInfo
+  ): Promise<CopyResults> {
+    return compile(pkgRoot, projectRoot, stack, repoInfo, false)
   }
 
   async function update(
     pkgRoot: string,
     projectRoot: string,
-    stack?: StackConfig
+    stack?: StackConfig,
+    repoInfo?: RepoInfo
   ): Promise<CopyResults> {
     const results: CopyResults = { copied: [], skipped: [], created: [] }
     const dotDirPath = resolve(projectRoot, config.dotDir)
 
-    // 1. Remove root instructions file so install() recreates it
-    const rootPath = resolve(projectRoot, config.rootFile)
-    if (existsSync(rootPath)) {
-      await unlink(rootPath)
-    }
+    // 1. Leave the root file in place. install() rewrites only the managed
+    // block inside it, so deleting it here would destroy whatever the user
+    // wrote around that block.
 
-    // 2. Remove existing framework directories
-    for (const dir of config.frameworkDirs) {
-      const dirPath = resolve(dotDirPath, dir)
-      if (existsSync(dirPath)) {
-        await rm(dirPath, { recursive: true })
+    // 2. Note what is there now, so step 4 can say what it removed.
+    const sweptDirs = config.frameworkDirs
+      .map((dir) => resolve(dotDirPath, dir))
+      .filter((dirPath) => existsSync(dirPath))
+    const before = new Map<string, string>()
+    for (const dirPath of sweptDirs) {
+      for (const rel of filesUnderDir(dirPath)) {
+        before.set(
+          resolve(dirPath, rel),
+          `${config.dotDir}/${relative(dotDirPath, dirPath)}/${rel}`,
+        )
       }
     }
 
-    // 3. Re-run full install
-    const installResult = await install(pkgRoot, projectRoot, stack)
-    results.copied.push(...installResult.created)
+    // 3. Recompile *before* clearing anything, overwriting as we go.
+    //
+    // Sweeping first meant a failure writing the root file — an unwritable
+    // CLAUDE.md is enough — left `.claude/` empty and the manifest unwritten:
+    // the command that was asked to repair the install destroyed it. The other
+    // two adapters already wrote the root file first.
+    //
+    // `overwrite` is what makes that reordering safe to keep. Without it the
+    // sweep was carrying the refresh — files were replaced by being deleted and
+    // written again — and reversing the order silently turned `sync` into a
+    // no-op on content. The sweep's job now is only to remove output with no
+    // source left, which is the one thing recompiling cannot do.
+    const installResult = await compile(pkgRoot, projectRoot, stack, repoInfo, true)
+
+    // 4. Now that the new output exists, drop anything stale beside it.
+    //
+    // Keyed on what the recompile *visited*, not on how it categorised each
+    // write. Reassembling this from the report arrays failed twice — once
+    // missing `skipped` (first sync deleted all 79 regenerated files), once
+    // missing `copied` (an upgrade deleted 43 skills) — and both times the
+    // deletion was silent and the categories looked right.
+    const written = new Set<string>(installResult.visited ?? [])
+    for (const dirPath of sweptDirs) {
+      for (const rel of filesUnderDir(dirPath)) {
+        const abs = resolve(dirPath, rel)
+        if (await reconcileCase(abs, written)) continue
+        ;(results.deleted ??= []).push(before.get(abs) ?? rel)
+        await rm(abs, { force: true })
+      }
+    }
+    // Pass the three categories through as they came back. Folding `created`
+    // into `copied` was how "Updated N framework files" stayed plausible while
+    // nothing was being rewritten — the count was of files visited, not changed.
+    results.created.push(...installResult.created)
+    results.copied.push(...installResult.copied)
     results.skipped.push(...installResult.skipped)
+    // Adoption happens inside install(); without this the notice never reaches
+    // the user on the one command they actually run to upgrade.
+    // Every optional field the compile set, forwarded by iterating the object
+    // rather than by naming them.
+    //
+    // The named list is how `repaired` reached three adapter families and
+    // `damagedRoots` reached one: a field is added to `MergeResult`, wired at
+    // the place it is produced, and this list is not updated — so the user is
+    // told nothing on the targets that miss it, including about the backup that
+    // is the only way back from a collapse. Both were reported as separate bugs
+    // a round apart. They are one bug, and it is the list.
+    const COMPUTED_HERE = new Set(['copied', 'skipped', 'created', 'visited', 'deleted'])
+    for (const [key, value] of Object.entries(installResult)) {
+      if (COMPUTED_HERE.has(key)) continue
+      if (Array.isArray(value) && value.length > 0) {
+        ;(results as unknown as Record<string, unknown>)[key] = value
+      }
+    }
 
     return results
   }
@@ -301,10 +494,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     // Deduplicate dirs (e.g. promptsDir === workflowsDir for claude-code's 'commands')
     const dirs = new Set(['agents', 'skills', ...config.frameworkDirs])
     return {
-      framework: [
-        config.rootFile,
-        ...Array.from(dirs).map((d) => `${config.dotDir}/${d}/`),
-      ],
+      framework: Array.from(dirs).map((d) => `${config.dotDir}/${d}/`),
+      merged: [config.rootFile],
       customizable: ['.opencastle/', config.mcpConfigPath],
     }
   }
@@ -325,4 +516,17 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
   }
 
   return { install, update, getManagedPaths, getDoctorChecks }
+}
+
+/** Every file under a directory, relative to it. */
+function filesUnderDir(root: string): string[] {
+  const out: string[] = []
+  const walk = (dir: string, prefix: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) walk(resolve(dir, entry.name), `${prefix}${entry.name}/`)
+      else out.push(`${prefix}${entry.name}`)
+    }
+  }
+  if (existsSync(root)) walk(root, '')
+  return out
 }

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { parse as yamlParse, stringify as yamlStringify } from 'yaml'
 import { parseTaskSpecText } from '../run/schema.js'
-import type { TaskSpec, ValidationResult } from '../types.js'
+import type { TaskSpec, ValidationResult } from './spec-types.js'
 
 export interface FormulaTemplate {
   name: string

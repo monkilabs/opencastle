@@ -1,6 +1,6 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { buildPhases, createExecutor, formatDuration } from './executor.js'
-import type { Task, TaskSpec, AgentAdapter, Reporter, TaskResult, RunReport } from '../types.js'
+import type { Task, TaskSpec, AgentAdapter, Reporter, TaskResult, RunReport } from '../convoy/spec-types.js'
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -179,7 +179,7 @@ describe('createExecutor', () => {
     const adapter: AgentAdapter = {
       name: 'test',
       isAvailable: async () => true,
-      execute: async (task) => {
+      execute: async (_task) => {
         currentConcurrent++
         maxConcurrent = Math.max(maxConcurrent, currentConcurrent)
         await new Promise((r) => setTimeout(r, 50))
@@ -219,7 +219,6 @@ describe('createExecutor', () => {
       ],
     }
     const reporter = makeReporter()
-    const executor = createExecutor(spec, reporter as unknown as AgentAdapter, reporter)
     // Actually use the adapter
     const executor2 = createExecutor(spec, makeAdapter(), reporter)
     await executor2.run()
