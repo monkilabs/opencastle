@@ -590,7 +590,19 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     // has drifted, and the MCP config is a customizable path the drift checker
     // does not compare — so the servers were never added, and every command
     // reported the project healthy.
-    console.log(`     ${c.dim('Fix the file, then run opencastle sync --force to add the MCP servers.')}`)
+    //
+    // The follow-up names what was actually skipped. This said "to add the MCP
+    // servers" for every entry, and the list now also carries generated rule and
+    // skill files, so a skipped `.cursor/rules/x.mdc` was explained in terms of a
+    // feature that has nothing to do with it.
+    const isMcp = /(^|[/\\])(\.mcp\.json|mcp\.json|opencode\.json)$/.test(name)
+    console.log(
+      `     ${c.dim(
+        isMcp
+          ? 'Fix the file, then run opencastle sync --force to add the MCP servers.'
+          : 'Fix the file, then run opencastle sync --force to generate it.',
+      )}`,
+    )
   }
   if (gitignoreResult === 'created') {
     console.log(`  ${c.green('✓')} Created .gitignore with OpenCastle entries`)
@@ -779,4 +791,22 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   console.log()
 
   closePrompts()
+
+  // Non-zero when part of what was asked could not be done — and only then.
+  //
+  // `init` printed "✗ Cursor could not be installed" and exited 0, so a script read
+  // success from an install missing a whole target. That is worth failing on.
+  //
+  // A config we could not *parse* is not. VS Code reads `mcp.json` as JSONC, so a
+  // `//` comment in it is legal to the editor that owns the file and unparseable to
+  // us; we name it, skip it, and install everything else. Exiting non-zero there
+  // would make `init` fail permanently on a project that is not broken — which is
+  // why CLAIM 5 asserts exit 0 for exactly that fixture, and why the first version
+  // of this check was wrong.
+  //
+  // The list already carries which of the two it was: `unreadable` means we could
+  // not read the file at all — a directory wearing its name, or permissions — and
+  // that is a real gap in the install.
+  const couldNotRead = unreadable.filter((e) => e.split('\u0000')[1] === 'unreadable')
+  if (couldNotRead.length > 0 || failedTargets.length > 0) process.exit(1)
 }

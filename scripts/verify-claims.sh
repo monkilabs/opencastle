@@ -271,7 +271,7 @@ say "CLAIM 3g — .gitignore byte fidelity, over the alphabet that reaches it"
 # nowhere else, so appending our block below a last line that has no `\n` after
 # it welds our marker onto the user's last rule and the rule stops matching. One
 # byte buys their rule back, and no removal can tell afterwards whose byte it was.
-for shape in lf crlf cr no-final-nl no-final-nl-cr blanks spaces bom bom-only latin1 negation mixed empty; do
+for shape in lf crlf cr no-final-nl no-final-nl-cr crlf-no-final-nl mixed-no-final-nl blanks spaces bom bom-only latin1 negation mixed empty; do
   new "c3g-$shape"; printf '# R\n' > CLAUDE.md
   python3 - "$shape" <<'PY2'
 import pathlib, sys
@@ -289,6 +289,11 @@ shapes = {
   'latin1': b'secrets-caf\xe9/\n',
   'negation': b'*.txt\n!keep.txt\n',
   'mixed': b'a\nb\r\nc\rd\n',
+  # The shape all three round-21 reviewers reported, and its sibling. A CRLF file
+  # whose last line has no terminator gains *two* bytes, not one — the assertion
+  # below hardcoded `+1` and would have failed on it.
+  'crlf-no-final-nl': b'node_modules\r\ndist',
+  'mixed-no-final-nl': b'a\nb\r\nc',
   'empty': b'',
 }
 pathlib.Path('.gitignore').write_bytes(shapes[sys.argv[1]])
@@ -306,14 +311,27 @@ PY2
   elif cmp -s "$ROOT/v-gi3" .gitignore; then
     ok "$shape: byte-identical"
   else
-    want=$(( $(wc -c < "$ROOT/v-gi3") + 1 ))
+    before_n=$(wc -c < "$ROOT/v-gi3")
     got=$(wc -c < .gitignore)
-    # The stated exception, and nothing wider: one added byte, and it must be the
-    # terminator on the final line. Their text is otherwise untouched.
-    if [ "$got" -eq "$want" ] && [ "$(printf '%s' "$(cat "$ROOT/v-gi3")")" = "$(printf '%s' "$(cat .gitignore)")" ]; then
-      ok "$shape: restored, plus the one line terminator git needs"
+    # The exception is one *line terminator*, which is two bytes on a CRLF file.
+    # Stating it as `+1` was wrong and three reviewers said so independently; the
+    # shapes that prove it are in the table above.
+    #
+    # The byte count is the weaker half. What matters is that their text is
+    # unchanged apart from the terminator on the final line — so the comparison
+    # strips trailing CR and LF from both sides and is byte-exact about everything
+    # else. `$(cat …)` was not enough: it drops a trailing `\n` and leaves the `\r`,
+    # so a CRLF file compared unequal to itself.
+    added=$(( got - before_n ))
+    if [ "$added" -ge 0 ] && [ "$added" -le 2 ] \
+       && python3 -c "
+import sys, pathlib
+a = pathlib.Path(sys.argv[1]).read_bytes().rstrip(b'\r\n')
+b = pathlib.Path(sys.argv[2]).read_bytes().rstrip(b'\r\n')
+sys.exit(0 if a == b else 1)" "$ROOT/v-gi3" .gitignore; then
+      ok "$shape: their text is unchanged; the final line gained a terminator ($added byte(s))"
     else
-      bad "$shape: differs beyond the stated exception ($got bytes, wanted $want)"
+      bad "$shape: differs beyond the stated exception ($before_n -> $got bytes)"
       od -c "$ROOT/v-gi3" | head -3; echo ' --- became ---'; od -c .gitignore | head -3
     fi
   fi

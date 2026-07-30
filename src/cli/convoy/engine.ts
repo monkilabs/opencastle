@@ -197,47 +197,6 @@ export class CircuitBreakerManager {
 
 // ── Branch management ───────────────────────────────────────────────────────
 
-/**
- * Ensure the given branch exists and is checked out.
- * Creates the branch from HEAD if it does not yet exist.
- * Fails fast if there are uncommitted changes.
- */
-export async function ensureBranch(branchName: string, basePath: string, skipDirtyCheck = false): Promise<void> {
-  // Validate refspec — reject shell metacharacters
-  if (!/^[a-zA-Z0-9\-/_\.]+$/.test(branchName)) {
-    throw new Error(
-      `Invalid branch name "${branchName}": only alphanumeric, -, /, _, and . are allowed`,
-    )
-  }
-
-  if (!skipDirtyCheck) {
-    // Refuse to switch branches with uncommitted changes
-    // Untracked files (??) don't block branch checkout — ignore them
-    const { stdout: statusOut } = await execFile('git', ['status', '--porcelain'], {
-      cwd: basePath,
-    })
-    const trackedChanges = statusOut
-      .split('\n')
-      .filter(line => line.trim() && !line.startsWith('??'))
-      .join('\n')
-    if (trackedChanges) {
-      throw new Error(
-        `Uncommitted changes detected in "${basePath}". Commit or stash before switching branches.`,
-      )
-    }
-  }
-
-  // Check if branch already exists
-  try {
-    await execFile('git', ['rev-parse', '--verify', branchName], { cwd: basePath })
-    // Branch exists — check it out
-    await execFile('git', ['checkout', branchName], { cwd: basePath })
-  } catch {
-    // Branch does not exist — create from current HEAD
-    await execFile('git', ['checkout', '-b', branchName], { cwd: basePath })
-  }
-}
-
 // ── Convoy guard ──────────────────────────────────────────────────────────────
 
 export interface ConvoyGuardResult {

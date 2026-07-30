@@ -124,20 +124,29 @@ describe('docs describe the current CLI', () => {
 describe('shipped content instructs only commands that exist', () => {
   const orchestratorRoot = join(repoRoot, 'src', 'orchestrator')
 
-  function contentFiles(dir: string, out: string[] = []): string[] {
-    if (!existsSync(dir)) return out
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const p = join(dir, entry.name)
-      if (entry.isDirectory()) contentFiles(p, out)
-      else if (entry.name.endsWith('.md')) out.push(p)
-    }
-    return out
-  }
+  // Beyond `src/orchestrator`: the website and the demo-video build inputs also
+  // instruct people to run commands, and both had drifted. The video's narration
+  // told viewers to run `opencastle dashboard`, a command removed on this branch —
+  // and because nothing scanned `tools/`, it went to a rendered `.mp4` that is
+  // published on the site. Fixing the script does not un-render the video, but it
+  // does stop the next one being wrong.
+  const load = (paths: string[]): Array<{ rel: string; text: string }> =>
+    paths.map((p) => ({ rel: p.slice(repoRoot.length + 1), text: readFileSync(p, 'utf8') }))
 
-  const files = contentFiles(orchestratorRoot).map((p) => ({
-    rel: p.slice(repoRoot.length + 1),
-    text: readFileSync(p, 'utf8'),
-  }))
+  // Everything that instructs someone to run something. Safe for the check below
+  // that looks for *specific* removed names.
+  const files = load([
+    ...contentFilesFor(orchestratorRoot, ['.md']),
+    ...contentFilesFor(join(repoRoot, 'tools'), ['.md', '.sh', '.tape']),
+    ...contentFilesFor(join(repoRoot, 'website', 'src'), ['.astro', '.md', '.mdx']),
+  ])
+
+  // The invention check reads any word after `opencastle` as a command name, which
+  // is only true of files that are all instructions. In website prose the phrase
+  // "every opencastle command" is English, not a command called `command`. Keeping
+  // the fuzzy check on the fuzzy-safe corpus is the honest split; widening it would
+  // have meant a whitelist of English words, which is a worse test.
+  const instructionFiles = load(contentFilesFor(orchestratorRoot, ['.md']))
 
   it('has content to check', () => {
     expect(files.length).toBeGreaterThan(0)
@@ -168,7 +177,7 @@ describe('shipped content instructs only commands that exist', () => {
     // answered a missing file with the status screen and exit 0.
     const subcommands = new Set(['resume', 'retry', 'dashboard', 'plan', 'run'])
     const offenders: string[] = []
-    for (const file of files) {
+    for (const file of instructionFiles) {
       for (const hit of file.text.matchAll(/opencastle ([a-z][a-z-]{2,})/g)) {
         const word = hit[1]
         if (real.has(word) || subcommands.has(word) || replacedCommands().includes(word)) continue

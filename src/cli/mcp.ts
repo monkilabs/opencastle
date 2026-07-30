@@ -86,6 +86,41 @@ function transformMcpForIde(
 }
 
 /**
+ * The indentation a file already uses, so merging into it does not restyle it.
+ *
+ * `JSON.stringify(x, null, 2)` re-indented every co-owned config we touched. A
+ * hand-written tab-indented `opencode.json` — OpenCode's entire project config —
+ * came back two-space indented from a merge that added one key, and never came back
+ * from the uninstall at all: 111 bytes in, 114 out, for a strip that took nothing
+ * of theirs. Byte fidelity is a claim this tool makes about co-owned files, and a
+ * JSON config is one of those.
+ *
+ * Read from the first indented line, which is what every formatter agrees on.
+ * Falls back to two spaces for a file we are creating or one written on a single
+ * line, which is what this always did.
+ */
+function indentOf(text: string): string | number {
+  const m = /\n([ \t]+)\S/.exec(text);
+  if (m) return m[1].includes('\t') ? '\t' : m[1].length;
+  // A config written on one line has no indentation, and expanding it to three is
+  // as much a restyle as collapsing it would be. `0` is what `JSON.stringify` takes
+  // for "no whitespace".
+  return text.trim().includes('\n') ? 2 : 0;
+}
+
+/**
+ * Re-serialise a config the way the file was already written.
+ *
+ * Indentation and line endings both, because `JSON.stringify` emits `\n` whatever
+ * it was handed and a CRLF config came back LF from a merge that added one key.
+ * The same rule `.gitignore` follows: a CRLF file stays CRLF.
+ */
+function serialiseLike(original: string, value: unknown): string {
+  const text = JSON.stringify(value, null, indentOf(original)) + '\n';
+  return /\r\n/.test(original) ? text.replace(/\n/g, '\r\n') : text;
+}
+
+/**
  * Scaffold or merge the MCP server config into the target project.
  *
  * Builds the server list from plugin configs based on the user's
@@ -208,7 +243,7 @@ export async function scaffoldMcpConfig(
       return { path: destPath, action: 'skipped' };
     }
 
-    await writeFile(destPath, JSON.stringify(existing, null, 2) + '\n');
+    await writeFile(destPath, serialiseLike(existingContent, existing));
     return { path: destPath, action: 'created' };
   }
 
@@ -387,7 +422,9 @@ export async function stripManagedMcpServers(
     return 'deleted';
   }
 
-  await writeFile(destPath, JSON.stringify(parsed, null, 2) + '\n');
+  // The file's own indentation, not ours. Taking our servers out of a
+  // tab-indented config used to restyle every line of it.
+  await writeFile(destPath, serialiseLike(before, parsed));
   return 'stripped';
 }
 
@@ -498,7 +535,7 @@ export async function rebuildMcpConfig(
   } catch {
     unchanged = false;
   }
-  if (!unchanged) await writeFile(destPath, JSON.stringify(existing, null, 2) + '\n');
+  if (!unchanged) await writeFile(destPath, serialiseLike(before, existing));
 
   // Re-scaffold: merges new plugin servers into the cleaned config
   await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);

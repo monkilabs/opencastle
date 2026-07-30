@@ -2062,3 +2062,44 @@ describe('retired spec keys', () => {
     expect(result.warnings ?? []).toEqual([])
   })
 })
+
+describe('branch is validated where it enters', () => {
+  /**
+   * The engine passes `spec.branch` to `git worktree add -b <branch>`, and git
+   * reads a leading-dash value as an option: `--upload-pack=echo` arrives at
+   * `git branch` as an unknown flag. `execFile` takes an argv array so there is no
+   * shell, but the value is untrusted spec input reaching a git invocation, and
+   * the validation that existed for it — in the engine's `ensureBranch` — was
+   * never called from anywhere.
+   */
+  const withBranch = (branch: unknown): unknown => ({
+    name: 'demo',
+    branch,
+    tasks: [{ id: 't1', prompt: 'do a thing' }],
+  })
+
+  it('rejects a name git would read as an option', () => {
+    for (const bad of ['--upload-pack=echo', '-c', '--help']) {
+      const r = validateSpec(withBranch(bad))
+      expect(r.valid, `accepted ${bad}`).toBe(false)
+      expect(r.errors.join(' ')).toMatch(/branch/)
+    }
+  })
+
+  it('rejects shell metacharacters even though no shell is involved', () => {
+    for (const bad of ['main; rm -rf /', 'main$(id)', 'main`id`', 'main|tee']) {
+      expect(validateSpec(withBranch(bad)).valid, `accepted ${bad}`).toBe(false)
+    }
+  })
+
+  it('accepts the names people actually use', () => {
+    for (const good of ['main', 'feat/add-search', 'release-1.2.3', 'user_x/thing', 'v2.0']) {
+      const r = validateSpec(withBranch(good))
+      expect(r.valid, `rejected ${good}: ${r.errors.join(' ')}`).toBe(true)
+    }
+  })
+
+  it('still rejects a non-string', () => {
+    expect(validateSpec(withBranch(42)).valid).toBe(false)
+  })
+})

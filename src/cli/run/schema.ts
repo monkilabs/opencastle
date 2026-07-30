@@ -404,8 +404,26 @@ export function validateSpec(spec: unknown): ValidationResult {
   }
 
   // branch
+  //
+  // Shape as well as type. The engine hands this straight to
+  // `git worktree add -b <branch>`, and git reads a leading-dash value as an
+  // *option*: `branch: --upload-pack=…` reaches `git branch` as an unknown flag.
+  // There is no shell involved — `execFile` takes an argv array — so this is
+  // argument injection rather than command injection, but the value is still
+  // untrusted input from a spec file reaching a git invocation.
+  //
+  // `ensureBranch` in the engine had exactly this validation and was never called
+  // (its only reference is a test stub), so the check lived nowhere near the place
+  // the value is used. Deliberately narrower than git's own refname rules: a
+  // convoy branch is generated or hand-written, and nothing needs the exotic half
+  // of what git permits.
   if (s.branch !== undefined && typeof s.branch !== 'string') {
     errors.push('`branch` must be a string')
+  } else if (typeof s.branch === 'string' && !/^[A-Za-z0-9._/][A-Za-z0-9._/-]*$/.test(s.branch)) {
+    errors.push(
+      '`branch` must be a plain branch name: letters, digits, dot, underscore, slash and dash, ' +
+        'and it may not begin with a dash',
+    )
   }
 
   // guard config validation

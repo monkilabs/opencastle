@@ -533,8 +533,30 @@ async function checkGitignoredOutput(
     // lines is the whole difference.
     fix: (await syncWouldClearThis(projectRoot, hidden))
       ? 'opencastle sync — those entries are in a block this tool maintains'
-      : 'remove those entries from .gitignore; OpenCastle only ignores .env and run artefacts',
+      : `remove those entries from ${await whereIgnored(projectRoot, hidden)}; OpenCastle only ignores .env and run artefacts`,
   };
+}
+
+/**
+ * Which file is actually doing the ignoring.
+ *
+ * The remedy said `.gitignore` whatever git said, and git is frequently talking
+ * about something else: `.git/info/exclude` is the standard way to ignore
+ * something locally, and a nested `<subdir>/.gitignore` is ordinary in a monorepo.
+ * A developer who had `.claude/` excluded before adopting OpenCastle was told to
+ * edit a file that does not contain the line, so `doctor` stayed red on advice
+ * that could not be followed.
+ *
+ * The information was already in hand — `gitIgnoreSources` parses the source file
+ * out of `check-ignore -v` — and `syncWouldClearThis` reduced it to a boolean on
+ * the way past.
+ */
+async function whereIgnored(projectRoot: string, hidden: string[]): Promise<string> {
+  const sources = await gitIgnoreSources(projectRoot, hidden);
+  const files = [...new Set((sources ?? []).map((s) => s.file))].sort();
+  if (files.length === 0) return '.gitignore';
+  if (files.length === 1) return files[0];
+  return `${files.slice(0, -1).join(', ')} and ${files[files.length - 1]}`;
 }
 
 /**
@@ -840,7 +862,7 @@ export async function runSharedChecks(
   projectRoot: string,
   manifest: Manifest | null,
 ): Promise<CheckResult[]> {
-  return [
+  const results = [
     checkManifest(manifest),
     await checkCustomizations(projectRoot),
     await checkSkillMatrix(projectRoot),
@@ -852,6 +874,26 @@ export async function runSharedChecks(
     await checkTornBlocks(projectRoot, manifest),
     checkRootFileClassification(manifest),
   ];
+
+  // With no manifest there is nothing for `sync` to sync.
+  //
+  // Three of these checks fall through to the blanket "run sync", and `sync` on a
+  // project with no manifest exits 1 saying to run `init` — so after
+  // `remove --all` or `remove --keep-files`, both documented commands, `doctor`
+  // printed four issues and three remedies that could not work. `checkManifest`
+  // was given the right remedy when this was found the first time; its
+  // neighbours, which are downstream of the same fact, were not.
+  //
+  // Rewritten rather than suppressed: they are true observations, and a person
+  // reading them should be told the one command that resolves all of them.
+  if (!manifest) {
+    for (const r of results) {
+      if (!r.ok && (r.fix === undefined || /opencastle sync/.test(r.fix))) {
+        r.fix = 'opencastle init — nothing is installed, so there is nothing to sync';
+      }
+    }
+  }
+  return results;
 }
 
 export default async function doctor({ args }: CliContext): Promise<void> {
