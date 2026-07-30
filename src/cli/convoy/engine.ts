@@ -24,7 +24,14 @@ import { parseTimeout, parseYaml } from '../run/schema.js'
 import { getAdapter, detectAdapter } from '../run/adapters/index.js'
 import { c } from '../prompt.js'
 import { validateFilePartitions, scanSymlinks, scanNewSymlinks, normalizePath, pathsOverlap } from './partition.js'
-import { scanForSecrets, runSecretScanGate, runBlastRadiusGate, browserTestGate } from './gates.js'
+import {
+  scanForSecrets,
+  runSecretScanGate,
+  runBlastRadiusGate,
+  runDependencyAuditGate,
+  runRegressionTestGate,
+  browserTestGate,
+} from './gates.js'
 import { validateOutput, buildContractInstruction, buildContractRetryPrompt } from './contracts.js'
 import { runTwoStageReview } from './review-stages.js'
 import { buildIsolationPreamble, resolveDependencyResults, detectPartitionViolations } from './isolation.js'
@@ -1721,6 +1728,110 @@ async function runConvoy(
             }
             taskAdapterMap.delete(taskRecord.id)
             return
+          }
+        }
+
+        // Dependency audit and regression test gates
+        //
+        // Both were declared in the spec validator, implemented in full, and set to
+        // 'auto' by `spec-builder.ts` on its own — and never called from here. A
+        // spec could ask for `regression_test`, validate, run green, and never run
+        // the test suite. Nothing failed, which is the worst way for a gate to be
+        // broken. `built-in-gates.test.ts` now derives the accepted-gate list from
+        // the validator and fails if any of them is not branched on and invoked.
+        //
+        // The failure path is shared between the two rather than copied, because
+        // copying it is how the three gates above came to hold three near-identical
+        // 40-line blocks that have to be kept in step by hand.
+        const failGate = async (gate: string, label: string, output: string): Promise<void> => {
+          await removeWorktree()
+          const freshRecord = store.getTask(taskRecord.id, convoyId)!
+          if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
+            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
+              retries: freshRecord.retries + 1,
+              worker_id: null,
+              worktree: null,
+              started_at: null,
+              finished_at: null,
+              prompt: `${label} gate failed.\n${output}\n\nFix the issues and try again.`,
+            })
+            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+            process.stdout.write(
+              `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} ${label} gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
+            )
+          } else {
+            store.withTransaction(() => {
+              store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
+                finished_at: finishedAt,
+                output: `Built-in gate (${gate}) failed:\n${output}`,
+                exit_code: 1,
+              })
+              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+            })
+            completedCount++
+            process.stdout.write(
+              `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} ${label} gate failed ${elapsed} ${c.dim(`(worker ${workerId})`)}\n`,
+            )
+            events.emit(
+              'task_failed',
+              { reason: 'gate-failed', gate, worker_id: workerId },
+              { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
+            )
+            handleExhaustion(freshRecord, 'gate-failed', output)
+          }
+          taskAdapterMap.delete(taskRecord.id)
+        }
+
+        // Both gates shell out to npm, and `runGateCommand` reports a spawn failure
+        // as a non-zero exit — so without this a project that is not an npm package
+        // would have every task fail on a gate it cannot possibly satisfy. Announced
+        // and skipped, the way the browser_test gate handles a missing config.
+        const pkgJsonPath = resolve(worktreePath, 'package.json')
+        let pkgScripts: Record<string, unknown> | null = null
+        if (existsSync(pkgJsonPath)) {
+          try {
+            pkgScripts = (JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as { scripts?: Record<string, unknown> })
+              .scripts ?? {}
+          } catch {
+            pkgScripts = null
+          }
+        }
+
+        if (builtInGates.dependency_audit) {
+          if (pkgScripts === null) {
+            process.stderr.write(
+              `Warning: dependency_audit gate enabled but ${worktreePath} has no readable package.json — skipping\n`,
+            )
+          } else {
+            const auditResult = await runDependencyAuditGate(worktreePath)
+            events.emit(
+              'built_in_gate_result',
+              { gate: 'dependency_audit', passed: auditResult.passed, output: auditResult.output },
+              { convoy_id: convoyId, task_id: taskRecord.id },
+            )
+            if (!auditResult.passed) {
+              await failGate('dependency_audit', 'dependency audit', auditResult.output)
+              return
+            }
+          }
+        }
+
+        if (builtInGates.regression_test) {
+          if (pkgScripts === null || typeof pkgScripts.test !== 'string') {
+            process.stderr.write(
+              `Warning: regression_test gate enabled but no "test" script found in package.json — skipping\n`,
+            )
+          } else {
+            const regressionResult = await runRegressionTestGate(worktreePath)
+            events.emit(
+              'built_in_gate_result',
+              { gate: 'regression_test', passed: regressionResult.passed, output: regressionResult.output },
+              { convoy_id: convoyId, task_id: taskRecord.id },
+            )
+            if (!regressionResult.passed) {
+              await failGate('regression_test', 'regression test', regressionResult.output)
+              return
+            }
           }
         }
 
