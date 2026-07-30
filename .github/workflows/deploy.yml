@@ -38,6 +38,12 @@ jobs:
       - name: Type-check CLI
         run: npx tsc --noEmit
 
+      # Same ordering as ci.yml, and for the same reason: `bin/cli.mjs` loads from
+      # `dist/`, and four test files drive the CLI as a subprocess. Without a build
+      # they skip, so this gate was running 17 fewer tests than it appeared to.
+      - name: Build CLI
+        run: npm run cli:build
+
       - name: Run tests
         run: npm test
 
