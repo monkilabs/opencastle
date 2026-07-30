@@ -6,7 +6,7 @@ import { parseTaskSpecText, isConvoySpec, isPipelineSpec } from './run/schema.js
 import { createExecutor, buildPhases } from './run/executor.js'
 import { getAdapter, detectAdapter } from './run/adapters/index.js'
 import { createReporter, printExecutionPlan } from './run/reporter.js'
-import { c, confirm, closePrompts } from './prompt.js'
+import { c } from './prompt.js'
 import type { CliContext } from './types.js'
 import type { RunOptions } from './convoy/spec-types.js'
 import type { ConvoyResult } from './convoy/engine.js'

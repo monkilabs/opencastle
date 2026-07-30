@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process';
+import type {} from 'node:child_process';
 
 // ── Stack selection types ──────────────────────────────────────
 

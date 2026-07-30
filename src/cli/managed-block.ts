@@ -372,16 +372,6 @@ function markerLengthAt(content: string, at: number, start: string, end: string)
   return content.startsWith(start, at) ? start.length : end.length
 }
 
-/** Cut a region out, taking back the newline on each side. Shared with gitignore. */
-export function cutBlockRegion(content: string, start: number, end: number): string {
-  return cutBlock(content, start, end)
-}
-
-/** Cut a marker line out, taking back only its own terminator. */
-export function cutMarkerLine(content: string, start: number, end: number): string {
-  return cutLine(content, start, end)
-}
-
 /**
  * Every complete block in the file. All of them are ours.
  *
@@ -408,7 +398,7 @@ export function cutMarkerLine(content: string, start: number, end: number): stri
  * exchange for the writer, the drift checker, the collapse and the uninstall
  * finally sharing one reading of the word "ours".
  */
-export function ownedRegions(content: string): BlockRegion[] {
+function ownedRegions(content: string): BlockRegion[] {
   return blockRegions(content)
 }
 
@@ -416,10 +406,6 @@ export function ownedRegions(content: string): BlockRegion[] {
 function maintainedRegion(content: string): BlockRegion | null {
   const owned = ownedRegions(content)
   return owned.length === 0 ? null : owned[owned.length - 1]
-}
-
-function findBlockStart(content: string): number {
-  return maintainedRegion(content)?.start ?? -1
 }
 
 /**
@@ -633,7 +619,7 @@ function wrap(body: string): string {
   return `${BLOCK_START}\n\n${body.trim()}\n\n${BLOCK_END}\n`
 }
 
-export const BACKUP_SUFFIX = '.opencastle-backup'
+const BACKUP_SUFFIX = '.opencastle-backup'
 
 /**
  * Keep the previous contents beside a file we are about to change destructively.
@@ -651,18 +637,13 @@ async function backUp(path: string, contents: string): Promise<void> {
 }
 
 /**
- * Everything that would be left if all of ours were taken out.
+ * Everything outside *every* block — what would be left if all of ours came out.
  *
  * The same function the uninstall uses, so "does this file hold anything of the
- * user's" is answered the same way it will be acted on. It used to strip only
- * the maintained block and then re-scan for strays — the two-pass shape that
- * could promote a pair of orphans into a region and delete what lay between.
+ * user's" is answered the same way it will be acted on. It used to strip only the
+ * maintained block and then re-scan for strays — the two-pass shape that could
+ * promote a pair of orphans into a region and delete what lay between.
  */
-function outsideTheBlock(content: string): string {
-  return stripAllBlocks(content)
-}
-
-/** Everything outside *every* block. */
 function stripAllBlocks(content: string, start = BLOCK_START, end = BLOCK_END): string {
   // What comes out is decided once, from the file as it stands, and the cuts
   // are applied back to front so the offsets stay valid.

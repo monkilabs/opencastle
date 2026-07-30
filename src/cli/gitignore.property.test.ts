@@ -119,39 +119,6 @@ function splitLines(text: string): string[] {
   return text.split(/\r\n|\n|\r/)
 }
 
-/** The file with `drop` line indices removed, terminators preserved. */
-function joinKept(text: string, drop: Set<number>): string {
-  const parts = text.split(/(\r\n|\n|\r)/)
-  let out = ''
-  let line = 0
-  for (let i = 0; i < parts.length; i += 2) {
-    if (!drop.has(line)) out += parts[i] + (parts[i + 1] ?? '')
-    line++
-  }
-  return out
-}
-
-/** Which of `RULES` git ignores, given the file on disk. */
-function ignored(dir: string): string[] {
-  try {
-    // The machine's *global* excludes file is off. Without this the oracle
-    // answered from whatever the developer happens to ignore globally — `dist/`
-    // was reported ignored by a fixture that never mentioned it — so the test
-    // was both wrong here and unreproducible anywhere else.
-    const out = execFileSync(
-      'git',
-      ['-C', dir, '-c', 'core.excludesFile=/dev/null', 'check-ignore', '--stdin'],
-      { input: RULES.join('\n') + '\n', encoding: 'utf8' },
-    )
-    return out.split('\n').filter(Boolean)
-  } catch (err) {
-    // Exit 1 means "none ignored", which is an answer, not a failure.
-    const e = err as { status?: number; stdout?: string }
-    if (e.status === 1) return (e.stdout ?? '').split('\n').filter(Boolean)
-    throw err
-  }
-}
-
 const TIMEOUT = 180_000
 
 describe('.gitignore holds the same invariants as a root file', () => {

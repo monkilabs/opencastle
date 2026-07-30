@@ -8,7 +8,7 @@ import type { PromptStepOptions } from './plan.js'
 import { cleanupAdapters } from './run/adapters/index.js'
 import type { CliContext } from './types.js'
 import { parseYaml, validateSpec } from './run/schema.js'
-import { buildConvoyYaml, parseTaskPlanWithReason, parsePatches, applyPatches, deriveSpecEnrichment, detectJsonTruncation } from './convoy/spec-builder.js'
+import { buildConvoyYaml, parseTaskPlanWithReason, parsePatches, applyPatches, deriveSpecEnrichment } from './convoy/spec-builder.js'
 import type { TaskPlan, SpecEnrichment } from './convoy/spec-builder.js'
 
 export interface ConvoyGroup {
@@ -45,7 +45,6 @@ function extractRelevantPrdSections(prdContent: string, phases: number[]): strin
   // Sections to include condensed
   const condenseSection = ['user stories & acceptance criteria', 'implementation scope', 'success criteria', 'risks & open questions']
 
-  let currentSection = ''
   let inTaskBreakdown = false
   let inRelevantPhase = false
   let skipSection = false
@@ -55,7 +54,6 @@ function extractRelevantPrdSections(prdContent: string, phases: number[]): strin
     const h2Match = line.match(/^## (.+)/)
     if (h2Match) {
       const heading = h2Match[1].trim().toLowerCase()
-      currentSection = heading
       inTaskBreakdown = heading === 'task breakdown'
       inRelevantPhase = false
       skipSection = false

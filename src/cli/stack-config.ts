@@ -12,7 +12,7 @@ import {
   ALL_PLUGIN_SKILL_NAMES,
   getSelectedSkillNames,
 } from '../orchestrator/plugins/index.js';
-import type { PluginConfig } from '../orchestrator/plugins/types.js';
+import type {} from '../orchestrator/plugins/types.js';
 
 // ── Tool registries (derived from plugins) ────────────────────
 

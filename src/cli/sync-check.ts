@@ -8,7 +8,6 @@ import { getMcpConfigRelPath } from './mcp.js'
 import { resolveStack } from './stack-config.js'
 import { gitignoreNeedsRebuild } from './gitignore.js'
 import {
-  blockRegions,
   carriesLegacyBody,
   stripManagedBlock,
   hasManagedBlock,
@@ -54,14 +53,6 @@ export interface CheckReport {
   drift: Drift[]
   /** Files compared, for reporting scale. */
   checked: number
-}
-
-/** The text of the last complete region delimited by `start`/`end`, if any. */
-function extractRegion(content: string, start: string, end: string): string | null {
-  const regions = blockRegions(content, start, end)
-  if (regions.length === 0) return null
-  const r = regions[regions.length - 1]
-  return content.slice(r.start, r.end)
 }
 
 /** Every file under a directory, relative to it, sorted for stable output. */

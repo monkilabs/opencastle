@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { parse as yamlParse } from 'yaml'
 import type { TaskSpec, ValidationResult } from '../convoy/spec-types.js'
 
@@ -711,23 +710,4 @@ export function parseTaskSpecText(text: string): TaskSpec {
   }
 
   return applyDefaults(spec)
-}
-
-/**
- * Read, parse, validate, and return a typed task spec from a YAML file.
- * @throws If file cannot be read, parsed, or spec is invalid
- */
-export async function parseTaskSpec(filePath: string): Promise<TaskSpec> {
-  let text: string
-  try {
-    text = await readFile(filePath, 'utf8')
-  } catch (err: unknown) {
-    const e = err as Error & { code?: string }
-    if (e.code === 'ENOENT') {
-      throw new Error(`Task spec file not found: ${filePath}`)
-    }
-    throw new Error(`Cannot read task spec file: ${e.message}`)
-  }
-
-  return parseTaskSpecText(text)
 }

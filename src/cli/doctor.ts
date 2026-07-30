@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readManifest } from './manifest.js';
 import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
@@ -14,11 +14,6 @@ import {
   BLOCK_END,
   type FileDiagnosis,
 } from './managed-block.js';
-import {
-  START_MARKER as GITIGNORE_START,
-  END_MARKER as GITIGNORE_END,
-  hasOurRules,
-} from './gitignore.js';
 import { UnreadableConfigError } from './types.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';

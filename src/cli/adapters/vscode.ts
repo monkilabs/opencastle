@@ -2,7 +2,7 @@ import { resolve } from 'node:path'
 import { mkdir, readFile, writeFile, copyFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
-import { mergeCopyResults, copyDir, getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { mergeCopyResults, copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getAgentTransform } from '../stack-config.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
@@ -32,9 +32,6 @@ const FRAMEWORK_DIRS = [
   'agent-workflows',
   'prompts',
 ]
-
-/** Directories scaffolded once and never overwritten. */
-const CUSTOMIZABLE_DIRS: string[] = []
 
 /**
  * What to copy out of a framework source directory.
@@ -166,7 +163,7 @@ export async function update(
   pkgRoot: string,
   projectRoot: string,
   stack?: StackConfig,
-  repoInfo?: RepoInfo
+  _repoInfo?: RepoInfo
 ): Promise<CopyResults> {
   const srcRoot = getOrchestratorRoot(pkgRoot)
   const destRoot = resolve(projectRoot, '.github')

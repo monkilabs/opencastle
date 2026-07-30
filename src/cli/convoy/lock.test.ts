@@ -8,7 +8,6 @@ import {
   acquireEngineLock,
   EngineAlreadyRunningError,
   isLockStale,
-  releaseEngineLock,
 } from './lock.js'
 
 const LOCK_TABLE_SQL = `

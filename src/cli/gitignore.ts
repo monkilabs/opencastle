@@ -2,16 +2,11 @@ import { resolve } from 'node:path'
 import { readFile, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { UnreadableConfigError } from './types.js'
-import {
-  blockRegions,
-  orphanMarkers,
-  cutBlockRegion,
-  cutMarkerLine,
-} from './managed-block.js'
 
-// Exported so `doctor` can ask whether the entries it is complaining about sit
-// inside a block this tool maintains — the answer decides which remedy it
-// prints — rather than re-deriving the markers and drifting from them.
+// Exported for the property tests, which need to build damaged files, and for
+// nothing else. `doctor` used to import these to decide which remedy it printed;
+// it now asks `gitignoreNeedsRebuild` instead, and the import it never removed
+// sat here for four rounds describing a coupling that had already gone.
 export const START_MARKER = '# >>> OpenCastle managed (do not edit) >>>'
 export const END_MARKER = '# <<< OpenCastle managed <<<'
 
@@ -84,15 +79,7 @@ const LOCAL_ONLY = [
 // the only surviving copy of something the user wrote. Ignoring it hid it from
 // `git status`, which left it one `git clean -xdf` from gone.
 
-/** A line only our generated block contains — the marker that it is ours. */
-export const GENERATED_SENTINEL = 'Generated assistant config is committed on purpose'
-
-/** Is a block of ours in this `.gitignore`, whatever state its markers are in? */
-export function hasOurRules(content: string): boolean {
-  return content.includes(GENERATED_SENTINEL)
-}
-
-export function buildBlock(): string {
+function buildBlock(): string {
   return [
     START_MARKER,
     '# Generated assistant config is committed on purpose, so teammates get',

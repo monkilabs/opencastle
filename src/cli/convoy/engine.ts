@@ -2,15 +2,11 @@ import { execFile as execFileCb } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   appendFileSync,
-  closeSync,
   existsSync,
-  fsyncSync,
   mkdirSync,
-  openSync,
   readFileSync,
   renameSync,
   unlinkSync,
-  writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -593,7 +589,7 @@ async function executeSteps(
     if (step.if) {
       const condMet = evaluateStepCondition(step.if, stepResults, worktreePath, basePath)
       if (!condMet) {
-        const stepId = store.insertTaskStep({
+        store.insertTaskStep({
           task_id: taskRecord.id,
           step_index: i,
           prompt: step.prompt,
@@ -907,7 +903,7 @@ async function runConvoy(
     store,
     events,
     convoyId,
-    onKill: (workerId, taskId) => {
+    onKill: (_workerId, taskId) => {
       const task = activeTaskMap.get(taskId)
       const taskAdpt = taskAdapterMap.get(taskId) ?? adapter
       if (task && typeof taskAdpt.kill === 'function') {

@@ -43,7 +43,7 @@ function coerceValue(key: string, raw: string): unknown {
 }
 
 /** Resolve the path to the logs directory (walks up to find .opencastle/). */
-export async function resolveLogsDir(override?: string | null): Promise<string> {
+async function resolveLogsDir(override?: string | null): Promise<string> {
   if (override) return override
   let dir = process.cwd()
   for (;;) {

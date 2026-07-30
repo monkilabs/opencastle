@@ -33,7 +33,7 @@ export function detectCurrentIde(): IdeChoice | undefined {
  * already uses. This is the input to both `opencastle` status and the default
  * init flow: what is already configured is a better starting point than asking.
  */
-export const ASSISTANT_CONFIG_FILES: ReadonlyArray<{
+const ASSISTANT_CONFIG_FILES: ReadonlyArray<{
   path: string
   label: string
   ide: IdeChoice

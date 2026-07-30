@@ -355,7 +355,7 @@ export function createPipelineOrchestrator(
     let existingIdx = 0
 
     try {
-      for (const [convoyIndex, specPath] of convoySpecs.entries()) {
+      for (const [, specPath] of convoySpecs.entries()) {
         const existing = existingConvoys[existingIdx]
 
         if (existing && existing.status === 'done') {

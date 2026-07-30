@@ -199,7 +199,7 @@ export function applyPatches(plan: TaskPlan, patches: TaskPatch[]): TaskPlan {
  * Detects whether a JSON string appears to be truncated (output cut off mid-generation).
  * Returns a descriptive reason string, or null if the JSON looks complete.
  */
-export function detectJsonTruncation(jsonText: string): string | null {
+function detectJsonTruncation(jsonText: string): string | null {
   const trimmed = jsonText.trim()
   if (!trimmed) return 'empty output'
 

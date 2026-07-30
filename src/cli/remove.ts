@@ -160,7 +160,7 @@ function pruneEmptyDirs(dirs: Iterable<string>, stop: string): void {
  * suffixed to avoid clobbering an earlier rescue copy, so a second uninstall
  * told the user to look somewhere the files were not. One fact, one reader.
  */
-export function parkedDirFor(projectRoot: string): string {
+function parkedDirFor(projectRoot: string): string {
   let parked = resolve(projectRoot, '.opencastle.removed')
   let suffix = 2
   while (existsSync(parked)) parked = resolve(projectRoot, `.opencastle.removed.${suffix++}`)

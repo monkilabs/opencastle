@@ -1,14 +1,12 @@
 import { isAbsolute, resolve, relative, join, dirname } from 'node:path'
-import { existsSync, mkdtempSync, rmSync, readdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync } from 'node:fs'
 import { readFile, appendFile, rename, mkdir, writeFile, unlink, copyFile, readdir, rm } from 'node:fs/promises'
 import { readManifest, writeManifest } from './manifest.js'
 import { multiselect, confirm, closePrompts, stdinIsExhausted, c } from './prompt.js'
 import { isLegacyStack, migrateStackConfig, IDE_LABELS } from './types.js'
 import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js'
-import { copyDir, getOrchestratorRoot } from './copy.js'
-import { bootstrapCustomizations } from './bootstrap.js'
+import { getOrchestratorRoot } from './copy.js'
 import {
   getRequiredMcpEnvVars,
   updateSkillMatrixFile,
@@ -20,7 +18,7 @@ import { rebuildMcpConfig, getMcpConfigRelPath } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
-import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig, RepoInfo } from './types.js'
+import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { UnreadableConfigError } from './types.js'
 import { noteUnreadable } from './unreadable-report.js'
 

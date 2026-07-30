@@ -1,7 +1,7 @@
 import { resolve, join, basename } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
-import { getOrchestratorRoot, removeDirIfExists, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
@@ -323,7 +323,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     pkgRoot: string,
     projectRoot: string,
     stack?: StackConfig,
-    repoInfo?: RepoInfo,
+    _repoInfo?: RepoInfo,
   ): Promise<CopyResults> {
     const srcRoot = getOrchestratorRoot(pkgRoot)
     const results: CopyResults = { copied: [], skipped: [], created: [] }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import type { TaskSpec, AgentAdapter } from './convoy/spec-types.js'
 import type { ConvoyResult } from './convoy/engine.js'
@@ -74,7 +74,6 @@ function sleep(ms: number): Promise<void> {
 export async function watchLoop(options: WatchLoopOptions): Promise<void> {
   const {
     spec,
-    specText,
     specPath,
     adapter,
     verbose,

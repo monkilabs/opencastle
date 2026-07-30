@@ -1,5 +1,5 @@
 import { resolve, basename, relative } from 'node:path'
-import { mkdir, writeFile, readdir, readFile, unlink, rm, copyFile, rename } from 'node:fs/promises'
+import { mkdir, writeFile, readdir, readFile, rm, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'

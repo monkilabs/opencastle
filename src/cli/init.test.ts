@@ -53,22 +53,6 @@ async function scaffoldCustomizations(pkgRoot: string, projectRoot: string, stac
   }
 }
 
-/** Recursively list all files in a directory (relative paths). */
-async function listFilesRecursive(dir: string, prefix = ''): Promise<string[]> {
-  if (!existsSync(dir)) return []
-  const entries = await readdir(dir, { withFileTypes: true })
-  const files: string[] = []
-  for (const entry of entries) {
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name
-    if (entry.isDirectory()) {
-      files.push(...await listFilesRecursive(join(dir, entry.name), rel))
-    } else {
-      files.push(rel)
-    }
-  }
-  return files.sort()
-}
-
 // ── Stack fixtures ─────────────────────────────────────────────
 
 const STACK_EMPTY: StackConfig = {
