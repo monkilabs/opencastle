@@ -711,8 +711,13 @@ say "CLAIM 14 — every surface agrees, and every remedy is reachable"
 # opinions. For each broken state: whatever `doctor` and `sync --check` say, the
 # remedy they print must either work or name a person — and they must not
 # disagree about whether the project is healthy.
+# `undamaged` (second argument, optional) marks the one state where every surface
+# being green is the correct answer. For every other state the fixture has broken
+# something, so all-green means no surface noticed — which is the property this
+# function exists to test, and which its `else` arm used to score as a pass.
 c14_check() {
   label=$1
+  undamaged=${2:-no}
   doc=$(node $CLI doctor 2>&1 | plain); doc_code=$?
   node $CLI doctor >/dev/null 2>&1; doc_code=$?
   chk=$(node $CLI sync --check 2>&1 | plain); chk_code=$?
@@ -724,8 +729,10 @@ c14_check() {
     echo "$st" | grep -q "Everything is current" \
       && bad "$label: status green while doctor=$doc_code check=$chk_code" \
       || ok "$label: status agrees with doctor and the checker"
+  elif [ "$undamaged" = yes ]; then
+    ok "$label: undamaged, and every surface agrees"
   else
-    ok "$label: everything green"
+    bad "$label: the fixture broke something and no surface noticed"
   fi
 
   # 2. a red checker either prescribes a command that clears it, or says a
@@ -803,7 +810,7 @@ elif state == 'gi-unreducible':
     gi.write_text('node_modules' + chr(10) + gblk + chr(10) + 'keep-me' + chr(10) + GS +
                   chr(10) + '.env.local' + chr(10) + gblk + chr(10) + GE + chr(10))
 PY
-  c14_check "$state"
+  if [ "$state" = clean ]; then c14_check "$state" yes; else c14_check "$state"; fi
   # And nothing of the user's is ever lost while all that is going on.
   case $state in
     gi-*) grep -q 'keep-me\|node_modules' .gitignore && ok "$state: their rules survived" \
@@ -956,7 +963,15 @@ if [ -f .gitignore ]; then
   cmp -s "$ROOT/enc.gi" .gitignore && ok ".gitignore byte-identical after removal" \
     || { bad "removal rewrote a non-UTF-8 ignore rule"; xxd .gitignore | head -1; }
 else
-  ok ".gitignore held nothing but our block and was removed"
+  # Deleting is only right if there was nothing of theirs in it. This fixture writes
+  # `secrets-café/` *before* `init`, so the file always held a rule of the user's —
+  # and this arm used to print `ok` for its destruction, which is precisely the loss
+  # the claim above exists to rule out.
+  if [ -s "$ROOT/enc.gi" ]; then
+    bad "removal deleted a .gitignore that held the user's non-UTF-8 rule"
+  else
+    ok ".gitignore held nothing but our block and was removed"
+  fi
 fi
 
 say "CLAIM 13c — upgrading a real previous-release install"
@@ -1042,7 +1057,10 @@ p = pathlib.Path(sys.argv[1]); p.write_bytes(b'\xef\xbb\xbf' + p.read_bytes())" 
     grep -q 'Project Instructions\|Copilot Instructions' "$root" \
       && bad "$ide: our body survived the uninstall" || ok "$ide: uninstall left nothing of ours"
   else
-    ok "$ide: uninstall removed the file"
+    # The fixture seeds `# R` into every root file before `init`, so a co-owned file
+    # that is gone after the uninstall took the user's line with it. That is the loss
+    # the markers exist to prevent, and this arm used to call it a pass.
+    bad "$ide: uninstall deleted a co-owned root file that held the user's line"
   fi
 done
 
@@ -1059,6 +1077,15 @@ c15_states="clean gi-block-deleted gi-doubled gi-torn root-severed root-doubled
             manifest-empty mcp-is-dir mcp-unparseable stale-legacy
             gi-bom gi-bom-block-first gi-mixed-endings
             dir-wearing-unfiltered-name unreadable-oc-agents"
+# Shapes that are not damage, so all-green is the right answer — and is asserted,
+# not merely permitted.
+#
+# `gi-bom-block-first` is here because it is fixed. A mark in front of our own
+# opening marker is exactly what two round-21 reviewers found breaking every
+# surface at once, with `sync` a no-op and the diagnosis false about the file. The
+# readers agree about it now, so the honest assertion is that the file is accepted
+# as it stands. If one of them ever calls it a fault again, this fails.
+c15_benign="clean gi-bom gi-bom-block-first"
 # Faults in the *tree*, as opposed to drift in the *content*. For these a green
 # `doctor` is a defect however loudly it warns about something else: the gate is
 # red because a person has to act, and this is the command that tells them so.
@@ -1108,7 +1135,7 @@ elif state == 'gi-bom-block-first':
     # diagnosis ("0 start markers") false about a file holding one complete pair.
     gi = pathlib.Path('.gitignore')
     body = gi.read_text()
-    at = body.index(START)
+    at = body.index(GS)
     gi.write_bytes(b'\xef\xbb\xbf' + body[at:].encode() + body[:at].encode())
 elif state == 'gi-mixed-endings':
     # One file, more than one terminator. Uniform conversion cannot produce it and
@@ -1142,7 +1169,15 @@ PY
   st=$(node $CLI 2>&1 | plain)
 
   # Neither surface may call the project healthy while the other names a fault.
-  if [ $dr -ne 0 ] && [ $ck -eq 0 ]; then
+  #
+  # Benign shapes are asserted green rather than merely allowed to be, because
+  # "both surfaces agree" passes when they agree on a fault too — so a regression
+  # that turned one of these red again would have slipped through that arm.
+  if case " $c15_benign " in *" $state "*) true ;; *) false ;; esac; then
+    { [ $dr -eq 0 ] && [ $ck -eq 0 ]; } \
+      && ok "$state: not a fault, and every surface is quiet" \
+      || bad "$state: nothing is wrong with this file, but doctor=$dr gate=$ck"
+  elif [ $dr -ne 0 ] && [ $ck -eq 0 ]; then
     echo "$chk" | grep -q "match their sources" \
       && bad "$state: doctor=1 but the CI gate reports everything matching" \
       || ok "$state: gate is quiet but not claiming health"
@@ -1161,8 +1196,13 @@ PY
       *)
         ok "$state: content drift — gate red, doctor legitimately quiet" ;;
     esac
+  elif [ $dr -ne 0 ] && [ $ck -ne 0 ]; then
+    ok "$state: both surfaces name the fault"
   else
-    ok "$state: both surfaces agree ($dr/$ck)"
+    # Agreement is not the property. Two surfaces can agree by both being wrong,
+    # and this arm scored that as a pass — the fixture damaged the project and
+    # neither the diagnostic nor the CI gate noticed.
+    bad "$state: the fixture broke something and neither surface noticed"
   fi
 
   # And status never contradicts either of them.
@@ -1171,7 +1211,12 @@ PY
       && bad "$state: status green while doctor=$dr gate=$ck" \
       || ok "$state: status agrees"
   fi
-  grep -q 'MY OWN RULE' CLAUDE.md 2>/dev/null && ok "$state: their line survived" \
+  # A writing command, then the check. Everything above this point only reads —
+  # `doctor`, `sync --check` and the bare status contain no write between them — so
+  # "their line survived" was asserted against three commands that could not have
+  # removed it. The line has to survive the command that rewrites the file.
+  node $CLI sync --yes --force >/dev/null 2>&1
+  grep -q 'MY OWN RULE' CLAUDE.md 2>/dev/null && ok "$state: their line survived a real sync" \
                                               || bad "$state: their line was lost"
   chmod 755 .opencastle .opencastle/agents 2>/dev/null
 done
@@ -1205,7 +1250,10 @@ for fault in readonly-second dir-second; do
       && bad "$fault: the front door calls it uninstalled" \
       || ok "$fault: the front door sees the install"
   else
-    ok "$fault: nothing landed, so nothing to orphan"
+    # The whole point of this fixture is a *partial* install: one target fails and
+    # the others must still be recorded. Nothing landing means the fixture never
+    # reached the state the claim is about, so there is nothing to be pleased with.
+    bad "$fault: no files landed at all — the partial-install fixture tested nothing"
   fi
   chmod 644 .github/copilot-instructions.md 2>/dev/null
   rm -rf .github/copilot-instructions.md 2>/dev/null
