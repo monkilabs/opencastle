@@ -13,6 +13,20 @@ import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
 
 const repoRoot = resolve(import.meta.dirname, '..', '..')
+
+/**
+ * These suites ask the built CLI for its own `--help`, so they need `dist/`.
+ *
+ * Without it `bin/cli.mjs` cannot import the command module, `--help` prints
+ * nothing, and every flag in the table reads as undocumented — 26 confusing
+ * failures whose real cause is a missing build. `doctor-remedies`, `boundary` and
+ * `dispatcher` already guarded themselves this way and these two did not, which is
+ * exactly how a green local run became a red CI one: locally `dist/` was always
+ * there because it had just been rebuilt.
+ *
+ * CI now builds before `npm test`, so nothing here is skipped there.
+ */
+const cliBuilt = existsSync(join(repoRoot, 'dist', 'cli', 'init.js'))
 const readme = readFileSync(join(repoRoot, 'README.md'), 'utf8')
 const architecture = readFileSync(join(repoRoot, 'ARCHITECTURE.md'), 'utf8')
 const cliSource = readFileSync(join(repoRoot, 'bin', 'cli.mjs'), 'utf8')
@@ -448,7 +462,7 @@ describe('quickstart stays runnable', () => {
  * A flag that works but is undocumented fails this too, and that is the right
  * outcome: the fix is to document it.
  */
-describe('documented flags are flags the command declares', () => {
+describe.skipIf(!cliBuilt)('documented flags are flags the command declares', () => {
   const GLOBAL = new Set(['--help', '-h', '--debug', '--version', '-v'])
 
   // The command *path*, not the first word. `convoy run --file` is read by `run`,
@@ -591,7 +605,7 @@ describe('declared flags are flags the parser reads', () => {
  * check, overwrite a hand-edited generated file, and exit 0. A table that falls
  * behind the help either rejects a flag that works or admits one that does not.
  */
-describe('the CLI flag table matches the help text', () => {
+describe.skipIf(!cliBuilt)('the CLI flag table matches the help text', () => {
   const table = (() => {
     const src = readFileSync(join(repoRoot, 'bin', 'cli.mjs'), 'utf8')
     const m = /const COMMAND_FLAGS = \{([\s\S]*?)\n\}/.exec(src)

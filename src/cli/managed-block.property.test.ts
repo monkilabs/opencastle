@@ -125,7 +125,11 @@ function linesInsideBlocks(text: string, line: string): number {
     .reduce((a, b) => a + b, 0)
 }
 
-const TIMEOUT = 180_000
+// 88s for the enumeration alone on this machine, and ~161s when the suite runs it
+// in parallel with everything else — against a 180s budget, which left no headroom
+// at all and timed out on CI's slower hardware. The work is the coverage; the
+// budget was the problem.
+const TIMEOUT = 600_000
 
 describe('the managed block holds its invariants over files nobody chose', () => {
   let dir: string

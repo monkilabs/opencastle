@@ -28,12 +28,16 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
-      - name: Run tests
-        run: npm test
-
-      # bin/cli.mjs loads from dist/, so the round trip needs a build first.
+      # Before the tests, not after them. `bin/cli.mjs` loads from `dist/`, and
+      # four test files drive the CLI as a subprocess — so with no build they
+      # either skip (three of them, silently: 13 tests that looked green in CI
+      # while asserting nothing) or fail confusingly (the two that ask the CLI for
+      # its own `--help`). Building first means every one of them actually runs.
       - name: Build CLI
         run: npm run cli:build
+
+      - name: Run tests
+        run: npm test
 
       # The claim the README makes: init a project, and `sync --check` on the
       # committed output is clean. Runs the local build, not the published one.
