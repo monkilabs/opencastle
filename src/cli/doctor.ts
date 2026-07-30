@@ -124,7 +124,21 @@ async function checkCustomizations(projectRoot: string): Promise<CheckResult> {
   if (!existsSync(dir)) {
     return { ok: false, label: 'Customizations directory', detail: '.opencastle/ not found' };
   }
-  const files = await readdir(dir).catch(() => []);
+  // `.catch(() => [])` reported "✓ 0 entries" for a directory it could not open —
+  // a green tick over the exact fault that makes `sync`, `init` and this command's
+  // own remedy all exit 1. An empty directory and an unreadable one are different
+  // answers and only one of them is health.
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch (err) {
+    return {
+      ok: false,
+      label: 'Customizations directory',
+      detail: `.opencastle/ cannot be read — ${(err as Error).message}`,
+      fix: 'fix the permissions on .opencastle/, then run opencastle sync; this one needs a person',
+    };
+  }
   return { ok: true, label: 'Customizations directory', detail: `${files.length} entries` };
 }
 
@@ -853,11 +867,13 @@ export default async function doctor({ args }: CliContext): Promise<void> {
 
   let manifest: Manifest | null = null;
   let manifestUnreadable: string | undefined;
+  let manifestReason: 'unparseable' | 'unreadable' = 'unparseable';
   try {
     manifest = await readManifest(projectRoot);
   } catch (err) {
     if (!(err instanceof UnreadableConfigError)) throw err;
     manifestUnreadable = err.file;
+    manifestReason = err.reason;
   }
 
   // Shared checks (not IDE-specific)
@@ -866,10 +882,22 @@ export default async function doctor({ args }: CliContext): Promise<void> {
         {
           ok: false,
           label: 'OpenCastle manifest',
-          detail: `${manifestUnreadable} is not valid JSON`,
+          // The reason, not a guess at it. `UnreadableConfigError` carries one
+          // precisely so this message can be true, and three readers of it —
+          // here, `status` and `remove` — each hardcoded "not valid JSON". A
+          // directory is not invalid JSON, and "fix the JSON by hand" is not
+          // something a person can act on when the path is a directory or the
+          // permissions are wrong.
+          detail:
+            manifestReason === 'unreadable'
+              ? `${manifestUnreadable} cannot be read`
+              : `${manifestUnreadable} is not valid JSON`,
           // Not `init`: that would run over a populated .opencastle/ and is how
           // this state used to destroy the user's own notes.
-          fix: 'fix the JSON by hand — a merge conflict, most likely',
+          fix:
+            manifestReason === 'unreadable'
+              ? `fix the permissions on ${manifestUnreadable}, or remove what is standing in its place; this one needs a person`
+              : 'fix the JSON by hand — a merge conflict, most likely',
         },
       ]
     : await runSharedChecks(projectRoot, manifest);

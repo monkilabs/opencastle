@@ -39,6 +39,46 @@ function expandEqualsForm(argv) {
 
 const args = expandEqualsForm(rawArgs)
 
+/**
+ * Flags each command reads, for the commands whose flag set is closed.
+ *
+ * A misspelled flag used to be accepted and ignored. `opencastle sync --chekc
+ * --yes` — one transposed letter, plus the flag CI passes — silently ran a full
+ * sync instead of a read-only check, overwrote a hand-edited generated file, and
+ * exited 0. `doctor --fix` exits 0 having repaired nothing, which is how it came
+ * to be documented in the shipped agent-hooks protocol.
+ *
+ * Only closed sets are listed. `convoy` takes a free-text task and dispatches to
+ * subcommands with their own options; `log` records any `--<field> <value>` pair
+ * by design, and its help says so. Those two validate their own input.
+ *
+ * `docs-accuracy.test.ts` asserts this table against each command's `--help`, so
+ * the two cannot drift.
+ */
+const GLOBAL_FLAGS = ['--help', '-h', '--version', '-v', '--debug']
+const COMMAND_FLAGS = {
+  init: ['--customize', '--dry-run', '--dryRun', '--reconfigure', '--yes', '-y'],
+  sync: ['--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
+  update: ['--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
+  doctor: [],
+  remove: ['--all', '--dry-run', '--keep-files', '--yes'],
+  add: ['--dry-run', '--list'],
+}
+
+/** The first flag in `argv` this command does not read, or null. */
+function unknownFlag(command, argv) {
+  const known = COMMAND_FLAGS[command]
+  if (!known) return null
+  const allowed = new Set([...known, ...GLOBAL_FLAGS])
+  for (const arg of argv) {
+    if (arg === '--') break
+    if (!arg.startsWith('-') || arg === '-') continue
+    if (!allowed.has(arg)) return arg
+  }
+  return null
+}
+
+
 // node:sqlite is still flagged experimental and prints a warning on import. It is
 // an implementation detail of the convoy store, so it should not appear in the
 // output of a status or sync run. Other warnings pass through untouched.
@@ -182,6 +222,18 @@ if (!commands[command]) {
   }
   console.error(`\n  Unknown command: ${command}`)
   console.error(`  Run "opencastle --help" for usage.\n`)
+  process.exit(1)
+}
+
+// Refused before the command runs, because for `sync` the difference between a
+// recognised flag and an ignored one is the difference between reading the project
+// and rewriting it.
+const stray = unknownFlag(command, args)
+if (stray) {
+  const known = [...COMMAND_FLAGS[command], ...GLOBAL_FLAGS].sort()
+  console.error(`\n  ✗ Unknown option for "${command}": ${stray}`)
+  console.error(`  Accepts: ${known.join(' ')}`)
+  console.error(`  Run "opencastle ${command} --help" for what each one does.\n`)
   process.exit(1)
 }
 

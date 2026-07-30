@@ -224,10 +224,23 @@ export async function update(
     const destPath = resolve(pluginDestDir, 'SKILL.md')
     visited.add(destPath)
     const content = await readFile(skillPath, 'utf8')
-    if (existsSync(destPath) && (await readFile(destPath, 'utf8')) === content) {
+    const existed = existsSync(destPath)
+    // The same guard the other three write paths got. Unguarded, a directory
+    // wearing `SKILL.md`'s name took `sync` down with a bare `EISDIR` that named
+    // nothing to act on.
+    let onDisk: string | null = null
+    if (existed) {
+      try {
+        onDisk = await readFile(destPath, 'utf8')
+      } catch {
+        ;(results.unreadable ??= []).push(`${destPath}\u0000unreadable`)
+        results.skipped.push(destPath)
+        continue
+      }
+    }
+    if (onDisk === content) {
       results.skipped.push(destPath)
     } else {
-      const existed = existsSync(destPath)
       await writeFile(destPath, content)
       results[existed ? 'copied' : 'created'].push(destPath)
     }

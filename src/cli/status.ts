@@ -151,7 +151,10 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
       stale: false,
       unmanaged: [],
       nextCommand: 'opencastle doctor',
-      nextReason: `${err.file} is not valid JSON — fix it by hand, a merge conflict most likely`,
+      nextReason:
+        err.reason === 'unreadable'
+          ? `${err.file} cannot be read — fix the permissions, or remove what is standing in its place`
+          : `${err.file} is not valid JSON — fix it by hand, a merge conflict most likely`,
     }
   }
 

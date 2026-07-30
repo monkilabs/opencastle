@@ -25,10 +25,10 @@ const INIT_HELP = `
   have, shows what it will do, and asks once.
 
   Options:
-    --customize     Choose IDEs and integrations manually
-    --yes           Accept the detected setup without asking
-    --dry-run       Preview what would be changed without writing files
-    --help, -h      Show this help
+    --customize, --reconfigure  Choose IDEs and integrations manually
+    --yes, -y                   Accept the detected setup without asking
+    --dry-run                   Preview what would be changed without writing files
+    --help, -h                  Show this help
 `
 
 /** Every plugin category, in the order the customize flow presents them. */

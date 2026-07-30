@@ -431,8 +431,12 @@ export default async function remove({ args }: CliContext): Promise<void> {
       `     ${c.dim('It has no markers, so this command cannot tell it from your own writing.')}`,
     )
   }
-  for (const p of unreadable) {
-    console.log(`  ${c.yellow('!')} Left ${p} alone — it is not valid JSON.`)
+  for (const entry of unreadable) {
+    const [name, why] = entry.split('\u0000')
+    console.log(
+      `  ${c.yellow('!')} Left ${name} alone — ` +
+        (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),
+    )
   }
   if (keptDir) {
     console.log(

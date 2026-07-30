@@ -160,9 +160,26 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // totals here become "Updated N framework files", and counting every file
     // visited made a sync that changed nothing look identical to one that
     // rewrote the tree.
-    if (existed && (await readFile(destPath, 'utf8')) === content) {
-      results.skipped.push(destPath)
-      return
+    // Named and skipped, not fatal. This read only answers "is it already what we
+    // would write?", but on a directory wearing a generated file's name it threw
+    // `EISDIR` — which Node raises on the descriptor, so it carries no `.path` and
+    // the catch-all in `bin/cli.mjs` had nothing to print. `sync` died mid-install
+    // naming nothing, on cursor and windsurf, while the gate reading the same tree
+    // named the path correctly. The twin of this guard was added to `emit` and to
+    // `copyDir` two commits ago and not here.
+    if (existed) {
+      let onDisk: string | null = null
+      try {
+        onDisk = await readFile(destPath, 'utf8')
+      } catch {
+        ;(results.unreadable ??= []).push(`${destPath}\u0000unreadable`)
+        results.skipped.push(destPath)
+        return
+      }
+      if (onDisk === content) {
+        results.skipped.push(destPath)
+        return
+      }
     }
     await writeFile(destPath, content)
     results[existed ? 'copied' : 'created'].push(destPath)

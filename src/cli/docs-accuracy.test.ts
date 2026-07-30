@@ -568,3 +568,84 @@ describe('declared flags are flags the parser reads', () => {
     expect([...new Set(offenders)]).toEqual([])
   })
 })
+
+/**
+ * The entrypoint's flag table matches what each command documents.
+ *
+ * `bin/cli.mjs` now refuses a flag a command does not read, which makes that table
+ * a third place the flag set is written down — after the parser and the help text.
+ * Three copies of one fact is the shape most of this branch's defects came from, so
+ * the table is asserted against `--help` rather than trusted.
+ *
+ * The consequence of drift is not cosmetic. `sync --chekc --yes` — one transposed
+ * letter plus the flag CI passes — used to run a full sync instead of a read-only
+ * check, overwrite a hand-edited generated file, and exit 0. A table that falls
+ * behind the help either rejects a flag that works or admits one that does not.
+ */
+describe('the CLI flag table matches the help text', () => {
+  const table = (() => {
+    const src = readFileSync(join(repoRoot, 'bin', 'cli.mjs'), 'utf8')
+    const m = /const COMMAND_FLAGS = \{([\s\S]*?)\n\}/.exec(src)
+    expect(m, 'COMMAND_FLAGS not found in bin/cli.mjs').toBeTruthy()
+    const out = new Map<string, string[]>()
+    for (const row of m![1].split('\n')) {
+      const entry = /^\s*([a-z]+):\s*\[(.*?)\],?\s*$/.exec(row)
+      if (entry) out.set(entry[1], [...entry[2].matchAll(/'(-{1,2}[\w-]+)'/g)].map((x) => x[1]))
+    }
+    return out
+  })()
+
+  it('found the table', () => {
+    expect(table.size).toBeGreaterThanOrEqual(5)
+  })
+
+  it('admits every flag the command documents, and no others', () => {
+    // `--help`/`-h` and the other globals are handled by the entrypoint and are
+    // allowed everywhere, so they are excluded from both sides of the comparison.
+    const GLOBAL = new Set(['--help', '-h', '--version', '-v', '--debug'])
+    const problems: string[] = []
+    for (const [cmd, allowed] of table) {
+      let help: string
+      try {
+        help = execFileSync('node', [join(repoRoot, 'bin', 'cli.mjs'), cmd, '--help'], {
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        })
+      } catch (err) {
+        help = String((err as { stdout?: string }).stdout ?? '')
+      }
+      const options = /\n\s*Options:\n([\s\S]*?)(\n\s*\n|$)/.exec(help)?.[1] ?? ''
+      // Only the flag column. Matching anywhere picked flags out of the prose in
+      // the descriptions — "non-zero" yielded `-zero`, "dry-run" yielded `-run`.
+      const documented = new Set(
+        options
+          .split('\n')
+          .flatMap((line) => {
+            const head = /^\s{2,}(-{1,2}[a-z][\w-]*(?:,\s*-{1,2}[a-z][\w-]*)*)/.exec(line)
+            return head ? [...head[1].matchAll(/-{1,2}[a-z][\w-]*/g)].map((x) => x[0]) : []
+          })
+          .filter((f) => !GLOBAL.has(f)),
+      )
+      const listed = new Set(allowed.filter((f) => !GLOBAL.has(f)))
+      for (const f of documented) {
+        // A documented flag the table omits would be rejected by the entrypoint.
+        if (!listed.has(f)) problems.push(`${cmd}: --help documents ${f}, the table would reject it`)
+      }
+      for (const f of listed) {
+        // The reverse is allowed only for a spelling the help does not print but
+        // the parser accepts, e.g. `--dryRun` beside `--dry-run`. Anything else is
+        // a flag the table admits and nothing documents.
+        //
+        // Compared on the name, with the leading dashes stripped: camelising the
+        // whole token turned `--dry-run` into `-DryRun` and never matched anything.
+        const camelise = (x: string): string =>
+          x.replace(/^-+/, '').replace(/-([a-z])/g, (_, c: string) => c.toUpperCase())
+        const alias = [...documented].some((d) => camelise(d) === camelise(f))
+        if (!documented.has(f) && !alias) {
+          problems.push(`${cmd}: the table admits ${f} and --help never mentions it`)
+        }
+      }
+    }
+    expect([...new Set(problems)]).toEqual([])
+  })
+})
