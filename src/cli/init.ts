@@ -543,10 +543,23 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // guessing deleted two committed files. `scaffoldMcpConfig` reports 'created'
   // for a merge into an existing file as well, so the answer has to come from
   // whether the path existed before the adapters ran.
-  manifest.createdConfigs = [...mcpConfigsBefore]
+  //
+  // Merged with what a previous install recorded, never replaced. `init` over an
+  // existing project finds the config already there and so records nothing — which
+  // overwrote the true `[".mcp.json"]` with `[]` on the second run, and the
+  // uninstall then left our own stub behind because it no longer knew the file was
+  // ours. Found by the command matrix running `init` twice, not by a review round.
+  //
+  // Whether we created a file is a fact about the past. A later run cannot unlearn
+  // it, and the only safe direction for the uninstall is to keep knowing.
+  const createdNow = [...mcpConfigsBefore]
     .filter(([, existed]) => !existed)
     .map(([rel]) => rel)
     .filter((rel) => existsSync(resolve(projectRoot, rel)))
+  manifest.createdConfigs = [...new Set([...(existing?.createdConfigs ?? []), ...createdNow])]
+  // `installedAt` likewise: re-running `init` is a reconfigure, not a first
+  // install, and resetting it threw away when the project actually adopted the tool.
+  if (existing?.installedAt) manifest.installedAt = existing.installedAt
   manifest.stack = stack
   manifest.repoInfo = combinedRepoInfo
   await writeManifest(projectRoot, manifest)

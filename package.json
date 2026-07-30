@@ -48,7 +48,10 @@
     "website:preview": "astro preview --root website",
     "prepublishOnly": "npm run build",
     "dashboard:etl:empty": "tsx src/dashboard/scripts/etl.ts --db .opencastle/__no_demo_db__ --out src/dashboard/public/data",
-    "verify:claims": "npm run cli:build && bash scripts/verify-claims.sh"
+    "verify:claims": "npm run cli:build && bash scripts/verify-claims.sh",
+    "matrix": "npm run cli:build && node scripts/command-matrix.mjs --tier=1",
+    "matrix:full": "npm run cli:build && node scripts/command-matrix.mjs --tier=2",
+    "matrix:all": "npm run cli:build && node scripts/command-matrix.mjs --tier=3"
   },
   "engines": {
     "node": ">=22.5.0"
