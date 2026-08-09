@@ -68,6 +68,54 @@ function applyCliOverrides(spec: TaskSpec, opts: RunOptions): void {
   if (opts.verbose) spec._verbose = true
 }
 
+export interface DashboardHandle {
+  server: { close(): void }
+  url: string
+}
+
+/**
+ * End the run: say where the results went, keep the dashboard up if there is
+ * one, and stop.
+ *
+ * Five paths finish a run — a fresh convoy, a fresh pipeline, a retry, a convoy
+ * resume and a pipeline resume — and each wrote this out by hand. The no-dashboard
+ * half ended in `process.exit`, so it stopped whether or not anyone remembered to
+ * say so; the dashboard half only registered a SIGINT handler, and four of the
+ * five then carried straight on into the next block. With the dashboard running,
+ * `convoy run` executed the whole spec on the engine and then ran it a second time
+ * on the legacy executor, and `--retry-failed` followed its retry with a full fresh
+ * run — every task done twice, and paid for twice, visible only when a dashboard
+ * was up.
+ *
+ * One copy, and it either exits or hands control back for the caller to `return`.
+ */
+export function finishRun(
+  dashboard: DashboardHandle | null,
+  failed: boolean,
+  retryHint?: string,
+): void {
+  const exitCode = failed ? 1 : 0
+  const printRetryHint = (): void => {
+    if (failed && retryHint) console.log(`\n  ${c.dim('Retry failed:')} ${retryHint}`)
+  }
+
+  if (dashboard) {
+    console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
+    console.log(`  ${c.dim('Dashboard:')} ${dashboard.url}`)
+    console.log(`\n  Press Ctrl+C to stop`)
+    printRetryHint()
+    process.on('SIGINT', () => {
+      console.log('\n  Dashboard stopped.\n')
+      dashboard.server.close()
+      process.exit(exitCode)
+    })
+    return
+  }
+
+  printRetryHint()
+  process.exit(exitCode)
+}
+
 /**
  * Parse CLI arguments for the run command.
  */
@@ -584,19 +632,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printConvoyResult(retryResult)
-    if (retryDashboardResult) {
-      console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
-      console.log(`  ${c.dim('Dashboard:')} ${retryDashboardResult.url}`)
-      console.log(`\n  Press Ctrl+C to stop`)
-      const exitCode = retryResult.status !== 'done' ? 1 : 0
-      process.on('SIGINT', () => {
-        console.log('\n  Dashboard stopped.\n')
-        retryDashboardResult!.server.close()
-        process.exit(exitCode)
-      })
-    } else {
-      process.exit(retryResult.status !== 'done' ? 1 : 0)
-    }
+    return finishRun(retryDashboardResult, retryResult.status !== 'done')
   }
 
   // ── --resume flag ─────────────────────────────────────────────
@@ -662,19 +698,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       })
       const resumePipelineResult = await resumePipelineOrchestrator.resume(latestPipeline.id)
       printPipelineResult(resumePipelineResult)
-      if (resumePipelineDashResult) {
-        console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
-        console.log(`  ${c.dim('Dashboard:')} ${resumePipelineDashResult.url}`)
-        console.log(`\n  Press Ctrl+C to stop`)
-        const exitCode = resumePipelineResult.status !== 'done' ? 1 : 0
-        process.on('SIGINT', () => {
-          console.log('\n  Dashboard stopped.\n')
-          resumePipelineDashResult!.server.close()
-          process.exit(exitCode)
-        })
-      } else {
-        process.exit(resumePipelineResult.status !== 'done' ? 1 : 0)
-      }
+      return finishRun(resumePipelineDashResult, resumePipelineResult.status !== 'done')
     }
 
     // ── Pipeline done — don't fall through to convoy check ──────
@@ -760,19 +784,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printConvoyResult(resumeResult)
-    if (resumeDashResult) {
-      console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
-      console.log(`  ${c.dim('Dashboard:')} ${resumeDashResult.url}`)
-      console.log(`\n  Press Ctrl+C to stop`)
-      const exitCode = resumeResult.status !== 'done' ? 1 : 0
-      process.on('SIGINT', () => {
-        console.log('\n  Dashboard stopped.\n')
-        resumeDashResult!.server.close()
-        process.exit(exitCode)
-      })
-    } else {
-      process.exit(resumeResult.status !== 'done' ? 1 : 0)
-    }
+    return finishRun(resumeDashResult, resumeResult.status !== 'done')
   }
 
   // ── Formula template resolution / Read and validate spec ─────
@@ -936,26 +948,11 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printPipelineResult(pipelineResult)
-    if (pipelineDashboardResult) {
-      console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
-      console.log(`  ${c.dim('Dashboard:')} ${pipelineDashboardResult.url}`)
-      console.log(`\n  Press Ctrl+C to stop`)
-      if (pipelineResult.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
-      }
-      const exitCode = pipelineResult.status !== 'done' ? 1 : 0
-      process.on('SIGINT', () => {
-        console.log('\n  Dashboard stopped.\n')
-        pipelineDashboardResult!.server.close()
-        process.exit(exitCode)
-      })
-    } else {
-      if (pipelineResult.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
-      }
-      process.exit(pipelineResult.status !== 'done' ? 1 : 0)
-    }
-    return
+    return finishRun(
+      pipelineDashboardResult,
+      pipelineResult.status !== 'done',
+      `npx opencastle convoy run -f ${opts.file} --retry-failed`,
+    )
   }
 
   // ── Convoy engine path (version: 1 specs) ────────────────────
@@ -1019,25 +1016,11 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       throw err
     }
     printConvoyResult(result)
-    if (dashboardResult) {
-      console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
-      console.log(`  ${c.dim('Dashboard:')} ${dashboardResult.url}`)
-      console.log(`\n  Press Ctrl+C to stop`)
-      if (result.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
-      }
-      const exitCode = result.status !== 'done' ? 1 : 0
-      process.on('SIGINT', () => {
-        console.log('\n  Dashboard stopped.\n')
-        dashboardResult!.server.close()
-        process.exit(exitCode)
-      })
-    } else {
-      if (result.status !== 'done') {
-        console.log(`\n  ${c.dim('Retry failed:')} npx opencastle convoy run -f ${opts.file} --retry-failed`)
-      }
-      process.exit(result.status !== 'done' ? 1 : 0)
-    }
+    return finishRun(
+      dashboardResult,
+      result.status !== 'done',
+      `npx opencastle convoy run -f ${opts.file} --retry-failed`,
+    )
   }
 
   // ── Legacy executor path ──────────────────────────────────────
