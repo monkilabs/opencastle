@@ -11,8 +11,8 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # Skip version-bump commits to prevent infinite loops
-    if: "!startsWith(github.event.head_commit.message, 'chore: release v')"
+    # No loop to guard against: this workflow pushes a tag and nothing else, so
+    # it never produces the commit on main that used to re-trigger it.
     permissions:
       contents: write
       id-token: write
@@ -88,16 +88,39 @@ jobs:
           fi
           echo "Authenticated to npm as ${WHOAMI}"
 
-      - name: Bump version
+      # The released version is derived, not stored.
+      #
+      # `main` is protected by a ruleset with an empty bypass list — every change
+      # goes through a pull request — so this workflow cannot commit a bump, and
+      # the tag is the only durable record it can write. package.json on main is
+      # therefore a floor rather than the truth: the higher of it and the last
+      # tag is what the next version is computed from, so a hand-written bump in
+      # a PR is still honoured, and a release can never go backwards into a
+      # version npm would then serve as `latest`.
+      - name: Determine next version
         if: steps.bump.outputs.type != 'none'
         id: version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          PKG=$(node -p "require('./package.json').version")
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          TAG=${TAG#v}
+          BASE=$(node -e '
+            const [a, b] = process.argv.slice(1).filter(Boolean)
+            if (!b) { console.log(a); process.exit(0) }
+            const part = (s) => s.split(".").map(Number)
+            const [x, y] = [part(a), part(b)]
+            for (let i = 0; i < 3; i++) {
+              if ((x[i] || 0) !== (y[i] || 0)) { console.log((x[i] || 0) > (y[i] || 0) ? a : b); process.exit(0) }
+            }
+            console.log(a)
+          ' "$PKG" "$TAG")
+          echo "package.json=$PKG, last tag=${TAG:-none}, base=$BASE"
 
+          # In the runner only — nothing commits this file.
+          npm version "$BASE" --no-git-tag-version --allow-same-version >/dev/null
           NEW_VERSION=$(npm version ${{ steps.bump.outputs.type }} --no-git-tag-version)
           echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Bumped to $NEW_VERSION (${{ steps.bump.outputs.type }})"
+          echo "Releasing $NEW_VERSION (${{ steps.bump.outputs.type }})"
 
       - name: Install dependencies
         if: steps.bump.outputs.type != 'none'
@@ -144,13 +167,24 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Commit version bump & tag
+      # A tag on the commit that was published, and nothing else.
+      #
+      # This used to commit the bump and `git push origin main --follow-tags`,
+      # which the branch ruleset rejects: "Changes must be made through a pull
+      # request." The publish had already succeeded by then, so the release
+      # reached npm and the repository kept no record of it — no tag, no
+      # release, and a version the next run would try to publish again. Tags are
+      # not covered by the ruleset, and a tag is all the next run needs.
+      - name: Tag the release
         if: steps.bump.outputs.type != 'none'
         run: |
-          git add package.json package-lock.json
-          git commit -m "chore: release ${{ steps.version.outputs.new }}"
-          git tag "${{ steps.version.outputs.new }}"
-          git push origin main --follow-tags
+          TAG="${{ steps.version.outputs.new }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "⏭️ ${TAG} already tagged — skipping"
+          else
+            git tag "${TAG}" "$GITHUB_SHA"
+            git push origin "${TAG}"
+          fi
 
       - name: Create GitHub Release
         if: steps.bump.outputs.type != 'none'
@@ -164,7 +198,7 @@ jobs:
             gh release create "${{ steps.version.outputs.new }}" \
               --title "${{ steps.version.outputs.new }}" \
               --generate-notes \
-              --target main
+              --target "$GITHUB_SHA"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
