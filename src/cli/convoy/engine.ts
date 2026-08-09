@@ -31,6 +31,8 @@ import {
   runDependencyAuditGate,
   runRegressionTestGate,
   browserTestGate,
+  noOpGate,
+  collectWorktreeChanges,
 } from './gates.js'
 import { validateOutput, buildContractInstruction, buildContractRetryPrompt } from './contracts.js'
 import { runTwoStageReview } from './review-stages.js'
@@ -1514,8 +1516,70 @@ async function runConvoy(
         }
       }
 
-      // ── Built-in gates ────────────────────────────────────────────────────
       const builtInGates = spec.defaults?.built_in_gates
+
+      // ── No-op gate ────────────────────────────────────────────────────────
+      // A clean exit is not proof the work happened. This one is on unless the
+      // spec turns it off, because the state it catches — a task that promised
+      // files and produced none — used to be recorded as `done` with exit 0, and
+      // a silent green is worse than a loud red.
+      const contractResult = validateOutput(taskRecord.agent, result.output)
+      if (taskFiles.length > 0 && (builtInGates ? builtInGates.no_op !== false : true)) {
+        const noOpResult = noOpGate({
+          declaredFiles: taskFiles,
+          changedFiles: worktreePath ? await collectWorktreeChanges(worktreePath, baseBranch) : null,
+          agent: taskRecord.agent,
+          contractData: contractResult.data,
+        })
+
+        if (!noOpResult.passed) {
+          events.emit(
+            'built_in_gate_result',
+            { gate: 'no_op', passed: false, output: noOpResult.output },
+            { convoy_id: convoyId, task_id: taskRecord.id },
+          )
+          await removeWorktree()
+          const freshRecord = store.getTask(taskRecord.id, convoyId)!
+          if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
+            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
+              retries: freshRecord.retries + 1,
+              worker_id: null,
+              worktree: null,
+              started_at: null,
+              finished_at: null,
+              prompt: `Your previous attempt produced no changes.\n${noOpResult.output}\n\nWrite the files the task asks for. If you cannot, say why and stop.\n\n${taskRecord.prompt}`,
+            })
+            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+            process.stdout.write(
+              `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} no changes produced, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
+            )
+          } else {
+            store.withTransaction(() => {
+              store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
+                finished_at: finishedAt,
+                output: `Built-in gate (no_op) failed:\n${noOpResult.output}`,
+                exit_code: 1,
+                contract_result: JSON.stringify(contractResult),
+              })
+              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
+            })
+            completedCount++
+            process.stdout.write(
+              `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} produced no changes ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`,
+            )
+            events.emit(
+              'task_failed',
+              { reason: 'no-op', gate: 'no_op', worker_id: workerId },
+              { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
+            )
+            handleExhaustion(freshRecord, 'no-op', noOpResult.output)
+          }
+          taskAdapterMap.delete(taskRecord.id)
+          return
+        }
+      }
+
+      // ── Built-in gates ────────────────────────────────────────────────────
       if (builtInGates && worktreePath) {
         if (builtInGates.browser_test) {
           const specTask = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
@@ -2461,7 +2525,7 @@ async function runConvoy(
       }
 
       // ── Output contract validation ────────────────────────────────────────
-      const contractResult = validateOutput(taskRecord.agent, result.output)
+      // Validated once, up at the no-op gate, which reads the same block.
       if (!contractResult.valid) {
         const freshRecordForContract = store.getTask(taskRecord.id, convoyId)!
         if (freshRecordForContract.retries < freshRecordForContract.max_retries) {

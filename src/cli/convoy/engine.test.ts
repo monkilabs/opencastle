@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
@@ -3837,6 +3837,134 @@ describe('contract retry', () => {
     const violationEvent = events.find(e => e.type === 'contract_violation')
     expect(violationEvent).toBeDefined()
     expect(tasks[0].status).toBe('done')
+  })
+})
+
+// ── No-op gate ────────────────────────────────────────────────────────────────
+
+/**
+ * A task blocked from writing anything, which said so in its OUTPUT_CONTRACT,
+ * was recorded as `done` with exit code 0 and the convoy reported "Tasks: 1/1
+ * done" over an empty branch. Success was inferred from the adapter's exit
+ * status alone; the contract the engine asks for was never consulted.
+ */
+describe('no-op gate', () => {
+  const BLOCKED_OUTPUT = [
+    'I tried Write, then a heredoc, then mkdir. Each was refused.',
+    '<!-- OUTPUT_CONTRACT',
+    '{ "files_changed": [], "tests_added": [], "summary": "BLOCKED: could not create PILOT.md" }',
+    '-->',
+  ].join('\n')
+
+  const WROTE_OUTPUT = [
+    'Created the file.',
+    '<!-- OUTPUT_CONTRACT',
+    '{ "files_changed": ["PILOT.md"], "tests_added": [], "summary": "created PILOT.md" }',
+    '-->',
+  ].join('\n')
+
+  /** A worktree directory outside any repository, so git has no say and the gate
+   *  falls back to what the agent reported about itself. */
+  function makeUntrackedWorktreeManager(): MockWorktreeManager {
+    return {
+      create: vi.fn().mockImplementation(() => {
+        const path = join(tmpDir, 'worktree-untracked')
+        mkdirSync(path, { recursive: true })
+        return Promise.resolve(path)
+      }),
+      remove: vi.fn().mockResolvedValue(undefined),
+      list: vi.fn().mockResolvedValue([]),
+      removeAll: vi.fn().mockResolvedValue(undefined),
+    }
+  }
+
+  it('does not report a blocked task as done', async () => {
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: true, output: BLOCKED_OUTPUT, exitCode: 0 })
+
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'pilot-marker', agent: 'developer', files: ['PILOT.md'], max_retries: 0 }]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeUntrackedWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+
+    expect(result.status).not.toBe('done')
+    expect(result.summary.done).toBe(0)
+    expect(result.summary.failed).toBe(1)
+
+    const store = createConvoyStore(dbPath)
+    const tasks = store.getTasksByConvoy(result.convoyId)
+    const events = store.getEvents(result.convoyId)
+    store.close()
+
+    expect(tasks[0].status).toBe('gate-failed')
+    expect(tasks[0].exit_code).toBe(1)
+    const failure = events.find(e => e.type === 'task_failed')
+    expect(JSON.parse(failure!.data as string).reason).toBe('no-op')
+  })
+
+  it('lets a task that reported files through', async () => {
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: true, output: WROTE_OUTPUT, exitCode: 0 })
+
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'pilot-marker', agent: 'developer', files: ['PILOT.md'], max_retries: 0 }]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeUntrackedWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+
+    expect(result.status).toBe('done')
+    expect(result.summary.done).toBe(1)
+  })
+
+  it('retries once with the reason before giving up', async () => {
+    const adapter = makeAdapter()
+    adapter.execute
+      .mockResolvedValueOnce({ success: true, output: BLOCKED_OUTPUT, exitCode: 0 })
+      .mockResolvedValueOnce({ success: true, output: WROTE_OUTPUT, exitCode: 0 })
+
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'pilot-marker', agent: 'developer', files: ['PILOT.md'], max_retries: 1 }]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeUntrackedWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+
+    expect(result.status).toBe('done')
+    expect(adapter.execute).toHaveBeenCalledTimes(2)
+    const secondPrompt = (adapter.execute.mock.calls[1] as [Task])[0].prompt
+    expect(secondPrompt).toContain('produced no changes')
+  })
+
+  it('can be switched off per spec', async () => {
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: true, output: BLOCKED_OUTPUT, exitCode: 0 })
+
+    const engine = makeEngine({
+      spec: makeSpec({ defaults: { built_in_gates: { no_op: false } } }, [
+        { id: 'pilot-marker', agent: 'developer', files: ['PILOT.md'], max_retries: 0 },
+      ]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeUntrackedWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+
+    expect(result.status).toBe('done')
+    expect(result.summary.done).toBe(1)
   })
 })
 

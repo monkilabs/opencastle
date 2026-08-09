@@ -4,6 +4,7 @@ import {
   validateOutput,
   buildContractInstruction,
   buildContractRetryPrompt,
+  filePathFields,
 } from './contracts.js'
 
 // ── Registry well-formedness ──────────────────────────────────────────────────
@@ -281,5 +282,29 @@ describe('buildContractRetryPrompt', () => {
     expect(prompt).toContain('field_a')
     expect(prompt).toContain('field_b')
     expect(prompt).toContain('field_c')
+  })
+})
+
+// ── filePathFields ────────────────────────────────────────────────────────────
+
+describe('filePathFields', () => {
+  it('finds the fields a developer reports files through', () => {
+    expect(filePathFields('developer').sort()).toEqual(['files_changed', 'tests_added'])
+  })
+
+  it('includes optional file-path fields', () => {
+    expect(filePathFields('data-engineer')).toContain('migrations')
+  })
+
+  it('returns none for an agent that produces no files', () => {
+    expect(filePathFields('architect')).toEqual([])
+  })
+
+  it('returns none for an unknown agent', () => {
+    expect(filePathFields('nobody')).toEqual([])
+  })
+
+  it('is case-insensitive, as the rest of the registry is', () => {
+    expect(filePathFields('Developer')).toEqual(filePathFields('developer'))
   })
 })
