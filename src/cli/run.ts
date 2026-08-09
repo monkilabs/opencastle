@@ -8,7 +8,8 @@ import { getAdapter, detectAdapter } from './run/adapters/index.js'
 import { createReporter, printExecutionPlan } from './run/reporter.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
-import type { RunOptions } from './convoy/spec-types.js'
+import { PERMISSION_MODES } from './convoy/spec-types.js'
+import type { RunOptions, PermissionMode, TaskSpec } from './convoy/spec-types.js'
 import type { ConvoyResult } from './convoy/engine.js'
 import type { PipelineResult } from './convoy/pipeline.js'
 import { EngineAlreadyRunningError } from './convoy/lock.js'
@@ -33,6 +34,9 @@ const HELP = `
     --concurrency, -c <n>    Override max parallel tasks
     --adapter, -a <name>     Override agent runtime adapter
     --report-dir <path>      Where to write run reports (default: .opencastle/runs)
+    --permission-mode <m>    How much a worker may do unattended: default,
+                             acceptEdits (the default), auto, dontAsk,
+                             bypassPermissions, plan
     --verbose                Show full agent output
     --resume                 Resume the last interrupted convoy from .opencastle/convoy.db
     --retry-failed [task-id] Retry failed/gate-failed/timed-out tasks from the last convoy
@@ -49,6 +53,22 @@ const HELP = `
 `
 
 /**
+ * CLI flags win over whatever the spec says.
+ *
+ * Four entry points build a spec — a fresh run, a retry, a convoy resume and a
+ * pipeline resume — and each used to repeat this by hand, which is how a flag
+ * comes to work on one of them and not the others.
+ */
+function applyCliOverrides(spec: TaskSpec, opts: RunOptions): void {
+  if (opts.concurrency !== null) spec.concurrency = opts.concurrency
+  if (opts.adapter !== null) spec.adapter = opts.adapter
+  if (opts.permissionMode !== null) {
+    spec.defaults = { ...spec.defaults, permission_mode: opts.permissionMode }
+  }
+  if (opts.verbose) spec._verbose = true
+}
+
+/**
  * Parse CLI arguments for the run command.
  */
 function parseArgs(args: string[]): RunOptions {
@@ -58,6 +78,7 @@ function parseArgs(args: string[]): RunOptions {
     concurrency: null,
     adapter: null,
     reportDir: null,
+    permissionMode: null,
     verbose: false,
     help: false,
     resume: false,
@@ -117,6 +138,16 @@ function parseArgs(args: string[]): RunOptions {
         opts.reportDir = args[++i]
         if (!opts.reportDir.trim()) { console.error('  ✗ --report-dir cannot be empty'); process.exit(1) }
         break
+      case '--permission-mode': {
+        if (i + 1 >= args.length) { console.error('  ✗ --permission-mode requires a mode'); process.exit(1) }
+        const mode = args[++i]
+        if (!PERMISSION_MODES.includes(mode as PermissionMode)) {
+          console.error(`  ✗ --permission-mode must be one of: ${PERMISSION_MODES.join(', ')}`)
+          process.exit(1)
+        }
+        opts.permissionMode = mode as PermissionMode
+        break
+      }
       case '--verbose':
         opts.verbose = true
         break
@@ -495,9 +526,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     }
 
     const retrySpec = parseTaskSpecText(convoy.spec_yaml)
-    if (opts.concurrency !== null) retrySpec.concurrency = opts.concurrency
-    if (opts.adapter !== null) retrySpec.adapter = opts.adapter
-    if (opts.verbose) retrySpec._verbose = true
+    applyCliOverrides(retrySpec, opts)
 
     let retryDetectionFailed = false
     if (!retrySpec.adapter) {
@@ -585,9 +614,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     if (latestPipeline && latestPipeline.status !== 'done') {
       store.close()
       const resumePipelineSpec = parseTaskSpecText(latestPipeline.spec_yaml)
-      if (opts.concurrency !== null) resumePipelineSpec.concurrency = opts.concurrency
-      if (opts.adapter !== null) resumePipelineSpec.adapter = opts.adapter
-      if (opts.verbose) resumePipelineSpec._verbose = true
+      applyCliOverrides(resumePipelineSpec, opts)
 
       let resumePipelineDetectionFailed = false
       if (!resumePipelineSpec.adapter) {
@@ -676,9 +703,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     }
 
     const resumeSpec = parseTaskSpecText(convoy.spec_yaml)
-    if (opts.concurrency !== null) resumeSpec.concurrency = opts.concurrency
-    if (opts.adapter !== null) resumeSpec.adapter = opts.adapter
-    if (opts.verbose) resumeSpec._verbose = true
+    applyCliOverrides(resumeSpec, opts)
 
     let resumeDetectionFailed = false
     if (!resumeSpec.adapter) {
@@ -821,9 +846,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
   }
 
   // Apply CLI overrides
-  if (opts.concurrency !== null) spec.concurrency = opts.concurrency
-  if (opts.adapter !== null) spec.adapter = opts.adapter
-  if (opts.verbose) spec._verbose = true
+  applyCliOverrides(spec, opts)
 
   // ── Auto-detect adapter if not specified ─────────────────────
   let detectionFailed = false

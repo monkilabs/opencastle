@@ -27,6 +27,15 @@ export async function executeViaCli(task: Task, options: ExecuteOptions = {}): P
   if (task.files && task.files.length > 0) {
     prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
   }
+  // A convoy worker runs with no terminal attached, so a permission prompt is
+  // not a question — it is a refusal it cannot answer. Without a mode the
+  // worker tries Write, is denied, tries a heredoc, is denied, and exits 0
+  // having written nothing. `acceptEdits` is the least authority that lets it
+  // do the job it was given, and matches what the sibling adapters already do
+  // (codex: `-a never -s workspace-write`, cursor: `--force`). Raise it to
+  // `bypassPermissions` for a worker that needs a free hand, or drop it to
+  // `default` to restore the prompt-driven behavior.
+  const permissionMode = options.permissionMode ?? 'acceptEdits'
   const args = [
     '-p',
     prompt,
@@ -34,6 +43,8 @@ export async function executeViaCli(task: Task, options: ExecuteOptions = {}): P
     'json',
     '--max-turns',
     '50',
+    '--permission-mode',
+    permissionMode,
   ]
   const cwd = options?.cwd ?? process.cwd()
   const mcpJsonPath = join(cwd, 'mcp.json')

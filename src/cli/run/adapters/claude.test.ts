@@ -127,6 +127,42 @@ describe('claude adapter — CLI mode', () => {
     expect(capturedArgs).toContain('--approve-mcps')
   })
 
+  /**
+   * A worker with no terminal cannot answer a permission prompt, so a spawn
+   * without a permission mode is a worker that tries Write, is refused, and
+   * exits 0 having written nothing. Verified against the real CLI: the same
+   * prompt writes no file without the flag and writes it with `acceptEdits`.
+   */
+  describe('permission mode', () => {
+    async function capturePermissionMode(
+      options: Parameters<typeof import('./claude.js').executeViaCli>[1],
+    ): Promise<string | undefined> {
+      const capturedArgs: string[] = []
+      mockSpawn.mockImplementation((cmd: string, args: string[]) => {
+        if (cmd === 'which') return makeMockProc(0, '')
+        capturedArgs.push(...args)
+        return makeMockProc(0, '{}')
+      })
+      const { executeViaCli } = await import('./claude.js')
+      await executeViaCli(makeTask(), options)
+      const idx = capturedArgs.indexOf('--permission-mode')
+      return idx === -1 ? undefined : capturedArgs[idx + 1]
+    }
+
+    it('lets the worker write without being asked, by default', async () => {
+      expect(await capturePermissionMode({ cwd: tmpDir })).toBe('acceptEdits')
+    })
+
+    it('passes the mode the operator chose', async () => {
+      expect(await capturePermissionMode({ cwd: tmpDir, permissionMode: 'bypassPermissions' }))
+        .toBe('bypassPermissions')
+    })
+
+    it('can be put back to the prompt-driven default', async () => {
+      expect(await capturePermissionMode({ cwd: tmpDir, permissionMode: 'default' })).toBe('default')
+    })
+  })
+
   it('does NOT write mcp.json when mcpServers not configured', async () => {
     const { executeViaCli } = await import('./claude.js')
     await executeViaCli(makeTask(), { cwd: tmpDir })
