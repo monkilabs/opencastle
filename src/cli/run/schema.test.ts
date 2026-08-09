@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseYaml, parseTimeout, validateSpec, applyDefaults, isConvoySpec, isPipelineSpec, parseTaskSpecText } from './schema.js'
+import { PERMISSION_MODES } from '../convoy/spec-types.js'
 
 // ── parseYaml ──────────────────────────────────────────────────
 
@@ -427,6 +428,19 @@ describe('validateSpec — defaults block', () => {
     const result = validateSpec({ ...validSpec, defaults: ['timeout', '10m'] })
     expect(result.valid).toBe(false)
     expect(result.errors).toContainEqual(expect.stringContaining('defaults'))
+  })
+
+  it('accepts every permission mode the agent CLI accepts', () => {
+    for (const mode of PERMISSION_MODES) {
+      const result = validateSpec({ ...validSpec, defaults: { permission_mode: mode } })
+      expect(result.valid, `${mode} was rejected`).toBe(true)
+    }
+  })
+
+  it('rejects an unknown permission mode here, not three phases into a run', () => {
+    const result = validateSpec({ ...validSpec, defaults: { permission_mode: 'yolo' } })
+    expect(result.valid).toBe(false)
+    expect(result.errors).toContainEqual(expect.stringContaining('defaults.permission_mode'))
   })
 
   it('rejects defaults with invalid timeout format', () => {

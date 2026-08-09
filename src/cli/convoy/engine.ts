@@ -11,7 +11,7 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { promisify } from 'node:util'
-import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ReviewHeuristics } from './spec-types.js'
+import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ReviewHeuristics, PermissionMode } from './spec-types.js'
 import { createConvoyStore, ConvoyArtifactLimitError, type ConvoyStore } from './store.js'
 import { acquireEngineLock } from './lock.js'
 import { createEventEmitter, ndjsonPathForConvoy, recoverNdjson, type ConvoyEventEmitter } from './events.js'
@@ -541,6 +541,7 @@ async function executeSteps(
   store: ConvoyStore,
   convoyId: string,
   verbose: boolean,
+  permissionMode: PermissionMode | undefined,
 ): Promise<ExecuteResult> {
   const now = () => new Date().toISOString()
   const stepResults = new Map<string, { exitCode: number }>()
@@ -616,7 +617,7 @@ async function executeSteps(
       }
 
       try {
-        stepResult = await adapter.execute(stepTask, { verbose, cwd: worktreePath ?? basePath })
+        stepResult = await adapter.execute(stepTask, { verbose, cwd: worktreePath ?? basePath, permissionMode })
       } catch (err) {
         stepResult = { success: false, output: (err as Error).message, exitCode: -1 }
       }
@@ -1048,7 +1049,7 @@ async function runConvoy(
           max_retries: 0,
         }
         try {
-          const hookResult = await adapter.execute(hookTask, { verbose, cwd: context.cwd })
+          const hookResult = await adapter.execute(hookTask, { verbose, cwd: context.cwd, permissionMode: spec.defaults?.permission_mode })
           if (!hookResult.success) {
             return { passed: false, failedHook: hook, error: hookResult.output }
           }
@@ -1343,12 +1344,12 @@ async function runConvoy(
     try {
       if (steps && steps.length > 0) {
         result = await Promise.race([
-          executeSteps(taskRecord, steps, taskAdapter, worktreePath, basePath, store, convoyId, verbose),
+          executeSteps(taskRecord, steps, taskAdapter, worktreePath, basePath, store, convoyId, verbose, spec.defaults?.permission_mode),
           timeout.promise,
         ])
       } else {
         result = await Promise.race([
-          taskAdapter.execute(task, { verbose, cwd: worktreePath ?? basePath }),
+          taskAdapter.execute(task, { verbose, cwd: worktreePath ?? basePath, permissionMode: spec.defaults?.permission_mode }),
           timeout.promise,
         ])
       }
@@ -2841,7 +2842,7 @@ async function runConvoy(
       max_retries: 0,
     }
 
-    const fixResult = await adapter.execute(fixTask, { verbose, cwd: basePath })
+    const fixResult = await adapter.execute(fixTask, { verbose, cwd: basePath, permissionMode: spec.defaults?.permission_mode })
 
     if (fixResult.success) {
       process.stdout.write(`  ${c.green('✓')} ${c.bold(`[${fixTaskId}]`)} fix applied\n`)

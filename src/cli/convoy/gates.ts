@@ -260,6 +260,12 @@ export interface NoOpGateContext {
  * A spec that works that way sets `built_in_gates.no_op: false`.
  */
 export function noOpGate(ctx: NoOpGateContext): { passed: boolean; output: string } {
+  // The commonest cause, and the one hardest to see from the outside: a worker
+  // with no terminal cannot answer a permission prompt, so every write it tries
+  // is refused and it exits 0 anyway. Say so where the operator will read it.
+  const hint =
+    'If the agent was refused permission to write, raise `defaults.permission_mode` ' +
+    '(acceptEdits, or bypassPermissions for a free hand).'
   const declared = ctx.declaredFiles.length
   if (declared === 0) {
     return { passed: true, output: 'No-op check: task declared no files' }
@@ -273,7 +279,7 @@ export function noOpGate(ctx: NoOpGateContext): { passed: boolean; output: strin
       passed: false,
       output:
         `Task declared ${declared} file(s) but the worktree has no changes — nothing was written.\n` +
-        `Declared: ${ctx.declaredFiles.join(', ')}`,
+        `Declared: ${ctx.declaredFiles.join(', ')}\n${hint}`,
     }
   }
 
@@ -293,7 +299,7 @@ export function noOpGate(ctx: NoOpGateContext): { passed: boolean; output: strin
     passed: false,
     output:
       `Task declared ${declared} file(s) and the agent reported none produced (${reported.join(', ')} all empty).\n` +
-      `Declared: ${ctx.declaredFiles.join(', ')}`,
+      `Declared: ${ctx.declaredFiles.join(', ')}\n${hint}`,
   }
 }
 

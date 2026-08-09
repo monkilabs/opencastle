@@ -1,5 +1,6 @@
 import { parse as yamlParse } from 'yaml'
-import type { TaskSpec, ValidationResult } from '../convoy/spec-types.js'
+import { PERMISSION_MODES } from '../convoy/spec-types.js'
+import type { TaskSpec, ValidationResult, PermissionMode } from '../convoy/spec-types.js'
 
 /**
  * Parse a YAML string into a JS object.
@@ -275,6 +276,12 @@ export function validateSpec(spec: unknown): ValidationResult {
         if (!Number.isFinite(t) || t <= 0) {
           errors.push('`defaults.mcp_server_approval_timeout` must be a number greater than 0')
         }
+      }
+
+      // permission_mode validation — caught here rather than as an opaque
+      // "invalid choice" from the agent CLI three phases into a run.
+      if (d.permission_mode !== undefined && !PERMISSION_MODES.includes(d.permission_mode as PermissionMode)) {
+        errors.push('`defaults.permission_mode` must be one of: ' + PERMISSION_MODES.join(', '))
       }
 
       // built_in_gates validation

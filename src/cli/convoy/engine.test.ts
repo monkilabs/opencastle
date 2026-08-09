@@ -3968,5 +3968,67 @@ describe('no-op gate', () => {
   })
 })
 
+// ── Permission mode ───────────────────────────────────────────────────────────
+
+/**
+ * The spec can say how much a worker may do unattended, but only if the value
+ * survives the trip to the adapter — the adapter is where it becomes a flag on
+ * the agent process, and a worker that never receives one cannot write a file.
+ */
+describe('permission mode', () => {
+  it('reaches the adapter from spec defaults', async () => {
+    const adapter = makeAdapter()
+    const engine = makeEngine({
+      spec: makeSpec({ defaults: { permission_mode: 'bypassPermissions' } }),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    await engine.run()
+
+    const [, options] = adapter.execute.mock.calls[0] as [Task, { permissionMode?: string }]
+    expect(options.permissionMode).toBe('bypassPermissions')
+  })
+
+  it('leaves the adapter to pick when the spec says nothing', async () => {
+    const adapter = makeAdapter()
+    const engine = makeEngine({
+      spec: makeSpec(),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    await engine.run()
+
+    const [, options] = adapter.execute.mock.calls[0] as [Task, { permissionMode?: string }]
+    expect(options.permissionMode).toBeUndefined()
+  })
+
+  it('reaches the adapter for each step of a multi-step task', async () => {
+    const adapter = makeAdapter()
+    const engine = makeEngine({
+      spec: makeSpec({ defaults: { permission_mode: 'acceptEdits' } }, [
+        { id: 'task-1', steps: [{ prompt: 'step one' }, { prompt: 'step two' }] },
+      ]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    await engine.run()
+
+    expect(adapter.execute).toHaveBeenCalledTimes(2)
+    for (const call of adapter.execute.mock.calls) {
+      const [, options] = call as [Task, { permissionMode?: string }]
+      expect(options.permissionMode).toBe('acceptEdits')
+    }
+  })
+})
+
 // ── Compaction continuation ───────────────────────────────────────────────────
 

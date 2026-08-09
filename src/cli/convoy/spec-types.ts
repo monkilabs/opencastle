@@ -11,6 +11,24 @@ import type {
   TaskStep, Hook, TaskOutput, TaskInput, WatchConfig, MCPServerConfig,
 } from './types.js';
 
+/**
+ * How much a worker may do without being asked.
+ *
+ * These are the modes the Claude Code CLI accepts for `--permission-mode`. A
+ * non-interactive worker cannot answer a permission prompt, so a mode that
+ * prompts is a mode in which the worker writes nothing.
+ */
+export const PERMISSION_MODES = [
+  'default',
+  'acceptEdits',
+  'auto',
+  'dontAsk',
+  'bypassPermissions',
+  'plan',
+] as const;
+
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
 /** Heuristics for routing tasks to review levels. */
 export interface ReviewHeuristics {
   panel_paths?: string[];
@@ -28,6 +46,8 @@ export interface TaskDefaults {
   agent?: string;
   adapter?: string;
   gates?: string[];
+  /** How much a worker may do unattended. Defaults to `acceptEdits`. */
+  permission_mode?: PermissionMode;
   built_in_gates?: BuiltInGatesConfig;
   gate_timeout?: number;
   on_exhausted?: 'dlq' | 'skip' | 'stop';
@@ -175,6 +195,9 @@ export interface ExecuteOptions {
   verbose?: boolean;
   /** Working directory for the agent process (defaults to process.cwd()). */
   cwd?: string;
+  /** How much the worker may do unattended. Adapters that cannot express a
+   *  mode ignore it; the Claude adapter passes it as `--permission-mode`. */
+  permissionMode?: PermissionMode;
   /** MCP servers to make available during execution (Phase 19.7). */
   mcpServers?: MCPServerConfig[];
   /** Automatically approve all MCP permission requests. */
@@ -221,6 +244,7 @@ export interface RunOptions {
   concurrency: number | null;
   adapter: string | null;
   reportDir: string | null;
+  permissionMode: PermissionMode | null;
   verbose: boolean;
   help: boolean;
   resume: boolean;

@@ -222,6 +222,23 @@ Each task operates in an isolated git worktree confined to its file partition:
 
 This enables safe parallel execution and deterministic merging of results.
 
+### Worker Permissions
+
+A convoy worker runs with no terminal attached, so a permission prompt is not a question it can answer — it is a refusal. Workers therefore run with edits pre-accepted (`acceptEdits`), which is the least authority that lets one do the job it was given, and matches the other CLI adapters (`codex -a never -s workspace-write`, `cursor --force`).
+
+Set it per spec, or per run:
+
+```yaml
+defaults:
+  permission_mode: bypassPermissions   # default | acceptEdits | auto | dontAsk | bypassPermissions | plan
+```
+
+```
+npx opencastle convoy run --permission-mode bypassPermissions
+```
+
+`bypassPermissions` gives a worker a free hand and is a sandbox-shaped choice; `default` restores the prompt-driven behavior, which in a non-interactive run means the worker writes nothing. Isolation still comes from the per-task worktree and the `files` partition either way.
+
 ### Effort Scaling
 
 Task complexity (Fibonacci 1–13) maps to execution profiles:
