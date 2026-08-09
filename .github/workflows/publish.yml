@@ -57,6 +57,37 @@ jobs:
             echo "type=patch" >> "$GITHUB_OUTPUT"
           fi
 
+      # Before anything expensive, and before the error can be mistaken for
+      # something else.
+      #
+      # npm answers a publish it will not authorize with
+      # `E404 … PUT /opencastle — Not found`: it hides the difference between
+      # "no such package" and "not your package", so the log names the wrong
+      # problem. Five releases in a row failed that way — each after a full
+      # install, type-check, test run and build — reading as though the package
+      # had never existed, while `opencastle` sat on the registry the whole time.
+      #
+      # `npm whoami` asks the same credential the same registry, and answers in
+      # one second.
+      - name: Check npm credentials
+        if: steps.bump.outputs.type != 'none'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not set. Add it in Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+          if ! WHOAMI=$(npm whoami 2>&1); then
+            echo "::error::NPM_TOKEN is set, and the registry rejected it: ${WHOAMI}"
+            echo "::error::Publishing needs a token with read-write access to $(node -p "require('./package.json').name")."
+            echo "::error::Rotate it at npmjs.com → Access Tokens (Automation, or Granular read-write on this package) and update the NPM_TOKEN secret."
+            echo "::error::Trusted publishing is the alternative: configure this repo and workflow as a trusted publisher on npmjs.com, and no stored token expires."
+            exit 1
+          fi
+          echo "Authenticated to npm as ${WHOAMI}"
+
       - name: Bump version
         if: steps.bump.outputs.type != 'none'
         id: version
@@ -92,20 +123,23 @@ jobs:
         if: steps.bump.outputs.type != 'none'
         id: publish
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::NPM_TOKEN secret is not set. Add it in repo Settings → Secrets → Actions."
-            exit 1
-          fi
-
           # Check if this version already exists on npm (idempotent re-runs)
           PKG_NAME=$(node -p "require('./package.json').name")
           PKG_VERSION=$(node -p "require('./package.json').version")
           if npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null; then
             echo "⏭️ ${PKG_NAME}@${PKG_VERSION} already published — skipping"
             echo "skipped=true" >> "$GITHUB_OUTPUT"
-          else
-            npm publish --ignore-scripts --access public
+          elif npm publish --ignore-scripts --access public; then
             echo "skipped=false" >> "$GITHUB_OUTPUT"
+          else
+            # The credential passed `npm whoami` and still could not publish, so
+            # the account is authenticated but not authorized for this package —
+            # a granular token scoped elsewhere, or an account that is not a
+            # maintainer. npm reports both as a 404 on the PUT.
+            echo "::error::npm rejected the publish of ${PKG_NAME}@${PKG_VERSION}."
+            echo "::error::A 404 on PUT for a package that exists means the token is not authorized to write to it, not that the package is missing."
+            echo "::error::Check that the NPM_TOKEN account maintains ${PKG_NAME}, and that a granular token lists it with read-write."
+            exit 1
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
