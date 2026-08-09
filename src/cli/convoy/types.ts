@@ -134,6 +134,8 @@ export interface BuiltInGatesConfig {
   dependency_audit?: 'auto' | boolean
   regression_test?: 'auto' | boolean
   browser_test?: 'auto' | boolean
+  /** Fail a task that declared files and produced none. On unless set to false. */
+  no_op?: 'auto' | boolean
   gate_timeout?: number
   tdd_check?: boolean | TDDGateConfig
 }

@@ -213,6 +213,20 @@ export function validateOutput(agent: string, output: string): ContractResult {
   return { valid: missing.length === 0, missing, warnings: [], data }
 }
 
+/**
+ * The contract fields through which an agent reports files it produced.
+ *
+ * Derived from the schema rather than listed by hand, so an agent whose contract
+ * gains a file-path field is covered without anyone remembering this function.
+ */
+export function filePathFields(agent: string): string[] {
+  const contract = AGENT_CONTRACTS[agent.toLowerCase()]
+  if (!contract) return []
+  return [...contract.required_fields, ...contract.optional_fields].filter(
+    f => contract.schema[f]?.validation === 'file-paths',
+  )
+}
+
 export function buildContractInstruction(agent: string): string | null {
   const contract = AGENT_CONTRACTS[agent.toLowerCase()]
   if (!contract) return null

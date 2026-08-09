@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import { parse as yamlParse } from 'yaml'
+import { filePathFields } from './contracts.js'
 import type { BrowserTestConfig, MCPServerConfig } from './types.js'
 
 // ── Secret patterns ───────────────────────────────────────────────────────────
@@ -220,6 +221,125 @@ export function runGateCommand(
     child.on('close', (code: number | null) => settle(code ?? -1))
     child.on('error', () => settle(-1))
   })
+}
+
+// ── noOpGate ──────────────────────────────────────────────────────────────────
+
+export interface NoOpGateContext {
+  /** Paths the spec declared this task would touch. */
+  declaredFiles: string[]
+  /**
+   * Every path git reports as touched in the worktree — committed or not — or
+   * `null` when git could not be consulted (no worktree, or the command failed).
+   * `null` is "no evidence", never "no changes".
+   */
+  changedFiles: string[] | null
+  /** Agent name, used to find the file-reporting fields of its output contract. */
+  agent: string
+  /** Parsed OUTPUT_CONTRACT body, absent when the agent emitted none. */
+  contractData?: Record<string, unknown>
+}
+
+/**
+ * Fail a task that declared files and then produced none.
+ *
+ * An adapter exiting 0 says the process ended, not that the work happened. An
+ * agent that is refused write permission tries, gives up, explains itself in
+ * prose and exits cleanly — and every signal the engine used to look at reads as
+ * success. The convoy then reports fully green with an empty branch behind it,
+ * which is the failure surfacing at review time instead of at run time.
+ *
+ * Evidence is preferred in the order it can be trusted: what git says the
+ * worktree holds, then what the agent said it did. Silence from both is not
+ * evidence of a no-op — a task with no declared files, no worktree and no
+ * contract passes, because nothing here contradicts it.
+ *
+ * The one deliberate false positive: a task whose only product is gitignored
+ * leaves no trace for git to report and reads as a no-op. It fails loudly, with
+ * the reason, after its retries — which is the trade this gate exists to make.
+ * A spec that works that way sets `built_in_gates.no_op: false`.
+ */
+export function noOpGate(ctx: NoOpGateContext): { passed: boolean; output: string } {
+  const declared = ctx.declaredFiles.length
+  if (declared === 0) {
+    return { passed: true, output: 'No-op check: task declared no files' }
+  }
+
+  if (ctx.changedFiles !== null) {
+    if (ctx.changedFiles.length > 0) {
+      return { passed: true, output: `No-op check: ${ctx.changedFiles.length} file(s) changed in the worktree` }
+    }
+    return {
+      passed: false,
+      output:
+        `Task declared ${declared} file(s) but the worktree has no changes — nothing was written.\n` +
+        `Declared: ${ctx.declaredFiles.join(', ')}`,
+    }
+  }
+
+  // No git evidence — fall back to the agent's own report.
+  const fields = filePathFields(ctx.agent)
+  if (!ctx.contractData || fields.length === 0) {
+    return { passed: true, output: 'No-op check: no evidence available' }
+  }
+  const reported = fields.filter(f => Array.isArray(ctx.contractData![f]))
+  if (reported.length === 0) {
+    return { passed: true, output: 'No-op check: agent reported no file lists' }
+  }
+  if (reported.some(f => (ctx.contractData![f] as unknown[]).length > 0)) {
+    return { passed: true, output: 'No-op check: agent reported files produced' }
+  }
+  return {
+    passed: false,
+    output:
+      `Task declared ${declared} file(s) and the agent reported none produced (${reported.join(', ')} all empty).\n` +
+      `Declared: ${ctx.declaredFiles.join(', ')}`,
+  }
+}
+
+/**
+ * Every path a worktree has touched relative to its base branch, or `null` when
+ * git could not answer.
+ *
+ * Both halves matter: agents usually leave their work uncommitted for the merge
+ * queue to stage, but an agent that commits its own work has changed the tree
+ * just as much. Counting only one of the two would call half of the real runs a
+ * no-op.
+ */
+export async function collectWorktreeChanges(
+  worktreePath: string,
+  baseRef: string,
+): Promise<string[] | null> {
+  const changed = new Set<string>()
+  let answered = false
+
+  // `-uall` because the default collapses a new directory to one entry, which
+  // would report "nested/" where the task declared "nested/PILOT.md".
+  const status = await runGateCommand(
+    'git', ['status', '--porcelain', '-uall'], worktreePath, 30_000,
+  )
+  if (status.exitCode === 0) {
+    answered = true
+    for (const line of status.stdout.split('\n')) {
+      // "XY path" — and "XY old -> new" for renames, where the new path is what exists.
+      const path = line.slice(3).trim()
+      if (!path) continue
+      const arrow = path.lastIndexOf(' -> ')
+      changed.add(arrow === -1 ? path : path.slice(arrow + 4))
+    }
+  }
+
+  const committed = await runGateCommand(
+    'git', ['diff', '--name-only', `${baseRef}..HEAD`], worktreePath, 30_000,
+  )
+  if (committed.exitCode === 0) {
+    answered = true
+    for (const path of committed.stdout.split('\n')) {
+      if (path.trim()) changed.add(path.trim())
+    }
+  }
+
+  return answered ? [...changed] : null
 }
 
 // ── runSecretScanGate ─────────────────────────────────────────────────────────

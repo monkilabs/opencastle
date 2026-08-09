@@ -165,6 +165,7 @@ Convoys can mix adapters in a single run — each task is assigned to an adapter
 | **Secret scan** | Post-execution scan for leaked credentials (API keys, tokens, passwords) |
 | **Blast radius** | Detects risky file patterns (migrations, auth changes, RLS policies) |
 | **TDD gate** | New source files must have corresponding test files |
+| **No-op gate** | A task that declared `files` and produced none fails instead of reporting done |
 
 ---
 
@@ -206,6 +207,7 @@ Check dependencies → Resolve upstream outputs → Build isolation preamble
 **Failure handling:**
 - Max retries exceeded → Dead Letter Queue (DLQ)
 - Gate failure → `gate-failed` status, optional gate retry
+- No changes produced → `gate-failed` status; a clean adapter exit is not proof the work happened, so a task that declared `files` and left nothing behind is retried and then failed. Git evidence from the worktree decides it; where there is none, the agent's own `OUTPUT_CONTRACT` does. Switch it off with `defaults.built_in_gates.no_op: false`
 - Review block → `review-blocked` status, can escalate to dispute
 - Cascade → `on_failure: stop` skips all pending tasks; `on_failure: continue` skips only dependents
 

@@ -283,7 +283,7 @@ export function validateSpec(spec: unknown): ValidationResult {
           errors.push('`defaults.built_in_gates` must be an object')
         } else {
           const bg = d.built_in_gates as Record<string, unknown>
-          const boolOrAutoFields = ['secret_scan', 'blast_radius', 'dependency_audit', 'regression_test', 'browser_test'] as const
+          const boolOrAutoFields = ['secret_scan', 'blast_radius', 'dependency_audit', 'regression_test', 'browser_test', 'no_op'] as const
           // tdd_check can be boolean or object (TDDGateConfig)
           if (bg.tdd_check !== undefined && typeof bg.tdd_check !== 'boolean' && (typeof bg.tdd_check !== 'object' || Array.isArray(bg.tdd_check) || bg.tdd_check === null)) {
             errors.push('`defaults.built_in_gates.tdd_check` must be a boolean or an object')
