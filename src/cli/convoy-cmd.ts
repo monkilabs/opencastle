@@ -40,6 +40,61 @@ const CONVOY_HELP = `
   This namespace is experimental and may change or be removed.
 `
 
+/**
+ * Flags that take a separate value token.
+ *
+ * Needed to tell a task's words from a flag's argument. `opencastle convoy fix
+ * the login bug --adapter codex` must plan "fix the login bug" and not "fix the
+ * login bug codex".
+ *
+ * `bin/cli.mjs` has already split any `--flag=value` form before this runs, so
+ * only the space form reaches here.
+ */
+const FLAGS_WITH_VALUES = new Set([
+  '--adapter',
+  '-a',
+  '--file',
+  '-f',
+  '--prd',
+  '--complexity',
+  '--output-prd',
+  '--output-spec',
+  '--concurrency',
+  '-c',
+  '--permission-mode',
+  '--report-dir',
+  '--formula',
+  '--set',
+  '--watch-config',
+  '--convoy',
+  '--resolution',
+])
+
+/**
+ * The words of the task, with the flags and their values taken out.
+ *
+ * A shell splits an unquoted task into one argument per word, and this command
+ * used to read only the first of them: `opencastle convoy add rate limiting to
+ * the API` planned a feature called "add". No error — it went on to spend a full
+ * PRD round-trip on the wrong request, and the quoted form that works is the
+ * only one our own "Start one:" hint shows.
+ *
+ * Flag values come out with their flag, so `--adapter codex` cannot contribute
+ * the word "codex" to a task description.
+ */
+export function positionalWords(args: string[]): string[] {
+  const out: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg.startsWith('-')) {
+      if (FLAGS_WITH_VALUES.has(arg)) i++
+      continue
+    }
+    out.push(arg)
+  }
+  return out
+}
+
 /** Delegate to an existing command module, passing through remaining args. */
 async function delegate(mod: string, ctx: CliContext, args: string[]): Promise<void> {
   const loaded = (await import(`./${mod}.js`)) as {
@@ -169,6 +224,8 @@ export default async function convoy(ctx: CliContext): Promise<void> {
   const PLANNER_FLAGS = new Set(['--dry-run', '--verbose'])
   const passthrough = args.filter((a) => PLANNER_FLAGS.has(a))
 
+  const positionals = positionalWords(args)
+
   switch (sub) {
     case undefined:
       renderStatus(readLastRun(process.cwd()), false)
@@ -231,7 +288,7 @@ export default async function convoy(ctx: CliContext): Promise<void> {
   // a feature request. `convoy status` used to spend 95 seconds generating a PRD
   // for a feature called "status" — and it is the obvious thing to type, since
   // the bare command prints a status report.
-  if (['status', 'state', 'info', 'ls', 'list'].includes(sub)) {
+  if (['status', 'state', 'info', 'ls', 'list'].includes(sub) && positionals.length === 1) {
     renderStatus(readLastRun(process.cwd()), args.includes('--json'))
     return
   }
@@ -239,5 +296,8 @@ export default async function convoy(ctx: CliContext): Promise<void> {
   // Anything else is a task description: plan it, then execute. `pipeline` takes
   // it as a flag value, so name it — passing it positionally made the one command
   // this tool prints under "Start one:" fail with "Unknown option".
-  await delegate('pipeline', ctx, ['--text', sub, ...passthrough])
+  //
+  // Every word, not just the first. An unquoted task arrives as one argument per
+  // word, and taking `sub` alone silently planned the first of them.
+  await delegate('pipeline', ctx, ['--text', positionals.join(' '), ...passthrough])
 }
