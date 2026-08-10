@@ -135,6 +135,63 @@ const RETIRED_DEFAULTS: Record<string, string> = {
   snippets: 'snippets were folded into skills',
 }
 
+/**
+ * Every key under `defaults` that something reads.
+ *
+ * The reasoning above applied only to keys we knew had been retired, so a key
+ * that was simply *misspelled* went through in silence: `permision_mode: plan`
+ * validated clean and ran with the default authority. Warning on anything
+ * unrecognised extends the same rule to the mistake people actually make.
+ *
+ * A warning rather than an error, for the reason already stated — a spec that
+ * is otherwise fine should not stop running because this list fell behind the
+ * engine. The retired keys keep their own more specific message.
+ */
+const KNOWN_DEFAULTS = new Set([
+  'adapter',
+  'agent',
+  'browser_test',
+  'built_in_gates',
+  'circuit_breaker',
+  'detect_drift',
+  'max_concurrent_reviews',
+  'max_retries',
+  'max_swarm_concurrency',
+  'mcp_approve_all',
+  'mcp_server_approval_timeout',
+  'mcp_servers',
+  'model',
+  'on_dispute',
+  'on_review_budget_exceeded',
+  'permission_mode',
+  'review',
+  'review_budget',
+  'review_heuristics',
+  'review_stages',
+  'reviewer_model',
+  'timeout',
+  ...Object.keys(RETIRED_DEFAULTS),
+])
+
+/**
+ * Every gate `defaults.built_in_gates` can switch.
+ *
+ * An error, not a warning, because this set is closed — the engine switches on
+ * exactly these names — and because getting it wrong is how a gate the author
+ * meant to turn off stays on, or one they meant to turn on never runs.
+ * `no_ops: false` was accepted and the no-op gate stayed armed.
+ */
+const KNOWN_BUILT_IN_GATES = new Set([
+  'secret_scan',
+  'blast_radius',
+  'dependency_audit',
+  'regression_test',
+  'browser_test',
+  'no_op',
+  'tdd_check',
+  'gate_timeout',
+])
+
 export function validateSpec(spec: unknown): ValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
@@ -201,6 +258,11 @@ export function validateSpec(spec: unknown): ValidationResult {
       const d = s.defaults as Record<string, unknown>
       for (const [key, why] of Object.entries(RETIRED_DEFAULTS)) {
         if (d[key] !== undefined) warnings.push(`\`defaults.${key}\` is ignored — ${why}`)
+      }
+      // A key nobody reads is almost always a misspelling of one somebody does.
+      for (const key of Object.keys(d)) {
+        if (KNOWN_DEFAULTS.has(key)) continue
+        warnings.push(`\`defaults.${key}\` is not a setting anything reads — check the spelling`)
       }
       if (d.timeout !== undefined && isNaN(parseTimeout(d.timeout as string))) {
         errors.push(
@@ -290,6 +352,15 @@ export function validateSpec(spec: unknown): ValidationResult {
           errors.push('`defaults.built_in_gates` must be an object')
         } else {
           const bg = d.built_in_gates as Record<string, unknown>
+          // Closed set: a name the engine does not switch on is a gate the
+          // author thinks they configured and did not.
+          for (const key of Object.keys(bg)) {
+            if (KNOWN_BUILT_IN_GATES.has(key)) continue
+            errors.push(
+              `\`defaults.built_in_gates.${key}\` is not a gate — one of: ` +
+                [...KNOWN_BUILT_IN_GATES].join(', '),
+            )
+          }
           const boolOrAutoFields = ['secret_scan', 'blast_radius', 'dependency_audit', 'regression_test', 'browser_test', 'no_op'] as const
           // tdd_check can be boolean or object (TDDGateConfig)
           if (bg.tdd_check !== undefined && typeof bg.tdd_check !== 'boolean' && (typeof bg.tdd_check !== 'object' || Array.isArray(bg.tdd_check) || bg.tdd_check === null)) {
