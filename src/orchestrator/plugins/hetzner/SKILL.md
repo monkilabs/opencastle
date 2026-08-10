@@ -63,7 +63,7 @@ Backup→snapshot conversion exists — do it before deleting a server whose his
 
 ```bash
 export HCLOUD_TOKEN=...                       # stateless auth for CI/agents; `hcloud context` for humans
-hcloud server list -o columns=name,status,ipv4,server_type -o noheader
+hcloud server list -o columns=name,status,ipv4,type -o noheader
 hcloud server ssh my-server                   # no IP lookup, uses your agent keys
 hcloud server create-image my-server --type snapshot --description "pre-change $(date +%F)"
 hcloud volume list -o json | jq -r '.[] | select(.server==null) | .name'   # orphaned volumes
