@@ -30,7 +30,8 @@ const HELP = `
     --file, -f <path>        Task spec file
     --formula <path>         Use a formula template (alternative to --file)
     --set key=value          Set a formula variable (repeatable)
-    --dry-run                Show execution plan without running
+    --dry-run                Show execution plan without running; with --resume
+                             or --retry-failed, list the tasks that would run
     --concurrency, -c <n>    Override max parallel tasks
     --adapter, -a <name>     Override agent runtime adapter
     --report-dir <path>      Where to write run reports (default: .opencastle/runs)
@@ -114,6 +115,59 @@ export function finishRun(
 
   printRetryHint()
   process.exit(exitCode)
+}
+
+/**
+ * The statuses `engine.retryFailed` reopens, and the ones `engine.resume` picks
+ * up. Named here so the `--dry-run` preview and the engine cannot drift about
+ * which tasks a run would touch.
+ */
+export const RETRYABLE_TASK_STATUSES = [
+  'failed',
+  'gate-failed',
+  'timed-out',
+  'review-blocked',
+  'disputed',
+] as const
+export const RESUMABLE_TASK_STATUSES = ['pending', 'assigned', 'running'] as const
+
+/**
+ * What `--resume` or `--retry-failed` would do, without doing it.
+ *
+ * `--dry-run` was read only on the fresh-run path, so combining it with either
+ * of those flags spawned agents against the user's repository for real. The flag
+ * a person reaches for to find out what will happen was the one flag that did
+ * not change what happened.
+ */
+export function printRunDryRun(
+  verb: 'resume' | 'retry',
+  runLabel: string,
+  runName: string,
+  tasks: Array<{ id: string; agent: string; status: string }>,
+  statuses: readonly string[],
+): void {
+  const selected = tasks.filter((t) => statuses.includes(t.status))
+
+  console.log(`\n  🏰 ${runLabel}: ${runName}`)
+  console.log(c.dim(`  [dry-run] Nothing will be executed.\n`))
+
+  if (selected.length === 0) {
+    console.log(
+      verb === 'retry'
+        ? '  No failed tasks to retry.'
+        : '  No unfinished tasks — nothing to resume.',
+    )
+    console.log(c.dim(`  (matching: ${statuses.join(', ')})\n`))
+    return
+  }
+
+  console.log(
+    `  Would ${verb === 'retry' ? 're-run' : 'run'} ${selected.length} of ${tasks.length} task(s):`,
+  )
+  for (const t of selected) {
+    console.log(`    ${t.id} ${c.dim(`— ${t.agent} [${t.status}]`)}`)
+  }
+  console.log()
 }
 
 /**
@@ -567,10 +621,26 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     const { createConvoyStore } = await import('./convoy/store.js')
     const store = createConvoyStore(dbPath)
     const convoy = store.getLatestConvoy()
+    const retryTasks = convoy ? store.getTasksByConvoy(convoy.id) : []
     store.close()
     if (!convoy) {
       console.error('  ✗ No convoy records found in .opencastle/convoy.db')
       process.exit(1)
+    }
+
+    // Before adapter detection: a preview should not require an agent CLI to be
+    // installed, and it must return before anything is executed.
+    if (opts.dryRun) {
+      printRunDryRun(
+        'retry',
+        'OpenCastle Convoy (Retry Failed)',
+        convoy.name,
+        opts.retryFailedTaskIds?.length
+          ? retryTasks.filter((t) => opts.retryFailedTaskIds!.includes(t.id))
+          : retryTasks,
+        RETRYABLE_TASK_STATUSES,
+      )
+      return
     }
 
     const retrySpec = parseTaskSpecText(convoy.spec_yaml)
@@ -672,6 +742,26 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
         console.error(`\n    To re-run its failed tasks: opencastle convoy retry`)
       }
       process.exit(1)
+    }
+
+    // Before adapter detection, and before either orchestrator is constructed.
+    if (opts.dryRun) {
+      const previewIds =
+        selected.run.kind === 'pipeline'
+          ? store.getConvoysByPipeline(selected.run.record.id).map((c) => c.id)
+          : [selected.run.record.id]
+      const previewTasks = previewIds.flatMap((id) => store.getTasksByConvoy(id))
+      store.close()
+      printRunDryRun(
+        'resume',
+        selected.run.kind === 'pipeline'
+          ? 'OpenCastle Pipeline (Resume)'
+          : 'OpenCastle Convoy (Resume)',
+        selected.run.record.name,
+        previewTasks,
+        RESUMABLE_TASK_STATUSES,
+      )
+      return
     }
 
     const latestPipeline = selected.run.kind === 'pipeline' ? selected.run.record : null
