@@ -5,6 +5,7 @@ import { stringify as yamlStringify } from 'yaml'
 import { parseTaskSpecText, isConvoySpec, isPipelineSpec } from './run/schema.js'
 import { createExecutor, buildPhases } from './run/executor.js'
 import { getAdapter, detectAdapter } from './run/adapters/index.js'
+import { permissionModeError } from './run/adapters/permission-modes.js'
 import { createReporter, printExecutionPlan } from './run/reporter.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
@@ -321,6 +322,26 @@ function parseArgs(args: string[]): RunOptions {
   }
 
   return opts
+}
+
+/**
+ * Refuse a permission mode the chosen adapter cannot honour, before it runs.
+ *
+ * Every entry point resolves its own adapter, so every one of them calls this.
+ * Until now the mode simply evaporated on four of the five adapters: a run told
+ * to hold its workers to `plan` went ahead and wrote files, and said nothing
+ * about it. Refusing is the only honest answer left once a mode cannot be
+ * carried out, and it has to happen here — before a worker starts, while the
+ * user can still change the flag.
+ */
+function assertPermissionModeSupported(adapterName: string, spec: TaskSpec): void {
+  const mode = spec.defaults?.permission_mode
+  if (!mode) return
+  const problem = permissionModeError(adapterName, mode)
+  if (problem) {
+    console.error(`  ✗ ${problem}`)
+    process.exit(1)
+  }
 }
 
 /**
@@ -664,6 +685,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       printAdapterError(retryDetectionFailed, retrySpec.adapter)
       process.exit(1)
     }
+    assertPermissionModeSupported(retrySpec.adapter, retrySpec)
 
     console.log(`\n  🏰 OpenCastle Convoy (Retry Failed): ${convoy.name}`)
     console.log(`  Convoy ID: ${convoy.id}`)
@@ -790,6 +812,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
         printAdapterError(resumePipelineDetectionFailed, resumePipelineSpec.adapter)
         process.exit(1)
       }
+      assertPermissionModeSupported(resumePipelineSpec.adapter, resumePipelineSpec)
 
       console.log(`\n  🏰 OpenCastle Pipeline (Resume): ${latestPipeline.name}`)
       console.log(`  Pipeline ID: ${latestPipeline.id}`)
@@ -848,6 +871,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       printAdapterError(resumeDetectionFailed, resumeSpec.adapter)
       process.exit(1)
     }
+    assertPermissionModeSupported(resumeSpec.adapter, resumeSpec)
 
     console.log(`\n  \uD83C\uDFF0 OpenCastle Convoy (Resume): ${convoy.name}`)
     console.log(`  Convoy ID: ${convoy.id}`)
@@ -1006,6 +1030,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
     process.exit(1)
   }
+  assertPermissionModeSupported(spec.adapter, spec)
 
   // ── Pipeline orchestrator path (version: 2 specs with depends_on_convoy) ──
   if (isPipelineSpec(spec)) {

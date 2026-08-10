@@ -239,6 +239,16 @@ npx opencastle convoy run --permission-mode bypassPermissions
 
 `bypassPermissions` gives a worker a free hand and is a sandbox-shaped choice; `default` restores the prompt-driven behavior, which in a non-interactive run means the worker writes nothing. Isolation still comes from the per-task worktree and the `files` partition either way.
 
+Not every runtime can express every mode, so not every adapter accepts every mode:
+
+| Adapter | Honours | How |
+|---------|---------|-----|
+| `claude` | all six | passed through as `--permission-mode` |
+| `codex` | all six | mapped onto the `exec -s` sandbox: `read-only`, `workspace-write`, `danger-full-access` |
+| `cursor`, `opencode`, `copilot` | `acceptEdits`, `auto`, `dontAsk` | these runtimes run unattended with edits accepted and offer no read-only or wider grant |
+
+Asking an adapter for a mode it cannot honour is refused before the run starts, naming the modes it does support. It is never accepted and ignored.
+
 ### Effort Scaling
 
 Task complexity (Fibonacci 1–13) maps to execution profiles:
