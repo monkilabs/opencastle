@@ -35,7 +35,9 @@ const HELP = `
                              or --retry-failed, list the tasks that would run
     --concurrency, -c <n>    Override max parallel tasks
     --adapter, -a <name>     Override agent runtime adapter
-    --report-dir <path>      Where to write run reports (default: .opencastle/runs)
+    --report-dir <path>      Where to write run reports, for legacy specs only
+                             (default: .opencastle/runs). Convoy specs record to
+                             .opencastle/convoy.db and .opencastle/logs instead
     --permission-mode <m>    How much a worker may do unattended: default,
                              acceptEdits (the default), auto, dontAsk,
                              bypassPermissions, plan
@@ -48,9 +50,11 @@ const HELP = `
     --dlq-retry <id>         Reset a DLQ task to pending for retry
     --convoy <id>            Filter by convoy ID (used with --dlq-list)
     --resolution <text>      Resolution text (used with --dlq-resolve)
-    --watch              Keep running, re-triggering on file changes, cron, or git push
-    --watch-config <p>   Path to watch configuration file (overrides spec watch config)
-    --clear-scratchpad   Clear scratchpad data at watch start
+    --watch                  Keep running, re-triggering on file changes, cron,
+                             or git push (convoy specs only)
+    --watch-config <p>       Path to watch configuration file (overrides spec
+                             watch config)
+    --clear-scratchpad       Clear scratchpad data at watch start
     --help, -h               Show this help
 `
 
@@ -322,6 +326,86 @@ function parseArgs(args: string[]): RunOptions {
   }
 
   return opts
+}
+
+/**
+ * Which executor a spec will run on, and therefore which flags mean anything.
+ *
+ * Three exist — the pipeline orchestrator for `version: 2`, the convoy engine
+ * for `version: 1`, and the legacy executor for everything else — and several
+ * flags are wired into exactly one of them:
+ *
+ * `--report-dir` is read where `createReporter` is called, which is the legacy
+ * path alone. For a `version: 1` spec, which is what every generated spec is,
+ * it was parsed, resolved against cwd, and never passed to the engine; the
+ * engine writes to SQLite and NDJSON and has no report directory at all. The
+ * flag was accepted, documented as "where to write run reports", and did
+ * nothing on the path nearly every user is on.
+ *
+ * `--watch` and its two companions are the mirror image: they live inside the
+ * convoy-engine branch, so a legacy or pipeline spec accepted them and ran
+ * once.
+ */
+export function specExecutor(spec: TaskSpec): 'pipeline' | 'engine' | 'legacy' {
+  if (isPipelineSpec(spec)) return 'pipeline'
+  if (isConvoySpec(spec)) return 'engine'
+  return 'legacy'
+}
+
+/** Flags that only one executor reads, and the one that reads each. */
+const EXECUTOR_ONLY_FLAGS: Array<{
+  flag: string
+  executor: 'pipeline' | 'engine' | 'legacy'
+  set: (_o: RunOptions) => boolean
+  why: string
+}> = [
+  {
+    flag: '--report-dir',
+    executor: 'legacy',
+    set: (o) => o.reportDir !== null,
+    why: 'the convoy engine records runs in .opencastle/convoy.db and .opencastle/logs, not as report files',
+  },
+  {
+    flag: '--watch',
+    executor: 'engine',
+    set: (o) => o.watch,
+    why: 'only the convoy engine has a watch loop',
+  },
+  {
+    flag: '--watch-config',
+    executor: 'engine',
+    set: (o) => o.watchConfig !== null,
+    why: 'only the convoy engine has a watch loop',
+  },
+  {
+    flag: '--clear-scratchpad',
+    executor: 'engine',
+    set: (o) => o.clearScratchpad,
+    why: 'only the convoy engine has a watch loop',
+  },
+]
+
+/**
+ * Refuse a flag the spec's executor will never read.
+ *
+ * Same rule as everywhere else on this command: a flag is honoured or refused,
+ * never accepted and dropped. Silence here meant `--report-dir ./out` on an
+ * ordinary convoy spec exited 0 with `./out` empty.
+ */
+function assertFlagsApplyToSpec(spec: TaskSpec, opts: RunOptions): void {
+  const executor = specExecutor(spec)
+  for (const entry of EXECUTOR_ONLY_FLAGS) {
+    if (!entry.set(opts) || entry.executor === executor) continue
+    const kind =
+      executor === 'pipeline'
+        ? 'a pipeline spec (version: 2)'
+        : executor === 'engine'
+          ? 'a convoy spec (version: 1)'
+          : 'a legacy spec (no version)'
+    console.error(`  ✗ ${entry.flag} does nothing for ${kind}.`)
+    console.error(`    ${entry.why}.`)
+    process.exit(1)
+  }
 }
 
 /**
@@ -984,6 +1068,9 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
 
   // Apply CLI overrides
   applyCliOverrides(spec, opts)
+
+  // Refuse the flags this spec's executor cannot act on, before anything runs.
+  assertFlagsApplyToSpec(spec, opts)
 
   // ── Auto-detect adapter if not specified ─────────────────────
   let detectionFailed = false
