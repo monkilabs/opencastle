@@ -70,4 +70,17 @@ describe('the publish workflow', () => {
     expect(publish).toBeGreaterThanOrEqual(0)
     expect(tag).toBeGreaterThan(publish)
   })
+
+  it('writes a tag and never a branch', () => {
+    // `main` is protected by a ruleset with an empty bypass list, so a push to
+    // it is rejected — and the step that tried it ran *after* the publish had
+    // already succeeded. 0.36.0 reached npm while the repository kept no record
+    // of it: no tag, no release, and a version the next run would try again.
+    const pushes = steps
+      .flatMap(s => [...(s.run ?? '').matchAll(/git push origin ([^\s"']*"?[^\s"']*)/g)])
+      .map(m => m[1])
+    expect(pushes.length, 'nothing pushes at all — has the tag step gone?').toBeGreaterThan(0)
+    const toBranch = pushes.filter(ref => !/tag|TAG|v?\$\{/.test(ref))
+    expect(toBranch, `pushes a branch the ruleset will reject: ${toBranch.join(', ')}`).toEqual([])
+  })
 })
