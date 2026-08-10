@@ -644,10 +644,40 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     }
     const { createConvoyStore } = await import('./convoy/store.js')
     const store = createConvoyStore(dbPath)
-    const latestPipeline = store.getLatestPipeline()
+    const { selectResumableRun } = await import('./convoy/last-run.js')
+    const selected = selectResumableRun(store)
+
+    if (!selected) {
+      store.close()
+      console.error('  ✗ No convoy records found in .opencastle/convoy.db')
+      process.exit(1)
+    }
+
+    // Whichever run was started most recently, and only if it can be continued.
+    // Preferring pipelines unconditionally meant a standalone convoy could never
+    // be resumed once the project had run one, and the status screen — which
+    // reads the same selector — named a different run than this command resumed.
+    if (!selected.resumable) {
+      store.close()
+      const { kind, record } = selected.run
+      console.error(
+        `  ✗ Last ${kind} "${record.name}" already finished with status: ${record.status}`,
+      )
+      console.error(
+        kind === 'pipeline'
+          ? '    Only interrupted (running/pending/failed) pipelines can be resumed.'
+          : '    Only interrupted (running/pending) convoys can be resumed.',
+      )
+      if (kind === 'convoy' && record.status === 'failed') {
+        console.error(`\n    To re-run its failed tasks: opencastle convoy retry`)
+      }
+      process.exit(1)
+    }
+
+    const latestPipeline = selected.run.kind === 'pipeline' ? selected.run.record : null
 
     // ── Pipeline resume (pending / running / failed) ────────────
-    if (latestPipeline && latestPipeline.status !== 'done') {
+    if (latestPipeline) {
       store.close()
       const resumePipelineSpec = parseTaskSpecText(latestPipeline.spec_yaml)
       applyCliOverrides(resumePipelineSpec, opts)
@@ -701,30 +731,11 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       return finishRun(resumePipelineDashResult, resumePipelineResult.status !== 'done')
     }
 
-    // ── Pipeline done — don't fall through to convoy check ──────
-    if (latestPipeline && latestPipeline.status === 'done') {
-      store.close()
-      console.error(
-        `  ✗ Last pipeline "${latestPipeline.name}" already finished with status: done`
-      )
-      console.error(`    Only interrupted (running/pending/failed) pipelines can be resumed.`)
-      process.exit(1)
-    }
-
     // ── Standalone convoy resume ────────────────────────────────
-    const convoy = store.getLatestConvoy()
+    // Selection and the finished-run refusal both happened above, against the
+    // one selector. This branch only executes what was chosen.
+    const convoy = selected.run.record as import('./convoy/types.js').ConvoyRecord
     store.close()
-    if (!convoy) {
-      console.error('  ✗ No convoy records found in .opencastle/convoy.db')
-      process.exit(1)
-    }
-    if (convoy.status === 'done' || convoy.status === 'failed') {
-      console.error(
-        `  ✗ Last convoy "${convoy.name}" already finished with status: ${convoy.status}`
-      )
-      console.error(`    Only interrupted (running/pending) convoys can be resumed.`)
-      process.exit(1)
-    }
 
     const resumeSpec = parseTaskSpecText(convoy.spec_yaml)
     applyCliOverrides(resumeSpec, opts)

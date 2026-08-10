@@ -68,6 +68,8 @@ export interface ConvoyStore {
   ): void
   getConvoy(id: string): ConvoyRecord | undefined
   getLatestConvoy(): ConvoyRecord | undefined
+  /** The newest convoy that is not a member of a pipeline. */
+  getLatestStandaloneConvoy(): ConvoyRecord | undefined
   updateConvoyStatus(
     id: string,
     status: ConvoyStatus,
@@ -461,6 +463,23 @@ class ConvoyStoreImpl implements ConvoyStore {
   getLatestConvoy(): ConvoyRecord | undefined {
     return this.db
       .prepare('SELECT *, total_cost_usd_num AS total_cost_usd FROM convoy ORDER BY created_at DESC LIMIT 1')
+      .get() as ConvoyRecord | undefined
+  }
+
+  /**
+   * The newest convoy nobody else is driving.
+   *
+   * A convoy with a `pipeline_id` is a member of a chain, and resuming it on its
+   * own runs one link while the orchestrator that owns the rest stays stopped.
+   * `resume` needs the newest run it may legitimately take over, which is this
+   * one — not simply the newest row.
+   */
+  getLatestStandaloneConvoy(): ConvoyRecord | undefined {
+    return this.db
+      .prepare(
+        'SELECT *, total_cost_usd_num AS total_cost_usd FROM convoy' +
+          ' WHERE pipeline_id IS NULL ORDER BY created_at DESC LIMIT 1',
+      )
       .get() as ConvoyRecord | undefined
   }
 

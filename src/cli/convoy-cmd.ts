@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 import { createConvoyStore } from './convoy/store.js'
+import { selectLastRun } from './convoy/last-run.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
 
@@ -51,12 +52,23 @@ interface LastRun {
   id: string
   name: string
   status: string
+  /** Which orchestrator owns it — `resume` hands a pipeline to a different one. */
+  kind: 'pipeline' | 'convoy'
   total: number
   done: number
   failed: number
   pending: number
 }
 
+/**
+ * The same run `opencastle convoy resume` would continue.
+ *
+ * Read through `selectLastRun` rather than `getLatestConvoy`, which is what this
+ * used to call. The two answers differed whenever a project had run a pipeline:
+ * this screen named the newest convoy and advised `resume`, and `resume` then
+ * reopened the pipeline instead. Advice that names a different run than the
+ * command acts on is worse than no advice.
+ */
 function readLastRun(projectRoot: string): LastRun | null {
   const dbPath = resolve(projectRoot, '.opencastle', 'convoy.db')
   if (!existsSync(dbPath)) return null
@@ -67,13 +79,22 @@ function readLastRun(projectRoot: string): LastRun | null {
     return null
   }
   try {
-    const convoy = store.getLatestConvoy()
-    if (!convoy) return null
-    const tasks = store.getTasksByConvoy(convoy.id)
+    const last = selectLastRun(store)
+    if (!last) return null
+
+    // A pipeline's progress is the progress of every convoy in it, so the counts
+    // come from all of them rather than from a single spec's task list.
+    const convoyIds =
+      last.kind === 'pipeline'
+        ? store.getConvoysByPipeline(last.record.id).map((c) => c.id)
+        : [last.record.id]
+    const tasks = convoyIds.flatMap((id) => store.getTasksByConvoy(id))
+
     return {
-      id: convoy.id,
-      name: convoy.name,
-      status: convoy.status,
+      id: last.record.id,
+      name: last.record.name,
+      status: last.record.status,
+      kind: last.kind,
       total: tasks.length,
       done: tasks.filter((t) => t.status === 'done').length,
       failed: tasks.filter((t) => t.status === 'failed' || t.status === 'gate-failed').length,
@@ -104,7 +125,10 @@ function renderStatus(last: LastRun | null, json: boolean): void {
     last.status === 'done' ? c.green('✓') : last.status === 'running' ? c.cyan('▶') : c.yellow('!')
 
   console.log(`\n  🚚 ${c.bold('Convoy')} ${c.dim('(experimental)')}\n`)
-  console.log(`  ${mark} ${c.bold(last.name)} ${c.dim(`— ${last.status}`)}`)
+  console.log(
+    `  ${mark} ${c.bold(last.name)} ${c.dim(`— ${last.status}`)}` +
+      (last.kind === 'pipeline' ? c.dim(' (pipeline)') : ''),
+  )
   console.log(
     `    ${last.done}/${last.total} done` +
       (last.failed ? c.yellow(`, ${last.failed} failed`) : '') +
@@ -112,10 +136,13 @@ function renderStatus(last: LastRun | null, json: boolean): void {
   )
   console.log('')
 
-  if (last.failed > 0) {
+  // `retry` reopens the failed tasks of a single convoy. A pipeline is a chain
+  // of them, and `resume` is what carries the chain on past a failed link — so
+  // advising `retry` here named a verb that would have run one link in isolation.
+  if (last.failed > 0 && last.kind === 'convoy') {
     console.log(`  ${c.bold('Next:')} ${c.cyan('opencastle convoy retry')}`)
     console.log(`  ${c.dim('re-runs only the failed tasks')}`)
-  } else if (last.pending > 0 || last.status === 'running') {
+  } else if (last.failed > 0 || last.pending > 0 || last.status === 'running') {
     console.log(`  ${c.bold('Next:')} ${c.cyan('opencastle convoy resume')}`)
     console.log(`  ${c.dim('continues from the last checkpoint')}`)
   } else {
