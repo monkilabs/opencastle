@@ -75,10 +75,8 @@ export interface TaskRecord {
   dispute_id: string | null
   drift_score: number | null
   drift_retried: number
-  compaction_count: number
   outputs?: string | null          // JSON array of TaskOutput
   inputs?: string | null           // JSON array of TaskInput
-  discovered_issues?: string | null // JSON array
   contract_result?: string | null  // JSON ContractResult
 }
 
@@ -341,7 +339,6 @@ export type ConvoyEventType =
   | { type: 'artifact_limit_reached'; data?: { task_id?: string; limit?: number; current?: number } }
   | { type: 'agent_identity_captured'; data?: { agent?: string; task_id?: string } }
   | { type: 'agent_identity_rejected'; data?: { agent?: string; task_id?: string; reason?: string } }
-  | { type: 'weak_area_skipped'; data?: { agent?: string; weak_areas?: string[]; task_files?: string[] } }
   | { type: 'swarm_concurrency_update'; data?: { new_concurrency?: number; reason?: string } }
   | { type: 'post_convoy_hook_failed'; data?: { hook?: string; error?: string } }
   | { type: 'session'; data?: { agent?: string; model?: string; task?: string; outcome?: string; duration_min?: number } }
@@ -357,12 +354,9 @@ export type ConvoyEventType =
   | { type: 'watch_cycle_end'; data?: { cycle_number?: number; status?: string } }
   | { type: 'watch_stopped'; data?: { reason?: string } }
   | { type: 'worker_killed'; data?: { reason?: string; worker_id?: string; task_id?: string } }
-  | { type: 'discovered_issue'; data?: { task_id?: string; title?: string; file?: string; description?: string; severity?: string } }
   | { type: 'contract_violation'; data?: { task_id?: string; agent?: string; missing?: string[]; warnings?: string[] } }
   | { type: 'review_stage_completed'; data?: { stage: string; verdict: string; tokens: number; task_id?: string; model?: string } }
   | { type: 'partition_violation'; data?: { task_id?: string; allowed?: string[]; actual?: string[]; violations?: string[] } }
-  | { type: 'context_compacted'; data?: { task_id?: string; compaction_count?: number; summary_path?: string; model?: string; tokens_used?: number } }
-  | { type: 'skill_refinement_proposed'; data?: { skill_name?: string; proposal_path?: string; failure_count?: number; confidence?: string } }
   | { type: 'tdd_check_passed'; data?: { task_id?: string; new_source_files?: number; existing_test_files?: number } }
   | { type: 'tdd_check_failed'; data?: { task_id?: string; missing_test_files?: string[]; new_source_files?: number } }
   | { type: 'tdd_check_skipped'; data?: { task_id?: string; reason?: string; agent?: string } }
@@ -397,7 +391,6 @@ export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
   'artifact_limit_reached',
   'agent_identity_captured',
   'agent_identity_rejected',
-  'weak_area_skipped',
   'swarm_concurrency_update',
   'post_convoy_hook_failed',
   'session',
@@ -410,12 +403,9 @@ export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
   'watch_cycle_end',
   'watch_stopped',
   'worker_killed',
-  'discovered_issue',
   'contract_violation',
   'review_stage_completed',
   'partition_violation',
-  'context_compacted',
-  'skill_refinement_proposed',
   'tdd_check_passed',
   'tdd_check_failed',
   'tdd_check_skipped',

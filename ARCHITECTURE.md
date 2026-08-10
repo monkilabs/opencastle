@@ -239,6 +239,16 @@ npx opencastle convoy run --permission-mode bypassPermissions
 
 `bypassPermissions` gives a worker a free hand and is a sandbox-shaped choice; `default` restores the prompt-driven behavior, which in a non-interactive run means the worker writes nothing. Isolation still comes from the per-task worktree and the `files` partition either way.
 
+Not every runtime can express every mode, so not every adapter accepts every mode:
+
+| Adapter | Honours | How |
+|---------|---------|-----|
+| `claude` | all six | passed through as `--permission-mode` |
+| `codex` | all six | mapped onto the `exec -s` sandbox: `read-only`, `workspace-write`, `danger-full-access` |
+| `cursor`, `opencode`, `copilot` | `acceptEdits`, `auto`, `dontAsk` | these runtimes run unattended with edits accepted and offer no read-only or wider grant |
+
+Asking an adapter for a mode it cannot honour is refused before the run starts, naming the modes it does support. It is never accepted and ignored.
+
 ### Effort Scaling
 
 Task complexity (Fibonacci 1–13) maps to execution profiles:
@@ -253,17 +263,16 @@ Task complexity (Fibonacci 1–13) maps to execution profiles:
 
 ### Agent Expertise & Circuit Breakers
 
-The engine tracks agent performance over time:
+The engine tracks agent failures over the life of a convoy:
 
-- **Strong/weak areas** recorded per agent based on task success rates
 - **Circuit breaker** opens after repeated failures (default: 3), preventing new task assignment
 - After cooldown, a probe task tests recovery; success closes the circuit
 - Optional fallback agent handles work while the primary is in cooldown
-- Weak-area avoidance skips agents for files they've historically struggled with
+- Breaker state is serialized to the convoy record, so it survives a resume
 
 ### Event System
 
-39 canonical event types provide full observability:
+46 canonical event types provide full observability:
 
 | Category | Events |
 |----------|--------|

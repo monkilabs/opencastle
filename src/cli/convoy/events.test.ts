@@ -345,11 +345,11 @@ describe('KNOWN_EVENT_TYPES', () => {
       'merge_conflict_detected', 'merge_conflict_failed',
       'file_injection_received', 'artifact_limit_reached',
       'agent_identity_captured', 'agent_identity_rejected',
-      'weak_area_skipped', 'swarm_concurrency_update', 'post_convoy_hook_failed',
+      'swarm_concurrency_update', 'post_convoy_hook_failed',
       'session', 'delegation',
       'secret_leak_prevented', 'ndjson_write_failed', 'built_in_gate_result',
       'watch_started', 'watch_cycle_start', 'watch_cycle_end', 'watch_stopped',
-      'worker_killed', 'discovered_issue',
+      'worker_killed',
     ]
     for (const type of canonical) {
       expect(KNOWN_EVENT_TYPES.has(type)).toBe(true)

@@ -5,6 +5,7 @@ import { stringify as yamlStringify } from 'yaml'
 import { parseTaskSpecText, isConvoySpec, isPipelineSpec } from './run/schema.js'
 import { createExecutor, buildPhases } from './run/executor.js'
 import { getAdapter, detectAdapter } from './run/adapters/index.js'
+import { permissionModeError } from './run/adapters/permission-modes.js'
 import { createReporter, printExecutionPlan } from './run/reporter.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
@@ -30,10 +31,13 @@ const HELP = `
     --file, -f <path>        Task spec file
     --formula <path>         Use a formula template (alternative to --file)
     --set key=value          Set a formula variable (repeatable)
-    --dry-run                Show execution plan without running
+    --dry-run                Show execution plan without running; with --resume
+                             or --retry-failed, list the tasks that would run
     --concurrency, -c <n>    Override max parallel tasks
     --adapter, -a <name>     Override agent runtime adapter
-    --report-dir <path>      Where to write run reports (default: .opencastle/runs)
+    --report-dir <path>      Where to write run reports, for legacy specs only
+                             (default: .opencastle/runs). Convoy specs record to
+                             .opencastle/convoy.db and .opencastle/logs instead
     --permission-mode <m>    How much a worker may do unattended: default,
                              acceptEdits (the default), auto, dontAsk,
                              bypassPermissions, plan
@@ -46,9 +50,11 @@ const HELP = `
     --dlq-retry <id>         Reset a DLQ task to pending for retry
     --convoy <id>            Filter by convoy ID (used with --dlq-list)
     --resolution <text>      Resolution text (used with --dlq-resolve)
-    --watch              Keep running, re-triggering on file changes, cron, or git push
-    --watch-config <p>   Path to watch configuration file (overrides spec watch config)
-    --clear-scratchpad   Clear scratchpad data at watch start
+    --watch                  Keep running, re-triggering on file changes, cron,
+                             or git push (convoy specs only)
+    --watch-config <p>       Path to watch configuration file (overrides spec
+                             watch config)
+    --clear-scratchpad       Clear scratchpad data at watch start
     --help, -h               Show this help
 `
 
@@ -114,6 +120,59 @@ export function finishRun(
 
   printRetryHint()
   process.exit(exitCode)
+}
+
+/**
+ * The statuses `engine.retryFailed` reopens, and the ones `engine.resume` picks
+ * up. Named here so the `--dry-run` preview and the engine cannot drift about
+ * which tasks a run would touch.
+ */
+export const RETRYABLE_TASK_STATUSES = [
+  'failed',
+  'gate-failed',
+  'timed-out',
+  'review-blocked',
+  'disputed',
+] as const
+export const RESUMABLE_TASK_STATUSES = ['pending', 'assigned', 'running'] as const
+
+/**
+ * What `--resume` or `--retry-failed` would do, without doing it.
+ *
+ * `--dry-run` was read only on the fresh-run path, so combining it with either
+ * of those flags spawned agents against the user's repository for real. The flag
+ * a person reaches for to find out what will happen was the one flag that did
+ * not change what happened.
+ */
+export function printRunDryRun(
+  verb: 'resume' | 'retry',
+  runLabel: string,
+  runName: string,
+  tasks: Array<{ id: string; agent: string; status: string }>,
+  statuses: readonly string[],
+): void {
+  const selected = tasks.filter((t) => statuses.includes(t.status))
+
+  console.log(`\n  🏰 ${runLabel}: ${runName}`)
+  console.log(c.dim(`  [dry-run] Nothing will be executed.\n`))
+
+  if (selected.length === 0) {
+    console.log(
+      verb === 'retry'
+        ? '  No failed tasks to retry.'
+        : '  No unfinished tasks — nothing to resume.',
+    )
+    console.log(c.dim(`  (matching: ${statuses.join(', ')})\n`))
+    return
+  }
+
+  console.log(
+    `  Would ${verb === 'retry' ? 're-run' : 'run'} ${selected.length} of ${tasks.length} task(s):`,
+  )
+  for (const t of selected) {
+    console.log(`    ${t.id} ${c.dim(`— ${t.agent} [${t.status}]`)}`)
+  }
+  console.log()
 }
 
 /**
@@ -267,6 +326,106 @@ function parseArgs(args: string[]): RunOptions {
   }
 
   return opts
+}
+
+/**
+ * Which executor a spec will run on, and therefore which flags mean anything.
+ *
+ * Three exist — the pipeline orchestrator for `version: 2`, the convoy engine
+ * for `version: 1`, and the legacy executor for everything else — and several
+ * flags are wired into exactly one of them:
+ *
+ * `--report-dir` is read where `createReporter` is called, which is the legacy
+ * path alone. For a `version: 1` spec, which is what every generated spec is,
+ * it was parsed, resolved against cwd, and never passed to the engine; the
+ * engine writes to SQLite and NDJSON and has no report directory at all. The
+ * flag was accepted, documented as "where to write run reports", and did
+ * nothing on the path nearly every user is on.
+ *
+ * `--watch` and its two companions are the mirror image: they live inside the
+ * convoy-engine branch, so a legacy or pipeline spec accepted them and ran
+ * once.
+ */
+export function specExecutor(spec: TaskSpec): 'pipeline' | 'engine' | 'legacy' {
+  if (isPipelineSpec(spec)) return 'pipeline'
+  if (isConvoySpec(spec)) return 'engine'
+  return 'legacy'
+}
+
+/** Flags that only one executor reads, and the one that reads each. */
+const EXECUTOR_ONLY_FLAGS: Array<{
+  flag: string
+  executor: 'pipeline' | 'engine' | 'legacy'
+  set: (_o: RunOptions) => boolean
+  why: string
+}> = [
+  {
+    flag: '--report-dir',
+    executor: 'legacy',
+    set: (o) => o.reportDir !== null,
+    why: 'the convoy engine records runs in .opencastle/convoy.db and .opencastle/logs, not as report files',
+  },
+  {
+    flag: '--watch',
+    executor: 'engine',
+    set: (o) => o.watch,
+    why: 'only the convoy engine has a watch loop',
+  },
+  {
+    flag: '--watch-config',
+    executor: 'engine',
+    set: (o) => o.watchConfig !== null,
+    why: 'only the convoy engine has a watch loop',
+  },
+  {
+    flag: '--clear-scratchpad',
+    executor: 'engine',
+    set: (o) => o.clearScratchpad,
+    why: 'only the convoy engine has a watch loop',
+  },
+]
+
+/**
+ * Refuse a flag the spec's executor will never read.
+ *
+ * Same rule as everywhere else on this command: a flag is honoured or refused,
+ * never accepted and dropped. Silence here meant `--report-dir ./out` on an
+ * ordinary convoy spec exited 0 with `./out` empty.
+ */
+function assertFlagsApplyToSpec(spec: TaskSpec, opts: RunOptions): void {
+  const executor = specExecutor(spec)
+  for (const entry of EXECUTOR_ONLY_FLAGS) {
+    if (!entry.set(opts) || entry.executor === executor) continue
+    const kind =
+      executor === 'pipeline'
+        ? 'a pipeline spec (version: 2)'
+        : executor === 'engine'
+          ? 'a convoy spec (version: 1)'
+          : 'a legacy spec (no version)'
+    console.error(`  ✗ ${entry.flag} does nothing for ${kind}.`)
+    console.error(`    ${entry.why}.`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Refuse a permission mode the chosen adapter cannot honour, before it runs.
+ *
+ * Every entry point resolves its own adapter, so every one of them calls this.
+ * Until now the mode simply evaporated on four of the five adapters: a run told
+ * to hold its workers to `plan` went ahead and wrote files, and said nothing
+ * about it. Refusing is the only honest answer left once a mode cannot be
+ * carried out, and it has to happen here — before a worker starts, while the
+ * user can still change the flag.
+ */
+function assertPermissionModeSupported(adapterName: string, spec: TaskSpec): void {
+  const mode = spec.defaults?.permission_mode
+  if (!mode) return
+  const problem = permissionModeError(adapterName, mode)
+  if (problem) {
+    console.error(`  ✗ ${problem}`)
+    process.exit(1)
+  }
 }
 
 /**
@@ -567,10 +726,26 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     const { createConvoyStore } = await import('./convoy/store.js')
     const store = createConvoyStore(dbPath)
     const convoy = store.getLatestConvoy()
+    const retryTasks = convoy ? store.getTasksByConvoy(convoy.id) : []
     store.close()
     if (!convoy) {
       console.error('  ✗ No convoy records found in .opencastle/convoy.db')
       process.exit(1)
+    }
+
+    // Before adapter detection: a preview should not require an agent CLI to be
+    // installed, and it must return before anything is executed.
+    if (opts.dryRun) {
+      printRunDryRun(
+        'retry',
+        'OpenCastle Convoy (Retry Failed)',
+        convoy.name,
+        opts.retryFailedTaskIds?.length
+          ? retryTasks.filter((t) => opts.retryFailedTaskIds!.includes(t.id))
+          : retryTasks,
+        RETRYABLE_TASK_STATUSES,
+      )
+      return
     }
 
     const retrySpec = parseTaskSpecText(convoy.spec_yaml)
@@ -594,6 +769,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       printAdapterError(retryDetectionFailed, retrySpec.adapter)
       process.exit(1)
     }
+    assertPermissionModeSupported(retrySpec.adapter, retrySpec)
 
     console.log(`\n  🏰 OpenCastle Convoy (Retry Failed): ${convoy.name}`)
     console.log(`  Convoy ID: ${convoy.id}`)
@@ -644,10 +820,60 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     }
     const { createConvoyStore } = await import('./convoy/store.js')
     const store = createConvoyStore(dbPath)
-    const latestPipeline = store.getLatestPipeline()
+    const { selectResumableRun } = await import('./convoy/last-run.js')
+    const selected = selectResumableRun(store)
+
+    if (!selected) {
+      store.close()
+      console.error('  ✗ No convoy records found in .opencastle/convoy.db')
+      process.exit(1)
+    }
+
+    // Whichever run was started most recently, and only if it can be continued.
+    // Preferring pipelines unconditionally meant a standalone convoy could never
+    // be resumed once the project had run one, and the status screen — which
+    // reads the same selector — named a different run than this command resumed.
+    if (!selected.resumable) {
+      store.close()
+      const { kind, record } = selected.run
+      console.error(
+        `  ✗ Last ${kind} "${record.name}" already finished with status: ${record.status}`,
+      )
+      console.error(
+        kind === 'pipeline'
+          ? '    Only interrupted (running/pending/failed) pipelines can be resumed.'
+          : '    Only interrupted (running/pending) convoys can be resumed.',
+      )
+      if (kind === 'convoy' && record.status === 'failed') {
+        console.error(`\n    To re-run its failed tasks: opencastle convoy retry`)
+      }
+      process.exit(1)
+    }
+
+    // Before adapter detection, and before either orchestrator is constructed.
+    if (opts.dryRun) {
+      const previewIds =
+        selected.run.kind === 'pipeline'
+          ? store.getConvoysByPipeline(selected.run.record.id).map((c) => c.id)
+          : [selected.run.record.id]
+      const previewTasks = previewIds.flatMap((id) => store.getTasksByConvoy(id))
+      store.close()
+      printRunDryRun(
+        'resume',
+        selected.run.kind === 'pipeline'
+          ? 'OpenCastle Pipeline (Resume)'
+          : 'OpenCastle Convoy (Resume)',
+        selected.run.record.name,
+        previewTasks,
+        RESUMABLE_TASK_STATUSES,
+      )
+      return
+    }
+
+    const latestPipeline = selected.run.kind === 'pipeline' ? selected.run.record : null
 
     // ── Pipeline resume (pending / running / failed) ────────────
-    if (latestPipeline && latestPipeline.status !== 'done') {
+    if (latestPipeline) {
       store.close()
       const resumePipelineSpec = parseTaskSpecText(latestPipeline.spec_yaml)
       applyCliOverrides(resumePipelineSpec, opts)
@@ -670,6 +896,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
         printAdapterError(resumePipelineDetectionFailed, resumePipelineSpec.adapter)
         process.exit(1)
       }
+      assertPermissionModeSupported(resumePipelineSpec.adapter, resumePipelineSpec)
 
       console.log(`\n  🏰 OpenCastle Pipeline (Resume): ${latestPipeline.name}`)
       console.log(`  Pipeline ID: ${latestPipeline.id}`)
@@ -701,30 +928,11 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       return finishRun(resumePipelineDashResult, resumePipelineResult.status !== 'done')
     }
 
-    // ── Pipeline done — don't fall through to convoy check ──────
-    if (latestPipeline && latestPipeline.status === 'done') {
-      store.close()
-      console.error(
-        `  ✗ Last pipeline "${latestPipeline.name}" already finished with status: done`
-      )
-      console.error(`    Only interrupted (running/pending/failed) pipelines can be resumed.`)
-      process.exit(1)
-    }
-
     // ── Standalone convoy resume ────────────────────────────────
-    const convoy = store.getLatestConvoy()
+    // Selection and the finished-run refusal both happened above, against the
+    // one selector. This branch only executes what was chosen.
+    const convoy = selected.run.record as import('./convoy/types.js').ConvoyRecord
     store.close()
-    if (!convoy) {
-      console.error('  ✗ No convoy records found in .opencastle/convoy.db')
-      process.exit(1)
-    }
-    if (convoy.status === 'done' || convoy.status === 'failed') {
-      console.error(
-        `  ✗ Last convoy "${convoy.name}" already finished with status: ${convoy.status}`
-      )
-      console.error(`    Only interrupted (running/pending) convoys can be resumed.`)
-      process.exit(1)
-    }
 
     const resumeSpec = parseTaskSpecText(convoy.spec_yaml)
     applyCliOverrides(resumeSpec, opts)
@@ -747,6 +955,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
       printAdapterError(resumeDetectionFailed, resumeSpec.adapter)
       process.exit(1)
     }
+    assertPermissionModeSupported(resumeSpec.adapter, resumeSpec)
 
     console.log(`\n  \uD83C\uDFF0 OpenCastle Convoy (Resume): ${convoy.name}`)
     console.log(`  Convoy ID: ${convoy.id}`)
@@ -860,6 +1069,9 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
   // Apply CLI overrides
   applyCliOverrides(spec, opts)
 
+  // Refuse the flags this spec's executor cannot act on, before anything runs.
+  assertFlagsApplyToSpec(spec, opts)
+
   // ── Auto-detect adapter if not specified ─────────────────────
   let detectionFailed = false
   if (!spec.adapter) {
@@ -905,6 +1117,7 @@ export default async function run({ args, pkgRoot }: CliContext): Promise<void> 
     console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
     process.exit(1)
   }
+  assertPermissionModeSupported(spec.adapter, spec)
 
   // ── Pipeline orchestrator path (version: 2 specs with depends_on_convoy) ──
   if (isPipelineSpec(spec)) {

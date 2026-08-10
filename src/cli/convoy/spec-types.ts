@@ -195,8 +195,14 @@ export interface ExecuteOptions {
   verbose?: boolean;
   /** Working directory for the agent process (defaults to process.cwd()). */
   cwd?: string;
-  /** How much the worker may do unattended. Adapters that cannot express a
-   *  mode ignore it; the Claude adapter passes it as `--permission-mode`. */
+  /**
+   * How much the worker may do unattended.
+   *
+   * Claude passes it as `--permission-mode`; codex maps it onto the `exec -s`
+   * sandbox. An adapter that cannot express a mode no longer ignores it — the
+   * run is refused up front instead. See `adapters/permission-modes.ts` for
+   * which adapter honours which.
+   */
   permissionMode?: PermissionMode;
   /** MCP servers to make available during execution (Phase 19.7). */
   mcpServers?: MCPServerConfig[];

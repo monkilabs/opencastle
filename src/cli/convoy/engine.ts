@@ -820,10 +820,8 @@ function pollInjectFile(
       dispute_id: null,
       drift_score: null,
       drift_retried: 0,
-      compaction_count: 0,
       outputs: null,
       inputs: null,
-      discovered_issues: null,
     }
 
     try {
@@ -2403,10 +2401,8 @@ async function runConvoy(
                 dispute_id: null,
                 drift_score: null,
                 drift_retried: 0,
-                compaction_count: 0,
                 outputs: null,
                 inputs: null,
-                discovered_issues: null,
               }
 
               store.insertInjectedTask(resolutionRecord)
@@ -2677,7 +2673,6 @@ async function runConvoy(
         })
         store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
       })
-      // ── Intelligence: record failure in expertise (Phase 18.2) ──────────
       // ── Circuit breaker: record failure ────────────────────────────────────
       if (circuitBreakerConfig) {
         const { tripped } = circuitBreaker.recordFailure(taskRecord.agent)
@@ -3435,10 +3430,8 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         dispute_id: null,
         drift_score: null,
         drift_retried: 0,
-        compaction_count: 0,
         outputs: null,
         inputs: null,
-        discovered_issues: null,
       }
 
       store.insertInjectedTask(record)

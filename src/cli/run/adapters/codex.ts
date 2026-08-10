@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { Task, ExecuteOptions, ExecuteResult } from '../../convoy/spec-types.js'
+import { codexSandboxFor } from './permission-modes.js'
 
 /** Adapter name */
 export const name = 'codex'
@@ -28,12 +29,19 @@ export async function execute(task: Task, options: ExecuteOptions = {}): Promise
   const tempDir = mkdtempSync(join(tmpdir(), 'opencastle-codex-'))
   const lastMessagePath = join(tempDir, 'last-message.txt')
 
+  // The sandbox the worker runs in, from the requested permission mode. This
+  // was hardcoded to `workspace-write`, so `--permission-mode plan` — or
+  // `default`, which is meant to leave a non-interactive worker writing nothing
+  // — produced a worker with full write access to the workspace anyway.
+  // `acceptEdits` and no mode at all both still mean `workspace-write`.
+  const sandbox = codexSandboxFor(options.permissionMode)
+
   const args = [
     '-a',
     'never',
     'exec',
     '-s',
-    'workspace-write',
+    sandbox,
     '--color',
     'never',
     '--skip-git-repo-check',

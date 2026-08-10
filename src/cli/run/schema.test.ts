@@ -2117,3 +2117,75 @@ describe('branch is validated where it enters', () => {
     expect(validateSpec(withBranch(42)).valid).toBe(false)
   })
 })
+
+/**
+ * A key nobody reads is almost always a misspelling of one somebody does.
+ *
+ * The defect: `built_in_gates` type-checked each known field and rejected
+ * nothing unrecognised, so `no_ops: false` validated clean and left the no-op
+ * gate armed — the author believing they had turned it off. Under `defaults`,
+ * only keys already known to be retired were flagged, so `permision_mode: plan`
+ * went through in silence and ran with the default authority.
+ */
+describe('unrecognised spec keys', () => {
+  const withDefaults = (defaults: Record<string, unknown>) => ({
+    name: 'S',
+    version: 1,
+    tasks: [{ id: 't', agent: 'developer', prompt: 'p', files: ['src/'] }],
+    defaults,
+  })
+
+  it('rejects a misspelled built-in gate rather than arming it', () => {
+    const { valid, errors } = validateSpec(withDefaults({ built_in_gates: { no_ops: false } }))
+    expect(valid).toBe(false)
+    expect(errors.join('\n')).toContain('no_ops')
+    // The message has to say what the real names are.
+    expect(errors.join('\n')).toContain('no_op')
+  })
+
+  it('accepts every gate the engine actually switches on', () => {
+    const { valid, errors } = validateSpec(
+      withDefaults({
+        built_in_gates: {
+          secret_scan: true,
+          blast_radius: 'auto',
+          dependency_audit: false,
+          regression_test: false,
+          browser_test: false,
+          no_op: false,
+          tdd_check: { mode: 'block' },
+          gate_timeout: 120,
+        },
+      }),
+    )
+    expect(errors).toEqual([])
+    expect(valid).toBe(true)
+  })
+
+  it('warns on a misspelled default without failing an otherwise fine spec', () => {
+    const { valid, warnings = [] } = validateSpec(withDefaults({ permision_mode: 'plan' }))
+    expect(warnings.join('\n')).toContain('permision_mode')
+    // A warning, so a spec that is otherwise fine still runs.
+    expect(valid).toBe(true)
+  })
+
+  it('stays quiet about every default something reads', () => {
+    const { warnings } = validateSpec(
+      withDefaults({
+        timeout: '30m',
+        max_retries: 2,
+        review: 'fast',
+        permission_mode: 'acceptEdits',
+        circuit_breaker: { threshold: 3, cooldown_ms: 1000 },
+        detect_drift: true,
+        max_concurrent_reviews: 2,
+      }),
+    )
+    expect(warnings).toEqual([])
+  })
+
+  it('keeps the more specific message for a key that was retired', () => {
+    const { warnings = [] } = validateSpec(withDefaults({ snippets: true }))
+    expect(warnings.join('\n')).toContain('folded into skills')
+  })
+})
