@@ -107,7 +107,6 @@ All 39 canonical event types emitted by the convoy engine.
 |-----------|--------|-------------|
 | `agent_identity_captured` | engine.ts | `agent?: string; task_id?: string` |
 | `agent_identity_rejected` | engine.ts | `agent?: string; task_id?: string; reason?: string` |
-| `weak_area_skipped` | engine.ts | `agent?: string; weak_areas?: string[]; task_files?: string[]` |
 | `swarm_concurrency_update` | engine.ts | `new_concurrency?: number; reason?: string` |
 
 ### Hooks
@@ -155,7 +154,6 @@ All 39 canonical event types emitted by the convoy engine.
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `discovered_issue` | issues.ts | `task_id?: string; title?: string; file?: string; description?: string; severity?: string` |
 
 ## Derived Metrics
 

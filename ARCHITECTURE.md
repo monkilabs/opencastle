@@ -263,17 +263,16 @@ Task complexity (Fibonacci 1–13) maps to execution profiles:
 
 ### Agent Expertise & Circuit Breakers
 
-The engine tracks agent performance over time:
+The engine tracks agent failures over the life of a convoy:
 
-- **Strong/weak areas** recorded per agent based on task success rates
 - **Circuit breaker** opens after repeated failures (default: 3), preventing new task assignment
 - After cooldown, a probe task tests recovery; success closes the circuit
 - Optional fallback agent handles work while the primary is in cooldown
-- Weak-area avoidance skips agents for files they've historically struggled with
+- Breaker state is serialized to the convoy record, so it survives a resume
 
 ### Event System
 
-39 canonical event types provide full observability:
+46 canonical event types provide full observability:
 
 | Category | Events |
 |----------|--------|
