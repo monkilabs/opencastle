@@ -30,10 +30,12 @@ const CONVOY_HELP = `
     opencastle convoy run -f <spec>      Execute a spec you wrote by hand
 
   Options:
-    --dry-run       Plan only; do not execute
-    --verbose       Stream agent output
-    --json          Machine-readable status
-    --help, -h      Show this help
+    --dry-run            Plan only; do not execute
+    --verbose            Stream agent output
+    --adapter, -a <name> Agent runtime to plan and run with
+    --skip-validation    Skip PRD and spec validation passes
+    --json               Machine-readable status
+    --help, -h           Show this help
 
   run and plan take their own options — try: opencastle convoy run --help
 
@@ -71,6 +73,31 @@ const FLAGS_WITH_VALUES = new Set([
 ])
 
 /**
+ * Flags the planner reads, forwarded from the task path.
+ *
+ * `opencastle convoy "add rate limiting" --adapter codex` used to run on the
+ * auto-detected adapter and say nothing: the task path kept an allowlist of two
+ * flags and silently discarded everything else. A flag that is accepted and
+ * ignored is the defect `bin/cli.mjs` refuses unknown options to prevent, and
+ * its comment exempts `convoy` on the grounds that this file validates its own
+ * input — which, on this path, it did not.
+ *
+ * `--text` is not here because the task itself supplies it, and `--prd` is not
+ * because `SUBCOMMAND_FLAGS` sends it to `convoy plan` with a pointer.
+ */
+const TASK_FLAGS = new Set([
+  '--adapter',
+  '-a',
+  '--verbose',
+  '--dry-run',
+  '--dryRun',
+  '--skip-validation',
+  '--complexity',
+  '--output-prd',
+  '--output-spec',
+])
+
+/**
  * The words of the task, with the flags and their values taken out.
  *
  * A shell splits an unquoted task into one argument per word, and this command
@@ -93,6 +120,32 @@ export function positionalWords(args: string[]): string[] {
     out.push(arg)
   }
   return out
+}
+
+/**
+ * The flags of a task invocation, split into what the planner gets and what
+ * nobody recognises.
+ *
+ * Returning the unknown ones rather than dropping them is the whole point: they
+ * become an error naming what was accepted, instead of a run that quietly did
+ * something other than what was asked.
+ */
+export function splitTaskFlags(args: string[]): { forward: string[]; unknown: string[] } {
+  const forward: string[] = []
+  const unknown: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (!arg.startsWith('-')) continue
+    if (TASK_FLAGS.has(arg)) {
+      forward.push(arg)
+      // A value-taking flag carries its value across with it.
+      if (FLAGS_WITH_VALUES.has(arg) && i + 1 < args.length) forward.push(args[++i])
+      continue
+    }
+    unknown.push(arg)
+    if (FLAGS_WITH_VALUES.has(arg)) i++
+  }
+  return { forward, unknown }
 }
 
 /** Delegate to an existing command module, passing through remaining args. */
@@ -219,11 +272,6 @@ export default async function convoy(ctx: CliContext): Promise<void> {
     return
   }
 
-  // `--json` belongs to the status path; forwarding it to the planner would only
-  // earn an "Unknown option" from an arg parser that has never heard of it.
-  const PLANNER_FLAGS = new Set(['--dry-run', '--verbose'])
-  const passthrough = args.filter((a) => PLANNER_FLAGS.has(a))
-
   const positionals = positionalWords(args)
 
   switch (sub) {
@@ -299,5 +347,13 @@ export default async function convoy(ctx: CliContext): Promise<void> {
   //
   // Every word, not just the first. An unquoted task arrives as one argument per
   // word, and taking `sub` alone silently planned the first of them.
-  await delegate('pipeline', ctx, ['--text', positionals.join(' '), ...passthrough])
+  const { forward, unknown } = splitTaskFlags(args)
+  if (unknown.length > 0) {
+    const accepted = [...TASK_FLAGS].sort().join(' ')
+    console.error(`  ${c.red('✗')} Unknown option for a convoy task: ${unknown[0]}`)
+    console.error(`  ${c.dim('Accepts:')} ${accepted} --help`)
+    console.error(`  ${c.dim('For run or plan options:')} opencastle convoy run --help`)
+    process.exit(1)
+  }
+  await delegate('pipeline', ctx, ['--text', positionals.join(' '), ...forward])
 }

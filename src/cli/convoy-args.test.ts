@@ -7,7 +7,7 @@
  * spend a full PRD round-trip on it.
  */
 import { describe, it, expect } from 'vitest'
-import { positionalWords } from './convoy-cmd.js'
+import { positionalWords, splitTaskFlags } from './convoy-cmd.js'
 
 describe('positionalWords', () => {
   it('keeps every word of an unquoted task', () => {
@@ -107,5 +107,50 @@ describe('status words stay a status query', () => {
     // is a feature, and planning it must not be hijacked.
     expect(isStatusQuery(['status', 'page', 'for', 'the', 'admin'])).toBe(false)
     expect(isStatusQuery(['list', 'all', 'users', 'in', 'the', 'dashboard'])).toBe(false)
+  })
+})
+
+describe('splitTaskFlags', () => {
+  it('forwards a flag the planner reads, with its value', () => {
+    // The defect: --adapter was dropped, and the run used the auto-detected
+    // adapter while saying nothing about it.
+    expect(splitTaskFlags(['add', 'caching', '--adapter', 'codex'])).toEqual({
+      forward: ['--adapter', 'codex'],
+      unknown: [],
+    })
+  })
+
+  it('forwards the short form and its value too', () => {
+    expect(splitTaskFlags(['ship', '-a', 'claude']).forward).toEqual(['-a', 'claude'])
+  })
+
+  it('forwards boolean flags without eating the next word', () => {
+    expect(splitTaskFlags(['ship', '--verbose', 'it']).forward).toEqual(['--verbose'])
+  })
+
+  it('reports a flag nobody on this path reads instead of dropping it', () => {
+    // --json belongs to the status screen; forwarding it would earn an
+    // "Unknown option" from the planner, and dropping it hid the mistake.
+    expect(splitTaskFlags(['add', 'caching', '--json']).unknown).toEqual(['--json'])
+  })
+
+  it('reports a misspelled flag rather than running without it', () => {
+    expect(splitTaskFlags(['add', 'caching', '--adaptr', 'codex']).unknown).toEqual(['--adaptr'])
+  })
+
+  it('does not mistake an unknown flag value for another unknown flag', () => {
+    expect(splitTaskFlags(['x', '--report-dir', 'out']).unknown).toEqual(['--report-dir'])
+  })
+
+  it('forwards several flags at once, keeping order', () => {
+    const { forward, unknown } = splitTaskFlags([
+      'build', 'it', '--verbose', '--adapter', 'codex', '--skip-validation',
+    ])
+    expect(forward).toEqual(['--verbose', '--adapter', 'codex', '--skip-validation'])
+    expect(unknown).toEqual([])
+  })
+
+  it('finds nothing to forward or refuse in a bare task', () => {
+    expect(splitTaskFlags(['add', 'caching'])).toEqual({ forward: [], unknown: [] })
   })
 })
