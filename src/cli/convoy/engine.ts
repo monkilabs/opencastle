@@ -820,10 +820,8 @@ function pollInjectFile(
       dispute_id: null,
       drift_score: null,
       drift_retried: 0,
-      compaction_count: 0,
       outputs: null,
       inputs: null,
-      discovered_issues: null,
     }
 
     try {
@@ -2403,10 +2401,8 @@ async function runConvoy(
                 dispute_id: null,
                 drift_score: null,
                 drift_retried: 0,
-                compaction_count: 0,
                 outputs: null,
                 inputs: null,
-                discovered_issues: null,
               }
 
               store.insertInjectedTask(resolutionRecord)
@@ -3434,10 +3430,8 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         dispute_id: null,
         drift_score: null,
         drift_retried: 0,
-        compaction_count: 0,
         outputs: null,
         inputs: null,
-        discovered_issues: null,
       }
 
       store.insertInjectedTask(record)

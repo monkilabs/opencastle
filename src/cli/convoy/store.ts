@@ -17,7 +17,7 @@ import type {
   TaskStepRecord,
 } from './types.js'
 
-const SCHEMA_VERSION = 12
+const SCHEMA_VERSION = 13
 
 // ── Size limits (bytes) ────────────────────────────────────────────────────────
 const LIMIT_SPEC_YAML = 256 * 1024      // 256 KB
@@ -85,7 +85,7 @@ export interface ConvoyStore {
       | 'on_exhausted' | 'injected' | 'provenance' | 'idempotency_key'
       | 'current_step' | 'total_steps' | 'review_level' | 'review_verdict'
       | 'review_tokens' | 'review_model' | 'panel_attempts' | 'dispute_id'
-      | 'drift_score' | 'drift_retried' | 'discovered_issues' | 'compaction_count'
+      | 'drift_score' | 'drift_retried'
     > & { outputs?: string | null; inputs?: string | null },
   ): void
   insertInjectedTask(record: TaskRecord): void
@@ -117,7 +117,6 @@ export interface ConvoyStore {
     convoyId: string,
     fields: Partial<Pick<TaskRecord, 'drift_score' | 'drift_retried'>>,
   ): void
-  updateTaskCompaction(taskId: string, convoyId: string, compactionCount: number): void
   updateTaskDisputeStatus(taskId: string, convoyId: string, status: ConvoyTaskStatus, disputeId: string): void
   getReadyTasks(convoyId: string): TaskRecord[]
   insertTaskStep(record: Omit<TaskStepRecord, 'id'>): number
@@ -264,10 +263,8 @@ class ConvoyStoreImpl implements ConvoyStore {
           dispute_id        TEXT,
           drift_score       REAL,
           drift_retried     INTEGER NOT NULL DEFAULT 0,
-          compaction_count  INTEGER NOT NULL DEFAULT 0,
           outputs           TEXT,
           inputs            TEXT,
-          discovered_issues TEXT,
           contract_result   TEXT,
           PRIMARY KEY (id, convoy_id)
         );
@@ -432,6 +429,10 @@ class ConvoyStoreImpl implements ConvoyStore {
       migrateSchema(this.db, this.dbPath, 11, 12)
       version = 12
     }
+    if (version === 12) {
+      migrateSchema(this.db, this.dbPath, 12, 13)
+      version = 13
+    }
   }
 
   insertConvoy(
@@ -537,7 +538,7 @@ class ConvoyStoreImpl implements ConvoyStore {
       | 'on_exhausted' | 'injected' | 'provenance' | 'idempotency_key'
       | 'current_step' | 'total_steps' | 'review_level' | 'review_verdict'
       | 'review_tokens' | 'review_model' | 'panel_attempts' | 'dispute_id'
-      | 'drift_score' | 'drift_retried' | 'discovered_issues' | 'compaction_count'
+      | 'drift_score' | 'drift_retried'
     > & { outputs?: string | null; inputs?: string | null },
   ): void {
     this.db
@@ -741,12 +742,6 @@ class ConvoyStoreImpl implements ConvoyStore {
 
     if (sets.length === 0) return
     this.db.prepare(`UPDATE task SET ${sets.join(', ')} WHERE id = :id AND convoy_id = :convoy_id`).run(params)
-  }
-
-  updateTaskCompaction(taskId: string, convoyId: string, compactionCount: number): void {
-    this.db
-      .prepare('UPDATE task SET compaction_count = :compaction_count WHERE id = :id AND convoy_id = :convoy_id')
-      .run({ id: taskId, convoy_id: convoyId, compaction_count: compactionCount })
   }
 
   updateTaskDisputeStatus(taskId: string, convoyId: string, status: ConvoyTaskStatus, disputeId: string): void {
@@ -1444,6 +1439,20 @@ export function migrateSchema(db: DatabaseSync, dbPath: string, fromVersion: num
           ALTER TABLE task_new RENAME TO task;
           CREATE UNIQUE INDEX IF NOT EXISTS idx_task_idempotency ON task(convoy_id, idempotency_key)
             WHERE idempotency_key IS NOT NULL;
+        `)
+      }
+      if (v === 12) {
+        // The last of the "intelligence suite" (see docs/plans/2026-07-25-strategic
+        // -refactoring-plan.md, phase 4b). That pass deleted the six modules and the
+        // config keys they exposed; these two columns outlived it, written as a
+        // literal 0 and a literal null on every task insert and read by nothing.
+        //
+        // DROP COLUMN rather than a table rebuild: neither column is indexed or
+        // referenced, and the engine already refuses to run below SQLite 3.35,
+        // which is the version that introduced it.
+        db.exec(`
+          ALTER TABLE task DROP COLUMN compaction_count;
+          ALTER TABLE task DROP COLUMN discovered_issues;
         `)
       }
       db.exec('COMMIT')

@@ -75,10 +75,8 @@ export interface TaskRecord {
   dispute_id: string | null
   drift_score: number | null
   drift_retried: number
-  compaction_count: number
   outputs?: string | null          // JSON array of TaskOutput
   inputs?: string | null           // JSON array of TaskInput
-  discovered_issues?: string | null // JSON array
   contract_result?: string | null  // JSON ContractResult
 }
 

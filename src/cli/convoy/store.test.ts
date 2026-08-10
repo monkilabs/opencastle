@@ -99,11 +99,11 @@ describe('DB creation', () => {
     expect(row.journal_mode).toBe('wal')
   })
 
-  it('sets schema version to 12', () => {
+  it('sets schema version to 13', () => {
     const db = new DatabaseSync(dbPath)
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number }
     db.close()
-    expect(row.user_version).toBe(12)
+    expect(row.user_version).toBe(13)
   })
 
   it('creates all required tables', () => {
@@ -131,7 +131,7 @@ describe('DB creation', () => {
     store2.close()
     // Reassign so afterEach does not double-close
     store = createConvoyStore(dbPath)
-    expect(row.user_version).toBe(12)
+    expect(row.user_version).toBe(13)
   })
 })
 
@@ -208,8 +208,8 @@ describe('schema migration', () => {
     verifyDb.close()
 
     expect(cols.map(c => c.name)).toContain('adapter')
-    // v1 chains through v2→v3→v4→...→v7→v8→v9→v10→v11→v12 in one init, so final version is 12
-    expect(version.user_version).toBe(12)
+    // v1 chains through v2→v3→v4→...→v10→v11→v12→v13 in one init, so final version is 13
+    expect(version.user_version).toBe(13)
   })
 
   it('schema migration v2 to v3 adds cost columns', () => {
@@ -295,7 +295,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(12)
+    expect(version.user_version).toBe(13)
   })
 
   it('schema migration v1 to v3 chains correctly in a single init', () => {
@@ -381,7 +381,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(12)
+    expect(version.user_version).toBe(13)
   })
 
   it('schema migration v3 to v4 creates pipeline table and adds pipeline_id to convoy', () => {
@@ -464,7 +464,7 @@ describe('schema migration', () => {
 
     expect(convoyCols.map(c => c.name)).toContain('pipeline_id')
     expect(tables.map(t => t.name)).toContain('pipeline')
-    expect(version.user_version).toBe(12)
+    expect(version.user_version).toBe(13)
   })
 })
 
@@ -1458,7 +1458,7 @@ describe('schema migration v5 → v6', () => {
     v5Verify.close()
     migratedStore.close()
 
-    expect(row.user_version).toBe(12)
+    expect(row.user_version).toBe(13)
     expect(taskStepTable?.name).toBe('task_step')
     expect(convoy?.id).toBe('convoy-auto')
     expect(task?.id).toBe('task-auto')
@@ -1628,7 +1628,7 @@ describe('schema migration v6→v7 (drift detection columns)', () => {
 
     expect(cols.map(c => c.name)).toContain('drift_score')
     expect(cols.map(c => c.name)).toContain('drift_retried')
-    expect(version.user_version).toBe(12)
+    expect(version.user_version).toBe(13)
   })
 
   it('new databases include drift_score and drift_retried in CREATE TABLE', () => {
@@ -1862,7 +1862,7 @@ describe('migration full chain v4→v10', () => {
     const verifyDb = new DatabaseSync(chainDbPath)
     verifyDb.exec('PRAGMA foreign_keys = 0')
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(12)
+    expect(version).toBe(13)
 
     // Verify all new tables exist
     const tables = (verifyDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name)
@@ -1876,9 +1876,17 @@ describe('migration full chain v4→v10', () => {
       'gates', 'on_exhausted', 'injected', 'provenance', 'idempotency_key',
       'current_step', 'total_steps', 'review_level', 'review_verdict', 'review_tokens',
       'review_model', 'panel_attempts', 'dispute_id', 'drift_score', 'drift_retried',
-      'outputs', 'inputs', 'discovered_issues', 'compaction_count',
+      'outputs', 'inputs',
     ]) {
       expect(taskCols).toContain(col)
+    }
+
+    // And the two the v12→v13 step takes back out again. A v4 database gains
+    // `discovered_issues` at v7 and `compaction_count` at v10, so this chain is
+    // the one that proves the drop runs after the adds rather than instead of
+    // them — the columns have to appear and then go.
+    for (const col of ['discovered_issues', 'compaction_count']) {
+      expect(taskCols, `${col} survived the v12→v13 drop`).not.toContain(col)
     }
 
     // Verify all new columns on convoy
@@ -1906,6 +1914,72 @@ describe('migration full chain v4→v10', () => {
     }).not.toThrow()
 
     verifyDb.close()
+  })
+})
+
+// ── v12 → v13: the last of the intelligence suite ─────────────────────────────
+
+/**
+ * `compaction_count` and `discovered_issues` outlived the feature that wrote
+ * them. Phase 4b of the refactoring plan deleted the intelligence modules and
+ * the config keys they exposed; these two columns stayed behind, set to a
+ * literal 0 and a literal null on every insert and read by nothing.
+ *
+ * Dropping a column rewrites the table, so what these cover is the part that
+ * can go wrong: the rows have to come through it untouched.
+ */
+describe('migration v12 → v13', () => {
+  it('drops both columns and keeps every row', () => {
+    const dbPath13 = join(tmpDir, 'v12-to-v13.db')
+
+    // Build a v12 database the way the store itself would, then wind the version
+    // back so the migration has something real to run against.
+    const seeded = createConvoyStore(dbPath13)
+    seeded.insertConvoy(makeConvoy({ id: 'c1', name: 'Kept' }))
+    seeded.insertTask(makeTask({ id: 't1', convoy_id: 'c1', agent: 'developer' }))
+    seeded.insertTask(makeTask({ id: 't2', convoy_id: 'c1', agent: 'architect' }))
+    seeded.close()
+
+    const raw = new DatabaseSync(dbPath13)
+    raw.exec('ALTER TABLE task ADD COLUMN compaction_count INTEGER NOT NULL DEFAULT 0')
+    raw.exec('ALTER TABLE task ADD COLUMN discovered_issues TEXT')
+    raw.exec('PRAGMA user_version = 12')
+    raw.close()
+
+    const migrated = createConvoyStore(dbPath13)
+    const t1 = migrated.getTask('t1', 'c1')
+    const t2 = migrated.getTask('t2', 'c1')
+    const convoy = migrated.getConvoy('c1')
+    migrated.close()
+
+    const verify = new DatabaseSync(dbPath13)
+    const cols = (verify.prepare('PRAGMA table_info(task)').all() as Array<{ name: string }>).map(c => c.name)
+    const version = (verify.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+    verify.close()
+
+    expect(cols).not.toContain('compaction_count')
+    expect(cols).not.toContain('discovered_issues')
+    expect(version).toBe(13)
+
+    // The rows, and the fields beside the dropped ones, survive the rewrite.
+    expect(convoy?.name).toBe('Kept')
+    expect(t1?.id).toBe('t1')
+    expect(t1?.agent).toBe('developer')
+    expect(t2?.agent).toBe('architect')
+  })
+
+  it('is idempotent across a reopen', () => {
+    const dbPath13 = join(tmpDir, 'v13-reopen.db')
+    const first = createConvoyStore(dbPath13)
+    first.insertConvoy(makeConvoy({ id: 'c1' }))
+    first.close()
+
+    // A database already at 13 must not have the drop attempted again — the
+    // columns are gone, and DROP COLUMN on a missing column throws.
+    expect(() => {
+      const again = createConvoyStore(dbPath13)
+      again.close()
+    }).not.toThrow()
   })
 })
 
@@ -2541,7 +2615,7 @@ describe('v9→v10 migration', () => {
     // Verify version = 11
     const verifyDb = new DatabaseSync(migDb)
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(12)
+    expect(version).toBe(13)
 
     // Verify new REAL columns exist
     const convoyCols = (verifyDb.prepare('PRAGMA table_info(convoy)').all() as Array<{ name: string }>).map(c => c.name)
