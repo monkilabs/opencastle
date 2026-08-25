@@ -28,6 +28,7 @@ import { config as sentry } from './sentry/config.js';
 import { config as drizzle } from './drizzle/config.js';
 import { config as cloudflare } from './cloudflare/config.js';
 import { config as coolify } from './coolify/config.js';
+import { config as hetzner } from './hetzner/config.js';
 import { config as expo } from './expo/config.js';
 
 export type { PluginConfig, McpServerConfig, McpInput, EnvVarRequirement } from './types.js';
@@ -57,6 +58,7 @@ export const PLUGINS: Record<string, PluginConfig> = {
   drizzle,
   cloudflare,
   coolify,
+  hetzner,
   expo,
   linear,
   jira,
