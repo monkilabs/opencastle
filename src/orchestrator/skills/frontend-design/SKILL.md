@@ -1,7 +1,6 @@
 ---
 name: frontend-design
 description: "Defines named visual aesthetic, selects typography pairings, builds CSS token systems, adds entrance animations for high-design-quality pages. Use when user asks to design landing page, style marketing site, create distinctive UI theme, pick fonts, or add CSS animations — specifically when visual polish, brand identity matter rather than generic component scaffolding."
-license: Complete terms in LICENSE.txt
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
