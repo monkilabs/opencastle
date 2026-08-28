@@ -39,6 +39,9 @@
     ],
     "testing-workflow": [
       "e2e-testing"
+    ],
+    "technical-writing": [
+      "unslop"
     ]
   },
   "bindings": {
@@ -113,7 +116,8 @@
         "react-development",
         "api-patterns",
         "documentation-standards",
-        "security-hardening"
+        "security-hardening",
+        "typescript-best-practices"
       ]
     },
     "Data Engineer": {
@@ -181,7 +185,9 @@
         "knowledge-management"
       ],
       "directSkills": [
-        "documentation-standards"
+        "documentation-standards",
+        "technical-writing",
+        "writing-for-agents"
       ]
     },
     "Writer": {
@@ -194,7 +200,9 @@
         "documentation-standards",
         "validation-gates",
         "seo-patterns",
-        "code-commenting"
+        "code-commenting",
+        "technical-writing",
+        "unslop"
       ]
     },
     "DevOps & Release": {
