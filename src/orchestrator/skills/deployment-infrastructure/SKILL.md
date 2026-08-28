@@ -5,7 +5,7 @@ description: "Configures deployment pipelines, manages environment variables, sc
 
 # Deployment Infrastructure
 
-See [deployment-config.md](../../.opencastle/stack/deployment-config.md) for full architecture, env vars, cron jobs, caching headers.
+See `.opencastle/stack/deployment-config.md` for full architecture, env vars, cron jobs, caching headers.
 
 ## Environment Variables
 

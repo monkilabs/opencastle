@@ -59,7 +59,7 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 
 ## Delegation
 
-**Sub-agents** (`runSubagent`): synchronous, critical-path. **Background agents**: async in isolated worktrees, parallel work. Always name agent explicitly. Include: issue ID, objective, file paths, acceptance criteria, self-improvement reminder.
+**Sub-agents**: synchronous, critical-path, dispatched through whichever sub-agent mechanism the assistant exposes. **Background agents**: async in isolated worktrees, parallel work. Always name agent explicitly. Include: issue ID, objective, file paths, acceptance criteria, self-improvement reminder.
 
 **⛔ Hard gates:**
 - Log delegation record immediately after each return/spawn — **observability-logging** (`--mechanism sub-agent` or `--mechanism background`).

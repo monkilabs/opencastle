@@ -11,16 +11,13 @@ description: "Enforces React-specific patterns: functional components with hooks
 - Export the props type as `ComponentNameProps`; PascalCase component names.
 - Styling: CSS Modules (`.module.scss`), Sass variables/mixins pulled from the shared libraries, CSS custom properties for theming.
 - `strict` stays enabled in `tsconfig.json`; no `as` casts.
-- Tests: React Testing Library on Jest, mocking external deps and API calls.
+- Tests: React Testing Library on the runner bound to the **testing** capability slot, mocking external deps and API calls.
 
 ## Verification
 
-```bash
-pnpm lint
-pnpm typecheck   # use `pnpm tsc --noEmit` if the alias is absent
-pnpm test        # single test: pnpm test -- -t <name>
-pnpm build
-```
+Lint, typecheck, test, and build must all exit zero. Resolve the exact commands
+via the **codebase-tool** slot; `.opencastle/project.instructions.md` records the
+project's package manager and script names.
 
 ## Security
 

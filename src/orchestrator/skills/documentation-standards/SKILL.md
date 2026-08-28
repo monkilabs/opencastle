@@ -5,7 +5,7 @@ description: "Scaffolds issue docs, ADRs, README outlines, changelog entries, ro
 
 # Documentation Standards
 
-Project directory structure and practices: [docs-structure.md](../../.opencastle/project/docs-structure.md). Writing guidelines, formatting rules, anti-patterns: [WRITING-GUIDE.md](WRITING-GUIDE.md).
+Project directory structure and practices: `.opencastle/project/docs-structure.md`. Writing guidelines, formatting rules, anti-patterns: `WRITING-GUIDE.md`, beside this file.
 
 ## Templates
 
@@ -23,6 +23,9 @@ One concern per diagram, max 10–12 nodes. `flowchart TD` for pipelines, `LR` f
 
 ## Validate
 
+Check links and formatting before committing docs. Resolve the formatter
+command via the **codebase-tool** slot; the link checker is standalone:
+
 ```bash
-npx markdown-link-check docs/**/*.md && pnpm prettier --check "docs/**/*.md"
+npx markdown-link-check docs/**/*.md
 ```

@@ -33,7 +33,7 @@
 |----------|---------|-----------|----------|-----------|
 | slack | C0AHAQFJ7C1 | 1772393542.345149 | Run migration on production? | 2026-03-01 14:30 |
 
-Remove row once answered (VS Code chat reply also counts as resolved).
+Remove row once answered (a reply in chat counts as resolved).
 
 ## Decisions & Blockers
 

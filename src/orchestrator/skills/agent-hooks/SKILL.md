@@ -55,7 +55,7 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for extended startup checks (approv
 | 5 | Prompt includes "Read LESSONS-LEARNED.md first" |
 | 6 | 5+ files → load **context-map** skill |
 
-All 6 must pass before `runSubagent`. See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for example commands per check.
+All 6 must pass before the sub-agent is dispatched. See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for example commands per check.
 
 ## on-post-delegate — Team Lead only
 
@@ -63,7 +63,7 @@ All 6 must pass before `runSubagent`. See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.m
 |---|--------|
 | 1 | **⛔** `opencastle log --type=delegation --issue=TAS-XX --status=complete` |
 | 2 | Run **fast-review** skill |
-| 3 | `pnpm lint && pnpm typecheck && pnpm test` |
+| 3 | Lint, typecheck, and test (commands via the **codebase-tool** slot) |
 | 4 | `gh issue view TAS-XX --json body -q '.body'` — verify each AC met |
 | 5 | If agent retried → verify lesson added via **self-improvement** |
 | 6 | Move to Done or re-delegate; 3rd failure → `.opencastle/AGENT-FAILURES.md` |

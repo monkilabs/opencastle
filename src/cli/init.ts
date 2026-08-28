@@ -495,6 +495,14 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
 
   // ── Scaffold customizations to .opencastle/ ──────────────────────────────
+  // Sampled before the copy below, which creates `.opencastle/agents` itself.
+  // Read after it, this was true on every run including the first, so the
+  // bootstrap guard downstream never let the project scan execute at all: no
+  // tech-stack table, no key commands, not even the project name. Every skill
+  // that wanted the package manager hardcoded one instead, because the file
+  // that was supposed to record it was never filled in.
+  const alreadyScaffolded = existsSync(resolve(projectRoot, '.opencastle', 'agents'))
+
   const custSrcDir = resolve(getOrchestratorRoot(pkgRoot), 'customizations')
   if (existsSync(custSrcDir)) {
     const custDestDir = resolve(projectRoot, '.opencastle')
@@ -516,8 +524,8 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // the manifest, by design) and a manifest with merge-conflict markers, which
   // `readManifest` reports as "no install". Both then ran bootstrap's
   // unconditional renames over a populated `.opencastle/` and replaced the
-  // user's own stack notes with a blank template.
-  const alreadyScaffolded = existsSync(resolve(projectRoot, '.opencastle', 'agents'))
+  // user's own stack notes with a blank template. `alreadyScaffolded` is
+  // sampled above, before the scaffold step supplies its own answer.
   const bootstrapResult = isReinit || alreadyScaffolded
     ? { populated: [], removed: [], renamed: [] }
     : await bootstrapCustomizations(projectRoot, combinedRepoInfo, stack)

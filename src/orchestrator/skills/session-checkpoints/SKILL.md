@@ -15,7 +15,7 @@ description: "Saves, restores session state including task progress, file change
 | Session end | Any session with incomplete work |
 | Context running low | Checkpoint immediately |
 
-Phase boundaries that warrant a checkpoint: see [decomposition](../../skills/decomposition/SKILL.md).
+Phase boundaries that warrant a checkpoint: load the **decomposition** skill.
 
 ## Creating a Checkpoint
 
@@ -28,7 +28,7 @@ Phase boundaries that warrant a checkpoint: see [decomposition](../../skills/dec
 1. Read `.opencastle/SESSION-CHECKPOINT.md`
 2. Run `git status`, `git branch` — confirm you are on correct branch
 3. Check In Progress tasks — if stale (>1 session old), verify files match expected state
-4. Check Pending Approvals — remove rows for questions answered via VS Code chat
+4. Check Pending Approvals — remove rows for questions the user has since answered in chat
 5. Read tracker issues for tasks marked In Progress or Todo
 6. Follow Resume Instructions section in checkpoint
 7. Update checkpoint progress after each completed task

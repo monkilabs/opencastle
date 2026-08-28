@@ -17,13 +17,13 @@ npm test | npm run test | npm run lint | npm run build | npm run dev | npm start
 npx jest | npx eslint | jest --coverage | eslint --fix
 ```
 
-Always `yarn nx run <project>:<target>` for one project, `yarn nx affected -t <target>` for multi-project changes.
+Always `npx nx run <project>:<target>` for one project, `npx nx affected -t <target>` for multi-project changes.
 
 ## Requirements
 
 - Minimum coverage **95%** for new components/functions. Reports land in `reports/coverage/jest/`.
-- Lint always with `--fix`. CSS/SCSS uses a separate target: `yarn nx run <project>:lint-styles --fix`.
-- `yarn nx run <project>:test -u` updates snapshots. `yarn nx format --fix` after any generation.
+- Lint always with `--fix`. CSS/SCSS uses a separate target: `npx nx run <project>:lint-styles --fix`.
+- `npx nx run <project>:test -u` updates snapshots. `npx nx format --fix` after any generation.
 
 ## MCP tools — query, don't guess
 
@@ -44,15 +44,15 @@ Always `yarn nx run <project>:<target>` for one project, `yarn nx affected -t <t
 Prefer **local** generators over plugin generators — they encode repo conventions. Manual file creation is a last resort after `nx_generators` and `nx_available_plugins` both come up empty. Read `nx_generator_schema`, then read the generator source for side effects (config edits, dep installs).
 
 ```bash
-yarn nx generate <generator> <options> --dry-run --no-interactive   # preview
-yarn nx generate <generator> <options> --no-interactive
+npx nx generate <generator> <options> --dry-run --no-interactive   # preview
+npx nx generate <generator> <options> --no-interactive
 ```
 
 - **`--no-interactive` is mandatory** — prompts hang the run with no output.
 - **Verify cwd first** — generators derive file placement from it.
 
-After generating: `yarn nx format --fix`, then lint/test/build the affected projects.
+After generating: `npx nx format --fix`, then lint/test/build the affected projects.
 
 ## Running tasks
 
-Check `nx_current_running_tasks_details` before starting anything. **Continuous targets (`serve`, `dev`) are already running — read their output instead of re-running.** To rerun, use `yarn nx run <taskId>` so NX context is preserved.
+Check `nx_current_running_tasks_details` before starting anything. **Continuous targets (`serve`, `dev`) are already running — read their output instead of re-running.** To rerun, use `npx nx run <taskId>` so NX context is preserved.

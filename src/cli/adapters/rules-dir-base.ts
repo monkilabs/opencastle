@@ -116,11 +116,21 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   interface ConvertFileOptions {
     alwaysApply?: boolean
     descriptionFallback?: string
+    /**
+     * Rewrites the body before the rule is assembled.
+     *
+     * A skill's siblings land at `skills/<skill>/<NAME><ruleExt>` while the skill
+     * itself is `skills/<skill><ruleExt>`, so a pointer the source writes as
+     * `REFERENCE.md` is wrong twice over here: wrong directory and wrong
+     * extension. Fourteen skills point at a sibling this way, and on Cursor and
+     * Windsurf every one of those pointers led nowhere.
+     */
+    rewriteBody?: (_body: string) => string
   }
 
   async function convertFile(
     srcPath: string,
-    { alwaysApply = false, descriptionFallback = '' }: ConvertFileOptions = {},
+    { alwaysApply = false, descriptionFallback = '', rewriteBody }: ConvertFileOptions = {},
   ): Promise<string> {
     const content = await readFile(srcPath, 'utf8')
     const { frontmatter, body } = splitFrontmatter(content)
@@ -138,7 +148,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       applyTo: meta['applyTo'],
       alwaysApply,
       tier: meta['tier'],
-    }), '---', '', body.trim(), '']
+    }), '---', '', (rewriteBody ? rewriteBody(body) : body).trim(), '']
     return lines.join('\n')
   }
 
@@ -221,6 +231,26 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     }
   }
 
+  /**
+   * Points a skill's sibling references at where this adapter actually puts them.
+   *
+   * `REFERENCE.md` and `./REFERENCE.md` both become `<skill>/REFERENCE<ruleExt>`,
+   * which covers the markdown links most skills use and the bare prose mentions
+   * a few of them use instead.
+   */
+  function retargetSiblings(body: string, skill: string, extras: string[]): string {
+    let out = body
+    for (const extra of extras) {
+      const target = `${skill}/${ruleName(extra)}`
+      // Escaped because sibling names carry dots, and one carries two
+      // (`panel-report.template.md`), each of which would otherwise match any
+      // character and retarget text that is not a path.
+      const escaped = extra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      out = out.replace(new RegExp(`(?<![\\w/-])(?:\\./)?${escaped}(?![\\w-])`, 'g'), target)
+    }
+    return out
+  }
+
   async function convertSkills(
     srcRoot: string,
     destDir: string,
@@ -239,17 +269,23 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       const skillFile = resolve(skillsDir, entry.name, 'SKILL.md')
       if (!existsSync(skillFile)) continue
 
+      // Extra files in the skill directory (e.g. templates). Resolved before the
+      // skill is written, because the skill's own pointers at them have to be
+      // rewritten to where they actually land.
+      const files = await readdir(resolve(skillsDir, entry.name))
+      const extras = files.filter((f) => f !== 'SKILL.md' && f.endsWith('.md'))
+
       await writeConverted(
         skillFile,
         resolve(destDir, `${entry.name}${ruleExt}`),
-        { descriptionFallback: `Skill: ${entry.name}` },
+        {
+          descriptionFallback: `Skill: ${entry.name}`,
+          rewriteBody: (body) => retargetSiblings(body, entry.name, extras),
+        },
         results,
         overwrite,
       )
 
-      // Extra files in the skill directory (e.g. templates)
-      const files = await readdir(resolve(skillsDir, entry.name))
-      const extras = files.filter((f) => f !== 'SKILL.md' && f.endsWith('.md'))
       if (extras.length > 0) {
         const subDest = resolve(destDir, entry.name)
         await mkdir(subDest, { recursive: true })

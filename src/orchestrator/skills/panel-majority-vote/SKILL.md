@@ -20,7 +20,7 @@ description: "Runs 3 isolated reviewer sub-agents; consolidates PASS/BLOCK verdi
 
 1. **Validate scope** — every artifact path under `<runRoot>`; list sufficient to answer question.
 
-2. **Spawn 3 reviewers in parallel** — three `runSubagent` calls with identical prompts (same question, artifact list, constraints), each isolated. Required reviewer output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
+2. **Spawn 3 reviewers in parallel** — three sub-agent dispatches with identical prompts (same question, artifact list, constraints), each isolated. Required reviewer output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
 
 3. **Persist outputs** — write `<panelDir>/<panelKey>-reviewer-outputs.md` with a header (run root, panel key, question, artifacts) and each reviewer output verbatim, separated.
 

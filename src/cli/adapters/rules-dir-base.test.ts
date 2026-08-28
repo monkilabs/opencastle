@@ -32,7 +32,11 @@ function makePkgRoot(): string {
     join(src, 'agents', 'developer.agent.md'),
     '---\ndescription: Writes code\n---\n\n# Developer\n\nDo dev work.\n',
   )
-  writeFileSync(join(src, 'skills', 'demo-skill', 'SKILL.md'), '# Demo Skill\n\nSkill body.\n')
+  writeFileSync(
+    join(src, 'skills', 'demo-skill', 'SKILL.md'),
+    '# Demo Skill\n\nSkill body. Details in [REFERENCE.md](./REFERENCE.md), and more in REFERENCE.md.\n',
+  )
+  writeFileSync(join(src, 'skills', 'demo-skill', 'REFERENCE.md'), '# Reference\n\nExtra detail.\n')
   writeFileSync(join(src, 'agent-workflows', 'bug-fix.md'), '# Bug Fix\n\nTriage then fix.\n')
   writeFileSync(join(src, 'agent-workflows', 'README.md'), '# Index\n\nShould be excluded.\n')
   writeFileSync(join(src, 'prompts', 'generate.prompt.md'), '# Generate\n\nPrompt body.\n')
@@ -104,6 +108,22 @@ describe.each([
     expect(existsSync(join(rules(), 'skills', `demo-skill${ext}`))).toBe(true)
     expect(existsSync(join(rules(), 'agent-workflows', `bug-fix${ext}`))).toBe(true)
     expect(existsSync(join(rules(), 'prompts', `generate${ext}`))).toBe(true)
+  })
+
+  it('points a skill at where its sibling actually lands', async () => {
+    // The sibling is written to `skills/<skill>/REFERENCE<ext>` while the skill
+    // itself is `skills/<skill><ext>`, so the source's own `./REFERENCE.md` is
+    // wrong in both directory and extension. Fourteen shipped skills point at a
+    // sibling this way, and every one of those pointers used to lead nowhere.
+    await adapter.install(pkgRoot, projectRoot)
+    const skill = readFileSync(join(rules(), 'skills', `demo-skill${ext}`), 'utf8')
+    expect(skill).not.toMatch(/(?<![\w/-])(?:\.\/)?REFERENCE\.md(?![\w-])/)
+    // Both the markdown link and the bare prose mention are retargeted.
+    expect(skill).toContain(`[demo-skill/REFERENCE${ext}](demo-skill/REFERENCE${ext})`)
+    expect(skill).toContain(`more in demo-skill/REFERENCE${ext}`)
+    // And the retargeted path resolves, read from the rules root where the
+    // skill file sits.
+    expect(existsSync(join(rules(), 'skills', 'demo-skill', `REFERENCE${ext}`))).toBe(true)
   })
 
   it('excludes agent-workflows/README.md', async () => {
