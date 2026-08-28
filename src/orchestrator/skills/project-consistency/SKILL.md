@@ -22,7 +22,7 @@ Phase 1 (sequential): `foundation-setup` creates tokens, Layout, UI library, sty
 
 **Validation checkpoints:**
 1. Foundation complete: `tokens.css` has all palette/type/spacing vars, Layout renders, UI components compile.
-2. Per-page: `grep -r .style={{. src/pages/` returns 0 hits (no inline styles). All imports resolve.
+2. Per-page: `grep -rF 'style={{' src/pages/` returns 0 hits (no inline styles). All imports resolve.
 
 ---
 
@@ -50,7 +50,7 @@ Prompt templates: see [TEMPLATES.md](./TEMPLATES.md).
 	--color-primary-600: #0284c7;
 
 	/* Typography */
-	--font-base: 'Inter, system-ui, -apple-system, sans-serif';
+	--font-base: Inter, system-ui, -apple-system, sans-serif;
 	--text-sm: 0.875rem;
 	--text-base: 1rem;
 

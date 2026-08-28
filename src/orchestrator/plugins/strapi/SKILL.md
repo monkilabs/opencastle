@@ -32,4 +32,4 @@ Strapi discovers code by path — a correct file in the wrong place is simply ig
 
 ## Verify
 
-`yarn develop`, confirm the type appears in admin, create a test entry, then assert `GET /api/<type>?pagination[page]=1` returns 200 with a `data` array and `GET /api/<type>?populate=*` returns the expected relations. Schema errors surface under `yarn build`.
+the `develop` script, confirm the type appears in admin, create a test entry, then assert `GET /api/<type>?pagination[page]=1` returns 200 with a `data` array and `GET /api/<type>?populate=*` returns the expected relations. Schema errors surface under the `build` script.
