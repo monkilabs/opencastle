@@ -99,15 +99,13 @@ opencastle convoy retry
 
 **Post-run verification (copy-paste checks):**
 
+Convoy records to `.opencastle/convoy.db` and `.opencastle/logs/`; there is no
+plain-text run log to tail.
+
 ```bash
-if [ $? -ne 0 ]; then
-  echo "convoy failed — inspect .opencastle/convoy.log" \
-	 && tail -n 200 .opencastle/convoy.log && exit 1
-fi
-
-npx opencastle convoy
-
-grep -i "error\|failed" .opencastle/convoy.log || echo "no obvious errors in logs"
+opencastle convoy --json          # last run's status, machine-readable
+opencastle convoy run --status    # current convoy state from convoy.db
+tail -n 50 .opencastle/logs/events.ndjson | jq -c 'select(.outcome != "success")'
 ```
 
 ## Validation & Verification Checkpoints
@@ -115,9 +113,9 @@ grep -i "error\|failed" .opencastle/convoy.log || echo "no obvious errors in log
 | Phase | Check | Command / Action |
 |-------|-------|-----------------|
 | Pre-spawn | Inputs present (task, scope, ACs) | `test -s convoy.yml \|\| exit 1` |
-| During-run | Tail for fatal errors | `tail -F .opencastle/convoy.log \| grep -i "fatal\|error"` |
-| Pre-merge | All agents exited 0 | `jq -e '.agents[] \| .exit_code == 0' .opencastle/results.json` |
-| Output schema | Required fields present | `jq -e '.agents[] \| (.findings and .file_paths)' .opencastle/results.json` |
+| During-run | Watch for failures | `opencastle convoy run --status` |
+| Pre-merge | No task left failed or gate-failed | `opencastle convoy --json \| jq -e '.failed == 0'` |
+| Dead letters | Queue is empty | `opencastle convoy run --dlq-list` |
 | Post-merge | Lint + smoke tests pass | `npm run lint && npm test -- -t "smoke"` |
 | Blocker | Any failure | Block merge; reopen to original researcher(s) |
 

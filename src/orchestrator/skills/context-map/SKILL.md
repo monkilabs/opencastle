@@ -23,17 +23,19 @@ Identify files that MUST change from task description.
 
 ### 2 — Trace Outward (dependents)
 Find consumers of entry-point exports:
+```bash
+rg -n "import .*from .*libs/auth"          # find importers
+rg -n "\bAuthCard\b" --type ts --type tsx  # find component consumers
+rg -n "auth.*route|/auth"                  # find route references
 ```
-grep_search("import.*from.*places", isRegexp=true)   # find importers
-vscode_listCodeUsages("PlaceCard")                     # find component consumers
-grep_search("places.*route|/places", isRegexp=true)    # find route references
-```
+If the assistant exposes a code-usage lookup (find-references), prefer it for
+symbols: it resolves re-exports and aliases that a text search misses.
 
 ### 3 — Trace Inward (sources)
 Find what entry points depend on:
-```
-grep_search("from.*libs/", includePattern="src/places/**")  # shared lib deps
-grep_search("from.*config", includePattern="src/places/**")  # config deps
+```bash
+rg -n "from .*libs/" src/auth/     # shared lib deps
+rg -n "from .*config" src/auth/    # config deps
 ```
 
 ### 4 — Build the Map
@@ -59,11 +61,11 @@ Context Map — Feature: Add priceRange
 	- src/components/Account/**
 ```
 
-Validation checkpoint: every `grep_search` / `vscode_listCodeUsages` hit lands in the map; all listed files open without errors (CI: `pnpm typecheck`). Full template, depth levels, partition derivation, Team Lead integration: see [REFERENCE.md](./REFERENCE.md).
+Validation checkpoint: every search hit lands in the map; all listed files open without errors (typecheck via the **codebase-tool** slot). Full template, depth levels, partition derivation, Team Lead integration: see [REFERENCE.md](./REFERENCE.md).
 
 ## Anti-Patterns
 
 - Skipping for "obvious" tasks — shared libs cascade unexpectedly
-- Guessing dependencies instead of using `grep_search` / `list_code_usages`
+- Guessing dependencies instead of searching for them
 - Over-mapping a 2-file fix
 - Using a stale map after plan changes

@@ -63,7 +63,7 @@ npm run lint && npm test --silent && npm run build
 
 > Runs only when `package.json`, `yarn.lock`, `package-lock.json`, `pnpm-lock.yaml`, or similar lockfiles are modified.
 
-- **Vulnerability:** `npm audit --audit-level=moderate` — no new high/critical, else BLOCK (patched version or alternative).
+- **Vulnerability:** `npm audit --audit-level=high` — no new high/critical, else BLOCK (patched version or alternative).
 - **Bundle size:** frontend pkgs ≤50KB gzipped (project policy) — SHOULD-FIX; blocking if >200KB.
 
 Full checklist (license, duplicates, maintenance, peer deps, type coverage) with commands: [REFERENCE.md](REFERENCE.md).
@@ -83,14 +83,14 @@ rm -rf node_modules/.cache .next/cache .astro/ dist/
 UI changes require Chrome screenshots. Start dev server → verify ACs → responsive breakpoints → capture screenshots. Load **browser-testing** skill.
 
 ```json
-{ "tool": "browser-testing/capture_screenshot", "url": "http://localhost:3000", "viewports": ["mobile", "desktop"] }
+{ "tool": "browser-testing/take_screenshot", "url": "http://localhost:3000", "viewports": ["mobile", "desktop"] }
 ```
 
 Additional options: see [REFERENCE.md](REFERENCE.md).
 
 ## Gate 8: Regression Testing
 
-1. `npm test -- --runInBand` for all affected projects
+1. Full test suite for all affected projects (resolve the command via the **codebase-tool** slot)
 2. Browser-test adjacent pages (navigation, routing, back-button) — find them via `rg "href=\"/changed-path|import .*from '@/components/changed'"`.
 3. Find consuming apps/packages via `rg "from '@/components/PriceRange'|@my-org/ui-package"`; run their tests or smoke builds.
 

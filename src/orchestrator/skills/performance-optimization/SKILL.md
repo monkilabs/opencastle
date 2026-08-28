@@ -11,11 +11,12 @@ Measure before changing anything. Add `React.memo`/`useMemo`/`useCallback` only 
 
 - Node: async APIs only — never `readFileSync` or other sync I/O on a request path.
 - Debounce input-driven fetches at 300 ms.
+- INP replaced FID as a Core Web Vital in March 2024: budget it at ≤200 ms, and measure every interaction, not just the first.
 - Profile Node with `clinic.js` or `node --inspect`; profile React with `<Profiler onRender>` or the DevTools Profiler.
 
 ## Profiling Workflow
 
-1. Lighthouse (or the CI perf job) for a baseline; name the failing metric (LCP/CLS/FID/TTI). If results are noisy, reproduce locally with `--emulated-form-factor=mobile`.
+1. Lighthouse (or the CI perf job) for a baseline; name the failing metric (LCP/CLS/INP/TTI). Lighthouse emulates mobile by default; pass `--preset=desktop` when the regression is desktop-only.
 2. Profile to locate the hotspot call stacks / long tasks.
 3. Apply the minimal fix (code-split, memoize, shrink payloads, defer non-critical work); confirm in the profiler that the measured hotspot actually shrank.
 4. Re-run Lighthouse / the CI perf job. Ship only at ≥10% improvement or once inside budget.

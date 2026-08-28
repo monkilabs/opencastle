@@ -30,7 +30,7 @@ Extended checklists and options for validation gates.
 
 ```json
 {
-	"tool": "browser-testing/capture_screenshot",
+	"tool": "browser-testing/take_screenshot",
 	"url": "http://localhost:3000/page",
 	"viewports": ["mobile", "tablet", "desktop"],
 	"wait_selector": ".content-loaded",

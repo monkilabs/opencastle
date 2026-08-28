@@ -5,7 +5,7 @@ description: "Creates API route handlers, implements Server Actions with Zod sch
 
 # API Patterns
 
-Project-specific config: [api-config.md](../../.opencastle/stack/api-config.md).
+Project-specific config: `.opencastle/stack/api-config.md`.
 
 ## Architecture
 

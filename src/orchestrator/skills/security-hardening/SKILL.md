@@ -32,4 +32,4 @@ Cron routes: require `authorization: Bearer ${process.env.CRON_SECRET}`, else re
 
 Zod schema validation on every Server Action and route handler before any DB operation; React Hook Form client-side.
 
-Cross-reference: [api-patterns/SKILL.md](../api-patterns/SKILL.md#architecture) for Server Action patterns; [session-checkpoints/SKILL.md](../session-checkpoints/SKILL.md) for checkpointing security-sensitive work.
+Cross-reference: the **api-patterns** skill for Server Action patterns; the **session-checkpoints** skill for checkpointing security-sensitive work.

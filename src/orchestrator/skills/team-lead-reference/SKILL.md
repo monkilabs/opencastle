@@ -15,7 +15,7 @@ description: "Provides model routing rules, validates delegation prerequisites, 
 6. **Handle** output per Status Handling table
 7. **Log** via **observability-logging** skill
 
-For specialist agent registry, model assignments, see [agent-registry.md](../../.opencastle/agents/agent-registry.md).
+For specialist agent registry, model assignments, see `.opencastle/agents/agent-registry.md`.
 
 ## Cost-Aware Model Routing
 
@@ -57,7 +57,7 @@ For specialist agent registry, model assignments, see [agent-registry.md](../../
 | 6+ subtasks, unfamiliar | Full deepen — parallel Researcher sub-agents |
 
 **Quick deepen:** Fire one Researcher for exact file paths + line ranges, patterns to follow (file:line examples), relevant lessons from `LESSONS-LEARNED.md`, risks/blockers per subtask, dependencies verified against exact imports.
-**Full deepen:** Split by domain into parallel Researchers. See [agent-registry.md](../../.opencastle/agents/agent-registry.md) for scope examples.
+**Full deepen:** Split by domain into parallel Researchers. See `.opencastle/agents/agent-registry.md` for scope examples.
 
 Deepen is done when no field is still a guess — "some component" → exact path + line range, "follow existing style" → specific file:line.
 

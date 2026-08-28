@@ -30,7 +30,7 @@ Log delegation: `opencastle log --type=delegation --issue=TAS-123 --status=start
 |---|--------|---------|
 | 1 | Log completion | `opencastle log --type=delegation --issue=TAS-XX --status=complete` |
 | 2 | Fast review | `opencastle log --type=review --issue=TAS-XX --verdict=PASS` |
-| 3 | CI checks | `pnpm lint && pnpm typecheck && pnpm test` |
+| 3 | CI checks | Lint, typecheck, and test (commands via the **codebase-tool** slot) |
 | 4 | Verify ACs | Check each acceptance criterion against tracker issue |
 | 5 | Track issues | `rg -n "Discovered issue" KNOWN-ISSUES.md || gh issue create` |
 | 6 | Lesson check | If agent retried, verify lesson added via **self-improvement** |

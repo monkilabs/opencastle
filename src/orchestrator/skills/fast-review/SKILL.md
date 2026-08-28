@@ -23,10 +23,15 @@ Issue + acceptance criteria, file diff, file partition, deterministic results (l
 
 ### 2 — Spawn Reviewer
 
-Single `runSubagent`. Context = acceptance criteria, diff, partition, deterministic results **only** — no session history, no delegation prompt.
+One sub-agent, dispatched as the Reviewer. Context = acceptance criteria, diff, partition, deterministic results **only** — no session history, no delegation prompt.
 
-```js
-runSubagent({ agentName: 'Reviewer', prompt: `Review against ACs:\n${criteria}\nDiff:\n${diff}\nGates: lint ✅ test ✅ build ✅` });
+```
+Agent: Reviewer
+Review against these acceptance criteria:
+[criteria]
+Diff:
+[diff]
+Deterministic gates: lint ✅ test ✅ build ✅
 ```
 
 Full reviewer prompt template: [REFERENCE.md](REFERENCE.md).

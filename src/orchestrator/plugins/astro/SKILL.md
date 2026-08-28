@@ -27,6 +27,6 @@ Docs: https://docs.astro.build
 1. Declare it in `src/content.config.ts` via `defineCollection` + Zod schema; export from `collections`.
 2. Add `src/content/<name>/` with one sample file.
 3. Query with `getCollection('<name>', filterFn)`.
-4. `pnpm build` must exit zero — collection types are generated at build time, so type errors only surface after a build.
+4. The build must exit zero — collection types are generated at build time, so type errors only surface after a build.
 
 Integrations: `astro add react tailwind mdx sitemap` etc. — never hand-edit the integrations array.
