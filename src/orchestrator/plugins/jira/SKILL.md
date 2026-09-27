@@ -7,11 +7,11 @@ description: "Create and update Jira issues, epics, and sprints; manage backlog 
 
 # Task Management with Jira
 
-Project keys, workflow state IDs, and board config: [tracker-config.md](../../.opencastle/project/tracker-config.md). Docs: https://developer.atlassian.com/cloud/jira/platform/
+Project keys, workflow state IDs, and board config: `.opencastle/project/jira-config.md`. Docs: https://developer.atlassian.com/cloud/jira/platform/
 
 ## Gotchas
 
-- Transitions are constrained by the project's workflow — a jump the board does not allow fails even with a valid status name. Read the workflow state IDs from `tracker-config.md` before transitioning; retry once, then stop.
+- Transitions are constrained by the project's workflow — a jump the board does not allow fails even with a valid status name. Read the workflow state IDs from `jira-config.md` before transitioning; retry once, then stop.
 - Status names in JQL must be quoted when they contain spaces: `status = "In Progress"`.
 - A `create` call is only successful if it returns an issue key. Verify before treating the issue as tracked.
 - PR-driven status updates only happen when the GitHub/Jira integration is configured; link by putting the key (`PROJ-123`) in the branch or PR title.

@@ -6,7 +6,7 @@ Project-specific configuration for the AI agent framework. Everything in this fo
 
 Skills and instructions contain generic methodology (how to write migrations, how to test in a browser, how to run a panel review). This folder holds the concrete values those skills operate on — project IDs, table schemas, team UUIDs, endpoint inventories, and similar configuration that changes per project.
 
-Skills reference these files with relative links like `../../.opencastle/stack/api-config.md`, so agents automatically load project context when they load a skill.
+Skills reference these files by root-relative path, like `.opencastle/stack/api-config.md`, so agents automatically load project context when they load a skill.
 
 ## Contents
 

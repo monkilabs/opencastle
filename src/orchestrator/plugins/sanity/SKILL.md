@@ -7,7 +7,7 @@ description: "Manages Sanity CMS schemas, GROQ queries, dataset exports/imports,
 
 # Sanity CMS
 
-Project config, schemas, plugins, document types, and GROQ examples: [sanity-config.md](../../.opencastle/stack/sanity-config.md). Docs: https://www.sanity.io/docs
+Project config, schemas, plugins, document types, and GROQ examples: `.opencastle/stack/sanity-config.md`. Docs: https://www.sanity.io/docs
 
 ## Rules that prevent silent failures
 

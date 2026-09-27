@@ -7,7 +7,7 @@ description: "Vitest unit and integration testing patterns, commands, mocking (v
 
 # Vitest Testing
 
-For project-specific test configuration, see [testing-config.md](../../.opencastle/stack/testing-config.md).
+For project-specific test configuration, see `.opencastle/stack/testing-config.md`.
 
 ## Commands
 

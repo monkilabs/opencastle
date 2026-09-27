@@ -47,6 +47,6 @@ when it is fixable.
 
 ## Task Tracking
 
-Tracked in the **task tracker** (`tracker-config.md`). Team Lead creates/updates issues via MCP. Load **task-management** skill for conventions.
+Tracked in the **task tracker**, configured in `.opencastle/project/<tracker>-config.md` (for example `linear-config.md`). Team Lead creates/updates issues via MCP. Load **task-management** skill for conventions.
 
 **If MCP tools unavailable:** Document planned issues (title + AC) in output; use `"N/A"` (no tracker) or `"TAS-PENDING"` (tracker configured); proceed with work; update IDs when available.

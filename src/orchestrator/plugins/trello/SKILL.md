@@ -5,7 +5,7 @@ description: "Create and manage Trello cards, checklists, and boards for kanban 
 
 # Task Management with Trello
 
-For project-specific board IDs and list IDs, see [tracker-config.md](../../.opencastle/project/tracker-config.md).
+For project-specific board IDs and list IDs, see `.opencastle/project/trello-config.md`.
 
 ## MCP Server
 

@@ -7,7 +7,7 @@ description: "Convex reactive database patterns, schema design, real-time querie
 
 # Convex Database
 
-Project-specific schema, functions, and deployment details: [database-config.md](../../.opencastle/stack/database-config.md).
+Project-specific schema, functions, and deployment details: `.opencastle/stack/database-config.md`.
 Official docs: https://docs.convex.dev/
 
 ## Hard limits per transaction
