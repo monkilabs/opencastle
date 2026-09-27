@@ -7,7 +7,7 @@ description: "Drive real browsers via Chrome DevTools MCP: navigate pages, captu
 
 # Browser Testing with Chrome DevTools MCP
 
-Project test app, selectors, suites, and breakpoints: [testing-config.md](../../.opencastle/stack/testing-config.md). Docs: https://developer.chrome.com/docs/devtools
+Project test app, selectors, suites, and breakpoints: `.opencastle/stack/testing-config.md`. Docs: https://developer.chrome.com/docs/devtools
 
 ## Context budget — the main constraint
 

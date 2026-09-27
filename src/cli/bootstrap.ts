@@ -413,7 +413,7 @@ async function removeDataPipelineConfig(
   result.removed.push('stack/data-pipeline-config.md')
 }
 
-const TRACKER_TOOLS = new Set<string>(['linear', 'jira', 'trello'])
+export const TRACKER_TOOLS = new Set<string>(['linear', 'jira', 'trello'])
 
 async function handleTrackerConfig(
   opencastleDir: string,

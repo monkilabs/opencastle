@@ -5,7 +5,7 @@ description: "Writes Cypress E2E/component tests, configures `cy.intercept()` an
 
 # Cypress Testing
 
-Project test config and breakpoints: [testing-config.md](../../.opencastle/stack/testing-config.md). Docs: https://docs.cypress.io
+Project test config and breakpoints: `.opencastle/stack/testing-config.md`. Docs: https://docs.cypress.io
 
 ## Layout
 
