@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { readManifest } from './manifest.js'
 import { resolveStack } from './stack-config.js'
-import { resolveSources, materialize, hasErrors, formatIssues } from './layers.js'
+import { resolveSources, materialize, hasErrors, formatIssues, refuseOlderCli } from './layers.js'
 import { buildLock, parseLock, serializeLock, LOCK_REL, type Lock, type LockServer, priorTeam } from './lock.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
@@ -126,7 +126,7 @@ function firstLockSummary(head: Lock): ReviewLine[] {
     add('content', `${KIND_LABEL[kind]?.[0] ?? kind} **${name}** from ${origin(item.from)}`, kind === 'instructions' ? 'review' : 'info')
   }
   const core = Object.keys(head.content).length - own.length
-  add('content', `and ${core} item(s) from OpenCastle and its integrations`)
+  add('content', own.length > 0 ? `and ${core} item(s) from OpenCastle and its integrations` : `${core} item(s) from OpenCastle and its integrations`)
   for (const [key, s] of Object.entries(head.mcp)) {
     add('mcp', `MCP server **${key}** from ${origin(s.from)} — ${describeServer(s)}`, s.from.startsWith('plugin:') ? 'info' : 'review')
   }
@@ -393,6 +393,7 @@ export function lockAtRef(projectRoot: string, ref: string): Lock | null {
 async function headLock(pkgRoot: string, projectRoot: string): Promise<{ lock: Lock; stale: boolean }> {
   const manifest = await readManifest(projectRoot)
   if (!manifest) throw new Error('OpenCastle is not set up here — run opencastle init')
+  refuseOlderCli(pkgRoot, manifest.version)
   const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter(Boolean)
   const stack = resolveStack({ ...manifest, ides })
   const resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: manifest.repoInfo })

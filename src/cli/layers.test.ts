@@ -507,6 +507,13 @@ describe('credential detection, tuned', () => {
     expect(findInlineSecret({ command: 'npx', args: ['-y', 's@1.0.0', '--token-file=secrets/token1.txt'] })).toBeNull()
   })
 
+  it('leaves keys that are public by design alone, and still catches base64 with a slash', () => {
+    expect(findInlineSecret({ env: { STRIPE_PUBLISHABLE_KEY: 'pk_live_51H8abcdefghijklmnop1234' } })).toBeNull()
+    expect(findInlineSecret({ env: { RECAPTCHA_SITE_KEY: '6LcX8abcdefghijklmnop1234' } })).toBeNull()
+    expect(findInlineSecret({ headers: { 'Idempotency-Key': '3f2b8c1e-9a7d-4e5f-8b6a-1c2d3e4f5a6b' } })).toBeNull()
+    expect(findInlineSecret({ env: { AWS_SECRET_ACCESS_KEY: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY1' } })).toBe('env.AWS_SECRET_ACCESS_KEY')
+  })
+
   it('catches the formats and shapes it used to miss', () => {
     expect(findInlineSecret({ env: { ANYTHING: 'npm_' + 'a1B2c3D4e5'.repeat(3) + 'a1B2c3' } })).toBe('env.ANYTHING')
     expect(findInlineSecret({ env: { OPENAI_KEY: 'q8w7e6r5t4y3u2i1o0p9' } })).toBe('env.OPENAI_KEY')

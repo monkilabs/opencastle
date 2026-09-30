@@ -169,8 +169,9 @@ cycle is an error.
   directory shaped like `src/orchestrator/`, normalising team files on the way:
   LF line endings (so a digest is the same on every checkout), `applyTo: '**'`
   on any instruction that does not set one (so Copilot loads it too), a `name`
-  on an agent without frontmatter. OS files such as `.DS_Store`, and links that
-  point out of the layer, are skipped. Every adapter
+  on an agent without frontmatter. OS files (`.DS_Store`, `Thumbs.db`) are
+  skipped; a link to somewhere outside both the layer and the project is not
+  followed, with a warning. Every adapter
   compiles from that directory, so all seven targets receive team content with
   no per-target code, and `sync`, `sync --check`, `review` and `explain` read
   one resolution.
@@ -191,10 +192,13 @@ cycle is an error.
   Cursor and Windsurf, `{env:NAME}` for OpenCode. VS Code forwards a plain
   `env` variable through `envFile` and turns any other reference into a
   password input. Codex and Antigravity keep `${NAME}` until their syntax is
-  confirmed. Editor variables such as `${workspaceFolder}` pass through as
-  written. A server an earlier sync wrote that no layer defines any more is
-  removed, with any VS Code input only it used; the committed lock names which
-  those are, so `sync` holds the lock back while an MCP config cannot be read.
+  confirmed. Editor variables are not environment variables: VS Code and
+  Cursor get `${workspaceFolder}` as written, the others `.` (they start a
+  project's servers in the project directory) and `HOME` for `${userHome}`. A
+  server an earlier sync wrote that no layer defines any more is removed, with
+  any VS Code input OpenCastle wrote for it that no remaining server uses; the
+  committed lock names which those are, so `sync` holds the lock back while an
+  MCP config cannot be read.
 - **The lock** ([`lock.ts`](src/cli/lock.ts)). `.opencastle/lock.json` records
   the layers with their versions and a digest of each baseline's content; every
   item with the layer it came from, a content hash and, for instructions, a

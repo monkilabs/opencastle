@@ -19,7 +19,7 @@ import { splitFrontmatter, parseFrontmatterString } from './adapters/frontmatter
 import { packageLaunch, isPinned } from './mcp-audit.js'
 import { disallowedBy, hostDisallowedBy, findInlineSecret, emptyPolicy, globMatch, hostOfUrl, hostAllowedBy, type EffectivePolicy } from './policy.js'
 import { LOCAL_DIRS } from './gitignore.js'
-import { satisfies } from './version-range.js'
+import { satisfies, parseVersion, compareVersions } from './version-range.js'
 import {
   CONTENT_KINDS,
   TEAM_CONFIG_REL,
@@ -165,12 +165,14 @@ export function compiledPath(kind: ContentKind, name: string): string {
 }
 
 /**
- * Files an editor or an OS drops beside real content. Compiling them made the
- * lock differ between a Mac and CI — `.DS_Store` in a team skill changed its
- * digest and appeared as generated output on one machine only.
+ * Files an OS or a tool drops beside real content. Compiling them made the lock
+ * differ between a Mac and CI — `.DS_Store` in a team skill changed its digest
+ * and appeared as generated output on one machine only. Only these: a skill's
+ * own `.env.example` or `.github/` template is content, and dropping every
+ * dotfile lost them without a word.
  */
 function isJunk(name: string): boolean {
-  return name.startsWith('.') || name === 'Thumbs.db' || name === 'desktop.ini'
+  return name === '.DS_Store' || name.startsWith('._') || name === 'Thumbs.db' || name === 'desktop.ini' || name === '.git'
 }
 
 /**
@@ -190,7 +192,7 @@ function isInside(root: string, abs: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
-function listDir(dir: string, within?: string[]): Array<{ name: string; isDir: boolean }> {
+function listDir(dir: string, within?: string[], onSkip?: (abs: string) => void): Array<{ name: string; isDir: boolean }> {
   if (!existsSync(dir)) return []
   try {
     return readdirSync(dir, { withFileTypes: true })
@@ -199,12 +201,15 @@ function listDir(dir: string, within?: string[]): Array<{ name: string; isDir: b
         // A link out of the layer would copy whatever it points at — a system
         // file, another project — into every assistant's config.
         if (!within || !e.isSymbolicLink()) return true
+        let inside = false
         try {
           const real = realpathSync(join(dir, e.name))
-          return within.some((root) => isInside(root, real))
+          inside = within.some((root) => isInside(root, real))
         } catch {
-          return false
+          inside = false
         }
+        if (!inside) onSkip?.(join(dir, e.name))
+        return inside
       })
       .map((e) => {
         let isDir = e.isDirectory()
@@ -242,9 +247,20 @@ function scanLayer(layer: Layer, projectRoot: string | null): { items: ContentIt
   const issues: TeamIssue[] = []
   const dirs = layer.kind === 'core' ? CORE_DIR : LAYER_DIR
   const within = layer.kind === 'core' ? undefined : allowedRoots(layer, projectRoot)
+  // Said, not silent: a skill linked in from elsewhere in a monorepo is a
+  // reasonable thing to do, and vanishing from every assistant without a word
+  // is the worst way to find out it is not followed.
+  const skipped = (abs: string): void => {
+    issues.push({
+      level: 'warning',
+      where: display(projectRoot, abs),
+      message: 'is a link to somewhere outside this layer and the project, so it is not compiled',
+      fix: 'copy it in, or publish it as a baseline and extend that',
+    })
+  }
   for (const kind of CONTENT_KINDS) {
     const dir = join(layer.root, dirs[kind])
-    for (const entry of listDir(dir, within)) {
+    for (const entry of listDir(dir, within, skipped)) {
       if (kind === 'skills') {
         if (!entry.isDir) continue
         if (!existsSync(join(dir, entry.name, 'SKILL.md'))) {
@@ -270,6 +286,7 @@ function scanLayer(layer: Layer, projectRoot: string | null): { items: ContentIt
         })
         continue
       }
+      if (kind === 'skills' && within) filesUnder(join(dir, entry.name), within, skipped)
       items.push({ kind, name, layer: layer.id, path: join(dir, entry.name), ...(within && { within }) })
     }
   }
@@ -280,7 +297,7 @@ function scanLayer(layer: Layer, projectRoot: string | null): { items: ContentIt
  * Every file under a directory, relative, sorted. A directory reached twice
  * through links is walked once, so a link loop ends instead of recursing.
  */
-export function filesUnder(root: string, within?: string[]): string[] {
+export function filesUnder(root: string, within?: string[], onSkip?: (abs: string) => void): string[] {
   const out: string[] = []
   const seen = new Set<string>()
   const walk = (dir: string, prefix: string): void => {
@@ -292,7 +309,7 @@ export function filesUnder(root: string, within?: string[]): string[] {
     }
     if (seen.has(real)) return
     seen.add(real)
-    for (const e of listDir(dir, within)) {
+    for (const e of listDir(dir, within, onSkip)) {
       if (e.isDir) walk(join(dir, e.name), `${prefix}${e.name}/`)
       else out.push(`${prefix}${e.name}`)
     }
@@ -704,6 +721,15 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
     for (const ref of layer.config.exclude ?? []) {
       if (!ref.startsWith('mcpServers/')) continue
       const k = ref.slice('mcpServers/'.length)
+      const known = servers.has(k) || Object.values(PLUGINS).some((p) => p.mcpServerKey === k)
+      if (!known) {
+        issues.push({
+          level: 'warning',
+          where,
+          message: `excludes ${ref}, which no layer below defines and no integration brings`,
+          fix: 'check the spelling — opencastle explain lists every MCP server',
+        })
+      }
       if (servers.has(k)) servers.delete(k)
       excludedServers.set(k, layer.id)
       excluded.push({ ref, by: layer.id, from: 'mcp' })
@@ -820,6 +846,22 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
   }
 
   return { layers, items, excluded, servers, blocked, policy, issues, cliVersion }
+}
+
+/**
+ * Throws when the running OpenCastle is older than the one that compiled the
+ * project: what it would compile is not what the project has, so any answer it
+ * gave — a review, an explanation — would describe the wrong thing.
+ */
+export function refuseOlderCli(pkgRoot: string, projectVersion: string): void {
+  const running = cliVersionOf(pkgRoot)
+  const mine = parseVersion(running)
+  const theirs = parseVersion(projectVersion)
+  if (mine && theirs && compareVersions(mine, theirs) < 0) {
+    throw new Error(
+      `this project was compiled by OpenCastle ${projectVersion}; this is ${running} — run npx opencastle@${projectVersion}, or add it to devDependencies`,
+    )
+  }
 }
 
 export function hasErrors(resolved: ResolvedSources): boolean {

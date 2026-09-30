@@ -19,6 +19,7 @@ import { resolveManagedPaths, declaredManagedPaths } from './managed-paths.js'
 import { noteUnreadable } from './unreadable-report.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
 import { buildLock, writeLock, priorTeam } from './lock.js'
+import { parseVersion, compareVersions } from './version-range.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -30,6 +31,8 @@ const INIT_HELP = `
     --customize, --reconfigure  Choose IDEs and integrations manually
     --yes, -y                   Accept the detected setup without asking
     --dry-run                   Preview what would be changed without writing files
+    --allow-downgrade           Re-run with this OpenCastle even though a newer one
+                                compiled the project
     --help, -h                  Show this help
 `
 
@@ -201,6 +204,19 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
   console.log(`\n  🏰 ${c.bold('OpenCastle')} ${c.dim(`v${pkg.version}`)}`)
   console.log(`  ${c.dim('Compiles your AI assistant config for every assistant you use')}\n`)
+
+  // The same guard `sync` has: re-running `init` over a project a newer
+  // release compiled recompiles it with this one, and restamps the manifest.
+  if (existing) {
+    const mine = parseVersion(pkg.version)
+    const theirs = parseVersion(existing.version)
+    if (mine && theirs && compareVersions(mine, theirs) < 0 && !args.includes('--allow-downgrade')) {
+      console.error(`  ${c.red('✗')} This project was compiled by OpenCastle ${existing.version}; this is ${pkg.version}.`)
+      console.error(`    ${c.dim(`Run npx opencastle@${existing.version} — or pass --allow-downgrade to go back on purpose.`)}\n`)
+      closePrompts()
+      process.exit(1)
+    }
+  }
 
   // ── Detect ──────────────────────────────────────────────────────
   console.log(`  ${c.dim('Scanning repository…')}`)

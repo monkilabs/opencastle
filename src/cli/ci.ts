@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile, appendFile } from 'node:fs/promises'
-import { basename, dirname, join } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import { readManifest } from './manifest.js'
-import { cliVersionOf } from './layers.js'
+import { cliVersionOf, resolveSources } from './layers.js'
+import { resolveStack } from './stack-config.js'
 import { LOCK_REL } from './lock.js'
 import { TEAM_CONFIG_REL } from './team-config.js'
 import { c } from './prompt.js'
@@ -73,7 +74,11 @@ function findUp(start: string, names: string[], stop: string): string | null {
   }
 }
 
-export function planCi(projectRoot: string, cliVersion: string, owners?: string): Plan {
+/**
+ * `extraPaths`: directories outside the project the check depends on — a
+ * baseline kept elsewhere in the repository, whose change must run it too.
+ */
+export function planCi(projectRoot: string, cliVersion: string, owners?: string, extraPaths: string[] = []): Plan {
   const repoRoot = git(projectRoot, ['rev-parse', '--show-toplevel']) ?? projectRoot
   const prefix = (git(projectRoot, ['rev-parse', '--show-prefix']) ?? '').replace(/\/$/, '')
   const branch = (git(projectRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']) ?? 'origin/main').replace(/^origin\//, '')
@@ -108,11 +113,15 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string)
     // the project, and a lockfile at the repository root installs from there —
     // `npm ci` in a subdirectory that is not a workspace finds no lockfile.
     const at = prefix || installRel ? `\n        working-directory: ${installRel || '.'}` : ''
+    // The workspace root's `packageManager`, or the project's own.
     let manager = ''
-    try {
-      manager = (JSON.parse(readFileSync(join(installRoot, 'package.json'), 'utf8')) as { packageManager?: string }).packageManager ?? ''
-    } catch {
-      manager = ''
+    for (const dir of [installRoot, projectRoot]) {
+      try {
+        manager = (JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { packageManager?: string }).packageManager ?? ''
+      } catch {
+        manager = ''
+      }
+      if (manager) break
     }
     if (pm === 'pnpm') {
       // The action needs a version, from `packageManager` or here.
@@ -141,6 +150,7 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string)
         ...['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']
           .filter((f) => installRoot && existsSync(join(installRoot, f)))
           .map((f) => (installRel ? `${installRel}/${f}` : f)),
+        ...extraPaths.map((p) => `${p}/**`),
         `.github/workflows/${name}.yml`,
       ]
     : []
@@ -221,8 +231,22 @@ export default async function ci({ pkgRoot, args }: CliContext): Promise<void> {
     process.exit(1)
   }
 
-  const manifestVersion = (await readManifest(projectRoot))?.version
-  const plan = planCi(projectRoot, manifestVersion ?? cliVersionOf(pkgRoot), owners)
+  const manifest = await readManifest(projectRoot)
+  const manifestVersion = manifest?.version
+  // Baselines kept elsewhere in this repository: a change there must run the check.
+  const repoRoot = git(projectRoot, ['rev-parse', '--show-toplevel']) ?? projectRoot
+  const extra: string[] = []
+  try {
+    const resolved = resolveSources({ pkgRoot, projectRoot, stack: resolveStack(manifest!), repoInfo: manifest?.repoInfo })
+    for (const l of resolved.layers) {
+      if (l.kind !== 'baseline' || l.root.includes(`${sep}node_modules${sep}`)) continue
+      const rel = relative(repoRoot, l.root)
+      if (rel && !rel.startsWith('..') && relative(projectRoot, l.root).startsWith('..')) extra.push(rel.split(sep).join('/'))
+    }
+  } catch {
+    // The workflow is still right without them; sync --check will name the problem.
+  }
+  const plan = planCi(projectRoot, manifestVersion ?? cliVersionOf(pkgRoot), owners, extra)
   const rel = (p: string): string => p.slice((git(projectRoot, ['rev-parse', '--show-toplevel']) ?? projectRoot).length + 1)
 
   if (args.includes('--dry-run')) {

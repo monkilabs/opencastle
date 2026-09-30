@@ -53,6 +53,7 @@ const commands = [
       { flag: '--customize', desc: 'Choose IDEs and integrations manually instead of accepting detection' },
       { flag: '--yes', desc: 'Accept the detected setup without the confirmation' },
       { flag: '--dry-run', desc: 'Preview what would be created without writing anything' },
+      { flag: '--allow-downgrade', desc: 'Re-run with this OpenCastle even though a newer one compiled the project' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
@@ -282,7 +283,7 @@ const commands = [
     ],
     details: [
       { heading: 'Which OpenCastle it runs', content: `<p>When <code>opencastle</code> is one of the project's devDependencies, the workflow runs that copy — <code>npx --no opencastle</code>, <code>pnpm exec opencastle</code> or <code>yarn opencastle</code> — so laptops and CI run the version the lockfile pins. Otherwise it pins the release that last compiled the project, <code>npx -y opencastle@&lt;version&gt;</code>, and suggests adding the devDependency.</p>` },
-      { heading: 'Monorepos and CODEOWNERS', content: `<p>Run from a subdirectory, it writes <code>opencastle-&lt;dir&gt;.yml</code> at the repository root, filtered to that directory's paths and running in it, and installs dependencies where the lockfile is. <code>--owners</code> appends two lines to <code>.github/CODEOWNERS</code>, for the lock and the team config, and leaves the file alone if it already routes the lock.</p>` },
+      { heading: 'Monorepos and CODEOWNERS', content: `<p>Run from a subdirectory, it writes <code>opencastle-&lt;dir&gt;.yml</code> at the repository root, filtered to that directory's paths and running in it, and installs dependencies where the lockfile is. <code>--owners</code> appends two lines, for the lock and the team config, to the CODEOWNERS file GitHub reads — <code>.github/</code>, the root or <code>docs/</code>, the first it finds — creating <code>.github/CODEOWNERS</code> only when there is none, and leaves the file alone if it already routes the lock.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle ci --owners @acme/platform', desc: 'Workflow plus owners for what assistants are given' },
@@ -328,7 +329,7 @@ const commands = [
     ~ acme-db
       npx -y @acme/db-mcp@2.2.0  — shop
       npx -y @acme/db-mcp@2.1.0  — admin</code></pre>
-<p>Directories without <code>.opencastle/</code> are skipped, and one without a lock is listed as not yet synced by a release that writes one. Each repository is named by its <code>package.json</code> name, or else its directory.</p>` },
+<p>Directories without <code>.opencastle/</code> are skipped, one without a lock is listed as not yet synced by a release that writes one, and one whose lock this release cannot read is listed as such. Each repository is named by its <code>package.json</code> name, or else its directory.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle fleet ~/src/*', desc: 'Every checkout in a directory' },

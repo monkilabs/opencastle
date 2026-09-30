@@ -322,14 +322,16 @@ export function auditMcpConfig(
       // A team server is compiled output: `sync` writes it exactly as the layer
       // defines it, so any difference is one `sync` removes.
       if (canonicalJson(entry) !== canonicalJson(team.expected[server])) sync = 'replaces'
+    } else if (team?.blocked.has(server)) {
+      // Refused by the policy or excluded by a layer — whoever wrote the entry,
+      // `sync` takes it out, so that is what the audit must say.
+      sync = 'removes'
+      removal = 'policy'
     } else if (team?.retired.includes(server)) {
       sync = 'removes'
       removal = 'retired'
     } else if (plugin) {
-      if (team?.blocked.has(server)) {
-        sync = 'removes'
-        removal = 'policy'
-      } else if (included && !included.has(server)) {
+      if (included && !included.has(server)) {
         sync = 'removes'
         removal = 'stack'
       } else if (upgradeGeneratedServers({ [server]: structuredClone(entry) }, ide, new Set([server])).length > 0) {
@@ -446,12 +448,19 @@ function unexpandedVariable(entry: Record<string, unknown>, ide: IdeChoice): str
     const block = entry[field]
     if (block && typeof block === 'object' && !Array.isArray(block)) values.push(...Object.values(block as Record<string, unknown>))
   }
-  if (Array.isArray(entry.args)) values.push(...entry.args)
-  if (Array.isArray(entry.command)) values.push(...entry.command)
+  // A shell expands `${NAME}` in its own script, so a `sh -c` line is fine as is.
+  const command = Array.isArray(entry.command) ? entry.command[0] : entry.command
+  const shell = typeof command === 'string' && /(^|[\\/])(sh|bash|zsh|dash|fish)(\.exe)?$/.test(command)
+  if (!shell) {
+    if (Array.isArray(entry.args)) values.push(...entry.args)
+    if (Array.isArray(entry.command)) values.push(...entry.command)
+  }
   values.push(entry.url, entry.serverUrl)
   for (const v of values) {
     if (typeof v !== 'string') continue
-    for (const m of v.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+    // Environment variables are conventionally upper case; `${name}` in a
+    // server's own template is more likely its business than a variable.
+    for (const m of v.matchAll(/\$\{([A-Z_][A-Z0-9_]*)\}/g)) {
       if (!EDITOR_VARIABLES.has(m[1])) return `\${${m[1]}} → ${spell(m[1])}`
     }
   }
@@ -513,7 +522,7 @@ export function remedyFor(list: McpFinding[], rel: string): string {
     const packs = [...new Set(removed.map((f) => f.plugin))].join(' ')
     parts.push(`opencastle sync removes ${servers}, which this project's stack does not include — opencastle add ${packs} keeps it`)
   }
-  if (blocked) parts.push(`opencastle sync removes ${blocked}, which the team's MCP policy does not allow`)
+  if (blocked) parts.push(`opencastle sync removes ${blocked}, which the team's config excludes or its MCP policy does not allow`)
   if (retired) parts.push(`opencastle sync removes ${retired}, which no team layer defines any more`)
   for (const where of new Set(teamSource.map((f) => f.team as string))) {
     parts.push(`fix ${names((f) => f.team === where && f.sync === 'keeps')} in ${where}, where it is defined`)

@@ -229,7 +229,10 @@ export function buildLock(source: CompileSource, opts: LockOptions): Lock {
       for (const name of envNamesIn(value)) names.add(name)
     }
     if (names.size > 0) server.env = [...names].sort()
-    server.sha = sha12([['', Buffer.from(canonicalServer(ts.server))]])
+    // `description` is for people reading the config and is written nowhere,
+    // so it is not part of what the assistants are given.
+    const { description: _description, ...definition } = ts.server
+    server.sha = sha12([['', Buffer.from(canonicalServer(definition))]])
     mcp.push([ts.key, server])
   }
 

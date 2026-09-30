@@ -570,6 +570,8 @@ export default async function update({
       staleRoots.push(...(results.staleRoots ?? []))
       tornRoots.push(...(results.tornRoots ?? []))
       sweptFiles.push(...(results.deleted ?? []))
+      for (const key of results.mcpTeamWritten ?? []) teamWritten.add(key)
+      for (const key of results.mcpTeamRemoved ?? []) teamRemoved.add(key)
       // The adapters skip a config they cannot parse instead of throwing; the
       // report below is the only place the user learns which file to fix.
       for (const file of results.unreadable ?? []) {

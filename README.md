@@ -153,8 +153,9 @@ can share it across every repository it owns.
 - **Policy only tightens.** A baseline can say which MCP servers may run, which
   hosts remote ones may reach, that every server is pinned to an exact version,
   which items no repository may drop, and how much context may load before a
-  task. A repository can tighten it, never relax it. A team server the policy
-  refuses, or a credential written inline, is a compile error, and `doctor` and
+  task. A repository can tighten it, never relax it, and can opt out of a
+  baseline's server. A server that breaks its own layer's policy, or a
+  credential written inline, is a compile error, and `doctor` and
   `sync --check` hold servers someone added to an MCP config by hand to the same
   policy.
 - **A lock you can review.** `sync` writes `.opencastle/lock.json`: which layers

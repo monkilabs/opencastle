@@ -570,7 +570,7 @@ async function compareProject(
             `(opencastle add ${pluginIds(audit.removed).join(' ')} keeps them)`
           : '',
         audit.blockedByPolicy.length > 0
-          ? `not allowed by the team's MCP policy, so sync removes: ${audit.blockedByPolicy.join(', ')}`
+          ? `sync removes ${audit.blockedByPolicy.map((k) => `${k} (${resolved.blocked.get(k) ?? "refused by the team's MCP policy"})`).join(', ')}`
           : '',
         audit.retired.length > 0 ? `no longer defined by any team layer, so sync removes: ${audit.retired.join(', ')}` : '',
       ].filter(Boolean)
@@ -747,7 +747,12 @@ function render(report: CheckReport): void {
   // Only when something here is actually fixable by it. `sync` was printed
   // unconditionally, so a file the writer refuses to touch produced a red check
   // recommending the command that refuses — CI red forever on a no-op.
-  if (report.drift.length > unreducible.length) {
+  if (report.drift.length > unreducible.length && unreducible.length > 0) {
+    // Both kinds: `sync` alone may not clear the rest — the lock, for one, is
+    // held back while an MCP config cannot be read.
+    console.log(`  ${c.bold('Fix:')} ${c.dim('the ones that need a person first, then')} ${c.cyan('opencastle sync')}`)
+    console.log(`  ${c.dim('To keep an edit, move it into .opencastle/ instead — that directory is yours.')}\n`)
+  } else if (report.drift.length > unreducible.length) {
     console.log(`  ${c.bold('Fix:')} ${c.cyan('opencastle sync')}`)
     console.log(`  ${c.dim('To keep an edit, move it into .opencastle/ instead — that directory is yours.')}\n`)
   } else {

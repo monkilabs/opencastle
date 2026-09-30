@@ -101,6 +101,9 @@ export interface CopyResults {
    * an earlier version" is simply false.
    */
   tornRoots?: string[];
+  /** Team MCP servers the scaffold wrote, and servers it took out, by key. */
+  mcpTeamWritten?: string[];
+  mcpTeamRemoved?: string[];
 }
 
 /** Options for the copyDir utility. */

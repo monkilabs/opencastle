@@ -45,10 +45,28 @@ export function envRef(ide: IdeChoice, name: string): string {
   }
 }
 
-/** Rewrite every `${NAME}` in a value into the target's own spelling; editor variables stay as written. */
+/**
+ * An editor variable for a target that does not have editor variables.
+ *
+ * VS Code and Cursor expand `${workspaceFolder}` and `${userHome}` themselves.
+ * Claude Code, OpenCode and Windsurf document only environment variables, so
+ * the text reached the server as written and the path it named was broken.
+ * These targets start a project's servers in the project directory, so the
+ * workspace is `.`, and the home directory is the `HOME` variable. Anything
+ * with no such equivalent is left as written, and `doctor` says so.
+ */
+function editorVariableFor(ide: IdeChoice, name: string, original: string): string {
+  if (ide === 'vscode' || ide === 'cursor') return original;
+  if (name === 'workspaceFolder' || name === 'workspaceRoot' || name === 'cwd') return '.';
+  if (name === 'userHome') return envRef(ide, 'HOME');
+  if (name === 'pathSeparator') return '/';
+  return original;
+}
+
+/** Rewrite every `${NAME}` in a value into the target's own spelling. */
 function rewriteRefs(value: string, ide: IdeChoice): string {
   return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, name: string) =>
-    EDITOR_VARIABLES.has(name) ? m : envRef(ide, name),
+    EDITOR_VARIABLES.has(name) ? editorVariableFor(ide, name, m) : envRef(ide, name),
   );
 }
 
@@ -231,7 +249,7 @@ export function teamEntryFor(key: string, server: TeamMcpServer, ide: IdeChoice)
       value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, name: string) => {
         if (EDITOR_VARIABLES.has(name)) return m;
         if (!inputs.some((i) => i.id === name)) {
-          inputs.push({ id: name, type: 'promptString', description: `${name} for the ${key} MCP server`, password: true });
+          inputs.push({ id: name, type: 'promptString', description: teamInputDescription(name, key), password: true });
         }
         return `\${input:${name}}`;
       });
@@ -278,6 +296,25 @@ export function expectedTeamEntries(plan: TeamMcpPlan | undefined, ide: IdeChoic
   return out;
 }
 
+/** How this tool describes an input it writes for a team server. */
+function teamInputDescription(id: string, key: string): string {
+  return `${id} for the ${key} MCP server`;
+}
+
+/**
+ * The inputs among `candidates` that this tool wrote for a team server and
+ * that no server left in the config still reads.
+ */
+export function ownedUnusedInputs(config: Record<string, unknown>, candidates: string[]): string[] {
+  const inputs = Array.isArray(config.inputs) ? (config.inputs as McpInput[]) : [];
+  const servers = JSON.stringify(config.servers ?? {});
+  return inputs
+    .filter((i) => candidates.includes(i.id))
+    .filter((i) => /^\S+ for the .+ MCP server$/.test(i.description ?? '') && i.description.startsWith(`${i.id} for the `))
+    .filter((i) => !servers.includes(`\${input:${i.id}}`))
+    .map((i) => i.id);
+}
+
 /**
  * Put the team's servers into a parsed config: written exactly as defined,
  * whatever is there; retired ones and ones the policy refuses taken out.
@@ -309,10 +346,12 @@ function applyTeamPlan(
   }
   if (Object.keys(servers).length > 0 || containerKey in existing) existing[containerKey] = servers;
   // Inputs only a retired team server asked for go with it; left behind, they
-  // were the last thing in a `.vscode/mcp.json` an uninstall then kept.
+  // were the last thing in a `.vscode/mcp.json` an uninstall then kept. Only
+  // ones this tool wrote, and only if no server still in the file uses them —
+  // a user's own server may read an input of the same name.
   if (ide === 'vscode' && Array.isArray(existing.inputs) && (plan.retiredInputs ?? []).length > 0) {
-    const needed = new Set(inputs.map((i) => i.id));
-    const kept = (existing.inputs as McpInput[]).filter((i) => needed.has(i.id) || !plan.retiredInputs!.includes(i.id));
+    const takeable = new Set(ownedUnusedInputs(existing, plan.retiredInputs!));
+    const kept = (existing.inputs as McpInput[]).filter((i) => !takeable.has(i.id));
     if (kept.length !== (existing.inputs as McpInput[]).length) {
       if (kept.length > 0) existing.inputs = kept;
       else delete existing.inputs;
@@ -566,6 +605,10 @@ export async function scaffoldMcpConfigInto(
   try {
     const result = await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide, team);
     results[result.action].push(result.path);
+    // Reported by the command, as the rebuild's changes are: a server removed
+    // here, before the rebuild runs, was otherwise removed without a word.
+    if (result.team?.written.length) (results.mcpTeamWritten ??= []).push(...result.team.written);
+    if (result.team?.removed.length) (results.mcpTeamRemoved ??= []).push(...result.team.removed);
   } catch (err) {
     if (!(err instanceof UnreadableConfigError)) throw err;
     (results.unreadable ??= []).push(
@@ -607,10 +650,7 @@ export function willKeepSomethingAfterStrip(
       .map((p) => p.mcpServerKey!),
     ...teamKeys,
   ]);
-  const ourInputIds = new Set([
-    ...Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id)),
-    ...teamInputs,
-  ]);
+  const pluginInputIds = Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id));
 
   for (const containerKey of containerKeys) {
     const servers = (parsed[containerKey] ?? {}) as Record<string, unknown>;
@@ -622,6 +662,9 @@ export function willKeepSomethingAfterStrip(
   }
 
   if (Array.isArray(parsed.inputs)) {
+    // Judged after the servers came out, so an input a user's own server still
+    // reads survives the uninstall.
+    const ourInputIds = new Set([...pluginInputIds, ...ownedUnusedInputs(parsed, teamInputs)]);
     const kept = (parsed.inputs as McpInput[]).filter((i) => !ourInputIds.has(i.id));
     if (kept.length > 0) parsed.inputs = kept;
     else delete parsed.inputs;

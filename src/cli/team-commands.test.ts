@@ -150,6 +150,34 @@ describe.skipIf(!built)('a repository extending a baseline', () => {
     expect(down.out).toContain('Downgrading this project from OpenCastle 99.0.0')
   })
 
+  it('init refuses to downgrade too', () => {
+    const path = join(dir, '.opencastle', 'manifest.json')
+    const manifest = JSON.parse(readFileSync(path, 'utf8'))
+    manifest.version = '99.0.0'
+    writeFileSync(path, JSON.stringify(manifest))
+    const init = run(dir, ['init', '--yes'])
+    expect(init.code).toBe(1)
+    expect(init.out).toContain('compiled by OpenCastle 99.0.0')
+    expect(JSON.parse(readFileSync(path, 'utf8')).version).toBe('99.0.0')
+  })
+
+  it('reports removing a hand-added server the project excluded', () => {
+    write(dir, {
+      '.opencastle/config.json': JSON.stringify({
+        extends: ['@acme/base'],
+        exclude: ['mcpServers/acme-db'],
+      }),
+    })
+    const vscode = JSON.parse(readFileSync(join(dir, '.vscode', 'mcp.json'), 'utf8'))
+    expect(vscode.servers['acme-db']).toBeDefined()
+    const check = run(dir, ['sync', '--check'])
+    expect(check.code).toBe(1)
+    expect(check.out).toContain('acme-db (excluded by project)')
+    const sync = run(dir, ['sync', '--yes'])
+    expect(sync.out.replace(/\x1b\[[0-9;]*m/g, '')).toMatch(/Removed \d MCP server\(s\) the team's layers retired or its policy does not allow: acme-db/)
+    expect(run(dir, ['sync', '--check']).code).toBe(0)
+  })
+
   it('holds the lock back while an MCP config cannot be read, so a retired server is not forgotten', () => {
     write(dir, { '.opencastle/config.json': JSON.stringify({ extends: ['@acme/base'] }) })
     const lockBefore = readFileSync(join(dir, '.opencastle', 'lock.json'), 'utf8')

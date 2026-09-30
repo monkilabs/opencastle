@@ -512,8 +512,9 @@ $ npx opencastle baseline check opencastle-baseline
             file. <code>exclude</code> removes an item from below. <code>sync</code> fills in
             what each assistant's format needs: an instruction that does not set <code>applyTo</code>
             is given <code>{"applyTo: '**'"}</code>, so Copilot loads it everywhere as the other assistants
-            do. Line endings are normalised and OS files such as <code>.DS_Store</code> are skipped, so the
-            lock comes out the same on every machine; a link pointing out of the layer is not followed. A
+            do. Line endings are normalised and OS files (<code>.DS_Store</code>, <code>Thumbs.db</code>) are skipped,
+            so the lock comes out the same on every machine. A link to somewhere outside both the layer and the
+            project is not followed, with a warning saying so. A
             skill or agent with no <code>description</code> compiles with a warning: no
             assistant can tell when to load a skill that does not describe itself.
           </p>
@@ -579,8 +580,10 @@ $ npx opencastle baseline check opencastle-baseline
           <p>
             For <code>acme-db</code>, whose <code>env</code> only passes <code>ACME_DB_URL</code> through,
             VS Code gets <code>{'"envFile": "${workspaceFolder}/.env"'}</code> instead of a prompt. Editor
-            variables such as <code>{'${workspaceFolder}'}</code> in a server's arguments are passed through as
-            written, not treated as environment variables.
+            variables are not environment variables: VS Code and Cursor get <code>{'${workspaceFolder}'}</code> and
+            <code>{'${userHome}'}</code> as written; Claude Code, OpenCode and Windsurf, which start a project's
+            servers in the project directory and document no editor variables, get <code>.</code> and their own
+            spelling of <code>HOME</code>.
           </p>
 
           <h4 class="arch-subheading">4. What a new teammate sees: explain</h4>
@@ -725,7 +728,7 @@ $ npx opencastle baseline check opencastle-baseline
                 <tr>
                   <td><code>mcp.allow</code></td>
                   <td>A server must be on every layer's list. Allowing a server a lower layer refuses has no effect, and says so.</td>
-                  <td>A team server: compile error. An integration's server: left out of every assistant, with the reason in the lock and in <code>explain</code>. Any other server in an MCP config, such as one added by hand: <code>doctor</code> and <code>sync --check</code> fail.</td>
+                  <td>A team server refused by its own layer or one below: compile error. Refused by a layer <em>above</em> the one that defines it — a repository narrowing its baseline's list — or an integration's server: left out of every assistant, with the reason in the lock and in <code>explain</code>. Any other server in an MCP config, such as one added by hand: <code>doctor</code> and <code>sync --check</code> fail.</td>
                 </tr>
                 <tr>
                   <td><code>mcp.remoteHosts</code></td>
@@ -740,7 +743,7 @@ $ npx opencastle baseline check opencastle-baseline
                 <tr>
                   <td><code>require</code></td>
                   <td>Accumulates.</td>
-                  <td>Excluding or replacing a required item: compile error.</td>
+                  <td>Excluding a required item, or replacing one that existed where it was required: compile error. Providing one nothing below had is how it is meant to be met.</td>
                 </tr>
                 <tr>
                   <td><code>contextBudget</code></td>
@@ -768,7 +771,7 @@ $ npx opencastle baseline check opencastle-baseline
             and <code>explain</code> refuse, because there is nothing coherent to describe.
           </p>
           <div class="key-insight">
-            <p><strong>Why integration servers are left out rather than refused:</strong> your team chose the policy, and an integration's skill is still useful without its server. A server your own layers define is a decision someone made in the config, so a conflict with the policy stops the build.</p>
+            <p><strong>Why some servers are left out rather than refused:</strong> your team chose the policy, and an integration's skill is still useful without its server. A server a layer defines against its own rules, or rules below it, is a mistake someone made in the config, so it stops the build. A layer above that refuses it is opting out, so the server is left out — as <code>exclude: ["mcpServers/&lt;name&gt;"]</code> does explicitly.</p>
           </div>
         </section>
 
@@ -875,7 +878,8 @@ $ npx opencastle baseline check opencastle-baseline
             fetched — and shows which OpenCastle and baseline versions each repository runs, which lag behind the
             newest, and which MCP servers launch differently across them. Directories without
             <code>.opencastle/</code> are skipped; one without a lock is listed as not yet synced by a release that
-            writes one.
+            writes one, and one whose lock this release cannot read — written by a newer OpenCastle, or edited — is
+            listed as such.
           </p>
 
           <h4 class="arch-subheading">And what changed in doctor and sync</h4>

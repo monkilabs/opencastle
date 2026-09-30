@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import { readLock, type Lock } from './lock.js'
+import { readLock, LOCK_REL, type Lock } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
@@ -33,6 +33,8 @@ interface RepoRow {
   repo: string
   path: string
   lock: Lock | null
+  /** A lock is there but this release cannot read it — written by a newer one, or edited. */
+  unreadable?: boolean
 }
 
 export interface FleetReport {
@@ -44,6 +46,7 @@ export interface FleetReport {
     mcpServers: number
     contextTokens?: number
     lock: boolean
+    unreadable?: boolean
   }>
   /** Per baseline or OpenCastle itself: version → repositories. */
   versions: Record<string, Record<string, string[]>>
@@ -67,10 +70,10 @@ export function buildFleet(rows: RepoRow[]): FleetReport {
   const note = (bucket: Record<string, Record<string, string[]>>, key: string, value: string, repo: string): void => {
     ;((bucket[key] ??= {})[value] ??= []).push(repo)
   }
-  for (const { repo, lock } of rows) {
+  for (const { repo, lock, unreadable } of rows) {
     if (!lock) {
       report.withoutLock.push(repo)
-      report.repos.push({ repo, baselines: {}, targets: [], mcpServers: 0, lock: false })
+      report.repos.push({ repo, baselines: {}, targets: [], mcpServers: 0, lock: false, ...(unreadable && { unreadable: true }) })
       continue
     }
     const baselines: Record<string, string> = {}
@@ -111,7 +114,11 @@ function render(report: FleetReport): void {
   const width = Math.max(10, ...report.repos.map((r) => r.repo.length))
   for (const r of report.repos) {
     if (!r.lock) {
-      out(`  ${c.yellow('!')} ${r.repo.padEnd(width)}  ${c.dim('no lock — not synced with a release that writes one')}`)
+      out(
+        `  ${c.yellow('!')} ${r.repo.padEnd(width)}  ${c.dim(
+          r.unreadable ? 'a lock this release cannot read — written by a newer OpenCastle, or edited by hand' : 'no lock — not synced with a release that writes one',
+        )}`,
+      )
       continue
     }
     const bl = Object.entries(r.baselines).map(([id, v]) => `${id}@${v}`).join(', ')
@@ -157,7 +164,7 @@ export default async function fleet({ args }: CliContext): Promise<void> {
   for (const dir of dirs) {
     const abs = resolve(dir)
     if (!existsSync(join(abs, '.opencastle'))) continue
-    rows.push({ repo: repoName(abs), path: abs, lock: readLock(abs) })
+    rows.push({ repo: repoName(abs), path: abs, lock: readLock(abs), unreadable: existsSync(join(abs, LOCK_REL)) && !readLock(abs) })
   }
   if (rows.length === 0) {
     console.error(`\n  ${c.red('✗')} None of those directories uses OpenCastle (no .opencastle/ in any).\n`)

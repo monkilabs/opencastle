@@ -114,6 +114,9 @@ const SECRET_NAME = /(token|secret|password|passwd|pwd|api[_-]?key|access[_-]?ke
 /** Names that end like a pointer to a secret, not the secret itself. */
 const NOT_A_SECRET = /[_-](id|mode|url|uri|file|path|dir|region|name|sha|hash|type|endpoint|host|port|user|username|header|scheme)$/i
 
+/** Keys that are public by design, or not credentials at all. */
+const PUBLIC_KEY = /(publishable|public|site|search|idempotency|cache|partition|sort|primary)[_-]?key$/i
+
 const PLACEHOLDER = /^(?:replace[_-]?me|change[_-]?me|your[_-].*|<[^>]*>|x{3,}|\*+|todo|tbd|null|none|true|false|\d{1,6})$/i
 
 /** `${NAME}`, `${env:NAME}`, `{env:NAME}`, `{file:…}` anywhere; `$NAME` only as the whole value. */
@@ -129,7 +132,9 @@ function looksRandom(value: string): boolean {
     /[A-Za-z]/.test(value) &&
     /\d/.test(value) &&
     !/^(?:https?:|\/|\.|~|[A-Za-z]:\\)/.test(value) &&
-    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+$/.test(value)
+    // A relative path to a file — `secrets/token.txt` — not base64, which can
+    // hold `/` too: an AWS secret key often does.
+    !/^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*\/[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,5}$/.test(value)
   )
 }
 
@@ -151,7 +156,7 @@ function isSecretValue(name: string, raw: string): boolean {
   if (urlWithPassword(value)) return true
   // Anything written into an Authorization header is the credential itself.
   if (/^authorization$/i.test(name)) return value.length >= 8
-  if (NOT_A_SECRET.test(name)) return false
+  if (NOT_A_SECRET.test(name) || PUBLIC_KEY.test(name)) return false
   return SECRET_NAME.test(name) && looksRandom(value)
 }
 

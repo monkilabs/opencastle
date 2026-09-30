@@ -3,7 +3,7 @@
  * every target gets the team's MCP servers in its own dialect, and the check a
  * team runs in CI sees what `sync` would change.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -16,7 +16,8 @@ import { writeManifest } from './manifest.js'
 import { recordLockFor, type Lock } from './lock.js'
 import { diffLocks, reviewMarkdown } from './review.js'
 import { auditMcpConfig, describeFinding } from './mcp-audit.js'
-import { parseLock, serializeLock } from './lock.js'
+import { parseLock, serializeLock, buildLock } from './lock.js'
+const buildLockFor = (src: CompileSource) => buildLock(src, { ides: ['claude-code'], stack: { ides: ['claude-code'], techTools: [], teamTools: [] } })
 import { emptyPolicy } from './policy.js'
 import { buildFleet } from './fleet.js'
 import { planCi } from './ci.js'
@@ -400,7 +401,7 @@ describe('what review found, kept fixed (compiler and commands)', () => {
       '.vscode/mcp.json': JSON.stringify({
         servers: { 'acme-docs': { type: 'http', url: 'https://docs.acme.dev/mcp', headers: { Authorization: 'Bearer ${input:DOCS_TOKEN}' } } },
         inputs: [
-          { id: 'DOCS_TOKEN', type: 'promptString', description: 'x', password: true },
+          { id: 'DOCS_TOKEN', type: 'promptString', description: 'DOCS_TOKEN for the acme-docs MCP server', password: true },
           { id: 'mine', type: 'promptString', description: 'kept' },
         ],
       }),
@@ -488,5 +489,90 @@ describe('what review found, kept fixed (compiler and commands)', () => {
     expect(planCi(project, '0.36.0').workflow).toContain('version: 10')
     write(project, { 'package.json': JSON.stringify({ packageManager: 'pnpm@9.12.0' }) })
     expect(planCi(project, '0.36.0').workflow).not.toContain('version: 10')
+  })
+})
+
+describe('what the second review found, kept fixed', () => {
+  let project: string
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), 'team-review-2-'))
+  })
+  afterEach(() => {
+    rmSync(project, { recursive: true, force: true })
+  })
+
+  it("leaves a user's input alone when a retired team server shared its name", async () => {
+    const stack: StackConfig = { ides: ['vscode'], techTools: [], teamTools: [] }
+    write(project, {
+      '.vscode/mcp.json': JSON.stringify({
+        servers: { 'my-gh': { type: 'http', url: 'https://gh.example/mcp', headers: { Authorization: 'Bearer ${input:GITHUB_TOKEN}' } } },
+        inputs: [{ id: 'GITHUB_TOKEN', type: 'promptString', description: 'GITHUB_TOKEN for the github MCP server', password: true }],
+      }),
+    })
+    const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot, ['github'], ['GITHUB_TOKEN'])
+    try {
+      await rebuildMcpConfig(project, 'vscode', stack, undefined, src.mcp)
+    } finally {
+      src.dispose()
+    }
+    expect(JSON.parse(readFileSync(join(project, '.vscode', 'mcp.json'), 'utf8')).inputs.map((i: { id: string }) => i.id)).toEqual(['GITHUB_TOKEN'])
+  })
+
+  it('gives Claude Code and OpenCode a workspace they can resolve', async () => {
+    write(project, {
+      '.opencastle/config.json': JSON.stringify({ mcpServers: { local: { command: 'node', args: ['${workspaceFolder}/tools/mcp.js', '--home', '${userHome}'] } } }),
+    })
+    const stack: StackConfig = { ides: ['claude-code', 'opencode'], techTools: [], teamTools: [] }
+    const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot)
+    try {
+      await rebuildMcpConfig(project, 'claude-code', stack, undefined, src.mcp)
+      await rebuildMcpConfig(project, 'opencode', stack, undefined, src.mcp)
+    } finally {
+      src.dispose()
+    }
+    expect(JSON.parse(readFileSync(join(project, '.mcp.json'), 'utf8')).mcpServers.local.args).toEqual(['./tools/mcp.js', '--home', '${HOME}'])
+    expect(JSON.parse(readFileSync(join(project, 'opencode.json'), 'utf8')).mcp.local.command).toEqual(['node', './tools/mcp.js', '--home', '{env:HOME}'])
+  })
+
+  it('copies a skill\'s own dotfiles and warns about a link it will not follow', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'team-review-2-out-'))
+    try {
+      write(outside, { 'ext/SKILL.md': '---\ndescription: "x. Use when y."\n---\n' })
+      write(project, {
+        '.opencastle/skills/s/SKILL.md': '---\ndescription: "x. Use when y."\n---\n',
+        '.opencastle/skills/s/.env.example': 'A=1\n',
+        '.opencastle/skills/s/.DS_Store': 'junk',
+      })
+      symlinkSync(join(outside, 'ext'), join(project, '.opencastle', 'skills', 'ext'))
+      const resolved = resolveSources({ pkgRoot, projectRoot: project, stack: { ides: [], techTools: [], teamTools: [] } })
+      expect(resolved.issues.map((i) => i.message)).toContain('is a link to somewhere outside this layer and the project, so it is not compiled')
+      const src = materialize(resolved, pkgRoot)
+      try {
+        expect(readdirSync(join(src.root, 'skills', 's')).sort()).toEqual(['.env.example', 'SKILL.md'])
+      } finally {
+        src.dispose()
+      }
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it("does not move the lock over a server's description", () => {
+    const lockWith = (description?: string): string => {
+      write(project, { '.opencastle/config.json': JSON.stringify({ mcpServers: { s: { command: 'node', args: ['x.js'], ...(description && { description }) } } }) })
+      const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack: { ides: [], techTools: [], teamTools: [] } }), pkgRoot)
+      try {
+        return serializeLock(buildLockFor(src))
+      } finally {
+        src.dispose()
+      }
+    }
+    expect(lockWith('For people')).toBe(lockWith())
+  })
+
+  it('says sync removes a hand-added server a layer excluded, and why', () => {
+    const team = { expected: {}, definedIn: {}, retired: [], blocked: new Map([['acme-mine', 'excluded by project']]), policy: emptyPolicy() }
+    const audit = auditMcpConfig({ mcpServers: { 'acme-mine': { command: 'node', args: ['mine.js'] } } }, 'claude-code', undefined, team)
+    expect(audit.blockedByPolicy).toEqual(['acme-mine'])
   })
 })

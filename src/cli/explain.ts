@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { readManifest } from './manifest.js'
 import { resolveStack, isEnvVarSatisfied } from './stack-config.js'
-import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
+import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars, refuseOlderCli } from './layers.js'
 import { buildLock, type Lock, priorTeam } from './lock.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
@@ -50,6 +50,7 @@ function by(from: string): string {
 async function build(pkgRoot: string, projectRoot: string): Promise<ExplainReport> {
   const manifest = await readManifest(projectRoot)
   if (!manifest) throw new Error('OpenCastle is not set up here — run opencastle init')
+  refuseOlderCli(pkgRoot, manifest.version)
   const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter((i): i is string => Boolean(i) && i in IDE_ADAPTERS)
   const stack = resolveStack({ ...manifest, ides })
   const resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: manifest.repoInfo })
