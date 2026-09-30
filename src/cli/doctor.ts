@@ -15,6 +15,7 @@ import {
   type FileDiagnosis,
 } from './managed-block.js';
 import { UnreadableConfigError } from './types.js';
+import { checkMcpSupplyChain } from './mcp-audit.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
 
@@ -479,7 +480,9 @@ const DOCTOR_HELP = `
   opencastle doctor [options]
 
   Validate your OpenCastle setup — checks manifest, customizations, skills,
-  logs, MCP configuration, and IDE-specific rules.
+  logs, MCP configuration, and IDE-specific rules. MCP servers are audited too:
+  a package run without an exact version, one that no longer exists on npm, or
+  a remote server Claude Code cannot load.
 
   Options:
     --help, -h      Show this help
@@ -854,6 +857,7 @@ export async function runAdapterChecks(
     }
     const mcpPaths = adapter.getManagedPaths().customizable.filter((p) => !p.endsWith('/'));
     out.push(checkMcpFromPaths(projectRoot, mcpPaths));
+    out.push(checkMcpSupplyChain(projectRoot, ide as IdeChoice));
   }
   return out;
 }
@@ -964,6 +968,7 @@ export default async function doctor({ args }: CliContext): Promise<void> {
       // MCP config check — non-directory entries in the adapter's customizable paths
       const mcpPaths = managedPaths.customizable.filter((p) => !p.endsWith('/'));
       checkResults.push(checkMcpFromPaths(projectRoot, mcpPaths));
+      checkResults.push(checkMcpSupplyChain(projectRoot, ide as IdeChoice));
 
       ideGroups.push({
         label: IDE_LABELS[ide as IdeChoice] ?? ide,
