@@ -111,7 +111,7 @@ describe('rebuildMcpConfig on an install from before the fix', () => {
   it('changes nothing on a second run', async () => {
     await scaffoldMcpConfig(root, '.mcp.json', stack, undefined, 'claude-code')
     const first = readFileSync(join(root, '.mcp.json'), 'utf8')
-    expect(await rebuildMcpConfig(root, 'claude-code', stack)).toEqual({ upgraded: [], removed: [] })
+    expect(await rebuildMcpConfig(root, 'claude-code', stack)).toEqual({ upgraded: [], removed: [], teamWritten: [], teamRemoved: [] })
     expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe(first)
   })
 

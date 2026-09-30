@@ -6,6 +6,8 @@ import { PLUGINS } from '../orchestrator/plugins/index.js';
 import { UnreadableConfigError } from './types.js';
 import type { McpInput, McpServerConfig, EnvVarRequirement } from '../orchestrator/plugins/types.js';
 import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice, CopyResults } from './types.js';
+import type { TeamMcpPlan } from './layers.js';
+import type { TeamMcpServer } from './team-config.js';
 
 // ── IDE-specific MCP format transformation ────────────────────
 
@@ -16,6 +18,36 @@ interface VsCodeServer {
   url?: string;
   env?: Record<string, string>;
   envFile?: string;
+  headers?: Record<string, string>;
+}
+
+/**
+ * How each target spells "the value of environment variable NAME".
+ *
+ * There is no common syntax. Claude Code expands `${NAME}`; Cursor and Windsurf
+ * expand `${env:NAME}`; OpenCode expands `{env:NAME}`. Every other spelling is
+ * passed to the server as literal text — so the `${SENTRY_ACCESS_TOKEN}` this
+ * wrote for every target reached a Cursor or OpenCode user's server as those
+ * twenty-two characters, in place of the token their shell already held, and
+ * the server failed to authenticate. VS Code uses `envFile` instead and never
+ * reaches here. Codex and Antigravity keep `${NAME}` until their documented
+ * syntax is confirmed.
+ */
+export function envRef(ide: IdeChoice, name: string): string {
+  switch (ide) {
+    case 'cursor':
+    case 'windsurf':
+      return `\${env:${name}}`;
+    case 'opencode':
+      return `{env:${name}}`;
+    default:
+      return `\${${name}}`;
+  }
+}
+
+/** Rewrite every `${NAME}` in a value into the target's own spelling. */
+function rewriteRefs(value: string, ide: IdeChoice): string {
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => envRef(ide, name));
 }
 
 /**
@@ -55,8 +87,9 @@ function transformMcpForIde(
           // this wrote into `.mcp.json` — Supabase, Stripe, Vercel and the rest —
           // was therefore a stdio server with no command, and never loaded. The
           // other targets in this group take the bare `url`.
+          const headers = server.headers && { headers: server.headers };
           mcpServers[name] =
-            ide === 'claude-code' && !options.legacy ? { type: 'http', url } : { url };
+            ide === 'claude-code' && !options.legacy ? { type: 'http', url, ...headers } : { url, ...headers };
         }
       }
       return { mcpServers };
@@ -78,6 +111,7 @@ function transformMcpForIde(
           mcp[name] = {
             type: 'remote',
             url,
+            ...(server.headers && { headers: server.headers }),
           };
         }
       }
@@ -137,12 +171,14 @@ function serialiseLike(original: string, value: unknown): string {
 function serverFor(
   plugin: { mcpConfig?: McpServerConfig; envVars: EnvVarRequirement[] },
   ide: IdeChoice,
+  legacyEnv = false,
 ): VsCodeServer {
   const serverConfig = { ...plugin.mcpConfig! } as VsCodeServer;
   if (ide !== 'vscode' && plugin.envVars.length > 0) {
     const envBlock: Record<string, string> = { ...(serverConfig.env ?? {}) };
     for (const ev of plugin.envVars) {
-      envBlock[ev.name] = `\${${ev.name}}`;
+      // `legacyEnv` is what releases before per-target syntax wrote everywhere.
+      envBlock[ev.name] = legacyEnv ? `\${${ev.name}}` : envRef(ide, ev.name);
     }
     serverConfig.env = envBlock;
     delete serverConfig.envFile;
@@ -161,12 +197,124 @@ function entryFor(server: VsCodeServer, ide: IdeChoice, legacy = false): unknown
 }
 
 /** Key order is not meaning: compare two parsed JSON values as values. */
+export function canonicalJson(value: unknown): string {
+  return canonical(value);
+}
+
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, v) =>
     v && typeof v === 'object' && !Array.isArray(v)
       ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
       : v,
   );
+}
+
+/**
+ * A team server as one target's config entry, with the VS Code inputs it needs.
+ *
+ * Team layers write variables one way, `${NAME}`, and each target gets its own
+ * spelling. VS Code has no environment syntax for these fields: an `env` entry
+ * that only forwards a variable is dropped, because the server inherits the
+ * editor's environment and `.env` through `envFile`; any other reference —
+ * a header, an argument — becomes a password input VS Code asks for once and
+ * keeps in its secret storage.
+ */
+export function teamEntryFor(key: string, server: TeamMcpServer, ide: IdeChoice): { entry: unknown; inputs: McpInput[] } {
+  const inputs: McpInput[] = [];
+  const http = server.type === 'http' || (!server.type && Boolean(server.url) && !server.command);
+  if (ide === 'vscode') {
+    const toInput = (value: string): string =>
+      value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => {
+        if (!inputs.some((i) => i.id === name)) {
+          inputs.push({ id: name, type: 'promptString', description: `${name} for the ${key} MCP server`, password: true });
+        }
+        return `\${input:${name}}`;
+      });
+    if (http) {
+      const entry: VsCodeServer = { type: 'http', url: toInput(server.url ?? '') };
+      if (server.headers) entry.headers = Object.fromEntries(Object.entries(server.headers).map(([k, v]) => [k, toInput(v)]));
+      return { entry, inputs };
+    }
+    const entry: VsCodeServer = { type: 'stdio', command: toInput(server.command ?? '') };
+    if (server.args) entry.args = server.args.map(toInput);
+    const env: Record<string, string> = {};
+    let forwards = false;
+    for (const [name, value] of Object.entries(server.env ?? {})) {
+      if (value === `\${${name}}`) {
+        forwards = true;
+        continue;
+      }
+      env[name] = toInput(value);
+    }
+    if (Object.keys(env).length > 0) entry.env = env;
+    if (forwards) entry.envFile = '${workspaceFolder}/.env';
+    return { entry, inputs };
+  }
+  const rw = (v: string): string => rewriteRefs(v, ide);
+  const vs: VsCodeServer = http
+    ? {
+        type: 'http',
+        url: rw(server.url ?? ''),
+        ...(server.headers && { headers: Object.fromEntries(Object.entries(server.headers).map(([k, v]) => [k, rw(v)])) }),
+      }
+    : {
+        type: 'stdio',
+        command: rw(server.command ?? ''),
+        ...(server.args && { args: server.args.map(rw) }),
+        ...(server.env && { env: Object.fromEntries(Object.entries(server.env).map(([k, v]) => [k, rw(v)])) }),
+      };
+  return { entry: entryFor(vs, ide), inputs };
+}
+
+/** Every team server's entry for one target, as `sync` writes them. */
+export function expectedTeamEntries(plan: TeamMcpPlan | undefined, ide: IdeChoice): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, server] of Object.entries(plan?.servers ?? {})) out[key] = teamEntryFor(key, server, ide).entry;
+  return out;
+}
+
+/**
+ * Put the team's servers into a parsed config: written exactly as defined,
+ * whatever is there; retired ones and ones the policy refuses taken out.
+ * Returns what changed, by key.
+ */
+function applyTeamPlan(
+  existing: Record<string, unknown>,
+  ide: IdeChoice,
+  plan: TeamMcpPlan | undefined,
+): { written: string[]; removed: string[] } {
+  const written: string[] = [];
+  const removed: string[] = [];
+  if (!plan) return { written, removed };
+  const containerKey = containerKeyFor(ide);
+  const servers = (existing[containerKey] ?? {}) as Record<string, unknown>;
+  const inputs: McpInput[] = [];
+  for (const [key, server] of Object.entries(plan.servers)) {
+    const { entry, inputs: needed } = teamEntryFor(key, server, ide);
+    inputs.push(...needed);
+    if (key in servers && canonical(servers[key]) === canonical(entry)) continue;
+    servers[key] = entry;
+    written.push(key);
+  }
+  for (const key of [...plan.retired, ...plan.blocked]) {
+    if (key in servers && !(key in plan.servers)) {
+      delete servers[key];
+      removed.push(key);
+    }
+  }
+  if (Object.keys(servers).length > 0 || containerKey in existing) existing[containerKey] = servers;
+  if (ide === 'vscode' && inputs.length > 0) {
+    const have = (existing.inputs as McpInput[] | undefined) ?? [];
+    const ids = new Set(have.map((i) => i.id));
+    for (const input of inputs) {
+      if (ids.has(input.id)) continue;
+      have.push(input);
+      ids.add(input.id);
+      if (!written.includes('inputs')) written.push('inputs');
+    }
+    existing.inputs = have;
+  }
+  return { written: written.filter((k) => k !== 'inputs'), removed };
 }
 
 /**
@@ -194,10 +342,18 @@ export function upgradeGeneratedServers(
     const current = entryFor(serverFor(plugin, ide), ide);
     const have = canonical(existingServers[key]);
     if (have === canonical(current)) continue;
-    const earlier = [entryFor(serverFor(plugin, ide), ide, true)];
-    for (const prev of plugin.previousMcpConfigs ?? []) {
-      const old = serverFor({ mcpConfig: prev.mcpConfig, envVars: prev.envVars }, ide);
-      earlier.push(entryFor(old, ide), entryFor(old, ide, true));
+    // Every shape an earlier release wrote: each earlier default, in the entry
+    // shape and the env-variable spelling of the time.
+    const earlier: unknown[] = [];
+    const configs = [
+      { mcpConfig: plugin.mcpConfig, envVars: plugin.envVars },
+      ...(plugin.previousMcpConfigs ?? []).map((p) => ({ mcpConfig: p.mcpConfig, envVars: p.envVars })),
+    ];
+    for (const cfg of configs) {
+      for (const legacyEnv of [false, true]) {
+        const old = serverFor(cfg, ide, legacyEnv);
+        earlier.push(entryFor(old, ide), entryFor(old, ide, true));
+      }
     }
     if (earlier.some((e) => canonical(e) === have)) {
       existingServers[key] = current;
@@ -224,7 +380,8 @@ export async function scaffoldMcpConfig(
   destRelPath: string,
   stack?: StackConfig,
   repoInfo?: RepoInfo,
-  ide?: IdeChoice
+  ide?: IdeChoice,
+  team?: TeamMcpPlan,
 ): Promise<ScaffoldResult> {
   const destPath = resolve(projectRoot, destRelPath);
 
@@ -232,12 +389,15 @@ export async function scaffoldMcpConfig(
   const servers: Record<string, VsCodeServer> = {};
   let inputs: McpInput[] = [];
   const resolvedIde = ide ?? 'vscode';
+  // A team server with an integration's name replaces it, and an integration
+  // the team's policy refuses is not written at all.
+  const teamOwned = new Set([...Object.keys(team?.servers ?? {}), ...(team?.blocked ?? [])]);
 
   if (stack) {
     const included = getIncludedMcpServers(stack, repoInfo);
 
     for (const plugin of Object.values(PLUGINS)) {
-      if (plugin.mcpServerKey && included.has(plugin.mcpServerKey)) {
+      if (plugin.mcpServerKey && included.has(plugin.mcpServerKey) && !teamOwned.has(plugin.mcpServerKey)) {
         servers[plugin.mcpServerKey] = serverFor(plugin, resolvedIde);
         if (plugin.mcpInputs) {
           inputs.push(...plugin.mcpInputs);
@@ -317,18 +477,22 @@ export async function scaffoldMcpConfig(
       }
     }
 
+    const teamChanges = applyTeamPlan(existing, resolvedIde, team);
+    added += teamChanges.written.length + teamChanges.removed.length;
+
     if (added === 0) {
-      return { path: destPath, action: 'skipped' };
+      return { path: destPath, action: 'skipped', team: teamChanges };
     }
 
     await writeFile(destPath, serialiseLike(existingContent, existing));
-    return { path: destPath, action: 'created' };
+    return { path: destPath, action: 'created', team: teamChanges };
   }
 
+  const teamChanges = applyTeamPlan(output, resolvedIde, team);
   await mkdir(dirname(destPath), { recursive: true });
   await writeFile(destPath, JSON.stringify(output, null, 2) + '\n');
 
-  return { path: destPath, action: 'created' };
+  return { path: destPath, action: 'created', team: teamChanges };
 }
 
 // ── MCP config rebuild for reconfigure ────────────────────────
@@ -380,10 +544,11 @@ export async function scaffoldMcpConfigInto(
   destRelPath: string,
   stack?: StackConfig,
   repoInfo?: RepoInfo,
-  ide?: IdeChoice
+  ide?: IdeChoice,
+  team?: TeamMcpPlan,
 ): Promise<void> {
   try {
-    const result = await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
+    const result = await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide, team);
     results[result.action].push(result.path);
   } catch (err) {
     if (!(err instanceof UnreadableConfigError)) throw err;
@@ -411,16 +576,19 @@ export async function scaffoldMcpConfigInto(
 export function willKeepSomethingAfterStrip(
   parsed: Record<string, unknown>,
   ide?: IdeChoice,
+  /** Servers the team's layers had OpenCastle write — ours to take back too. */
+  teamKeys: string[] = [],
 ): boolean {
   const containerKeys = ide
     ? [ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers']
     : ['mcp', 'servers', 'mcpServers']
 
-  const ourServerKeys = new Set(
-    Object.values(PLUGINS)
+  const ourServerKeys = new Set([
+    ...Object.values(PLUGINS)
       .filter((p) => p.mcpServerKey)
       .map((p) => p.mcpServerKey!),
-  );
+    ...teamKeys,
+  ]);
   const ourInputIds = new Set(
     Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id)),
   );
@@ -447,6 +615,7 @@ export async function stripManagedMcpServers(
   projectRoot: string,
   ide: IdeChoice,
   createdByUs = false,
+  teamKeys: string[] = [],
 ): Promise<'deleted' | 'stripped' | 'absent' | 'unreadable'> {
   const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
   if (!existsSync(destPath)) return 'absent';
@@ -470,7 +639,7 @@ export async function stripManagedMcpServers(
   // A copy to compare against: `willKeepSomethingAfterStrip` edits `parsed` in
   // place, so this is the only record of what the file said before.
   const untouched = JSON.stringify(parsed);
-  const keepsSomething = willKeepSomethingAfterStrip(parsed, ide);
+  const keepsSomething = willKeepSomethingAfterStrip(parsed, ide, teamKeys);
 
   // Nothing of ours was in there, so there is nothing to do — and in particular
   // nothing to delete.
@@ -506,19 +675,31 @@ export async function stripManagedMcpServers(
   return 'stripped';
 }
 
+export interface RebuildOutcome {
+  /** Integration servers moved to the current default. */
+  upgraded: string[];
+  /** Integration servers the stack no longer includes, deleted. */
+  removed: string[];
+  /** Team servers written or rewritten to match their layer. */
+  teamWritten: string[];
+  /** Team servers retired, and integration servers the policy refuses, deleted. */
+  teamRemoved: string[];
+}
+
 export async function rebuildMcpConfig(
   projectRoot: string,
   ide: IdeChoice,
   stack: StackConfig,
-  repoInfo?: RepoInfo
-): Promise<{ upgraded: string[]; removed: string[] }> {
+  repoInfo?: RepoInfo,
+  team?: TeamMcpPlan,
+): Promise<RebuildOutcome> {
   const destRelPath = getMcpConfigRelPath(ide);
   const destPath = resolve(projectRoot, destRelPath);
 
   if (!existsSync(destPath)) {
     // No existing config — scaffold fresh
-    await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
-    return { upgraded: [], removed: [] };
+    const fresh = await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide, team);
+    return { upgraded: [], removed: [], teamWritten: fresh.team?.written ?? [], teamRemoved: [] };
   }
 
   // Read existing config. Committed generated JSON is exactly what a merge
@@ -558,9 +739,12 @@ export async function rebuildMcpConfig(
   // user customizations (env vars, args) are preserved.
   // Returned so `sync` can say so: deleting a server from a file the user
   // commits, without a word, reads as a bug when it turns up in review.
+  // Keys the team's layers decide — its own servers, and integrations its
+  // policy refuses — are left to `applyTeamPlan`, which reports them apart.
+  const teamOwned = new Set([...Object.keys(team?.servers ?? {}), ...(team?.blocked ?? [])]);
   const removed: string[] = [];
   for (const key of Object.keys(existingServers)) {
-    if (allPluginServerKeys.has(key) && !includedServers.has(key)) {
+    if (allPluginServerKeys.has(key) && !includedServers.has(key) && !teamOwned.has(key)) {
       delete existingServers[key];
       removed.push(key);
     }
@@ -568,7 +752,11 @@ export async function rebuildMcpConfig(
 
   // Entries still exactly as an earlier release wrote them move to the current
   // default; customised ones are left alone (see `upgradeGeneratedServers`).
-  const upgraded = upgradeGeneratedServers(existingServers, ide, includedServers);
+  const upgraded = upgradeGeneratedServers(
+    existingServers,
+    ide,
+    new Set([...includedServers].filter((k) => !teamOwned.has(k))),
+  );
 
   // For VS Code: remove only inputs belonging to removed servers
   if (ide === 'vscode') {
@@ -623,7 +811,8 @@ export async function rebuildMcpConfig(
   }
   if (!unchanged) await writeFile(destPath, serialiseLike(before, existing));
 
-  // Re-scaffold: merges new plugin servers into the cleaned config
-  await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
-  return { upgraded, removed };
+  // Re-scaffold: merges new plugin servers into the cleaned config, and writes
+  // the team's servers exactly as its layers define them.
+  const after = await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide, team);
+  return { upgraded, removed, teamWritten: after.team?.written ?? [], teamRemoved: after.team?.removed ?? [] };
 }

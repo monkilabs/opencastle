@@ -8,6 +8,7 @@ import { confirm, select, closePrompts, c } from './prompt.js'
 import { stripManagedBlockFromFile, predictStripFile } from './managed-block.js'
 import { resolveManagedPaths } from './managed-paths.js'
 import { stripManagedMcpServers, getMcpConfigRelPath, willKeepSomethingAfterStrip } from './mcp.js'
+import { readLock, teamServerKeys } from './lock.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import type { CliContext, IdeChoice } from './types.js'
 
@@ -106,7 +107,7 @@ async function previewCoOwned(
       const parsed = JSON.parse(await readFile(abs, 'utf8')) as Record<string, unknown>
       // Captured before the predicate runs — it edits `parsed` in place.
       const untouched = JSON.stringify(parsed)
-      keepsSomething = willKeepSomethingAfterStrip(parsed, ideFor.get(p))
+      keepsSomething = willKeepSomethingAfterStrip(parsed, ideFor.get(p), teamServerKeys(readLock(projectRoot)))
       tookAnything = JSON.stringify(parsed) !== untouched
     } catch {
       // Unreadable JSON is left alone entirely, so it certainly survives.
@@ -351,7 +352,12 @@ export default async function remove({ args }: CliContext): Promise<void> {
   // the file.
   const unreadable: string[] = []
   for (const ide of ides) {
-    const outcome = await stripManagedMcpServers(projectRoot, ide, createdConfigs.has(getMcpConfigRelPath(ide)))
+    const outcome = await stripManagedMcpServers(
+      projectRoot,
+      ide,
+      createdConfigs.has(getMcpConfigRelPath(ide)),
+      teamServerKeys(readLock(projectRoot)),
+    )
     if (outcome === 'deleted') removed++
     else if (outcome === 'stripped') stripped++
     else if (outcome === 'unreadable') unreadable.push(getMcpConfigRelPath(ide))

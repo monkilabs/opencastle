@@ -1,4 +1,5 @@
 import type {} from 'node:child_process';
+import type { CompileSource } from './layers.js';
 
 // ── Stack selection types ──────────────────────────────────────
 
@@ -187,12 +188,24 @@ export interface DoctorCheck {
 
 /** IDE adapter interface (init/update commands). */
 export interface IdeAdapter {
-  install(_pkgRoot: string, _projectRoot: string, _stack?: StackConfig, _repoInfo?: RepoInfo): Promise<CopyResults>;
+  /**
+   * `_source` is the merged content to compile — OpenCastle's own, the
+   * baselines the project extends, and its `.opencastle/`. Without one an
+   * adapter compiles OpenCastle's content for the stack, and nothing else.
+   */
+  install(
+    _pkgRoot: string,
+    _projectRoot: string,
+    _stack?: StackConfig,
+    _repoInfo?: RepoInfo,
+    _source?: CompileSource,
+  ): Promise<CopyResults>;
   update(
     _pkgRoot: string,
     _projectRoot: string,
     _stack?: StackConfig,
     _repoInfo?: RepoInfo,
+    _source?: CompileSource,
   ): Promise<CopyResults>;
   getManagedPaths(): ManagedPaths;
   getDoctorChecks(): DoctorCheck[];
@@ -211,6 +224,8 @@ export interface SelectOption {
 export interface ScaffoldResult {
   path: string;
   action: 'created' | 'skipped';
+  /** Team servers written, and team or refused servers taken out. */
+  team?: { written: string[]; removed: string[] };
 }
 
 /** IDE display labels. */

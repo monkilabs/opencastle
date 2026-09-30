@@ -3,9 +3,9 @@ import { mkdir, writeFile, readdir, readFile, rm, rename } from 'node:fs/promise
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
-import { mergeCopyResults, copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { mergeCopyResults, copyDir } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
-import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
+import { withSource, type CompileSource } from '../layers.js'
 import type { CopyResults, DoctorCheck, IdeAdapter, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { stripFrontmatter, parseFrontmatterMeta } from './frontmatter.js'
 
@@ -169,13 +169,26 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     projectRoot: string,
     stack: StackConfig | undefined,
     repoInfo: RepoInfo | undefined,
-    overwrite: boolean
+    overwrite: boolean,
+    source: CompileSource | undefined,
   ): Promise<CopyResults> {
-    const srcRoot = getOrchestratorRoot(pkgRoot)
-    const results: CopyResults = { copied: [], skipped: [], created: [] }
+    return withSource(pkgRoot, stack, source, (src) => compileFrom(src, projectRoot, stack, repoInfo, overwrite))
+  }
 
-    const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
-    const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
+  /**
+   * One pass over the merged source. What the stack leaves out, what a team
+   * excluded, and the integrations' skills are already settled in it, so this
+   * compiles what it finds.
+   */
+  async function compileFrom(
+    src: CompileSource,
+    projectRoot: string,
+    stack: StackConfig | undefined,
+    repoInfo: RepoInfo | undefined,
+    overwrite: boolean,
+  ): Promise<CopyResults> {
+    const srcRoot = src.root
+    const results: CopyResults = { copied: [], skipped: [], created: [] }
 
     // 1. Build root instructions file.
     // Always built: the content goes into a managed block, so a file the user
@@ -224,7 +237,6 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const usedTiers = new Set<Tier>()
         for (const file of (await readdir(agentsDir)).sort()) {
           if (!file.endsWith('.md')) continue
-          if (excludedAgents.has(file)) continue
           const meta = parseFrontmatterMeta(
             await readFile(resolve(agentsDir, file), 'utf8')
           )
@@ -259,28 +271,24 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         ).filter((e) => e.isDirectory())
         const skillRef = (name: string): string =>
           `${refDir}/skills/${name}/SKILL.md`
-        for (const entry of subdirs.sort((a, b) =>
-          a.name.localeCompare(b.name)
-        )) {
-          if (excludedSkills.has(entry.name)) continue
+        // Integration skills are listed after the rest, as they always were:
+        // reordering the index would change every root file on upgrade for
+        // no reason anyone could see in the diff.
+        const integrations = new Set(
+          [...src.resolved.items.values()].filter((i) => i.plugin && i.layer === 'opencastle').map((i) => i.name),
+        )
+        const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name)
+        const ordered = [
+          ...subdirs.filter((e) => !integrations.has(e.name)).sort(byName),
+          ...subdirs.filter((e) => integrations.has(e.name)).sort(byName),
+        ]
+        for (const entry of ordered) {
           const skillFile = resolve(skillsDir, entry.name, 'SKILL.md')
           if (!existsSync(skillFile)) continue
           const meta = parseFrontmatterMeta(await readFile(skillFile, 'utf8'))
           const desc = meta['description'] ?? ''
           skillLines.push(
             `- **${entry.name}** (\`${skillRef(entry.name)}\`): ${desc}`
-          )
-        }
-
-        // Plugin skills
-        const pluginsRoot = getPluginsRoot(pkgRoot)
-        const includedPlugins = stack ? getIncludedPluginIds(stack) : undefined
-        const pluginEntries = await getPluginSkillEntries(pluginsRoot, includedPlugins)
-        for (const { id, skillPath } of pluginEntries.sort((a, b) => a.id.localeCompare(b.id))) {
-          const pluginMeta = parseFrontmatterMeta(await readFile(skillPath, 'utf8'))
-          const pluginDesc = pluginMeta['description'] ?? ''
-          skillLines.push(
-            `- **${id}** (\`${skillRef(id)}\`): ${pluginDesc}`
           )
         }
 
@@ -300,7 +308,6 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       await mkdir(destAgents, { recursive: true })
       for (const file of await readdir(agentsDir)) {
         if (!file.endsWith('.md')) continue
-        if (excludedAgents.has(file)) continue
         const destPath = resolve(destAgents, file)
         const content = await readFile(resolve(agentsDir, file), 'utf8')
         await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
@@ -318,7 +325,6 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         await readdir(skillsDir, { withFileTypes: true })
       ).filter((e) => e.isDirectory())
       for (const entry of subdirs) {
-        if (excludedSkills.has(entry.name)) continue
         const skillFile = resolve(skillsDir, entry.name, 'SKILL.md')
         if (!existsSync(skillFile)) continue
         const sub = await copyDir(
@@ -335,21 +341,6 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         // and went missing here too, so `sync` skipped a file it could not read
         // and reported nothing.
         mergeCopyResults(results, sub)
-      }
-    }
-
-    // 3b. Plugin skills → dotDir/skills/<plugin-id>/SKILL.md
-    {
-      const pluginsRoot = getPluginsRoot(pkgRoot)
-      const includedPlugins = stack ? getIncludedPluginIds(stack) : undefined
-      const pluginEntries = await getPluginSkillEntries(pluginsRoot, includedPlugins)
-      const destSkills = resolve(dotDirPath, 'skills')
-      await mkdir(destSkills, { recursive: true })
-      for (const { id, skillPath } of pluginEntries) {
-        const pluginDestDir = resolve(destSkills, id)
-        await mkdir(pluginDestDir, { recursive: true })
-        const destPath = resolve(pluginDestDir, 'SKILL.md')
-        await emit(projectRoot, destPath, await readFile(skillPath, 'utf8'), overwrite, results)
       }
     }
 
@@ -389,7 +380,8 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       config.mcpConfigPath,
       stack,
       repoInfo,
-      config.mcpFormat
+      config.mcpFormat,
+      src.mcp,
     )
 
     return results
@@ -400,16 +392,18 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     pkgRoot: string,
     projectRoot: string,
     stack?: StackConfig,
-    repoInfo?: RepoInfo
+    repoInfo?: RepoInfo,
+    source?: CompileSource,
   ): Promise<CopyResults> {
-    return compile(pkgRoot, projectRoot, stack, repoInfo, false)
+    return compile(pkgRoot, projectRoot, stack, repoInfo, false, source)
   }
 
   async function update(
     pkgRoot: string,
     projectRoot: string,
     stack?: StackConfig,
-    repoInfo?: RepoInfo
+    repoInfo?: RepoInfo,
+    source?: CompileSource,
   ): Promise<CopyResults> {
     const results: CopyResults = { copied: [], skipped: [], created: [] }
     const dotDirPath = resolve(projectRoot, config.dotDir)
@@ -444,7 +438,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     // written again — and reversing the order silently turned `sync` into a
     // no-op on content. The sweep's job now is only to remove output with no
     // source left, which is the one thing recompiling cannot do.
-    const installResult = await compile(pkgRoot, projectRoot, stack, repoInfo, true)
+    const installResult = await compile(pkgRoot, projectRoot, stack, repoInfo, true, source)
 
     // 4. Now that the new output exists, drop anything stale beside it.
     //

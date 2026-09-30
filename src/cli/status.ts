@@ -7,6 +7,7 @@ import { detectAssistantConfigs } from './detect.js'
 import { missingRequiredCustomizations } from './managed-paths.js'
 import { UnreadableConfigError } from './types.js'
 import { c } from './prompt.js'
+import { readLock } from './lock.js'
 import type { CliContext, IdeAdapter, Manifest } from './types.js'
 
 /**
@@ -51,6 +52,8 @@ export interface StatusReport {
   unmanaged: string[]
   nextCommand?: string
   nextReason?: string
+  /** The baselines the committed lock records, as `name version`. */
+  baselines?: string[]
 }
 
 /** Newest mtime under a directory tree, or 0 when absent. */
@@ -200,7 +203,11 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     const report = await buildCheckReport(pkgRoot, projectRoot)
     // A broken MCP server only a person can fix is not stale output: `doctor`'s
     // failing check reports it, with its remedy, in the next line of this screen.
-    const outdatedOutput = report.drift.filter((d) => !(d.origin === 'mcp' && d.kind === 'unreducible'))
+    // Nor is a problem in the team's own sources, which stops the comparison
+    // before it starts; `doctor`'s team check names it, with the fix.
+    const outdatedOutput = report.drift.filter(
+      (d) => !(d.origin === 'mcp' && d.kind === 'unreducible') && d.origin !== 'team',
+    )
     stale = outdatedOutput.length > 0
     for (const d of outdatedOutput) drifted.add(d.ide)
   } catch (err) {
@@ -270,8 +277,8 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     // the "one fact, two interpreters" split this surface was restructured to
     // remove, still standing in the surface it was restructured for.
     const results = [
-      ...(await runSharedChecks(projectRoot, manifest)),
-      ...(await runAdapterChecks(projectRoot, manifest)),
+      ...(await runSharedChecks(projectRoot, manifest, pkgRoot)),
+      ...(await runAdapterChecks(projectRoot, manifest, pkgRoot)),
     ]
     failing = results.filter((r) => !r.ok).map((r) => r.label)
   } catch (err) {
@@ -315,9 +322,14 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     nextReason = `${unmanaged.join(', ')} config exists but is not being compiled`
   }
 
+  const baselines = (readLock(projectRoot)?.layers ?? [])
+    .filter((l) => l.kind === 'baseline')
+    .map((l) => `${l.id}${l.version ? ` ${l.version}` : ''}`)
+
   return {
     installed: true,
     missingRequired,
+    ...(baselines.length > 0 && { baselines }),
     version: manifest.version,
     ides: adapters.map((a) => a.ide),
     targets,
@@ -361,6 +373,8 @@ function render(report: StatusReport): void {
       : `  ${c.yellow('!')} ${inSync}/${total} target${total === 1 ? '' : 's'} installed` +
           (report.stale ? c.yellow(' — generated files no longer match their sources') : ''),
   )
+
+  if (report.baselines?.length) console.log(`  ${c.dim('Extends')} ${report.baselines.join(', ')}`)
 
   for (const t of report.targets) {
     // Per target. Folding `nextCommand` back in marked all seven targets

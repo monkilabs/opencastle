@@ -5,7 +5,7 @@ import { multiselect, confirm, closePrompts, c } from './prompt.js'
 import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
-import { getRequiredMcpEnvVars, getCustomizationsTransform } from './stack-config.js'
+import { getCustomizationsTransform } from './stack-config.js'
 import { getMcpConfigRelPath, stripManagedMcpServers } from './mcp.js'
 import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
 import type { PluginConfig } from '../orchestrator/plugins/types.js'
@@ -17,6 +17,8 @@ import { bootstrapCustomizations } from './bootstrap.js'
 import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
 import { resolveManagedPaths, declaredManagedPaths } from './managed-paths.js'
 import { noteUnreadable } from './unreadable-report.js'
+import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
+import { buildLock, writeLock, readLock, teamServerKeys } from './lock.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -294,6 +296,19 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     console.log()
   }
 
+  // The team's sources, before anything is written. A repository that already
+  // carries `.opencastle/config.json` — a clone of a team project being set up
+  // again — must compile to the same standard `sync` holds it to, or refuse.
+  const resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: combinedRepoInfo })
+  if (hasErrors(resolved)) {
+    const errors = resolved.issues.filter((i) => i.level === 'error')
+    console.error(`\n  ${c.red('✗')} The team's sources have ${errors.length} problem(s); nothing was written.\n`)
+    for (const line of formatIssues(errors)) console.error(`    ${line}`)
+    console.error('')
+    closePrompts()
+    process.exit(1)
+  }
+
   // ── Dry run ─────────────────────────────────────────────────────
   if (dryRun) {
     for (const ide of ides) {
@@ -396,102 +411,109 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const unreadable: string[] = []
   const failedTargets: Array<{ ide: string; message: string }> = []
 
-  for (const ide of ides) {
-    const adapter = await IDE_ADAPTERS[ide]()
-    // Re-running over an existing install recompiles; a first install scaffolds.
-    //
-    // `install` is scaffold-once by contract, so re-init left every generated
-    // file exactly as it found it — and then stamped the manifest with the
-    // current version. The record said 0.36 while the tree was still 0.30. It
-    // was recoverable, because `sync --check` compares content and not version
-    // numbers, but a command that writes a version it did not compile is
-    // asserting something it has not done.
-    // One target failing must not abort the others, and must not abort the
-    // manifest. The loop had no guard, and the manifest is written after it, so
-    // a second target throwing — an unwritable `.github/copilot-instructions.md`
-    // is enough — left the first target's 78 files on disk with no manifest at
-    // all: the front door said "not set up", `sync` said to run `init`, `init`
-    // failed the same way, and `remove --all` refused to uninstall what it had
-    // just installed. Single-target installs write the root file first and so
-    // throw before anything lands, which is why this only showed up with two.
-    let results: CopyResults
-    try {
-      results = isReinit
-        ? await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
-        : await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo)
-    } catch (err) {
-      failedTargets.push({ ide, message: (err as Error).message })
-      continue
-    }
-    totalCreated += results.created.length
-    totalSkipped += results.skipped.length
-    skippedPaths.push(...results.skipped)
-    for (const file of results.unreadable ?? []) {
-      noteUnreadable(unreadable, file)
-    }
-
-    adoptedRoots.push(...(results.adopted ?? []))
-    repairedRoots.push(...(results.repaired ?? []))
-    damagedRoots.push(...(results.damagedRoots ?? []))
-    severedRoots.push(...(results.severedRoots ?? []))
-    staleRoots.push(...(results.staleRoots ?? []))
-    tornRoots.push(...(results.tornRoots ?? []))
-
-    const managed = adapter.getManagedPaths()
-    allManagedPaths.framework.push(...managed.framework)
-    allManagedPaths.customizable.push(...managed.customizable)
-    // Deduplicated: opencode and codex share AGENTS.md, so a per-adapter push
-    // listed it twice — "Merged into your existing …, AGENTS.md, AGENTS.md".
-    for (const m of managed.merged ?? []) {
-      if (!allManagedPaths.merged.includes(m)) allManagedPaths.merged.push(m)
-    }
-  }
-
-  // If all files were skipped (orphaned install — no manifest but files exist)
-  if (totalCreated === 0 && totalSkipped > 0 && !isReinit) {
-    console.log(`  ${c.yellow('⚠')}  Found ${totalSkipped} existing files from a previous installation.`)
-    // `--yes` is documented as "accept the detected setup without asking", and
-    // this was the one question it did not cover. On a TTY it still asked.
-    // `refuse`, because the default here overwrites. A piped run that ran out of
-    // answers before this question took the destructive branch in silence.
-    const overwrite =
-      assumeYes || (await confirm('Overwrite existing files?', true, 'refuse'))
-    if (overwrite) {
-      // Recompile in place rather than emptying the tree first.
+  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  try {
+    for (const ide of ides) {
+      const adapter = await IDE_ADAPTERS[ide]()
+      // Re-running over an existing install recompiles; a first install scaffolds.
       //
-      // Deleting every framework path and re-installing was the old shape, and
-      // it made `init` the one command that could destroy an install by
-      // failing: an unwritable CLAUDE.md, met after 62 files had already been
-      // unlinked, left the directories empty and the manifest claiming an
-      // install. `update` writes the new output before sweeping what has no
-      // source left, which is the same guarantee `sync` gives.
-      totalCreated = 0
-      totalSkipped = 0
-      for (const ide of ides) {
-        const adapter = await IDE_ADAPTERS[ide]()
-        // Guarded like the main loop above, and for the same reason: this one
-        // was not, so a re-entry over an orphaned install that failed on the
-        // second target left 91 files on disk with no manifest and every
-        // command dead-ended — the front door saying "not set up", `sync`
-        // saying run `init`, `init` failing identically, `remove` refusing.
-        let results: CopyResults
-        try {
-          results = await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo)
-        } catch (err) {
-          failedTargets.push({ ide, message: (err as Error).message })
-          continue
-        }
-        // `copied` too. Counting only `created` and `skipped` made this path
-        // report "Created 0 files / Left 29 existing files untouched" over a
-        // run that had just rewritten 78 of them — the summary asserting the
-        // opposite of what happened, on the one path that exists to overwrite.
-        totalCreated += results.created.length + results.copied.length
-        totalSkipped += results.skipped.length
-        for (const file of results.unreadable ?? []) {
-          noteUnreadable(unreadable, file)
+      // `install` is scaffold-once by contract, so re-init left every generated
+      // file exactly as it found it — and then stamped the manifest with the
+      // current version. The record said 0.36 while the tree was still 0.30. It
+      // was recoverable, because `sync --check` compares content and not version
+      // numbers, but a command that writes a version it did not compile is
+      // asserting something it has not done.
+      // One target failing must not abort the others, and must not abort the
+      // manifest. The loop had no guard, and the manifest is written after it, so
+      // a second target throwing — an unwritable `.github/copilot-instructions.md`
+      // is enough — left the first target's 78 files on disk with no manifest at
+      // all: the front door said "not set up", `sync` said to run `init`, `init`
+      // failed the same way, and `remove --all` refused to uninstall what it had
+      // just installed. Single-target installs write the root file first and so
+      // throw before anything lands, which is why this only showed up with two.
+      let results: CopyResults
+      try {
+        results = isReinit
+          ? await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo, source)
+          : await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo, source)
+      } catch (err) {
+        failedTargets.push({ ide, message: (err as Error).message })
+        continue
+      }
+      totalCreated += results.created.length
+      totalSkipped += results.skipped.length
+      skippedPaths.push(...results.skipped)
+      for (const file of results.unreadable ?? []) {
+        noteUnreadable(unreadable, file)
+      }
+
+      adoptedRoots.push(...(results.adopted ?? []))
+      repairedRoots.push(...(results.repaired ?? []))
+      damagedRoots.push(...(results.damagedRoots ?? []))
+      severedRoots.push(...(results.severedRoots ?? []))
+      staleRoots.push(...(results.staleRoots ?? []))
+      tornRoots.push(...(results.tornRoots ?? []))
+
+      const managed = adapter.getManagedPaths()
+      allManagedPaths.framework.push(...managed.framework)
+      allManagedPaths.customizable.push(...managed.customizable)
+      // Deduplicated: opencode and codex share AGENTS.md, so a per-adapter push
+      // listed it twice — "Merged into your existing …, AGENTS.md, AGENTS.md".
+      for (const m of managed.merged ?? []) {
+        if (!allManagedPaths.merged.includes(m)) allManagedPaths.merged.push(m)
+      }
+    }
+
+    // If all files were skipped (orphaned install — no manifest but files exist)
+    if (totalCreated === 0 && totalSkipped > 0 && !isReinit) {
+      console.log(`  ${c.yellow('⚠')}  Found ${totalSkipped} existing files from a previous installation.`)
+      // `--yes` is documented as "accept the detected setup without asking", and
+      // this was the one question it did not cover. On a TTY it still asked.
+      // `refuse`, because the default here overwrites. A piped run that ran out of
+      // answers before this question took the destructive branch in silence.
+      const overwrite =
+        assumeYes || (await confirm('Overwrite existing files?', true, 'refuse'))
+      if (overwrite) {
+        // Recompile in place rather than emptying the tree first.
+        //
+        // Deleting every framework path and re-installing was the old shape, and
+        // it made `init` the one command that could destroy an install by
+        // failing: an unwritable CLAUDE.md, met after 62 files had already been
+        // unlinked, left the directories empty and the manifest claiming an
+        // install. `update` writes the new output before sweeping what has no
+        // source left, which is the same guarantee `sync` gives.
+        totalCreated = 0
+        totalSkipped = 0
+        for (const ide of ides) {
+          const adapter = await IDE_ADAPTERS[ide]()
+          // Guarded like the main loop above, and for the same reason: this one
+          // was not, so a re-entry over an orphaned install that failed on the
+          // second target left 91 files on disk with no manifest and every
+          // command dead-ended — the front door saying "not set up", `sync`
+          // saying run `init`, `init` failing identically, `remove` refusing.
+          let results: CopyResults
+          try {
+            results = await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo, source)
+          } catch (err) {
+            failedTargets.push({ ide, message: (err as Error).message })
+            continue
+          }
+          // `copied` too. Counting only `created` and `skipped` made this path
+          // report "Created 0 files / Left 29 existing files untouched" over a
+          // run that had just rewritten 78 of them — the summary asserting the
+          // opposite of what happened, on the one path that exists to overwrite.
+          totalCreated += results.created.length + results.copied.length
+          totalSkipped += results.skipped.length
+          for (const file of results.unreadable ?? []) {
+            noteUnreadable(unreadable, file)
+          }
         }
       }
     }
+
+    await writeLock(projectRoot, buildLock(source, { ides: ides as string[], stack, repoInfo: combinedRepoInfo }))
+  } finally {
+    source.dispose()
   }
 
   // ── Scaffold customizations to .opencastle/ ──────────────────────────────
@@ -569,12 +591,16 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // install, and resetting it threw away when the project actually adopted the tool.
   if (existing?.installedAt) manifest.installedAt = existing.installedAt
   manifest.stack = stack
-  manifest.repoInfo = combinedRepoInfo
+  // Detected again now that the install exists, as `sync` will detect it. The
+  // first detection ran before the MCP configs were written, so the record
+  // differed from what the next sync saw and that sync rewrote the manifest —
+  // a committed file changing on a run that changed nothing about the project.
+  manifest.repoInfo = mergeStackIntoRepoInfo(await detectRepoInfo(projectRoot), stack)
   await writeManifest(projectRoot, manifest)
 
   // ── Update .gitignore ───────────────────────────────────────────
   // Only local artefacts and .env; the generated config is meant to be committed.
-  const envVars = getRequiredMcpEnvVars(stack, combinedRepoInfo)
+  const envVars = requiredEnvVars(resolved, stack, combinedRepoInfo)
   const gitignoreResult = await updateGitignore(projectRoot)
 
   // ── Summary ─────────────────────────────────────────────────────

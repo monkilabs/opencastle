@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
-import { getMcpConfigRelPath } from './mcp.js'
+import { getMcpConfigRelPath, expectedTeamEntries } from './mcp.js'
 import { resolveStack, getIncludedMcpServers } from './stack-config.js'
-import { auditMcpConfig, describeFinding, remedyFor } from './mcp-audit.js'
+import { auditMcpConfig, describeFindingUnder, remedyFor, isFailure, type TeamAuditContext } from './mcp-audit.js'
+import { resolveSources, materialize, hasErrors, type CompileSource } from './layers.js'
+import { buildLock, serializeLock, readLock, teamServerKeys, LOCK_REL } from './lock.js'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { gitignoreNeedsRebuild } from './gitignore.js'
 import {
@@ -53,8 +55,12 @@ export interface Drift {
    * Set on drift the MCP audit found. A broken server only a person can fix is
    * a reason for CI to fail, but not a reason for `sync` to recompile or for
    * the status line to say generated files are stale — neither is true of it.
+   *
+   * `team` is a problem in the team's own sources — a config that will not
+   * parse, a baseline that is not installed, a policy the sources break. The
+   * comparison cannot run until it is fixed, and `sync` refuses to compile.
    */
-  origin?: 'mcp'
+  origin?: 'mcp' | 'team'
   /** The classifier's own words, so the checker and `doctor` cannot diverge. */
   detail?: string
   /** What resolves it, per entry — these do not share a remedy. */
@@ -259,6 +265,45 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
   const stack: StackConfig = resolveStack({ ...manifest, ides })
   const repoInfo = manifest.repoInfo ?? mergeStackIntoRepoInfo(await detectRepoInfo(projectRoot), stack)
 
+  // The team's layers, resolved exactly as `sync` resolves them. A problem in
+  // them — a baseline not installed, a config that does not parse, a server
+  // the policy forbids — means there is nothing to compare against: say that,
+  // once, instead of reporting every generated file as drifted.
+  const resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo })
+  if (hasErrors(resolved)) {
+    return {
+      installed: true,
+      ides,
+      checked: 0,
+      drift: resolved.issues
+        .filter((i) => i.level === 'error')
+        .map((i) => ({
+          ide: 'all',
+          path: i.where,
+          kind: 'unreducible' as const,
+          detail: i.message,
+          fix: i.fix ?? 'fix it, then run opencastle sync',
+          origin: 'team' as const,
+        })),
+    }
+  }
+  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  try {
+    return await compareProject(pkgRoot, projectRoot, ides, stack, repoInfo, source)
+  } finally {
+    source.dispose()
+  }
+}
+
+async function compareProject(
+  pkgRoot: string,
+  projectRoot: string,
+  ides: IdeChoice[],
+  stack: StackConfig,
+  repoInfo: ReturnType<typeof mergeStackIntoRepoInfo>,
+  source: CompileSource,
+): Promise<CheckReport> {
+  const { resolved } = source
   const drift: Drift[] = []
   let checked = 0
   // The servers a rebuild keeps, so what the MCP audit predicts is what `sync` does.
@@ -268,7 +313,7 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
     const adapter = await IDE_ADAPTERS[ide]()
     const scratch = mkdtempSync(join(tmpdir(), `opencastle-check-${ide}-`))
     try {
-      await adapter.install(pkgRoot, scratch, stack, repoInfo)
+      await adapter.install(pkgRoot, scratch, stack, repoInfo, source)
       // Framework and merged paths are compared. Customizable paths are the
       // user's by design — reporting those as drift would make the check useless.
       // Merged paths must be included or the root instruction file, the one file
@@ -279,6 +324,34 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       }
     } finally {
       rmSync(scratch, { recursive: true, force: true })
+    }
+  }
+
+  // The lock: what every assistant is given, as `sync` would record it now.
+  // Compared like any generated file, because it is one — a stale lock is a
+  // review of something other than what was compiled.
+  {
+    const expected = serializeLock(buildLock(source, { ides, stack, repoInfo }))
+    const abs = resolve(projectRoot, LOCK_REL)
+    checked++
+    if (!existsSync(abs)) {
+      drift.push({ ide: 'all', path: LOCK_REL, kind: 'missing', detail: 'records what every assistant is given; sync writes it' })
+    } else {
+      let actual: string | null = null
+      try {
+        actual = normaliseEndings(readFileSync(abs, 'utf8'))
+      } catch (err) {
+        drift.push({
+          ide: 'all',
+          path: LOCK_REL,
+          kind: 'unreducible',
+          detail: `cannot be read — ${(err as Error).message}`,
+          fix: 'fix the permissions or delete the file, then run opencastle sync; this one needs a person',
+        })
+      }
+      if (actual !== null && actual !== expected) {
+        drift.push({ ide: 'all', path: LOCK_REL, kind: 'changed', detail: 'does not match what the sources compile to' })
+      }
     }
   }
 
@@ -391,11 +464,20 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
   // split closed for `.gitignore`, on the other customizable path.
   {
     const seen = new Set<string>()
+    const definedIn = Object.fromEntries([...resolved.servers.values()].map((s) => [s.key, s.where]))
+    const teamFor = (ide: IdeChoice): TeamAuditContext => ({
+      expected: expectedTeamEntries(source.mcp, ide),
+      definedIn,
+      retired: source.mcp.retired,
+      blocked: resolved.blocked,
+      policy: resolved.policy,
+    })
     for (const ide of ides) {
       const rel = getMcpConfigRelPath(ide as IdeChoice)
       if (seen.has(rel)) continue
       seen.add(rel)
       const abs = resolve(projectRoot, rel)
+      const team = teamFor(ide)
       // `existsSync` is false both for a file that is absent and for one whose
       // parent we cannot read, and only the first is a reason to skip. Asking
       // for the stat separates them: an error here is a fault to report, not an
@@ -413,7 +495,14 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
               detail: `cannot be read — ${(err as Error).message}`,
               fix: `fix the permissions on ${rel}, then run opencastle sync; this one needs a person`,
             })
+            continue
           }
+        }
+        // No config is fine until the team defines servers every assistant
+        // should have: then the file is output `sync` owes.
+        const owed = Object.keys(team.expected)
+        if (owed.length > 0) {
+          drift.push({ ide, path: rel, kind: 'outdated', detail: `the team's servers sync writes: ${owed.join(', ')}`, fix: 'opencastle sync', origin: 'mcp' })
         }
         continue
       }
@@ -434,30 +523,38 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       // the two cannot disagree: `doctor` failed on a remote server Claude Code
       // never loads while this reported every file matching its source, and CI —
       // the one place a team would see it — stayed green.
-      const audit = auditMcpConfig(parsed, ide as IdeChoice, included)
+      const audit = auditMcpConfig(parsed, ide as IdeChoice, included, team)
       // Everything `sync` would change in the file, in one entry: entries it
       // moves forward, and plugin servers the stack dropped, which it deletes.
       // Leaving the second out let `doctor` say "sync removes it" while this
       // passed and `sync` short-circuited — a remedy that did nothing.
+      const teamKeys = new Set(Object.keys(team.expected))
+      const pluginOutdated = audit.outdated.filter((k) => !teamKeys.has(k))
+      const teamOutdated = audit.outdated.filter((k) => teamKeys.has(k))
       const changes = [
-        audit.outdated.length > 0 ? `still an earlier OpenCastle default: ${audit.outdated.join(', ')}` : '',
+        pluginOutdated.length > 0 ? `still an earlier OpenCastle default: ${pluginOutdated.join(', ')}` : '',
+        teamOutdated.length > 0 ? `not as the team config defines them, so sync writes: ${teamOutdated.join(', ')}` : '',
         audit.removed.length > 0
           ? `not in this project's stack, so sync removes: ${audit.removed.join(', ')} ` +
             `(opencastle add ${pluginIds(audit.removed).join(' ')} keeps them)`
           : '',
+        audit.blockedByPolicy.length > 0
+          ? `not allowed by the team's MCP policy, so sync removes: ${audit.blockedByPolicy.join(', ')}`
+          : '',
+        audit.retired.length > 0 ? `no longer defined by any team layer, so sync removes: ${audit.retired.join(', ')}` : '',
       ].filter(Boolean)
       if (changes.length > 0) {
         drift.push({ ide, path: rel, kind: 'outdated', detail: changes.join('; '), fix: 'opencastle sync', origin: 'mcp' })
       }
       // Failures `sync` will not clear — an entry someone edited, or their own.
       // Unpinned ones are warnings in `doctor` and are not drift here either.
-      const stuck = audit.findings.filter((f) => f.problem !== 'unpinned' && f.sync === 'keeps')
+      const stuck = audit.findings.filter((f) => isFailure(f, resolved.policy) && f.sync === 'keeps')
       if (stuck.length > 0) {
         drift.push({
           ide,
           path: rel,
           kind: 'unreducible',
-          detail: stuck.map(describeFinding).join('; '),
+          detail: stuck.map((f) => describeFindingUnder(f, resolved.policy)).join('; '),
           fix: remedyFor(stuck, rel),
           origin: 'mcp',
         })
@@ -549,10 +646,13 @@ function render(report: CheckReport): void {
   // A broken MCP server nobody generated is not a file that "differs from its
   // source"; say what it is when it is all there is.
   const mcpOnly = report.drift.every((d) => d.origin === 'mcp' && d.kind === 'unreducible')
+  const teamOnly = report.drift.every((d) => d.origin === 'team')
   console.log(
-    mcpOnly
-      ? `\n  ${c.red('✗')} ${report.drift.length} MCP config(s) have a server only a person can fix.\n`
-      : `\n  ${c.red('✗')} ${report.drift.length} file(s) differ from their sources.\n`,
+    teamOnly
+      ? `\n  ${c.red('✗')} The team's sources have ${report.drift.length} problem(s), so nothing could be compared.\n`
+      : mcpOnly
+        ? `\n  ${c.red('✗')} ${report.drift.length} MCP config(s) have a server only a person can fix.\n`
+        : `\n  ${c.red('✗')} ${report.drift.length} file(s) differ from their sources.\n`,
   )
 
   if (changed.length > 0) {
@@ -572,7 +672,9 @@ function render(report: CheckReport): void {
   }
 
   if (outdated.length > 0) {
-    console.log(`  ${c.bold('Earlier MCP defaults')} ${c.dim('(sync moves them forward; entries you edited stay yours)')}`)
+    console.log(
+      `  ${c.bold('MCP servers sync would change')} ${c.dim('(integration defaults move forward, team servers are written as defined; entries you added or edited stay yours)')}`,
+    )
     for (const d of outdated) {
       console.log(`    ${c.yellow('~')} ${d.path} ${c.dim(`(${d.ide})`)}`)
       if (d.detail) console.log(`      ${c.dim(d.detail)}`)

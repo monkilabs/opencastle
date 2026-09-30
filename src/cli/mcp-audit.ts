@@ -1,8 +1,9 @@
 import { resolve } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
-import { getMcpConfigRelPath, upgradeGeneratedServers } from './mcp.js'
+import { getMcpConfigRelPath, upgradeGeneratedServers, canonicalJson } from './mcp.js'
 import type { IdeChoice } from './types.js'
+import { disallowedBy, hostDisallowedBy, findInlineSecret, type EffectivePolicy } from './policy.js'
 
 /**
  * What a project's MCP config actually launches, read the way a supply-chain
@@ -28,7 +29,13 @@ import type { IdeChoice } from './types.js'
  * exists to replace.
  */
 
-export type McpProblem = 'unpinned' | 'nonexistent' | 'untyped-remote'
+export type McpProblem =
+  | 'unpinned'
+  | 'nonexistent'
+  | 'untyped-remote'
+  | 'inline-secret'
+  | 'not-allowed'
+  | 'host-not-allowed'
 
 /** What `opencastle sync` will do to an entry. */
 export type SyncEffect = 'replaces' | 'removes' | 'keeps'
@@ -49,6 +56,28 @@ export interface McpFinding {
   sync: SyncEffect
   /** The plugin that owns this server key, if one does. */
   plugin?: string
+  /** The team layer that defines this server, if one does — its config file. */
+  team?: string
+  /** For `removes`: whose decision the removal is. */
+  removal?: 'stack' | 'policy' | 'retired'
+  /** For policy findings: the layers whose policy refuses it. */
+  refusedBy?: string
+}
+
+/**
+ * The team's side of the audit: what its layers define, what they retired,
+ * and the policy every entry is held to — hand-added ones included.
+ */
+export interface TeamAuditContext {
+  /** Server entries exactly as `sync` writes them into this target. */
+  expected: Record<string, unknown>
+  /** Server key → the config file that defines it. */
+  definedIn: Record<string, string>
+  /** Servers a previous sync wrote for the team that no layer defines now. */
+  retired: string[]
+  /** Integration servers the policy refuses, with why. */
+  blocked: Map<string, string>
+  policy: EffectivePolicy
 }
 
 export interface McpAudit {
@@ -57,6 +86,10 @@ export interface McpAudit {
   outdated: string[]
   /** Plugin servers the stack no longer includes, which `sync` deletes. */
   removed: string[]
+  /** Integration servers the team's policy refuses, which `sync` deletes. */
+  blockedByPolicy: string[]
+  /** Team servers no layer defines any more, which `sync` deletes. */
+  retired: string[]
   /** Servers whose launch was read and passed. */
   passed: number
   /** Servers that launch something this audit cannot read, with why. */
@@ -251,26 +284,92 @@ function commandLine(entry: Record<string, unknown>): { command: string; args: s
  * is the set of plugin servers the project's stack includes — the same set a
  * rebuild uses, so what this predicts about `sync` is what `sync` does. Without
  * it, every plugin server present is treated as included.
+ *
+ * `team` adds what the project's layers decide: the servers they define (which
+ * `sync` keeps exactly as defined), the ones they retired, and the policy every
+ * entry is held to, including entries nobody generated.
  */
-export function auditMcpConfig(config: unknown, ide: IdeChoice, included?: Set<string>): McpAudit {
+export function auditMcpConfig(
+  config: unknown,
+  ide: IdeChoice,
+  included?: Set<string>,
+  team?: TeamAuditContext,
+): McpAudit {
   const pluginByKey = new Map(
     Object.values(PLUGINS)
       .filter((p) => p.mcpServerKey)
       .map((p) => [p.mcpServerKey as string, p.id]),
   )
-  const audit: McpAudit = { findings: [], outdated: [], removed: [], passed: 0, unaudited: [] }
+  const audit: McpAudit = {
+    findings: [],
+    outdated: [],
+    removed: [],
+    blockedByPolicy: [],
+    retired: [],
+    passed: 0,
+    unaudited: [],
+  }
+  const present = new Set<string>()
   for (const [server, entry] of serverEntries(config)) {
+    present.add(server)
     const plugin = pluginByKey.get(server)
+    const teamWhere = team?.definedIn[server]
     let sync: SyncEffect = 'keeps'
-    if (plugin) {
-      if (included && !included.has(server)) sync = 'removes'
-      else if (upgradeGeneratedServers({ [server]: structuredClone(entry) }, ide, new Set([server])).length > 0) {
+    let removal: McpFinding['removal']
+    if (teamWhere && team) {
+      // A team server is compiled output: `sync` writes it exactly as the layer
+      // defines it, so any difference is one `sync` removes.
+      if (canonicalJson(entry) !== canonicalJson(team.expected[server])) sync = 'replaces'
+    } else if (team?.retired.includes(server)) {
+      sync = 'removes'
+      removal = 'retired'
+    } else if (plugin) {
+      if (team?.blocked.has(server)) {
+        sync = 'removes'
+        removal = 'policy'
+      } else if (included && !included.has(server)) {
+        sync = 'removes'
+        removal = 'stack'
+      } else if (upgradeGeneratedServers({ [server]: structuredClone(entry) }, ide, new Set([server])).length > 0) {
         sync = 'replaces'
       }
     }
     if (sync === 'replaces') audit.outdated.push(server)
-    if (sync === 'removes') audit.removed.push(server)
-    const base = { server, sync, ...(plugin ? { plugin } : {}) }
+    if (removal === 'stack') audit.removed.push(server)
+    if (removal === 'policy') audit.blockedByPolicy.push(server)
+    if (removal === 'retired') audit.retired.push(server)
+    const base = {
+      server,
+      sync,
+      ...(plugin ? { plugin } : {}),
+      ...(teamWhere ? { team: teamWhere } : {}),
+      ...(removal ? { removal } : {}),
+    }
+
+    // Policy, for every entry: a server the team does not allow is a finding
+    // wherever it came from — the hand-added ones are the reason to have one.
+    let refused = false
+    if (team) {
+      const by = disallowedBy(team.policy, server)
+      if (by) {
+        audit.findings.push({ ...base, problem: 'not-allowed', subject: server, refusedBy: by })
+        refused = true
+      }
+      const url = typeof entry.url === 'string' ? entry.url : typeof entry.serverUrl === 'string' ? entry.serverUrl : null
+      if (url && !refused) {
+        const hostBy = hostDisallowedBy(team.policy, url)
+        if (hostBy) {
+          audit.findings.push({ ...base, problem: 'host-not-allowed', subject: url, refusedBy: hostBy })
+          refused = true
+        }
+      }
+    }
+    // A credential in a committed file is a leak however the server launches.
+    const secretAt = findInlineSecret(entry)
+    if (secretAt) {
+      audit.findings.push({ ...base, problem: 'inline-secret', subject: secretAt })
+      refused = true
+    }
 
     const line = commandLine(entry)
     if (line) {
@@ -280,8 +379,9 @@ export function auditMcpConfig(config: unknown, ide: IdeChoice, included?: Set<s
         // A digest names exactly one image. A tag — `:latest` or `:1.2` — can be
         // moved, and reading where the image sits among docker's own options is
         // beyond this check, so anything else is reported, not passed.
-        if (args.some((a) => /@sha256:[0-9a-f]{64}$/.test(a))) audit.passed++
-        else audit.unaudited.push({ server, why: 'container image without a digest' })
+        if (args.some((a) => /@sha256:[0-9a-f]{64}$/.test(a))) {
+          if (!refused) audit.passed++
+        } else audit.unaudited.push({ server, why: 'container image without a digest' })
         continue
       }
       const launch = packageLaunch(command, args)
@@ -289,14 +389,14 @@ export function auditMcpConfig(config: unknown, ide: IdeChoice, included?: Set<s
         // A runner we could not read is not a pass. A plain command — `node
         // tools/mcp.js` — fetches nothing, and is the project's own code.
         if (RUNNERS[bin]) audit.unaudited.push({ server, why: `${bin} options this check does not read` })
-        else audit.passed++
+        else if (!refused) audit.passed++
         continue
       }
       if (NONEXISTENT_PACKAGES[launch.name]) {
         audit.findings.push({ ...base, problem: 'nonexistent', subject: launch.spec, pkg: launch.name })
       } else if (!isPinned(launch)) {
         audit.findings.push({ ...base, problem: 'unpinned', subject: launch.spec, pkg: launch.name })
-      } else {
+      } else if (!refused) {
         audit.passed++
       }
       continue
@@ -305,9 +405,26 @@ export function auditMcpConfig(config: unknown, ide: IdeChoice, included?: Set<s
       audit.findings.push({ ...base, problem: 'untyped-remote', subject: entry.url })
       continue
     }
-    audit.passed++
+    if (!refused) audit.passed++
+  }
+  // A team server missing from the file is one `sync` adds.
+  for (const server of Object.keys(team?.expected ?? {})) {
+    if (!present.has(server)) audit.outdated.push(server)
   }
   return audit
+}
+
+/** Whether a finding fails the check, given the policy in force. */
+export function isFailure(f: McpFinding, policy?: EffectivePolicy): boolean {
+  return f.problem !== 'unpinned' || Boolean(policy?.requirePinned)
+}
+
+/** One finding in words, saying so when it fails only because the team requires pinning. */
+export function describeFindingUnder(f: McpFinding, policy?: EffectivePolicy): string {
+  if (f.problem === 'unpinned' && policy?.requirePinned) {
+    return `${f.server}: ${f.subject} is not pinned to an exact version, which ${policy.requirePinned} requires`
+  }
+  return describeFinding(f)
 }
 
 /** One finding in words. */
@@ -319,6 +436,12 @@ export function describeFinding(f: McpFinding): string {
       return `${f.server}: no "type" — Claude Code reads it as a stdio server, so it never loads`
     case 'unpinned':
       return `${f.server}: ${f.subject}`
+    case 'inline-secret':
+      return `${f.server}: a credential is written into ${f.subject} — it is committed with the file`
+    case 'not-allowed':
+      return `${f.server}: not on the MCP allowlist of ${f.refusedBy}`
+    case 'host-not-allowed':
+      return `${f.server}: ${f.subject} is not an allowed host for ${f.refusedBy}`
   }
 }
 
@@ -334,15 +457,25 @@ export function remedyFor(list: McpFinding[], rel: string): string {
   const names = (pick: (f: McpFinding) => boolean) =>
     [...new Set(list.filter(pick).map((f) => f.server))].join(', ')
   const parts: string[] = []
-  const replaced = names((f) => f.sync === 'replaces')
-  const removed = list.filter((f) => f.sync === 'removes')
-  const edited = names((f) => f.sync === 'keeps' && Boolean(f.plugin))
-  const own = names((f) => f.sync === 'keeps' && !f.plugin)
+  const replaced = names((f) => f.sync === 'replaces' && !f.team)
+  const rewritten = names((f) => f.sync === 'replaces' && Boolean(f.team))
+  const removed = list.filter((f) => f.sync === 'removes' && (f.removal ?? 'stack') === 'stack')
+  const blocked = names((f) => f.sync === 'removes' && f.removal === 'policy')
+  const retired = names((f) => f.sync === 'removes' && f.removal === 'retired')
+  const edited = names((f) => f.sync === 'keeps' && Boolean(f.plugin) && !f.team)
+  const teamSource = list.filter((f) => f.sync === 'keeps' && Boolean(f.team))
+  const own = names((f) => f.sync === 'keeps' && !f.plugin && !f.team)
   if (replaced) parts.push(`opencastle sync fixes ${replaced} (still as OpenCastle wrote them)`)
+  if (rewritten) parts.push(`opencastle sync rewrites ${rewritten} as the team config defines them`)
   if (removed.length > 0) {
     const servers = [...new Set(removed.map((f) => f.server))].join(', ')
     const packs = [...new Set(removed.map((f) => f.plugin))].join(' ')
     parts.push(`opencastle sync removes ${servers}, which this project's stack does not include — opencastle add ${packs} keeps it`)
+  }
+  if (blocked) parts.push(`opencastle sync removes ${blocked}, which the team's MCP policy does not allow`)
+  if (retired) parts.push(`opencastle sync removes ${retired}, which no team layer defines any more`)
+  for (const where of new Set(teamSource.map((f) => f.team as string))) {
+    parts.push(`fix ${names((f) => f.team === where && f.sync === 'keeps')} in ${where}, where it is defined`)
   }
   if (edited) {
     parts.push(
@@ -350,6 +483,14 @@ export function remedyFor(list: McpFinding[], rel: string): string {
     )
   }
   if (own) parts.push(`fix ${own} by hand in ${rel}`)
+  // A credential in a committed file needs more than an edit: it has to leave
+  // the file, and if the file was ever pushed, the credential is spent.
+  const leaked = names((f) => f.problem === 'inline-secret')
+  if (leaked) {
+    parts.push(
+      `move the credential in ${leaked} into .env or your shell and reference it as \${NAME}; rotate it if the file was ever committed`,
+    )
+  }
   return parts.join('; ')
 }
 
@@ -370,7 +511,12 @@ const LABEL = 'MCP servers load and run pinned code'
  * configuration check beside this one already owns both of those answers, and
  * saying it twice would print two remedies for one fault.
  */
-export function checkMcpSupplyChain(projectRoot: string, ide: IdeChoice, included?: Set<string>): McpAuditResult {
+export function checkMcpSupplyChain(
+  projectRoot: string,
+  ide: IdeChoice,
+  included?: Set<string>,
+  team?: TeamAuditContext,
+): McpAuditResult {
   const rel = getMcpConfigRelPath(ide)
   const abs = resolve(projectRoot, rel)
   if (!existsSync(abs)) return { ok: true, label: LABEL, detail: 'no MCP config' }
@@ -381,9 +527,9 @@ export function checkMcpSupplyChain(projectRoot: string, ide: IdeChoice, include
     return { ok: true, label: LABEL, detail: `${rel} could not be read (reported above)` }
   }
 
-  const audit = auditMcpConfig(parsed, ide, included)
-  const broken = audit.findings.filter((f) => f.problem !== 'unpinned')
-  const unpinned = audit.findings.filter((f) => f.problem === 'unpinned')
+  const audit = auditMcpConfig(parsed, ide, included, team)
+  const broken = audit.findings.filter((f) => isFailure(f, team?.policy))
+  const unpinned = audit.findings.filter((f) => !isFailure(f, team?.policy))
   const unaudited = audit.unaudited.length
     ? `not audited — ${audit.unaudited.map((u) => `${u.server} (${u.why})`).join(', ')}`
     : ''
@@ -398,7 +544,7 @@ export function checkMcpSupplyChain(projectRoot: string, ide: IdeChoice, include
     return {
       ok: false,
       label: LABEL,
-      detail: [broken.map(describeFinding).join('; '), ...also].join('; also '),
+      detail: [broken.map((f) => describeFindingUnder(f, team?.policy)).join('; '), ...also].join('; also '),
       fix: remedyFor([...broken, ...unpinned], rel),
     }
   }

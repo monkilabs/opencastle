@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { CheckReport, Drift, DriftKind } from './sync-check.js'
 
@@ -32,6 +32,10 @@ const TITLES: Record<DriftKind, string> = {
 
 function isComparisonFailure(d: Drift): boolean {
   return d.kind === 'unreducible' && d.detail === COMPARISON_FAILED
+}
+
+function titleOf(d: Drift): string {
+  return d.origin === 'team' ? 'Team config problem' : TITLES[d.kind]
 }
 
 /** What the reader should do, per kind — they do not share a remedy. */
@@ -85,12 +89,15 @@ export function annotations(report: CheckReport, projectRoot: string, workspace?
     return [`::error title=${escapeProperty('OpenCastle is not set up')}::${escapeData('No OpenCastle installation found. Run `npx opencastle init` and commit the result.')}`]
   }
   return report.drift.map((d) => {
-    const props = [`title=${escapeProperty(TITLES[d.kind])}`]
+    const props = [`title=${escapeProperty(titleOf(d))}`]
     // Every drift names a file — `.gitignore`, a shared AGENTS.md, the manifest
     // — except the one recording that the comparison could not run, whose path
     // is an error message. Keying this on `ide === 'all'` left those real files
     // unpinned.
-    if (!isComparisonFailure(d)) props.unshift(`file=${escapeProperty(annotationPath(d.path, projectRoot, workspace))}`)
+    // A team problem can sit in a baseline package, which is not a file in the
+    // pull request; pinning the annotation there pins it to nothing.
+    const pinnable = !isComparisonFailure(d) && (d.origin !== 'team' || existsSync(resolve(projectRoot, d.path)))
+    if (pinnable) props.unshift(`file=${escapeProperty(annotationPath(d.path, projectRoot, workspace))}`)
     return `::error ${props.join(',')}::${escapeData(explain(d))}`
   })
 }
@@ -113,12 +120,14 @@ export function summaryMarkdown(report: CheckReport): string {
   }
   const cell = (text: string) => text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')
   const rows = report.drift.map(
-    (d) => `| \`${cell(d.path)}\` | ${cell(d.ide)} | ${cell(TITLES[d.kind])} | ${cell(explain(d))} |`,
+    (d) => `| \`${cell(d.path)}\` | ${cell(d.ide)} | ${cell(titleOf(d))} | ${cell(explain(d))} |`,
   )
   const fixable = report.drift.some((d) => d.kind !== 'unreducible')
   return (
     `${heading}❌ ${
-      report.drift.every((d) => d.origin === 'mcp' && d.kind === 'unreducible')
+      report.drift.every((d) => d.origin === 'team')
+        ? `The team's sources have ${report.drift.length === 1 ? 'a problem' : `${report.drift.length} problems`}, so nothing was compared`
+        : report.drift.every((d) => d.origin === 'mcp' && d.kind === 'unreducible')
         ? `${report.drift.length} MCP config${report.drift.length === 1 ? ' has' : 's have'} a server only a person can fix`
         : report.drift.length === 1
           ? '1 file differs from its source'

@@ -1,0 +1,155 @@
+/**
+ * The rules a team's layers hold MCP servers to, in one place for the two
+ * readers that apply them: source resolution, which refuses to compile a
+ * server the policy forbids, and the audit, which reads what is actually in
+ * each target's config — including servers somebody added by hand.
+ */
+
+export interface EffectivePolicy {
+  /** Every layer's allowlist; a server must be on all of them. */
+  allowLists: Array<{ by: string; where: string; patterns: string[] }>
+  hostLists: Array<{ by: string; where: string; patterns: string[] }>
+  /** The layer that turned it on, if one did. It cannot be turned off above. */
+  requirePinned?: string
+  require: Array<{ ref: string; by: string }>
+  contextBudget?: { tokens: number; by: string }
+  versionRanges: Array<{ range: string; by: string; where: string }>
+}
+
+export function emptyPolicy(): EffectivePolicy {
+  return { allowLists: [], hostLists: [], require: [], versionRanges: [] }
+}
+
+/** `*` matches any run of characters; everything else is literal. */
+export function globMatch(pattern: string, value: string): boolean {
+  const re = new RegExp(`^${pattern.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`)
+  return re.test(value)
+}
+
+/** `*.acme.dev` matches any subdomain of acme.dev; anything else must match exactly. */
+function hostMatches(pattern: string, host: string): boolean {
+  const p = pattern.toLowerCase()
+  const h = host.toLowerCase()
+  if (p.startsWith('*.')) return h.endsWith(p.slice(1)) && h.length > p.length - 1
+  return p === h
+}
+
+/** The layers whose allowlist refuses a server key, or null when it is allowed. */
+export function disallowedBy(policy: EffectivePolicy, key: string): string | null {
+  const refusing = policy.allowLists.filter((l) => !l.patterns.some((p) => globMatch(p, key)))
+  return refusing.length > 0 ? refusing.map((l) => l.by).join(', ') : null
+}
+
+/** The layers that refuse a remote URL's host, or null when it is allowed. */
+export function hostDisallowedBy(policy: EffectivePolicy, url: string): string | null {
+  if (policy.hostLists.length === 0) return null
+  let host: string
+  try {
+    host = new URL(url.replace(/\$\{[^}]*\}|\{env:[^}]*\}/g, 'x')).hostname
+  } catch {
+    return policy.hostLists.map((l) => l.by).join(', ')
+  }
+  const refusing = policy.hostLists.filter((l) => !l.patterns.some((p) => hostMatches(p, host)))
+  return refusing.length > 0 ? refusing.map((l) => l.by).join(', ') : null
+}
+
+// ── Credentials written into a config ──────────────────────────
+
+/**
+ * Formats real tokens take. Deliberately specific: a false "you committed a
+ * secret" on an ordinary value teaches people to ignore the check.
+ */
+const TOKEN_FORMATS = new RegExp(
+  '^(?:' +
+    [
+      'sk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}',
+      'sk_(?:live|test)_[A-Za-z0-9]{16,}',
+      'rk_(?:live|test)_[A-Za-z0-9]{16,}',
+      'gh[pousr]_[A-Za-z0-9]{30,}',
+      'github_pat_[A-Za-z0-9_]{30,}',
+      'glpat-[A-Za-z0-9_-]{20,}',
+      'xox[abeprs]-[A-Za-z0-9-]{10,}',
+      'AKIA[0-9A-Z]{16}',
+      'lin_(?:api|oauth)_[A-Za-z0-9]{20,}',
+      'sntry[su]_[A-Za-z0-9+/=_-]{20,}',
+      'figd_[A-Za-z0-9_-]{20,}',
+      'ntn_[A-Za-z0-9]{20,}',
+      're_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}',
+      'AIza[0-9A-Za-z_-]{35}',
+      'eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}',
+    ].join('|') +
+    ')',
+)
+
+/** Names that say "this value is a credential". */
+const SECRET_NAME = /(token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|authorization|auth)/i
+
+const PLACEHOLDER = /^(?:replace[_-]?me|change[_-]?me|your[_-].*|<[^>]*>|x{3,}|\*+|todo|tbd|null|none|true|false|\d{1,6})$/i
+
+function isReference(value: string): boolean {
+  return /\$\{[^}]+\}|\{env:[^}]+\}|\{file:[^}]+\}|\$[A-Z_][A-Z0-9_]*/.test(value)
+}
+
+/** A value that could be a credential: long, no spaces, letters and digits, not a path or URL. */
+function looksRandom(value: string): boolean {
+  return (
+    value.length >= 16 &&
+    !/\s/.test(value) &&
+    /[A-Za-z]/.test(value) &&
+    /\d/.test(value) &&
+    !/^(?:https?:|\/|\.|~|[A-Za-z]:\\)/.test(value)
+  )
+}
+
+function isSecretValue(name: string, raw: string): boolean {
+  const value = raw.replace(/^(?:Bearer|Basic|Token|token)\s+/, '').trim()
+  if (value === '' || isReference(value) || PLACEHOLDER.test(value)) return false
+  if (TOKEN_FORMATS.test(value)) return true
+  return SECRET_NAME.test(name) && looksRandom(value)
+}
+
+/**
+ * Where a server entry holds a credential written out in full, or null.
+ *
+ * Returns the location only (`env.API_KEY`, `headers.Authorization`, `args`,
+ * `url`), never the value: this is printed, and printing the secret to say it
+ * should not be visible would be its own leak.
+ */
+export function findInlineSecret(entry: Record<string, unknown>): string | null {
+  for (const field of ['env', 'environment', 'headers']) {
+    const block = entry[field]
+    if (!block || typeof block !== 'object' || Array.isArray(block)) continue
+    for (const [name, value] of Object.entries(block as Record<string, unknown>)) {
+      if (typeof value === 'string' && isSecretValue(name, value)) return `${field}.${name}`
+    }
+  }
+  const command = entry.command
+  const args: unknown[] = Array.isArray(command)
+    ? command.slice(1)
+    : Array.isArray(entry.args)
+      ? (entry.args as unknown[])
+      : []
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (typeof arg !== 'string') continue
+    const eq = /^--?([A-Za-z0-9_-]+)=(.+)$/.exec(arg)
+    if (eq && isSecretValue(eq[1], eq[2])) return 'args'
+    const flag = /^--?([A-Za-z0-9_-]+)$/.exec(arg)
+    const next = args[i + 1]
+    if (flag && SECRET_NAME.test(flag[1]) && typeof next === 'string' && isSecretValue(flag[1], next)) return 'args'
+    if (!arg.startsWith('-') && !isReference(arg) && TOKEN_FORMATS.test(arg)) return 'args'
+  }
+  const url = entry.url ?? entry.serverUrl
+  if (typeof url === 'string') {
+    try {
+      const parsed = new URL(url.replace(/\$\{[^}]*\}|\{env:[^}]*\}/g, 'x'))
+      for (const [name, value] of parsed.searchParams) {
+        if (isSecretValue(name, value)) return 'url'
+      }
+      if (parsed.password) return 'url'
+    } catch {
+      // Not a URL we can read; nothing to say about it.
+    }
+  }
+  return null
+}

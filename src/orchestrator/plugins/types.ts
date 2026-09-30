@@ -82,6 +82,8 @@ export interface McpInput {
   id: string;
   type: 'promptString';
   description: string;
+  /** VS Code stores a password input in its secret storage and masks it. */
+  password?: boolean;
 }
 
 export interface McpServerConfig {

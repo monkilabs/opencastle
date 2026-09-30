@@ -198,6 +198,7 @@ describe('status and sync --check give the same answer', () => {
   async function installVscode(): Promise<void> {
     const { IDE_ADAPTERS } = await import('./adapters/index.js')
     const { writeManifest } = await import('./manifest.js')
+    const { recordLockFor } = await import('./lock.js')
     const stack = { ides: ['vscode'] as const, techTools: [], teamTools: [] }
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(pkgRoot, projectRoot, stack as never, undefined)
@@ -213,6 +214,7 @@ describe('status and sync --check give the same answer', () => {
       updatedAt: new Date().toISOString(),
       stack: stack as never,
     })
+    await recordLockFor(pkgRoot, projectRoot, { ides: ['vscode'], stack: stack as never })
   }
 
   it('agrees that a freshly compiled project is clean', async () => {

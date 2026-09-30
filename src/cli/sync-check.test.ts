@@ -12,7 +12,15 @@ import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { buildCheckReport } from './sync-check.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
-import { writeManifest } from './manifest.js'
+import { writeManifest as writeManifestOnly } from './manifest.js'
+import { recordLockFor } from './lock.js'
+import type { Manifest } from './types.js'
+
+/** A compile writes the manifest and the lock; tests that compile by hand do both. */
+async function writeManifest(root: string, manifest: Manifest): Promise<void> {
+  await writeManifestOnly(root, manifest)
+  await recordLockFor(resolve(import.meta.dirname, '..', '..'), root, manifest)
+}
 import type { StackConfig } from './types.js'
 
 const pkgRoot = resolve(import.meta.dirname, '..', '..')
