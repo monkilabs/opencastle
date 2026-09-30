@@ -37,6 +37,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', 'convex@latest', 'mcp', 'start'],
       },
+      envVars: [],
     },
   ],
 };

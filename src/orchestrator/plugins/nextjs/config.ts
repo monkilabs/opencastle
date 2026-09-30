@@ -40,6 +40,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', 'next-devtools-mcp@latest'],
       },
+      envVars: [],
     },
   ],
 };

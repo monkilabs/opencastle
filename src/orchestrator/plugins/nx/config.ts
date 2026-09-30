@@ -31,6 +31,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['nx', 'mcp'],
       },
+      envVars: [],
     },
   ],
 };

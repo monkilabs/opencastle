@@ -17,11 +17,11 @@ export const config: PluginConfig = {
   },
   authType: 'oauth',
   envVars: [],
+  // The whole server, not a list of names. The names belonged to the previous
+  // community server; Linear's own names its tools differently and changes them
+  // between versions, and a named tool that does not exist is silently absent.
   agentToolMap: {
-    'team-lead': [
-      'linear/create_issue', 'linear/list_issues', 'linear/update_issue',
-      'linear/list_teams', 'linear/list_projects', 'linear/get_issue',
-    ],
+    'team-lead': ['linear/*'],
   },
   docsUrl: 'https://www.opencastle.dev/docs/plugins#linear',
   officialDocs: 'https://linear.app/docs/mcp',

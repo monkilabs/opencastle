@@ -53,6 +53,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', '@contentful/mcp-server'],
       },
+      envVars: [],
     },
   ],
 };

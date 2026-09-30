@@ -98,8 +98,9 @@ describe('rebuildMcpConfig on an install from before the fix', () => {
     }
     writeFileSync(join(root, '.mcp.json'), JSON.stringify(before, null, 2) + '\n')
 
-    const upgraded = await rebuildMcpConfig(root, 'claude-code', stack)
+    const { upgraded, removed } = await rebuildMcpConfig(root, 'claude-code', stack)
     expect(upgraded.sort()).toEqual(['Figma', 'Supabase'])
+    expect(removed).toEqual([])
 
     const after = JSON.parse(readFileSync(join(root, '.mcp.json'), 'utf8'))
     expect(after.mcpServers.Supabase).toEqual({ type: 'http', url: 'https://mcp.supabase.com/mcp' })
@@ -110,8 +111,17 @@ describe('rebuildMcpConfig on an install from before the fix', () => {
   it('changes nothing on a second run', async () => {
     await scaffoldMcpConfig(root, '.mcp.json', stack, undefined, 'claude-code')
     const first = readFileSync(join(root, '.mcp.json'), 'utf8')
-    expect(await rebuildMcpConfig(root, 'claude-code', stack)).toEqual([])
+    expect(await rebuildMcpConfig(root, 'claude-code', stack)).toEqual({ upgraded: [], removed: [] })
     expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toBe(first)
+  })
+
+  it('names a plugin server it removes because the stack dropped it', async () => {
+    writeFileSync(
+      join(root, '.mcp.json'),
+      JSON.stringify({ mcpServers: { Linear: { type: 'http', url: 'https://mcp.linear.app/mcp' } } }) + '\n',
+    )
+    const { removed } = await rebuildMcpConfig(root, 'claude-code', stack)
+    expect(removed).toEqual(['Linear'])
   })
 
   it('writes remote servers Claude Code can load on a fresh install', async () => {

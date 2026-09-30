@@ -52,6 +52,12 @@ export const config: PluginConfig = {
         args: ['-y', 'resend-mcp'],
         envFile: '${workspaceFolder}/.env',
       },
+      envVars: [
+        {
+          name: 'RESEND_API_KEY',
+          hint: 'Generate at resend.com → API Keys',
+        },
+      ],
     },
   ],
 };

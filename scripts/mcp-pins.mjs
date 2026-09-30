@@ -30,15 +30,26 @@ const bump = process.argv.includes('--bump')
 
 /** The current config block: two-space indent, so a previous entry never matches. */
 const CURRENT_BLOCK = /\n {2}mcpConfig: \{\n([\s\S]*?)\n {2}\},\n/
+/** The current env vars, the same way. Recorded with each previous config. */
+const CURRENT_ENV = /\n {2}envVars: (\[\]|\[\n[\s\S]*?\n {2}\]),\n/
 /** A quoted `name@x.y.z` spec inside it. */
 const PINNED_SPEC = /'((?:@[\w.-]+\/)?[\w.-]+)@(\d+\.\d+\.\d+(?:[-+][\w.-]+)?)'/
 
+/**
+ * `npm view`, telling "not on the registry" apart from "could not ask".
+ *
+ * Returns the value, or null for a 404. Anything else — no network, a registry
+ * outage — throws: reporting it as "the package is gone" would turn the weekly
+ * check red over the wrong thing and send someone hunting a non-problem.
+ */
 function npmView(spec, field) {
   try {
     const out = execFileSync('npm', ['view', spec, field, '--json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
     return out.trim() ? JSON.parse(out) : null
-  } catch {
-    return null
+  } catch (err) {
+    const text = `${err.stdout ?? ''}${err.stderr ?? ''}`
+    if (/\bE404\b/.test(text)) return null
+    throw new Error(`npm view ${spec} failed: ${text.split('\n').find((l) => l.trim()) ?? err.message}`)
   }
 }
 
@@ -57,8 +68,15 @@ for (const id of readdirSync(pluginsDir).sort()) {
 let missing = 0
 let behind = 0
 for (const pin of pins) {
-  const exists = npmView(`${pin.name}@${pin.version}`, 'version')
-  const latest = npmView(pin.name, 'version')
+  let exists, latest
+  try {
+    exists = npmView(`${pin.name}@${pin.version}`, 'version')
+    latest = npmView(pin.name, 'version')
+  } catch (err) {
+    console.error(`  ? ${pin.id}: ${err.message}`)
+    console.error('\n  Could not reach the registry; nothing was concluded.\n')
+    process.exit(2)
+  }
   if (!exists) {
     missing++
     console.log(`  ✗ ${pin.id}: ${pin.name}@${pin.version} is not on the registry${latest ? ` (latest is ${latest})` : ' — the package itself is gone'}`)
@@ -70,10 +88,15 @@ for (const pin of pins) {
     if (bump) {
       const oldBlock = pin.block[1]
       const newBlock = oldBlock.replace(`'${pin.name}@${pin.version}'`, `'${pin.name}@${latest}'`)
+      // The env vars are written out, not left to default to the current
+      // ones: if a later release changes them, this entry must still describe
+      // what this release wrote, or sync stops recognising it.
+      const env = CURRENT_ENV.exec(pin.text)
+      const envText = env ? env[1].split('\n').map((l, i) => (i === 0 || !l.trim() ? l : `    ${l}`)).join('\n') : '[]'
       const previous =
         '    {\n      mcpConfig: {\n' +
         oldBlock.split('\n').map((l) => (l.trim() ? `    ${l}` : l)).join('\n') +
-        '\n      },\n    },\n'
+        `\n      },\n      envVars: ${envText},\n    },\n`
       let text = pin.text.replace(pin.block[0], pin.block[0].replace(oldBlock, newBlock))
       if (text.includes('  previousMcpConfigs: [\n')) {
         text = text.replace('  previousMcpConfigs: [\n', `  previousMcpConfigs: [\n${previous}`)

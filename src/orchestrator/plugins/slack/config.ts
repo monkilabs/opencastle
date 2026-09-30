@@ -43,6 +43,12 @@ export const config: PluginConfig = {
           SLACK_MCP_ADD_MESSAGE_TOOL: 'true',
         },
       },
+      envVars: [
+        {
+          name: 'SLACK_MCP_XOXB_TOKEN',
+          hint: 'Create a Slack App at api.slack.com/apps → Bot User OAuth Token',
+        },
+      ],
     },
   ],
 };

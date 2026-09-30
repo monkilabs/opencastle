@@ -33,6 +33,10 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', '@masonator/coolify-mcp'],
       },
+      envVars: [
+        { name: 'COOLIFY_ACCESS_TOKEN', hint: 'Generate in Coolify Settings → API' },
+        { name: 'COOLIFY_BASE_URL', hint: 'Your Coolify instance URL (e.g. https://coolify.example.com)' },
+      ],
     },
   ],
 };

@@ -30,6 +30,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', '@playwright/mcp@latest'],
       },
+      envVars: [],
     },
   ],
 };

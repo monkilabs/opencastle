@@ -45,6 +45,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', 'strapi-mcp'],
       },
+      envVars: [],
     },
   ],
 };

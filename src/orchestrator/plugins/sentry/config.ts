@@ -33,6 +33,9 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['@sentry/mcp-server@latest'],
       },
+      envVars: [
+        { name: 'SENTRY_ACCESS_TOKEN', hint: 'Create at Settings \u2192 Auth Tokens in sentry.io' },
+      ],
     },
   ],
 };

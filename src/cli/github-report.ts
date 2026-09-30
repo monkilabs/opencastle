@@ -15,24 +15,42 @@ import type { CheckReport, Drift, DriftKind } from './sync-check.js'
  * what they printed before.
  */
 
+/**
+ * The detail `sync --check` records when the comparison itself could not run.
+ * Its `path` is then an error message, not a file, so it is the one drift that
+ * is not pinned to a file.
+ */
+export const COMPARISON_FAILED = 'the comparison could not run'
+
 const TITLES: Record<DriftKind, string> = {
-  changed: 'Generated file edited in place',
+  changed: 'Generated file differs from its source',
   missing: 'Generated file never committed',
   extra: 'File added inside generated output',
+  outdated: 'MCP server still at an earlier default',
   unreducible: 'Needs a person',
+}
+
+function isComparisonFailure(d: Drift): boolean {
+  return d.kind === 'unreducible' && d.detail === COMPARISON_FAILED
 }
 
 /** What the reader should do, per kind — they do not share a remedy. */
 function explain(d: Drift): string {
+  const where = `${d.path} (${d.ide})`
   switch (d.kind) {
+    // Not "edited by hand": the same state follows an upgrade nobody recompiled
+    // after, and blaming an edit that never happened sends people looking for it.
     case 'changed':
-      return `${d.path} (${d.ide}) no longer matches its source, so the next \`opencastle sync\` overwrites this edit. To keep it, move the change into .opencastle/ — that directory is yours.`
+      return `${where} differs from a fresh compile of its source. Run \`opencastle sync\` and commit the result. If the difference is a hand edit you want to keep, move it into .opencastle/ first — sync overwrites generated files.`
     case 'missing':
-      return `${d.path} (${d.ide}) should exist but does not. Run \`opencastle sync\` and commit the result; generated config is committed like a lockfile.`
+      return `${where} should exist but does not. Run \`opencastle sync\` and commit the result; generated config is committed like a lockfile.`
     case 'extra':
-      return `${d.path} (${d.ide}) sits in generated output but no source produces it, so the next \`opencastle sync\` deletes it.`
+      return `${where} sits in generated output but no source produces it, so the next \`opencastle sync\` deletes it.`
+    case 'outdated':
+      return `${where}: ${d.detail ?? 'an MCP server is still at an earlier default'}. Run \`opencastle sync\` and commit — it replaces only entries still exactly as OpenCastle wrote them.`
     case 'unreducible':
-      return [d.detail, d.fix && `Fix: ${d.fix}`].filter(Boolean).join('. ') || `${d.path} (${d.ide}) needs a person.`
+      if (isComparisonFailure(d)) return `The comparison could not run: ${d.path}.${d.fix ? ` Fix: ${d.fix}` : ''}`
+      return [`${where}: ${d.detail ?? 'needs a person'}`, d.fix && `Fix: ${d.fix}`].filter(Boolean).join('. ')
   }
 }
 
@@ -68,9 +86,11 @@ export function annotations(report: CheckReport, projectRoot: string, workspace?
   }
   return report.drift.map((d) => {
     const props = [`title=${escapeProperty(TITLES[d.kind])}`]
-    // An unreducible entry can carry an error message where the path would be,
-    // when the comparison itself could not run. There is no file to pin it to.
-    if (d.ide !== 'all') props.unshift(`file=${escapeProperty(annotationPath(d.path, projectRoot, workspace))}`)
+    // Every drift names a file — `.gitignore`, a shared AGENTS.md, the manifest
+    // — except the one recording that the comparison could not run, whose path
+    // is an error message. Keying this on `ide === 'all'` left those real files
+    // unpinned.
+    if (!isComparisonFailure(d)) props.unshift(`file=${escapeProperty(annotationPath(d.path, projectRoot, workspace))}`)
     return `::error ${props.join(',')}::${escapeData(explain(d))}`
   })
 }
@@ -80,6 +100,10 @@ export function summaryMarkdown(report: CheckReport): string {
   const heading = '### OpenCastle — generated assistant config\n\n'
   if (!report.installed) {
     return `${heading}❌ No OpenCastle installation found. Run \`npx opencastle init\` and commit the result.\n`
+  }
+  const failed = report.drift.find(isComparisonFailure)
+  if (failed) {
+    return `${heading}❌ The comparison could not run: ${failed.path}.${failed.fix ? ` ${failed.fix}.` : ''}\n`
   }
   if (report.drift.length === 0) {
     return (
@@ -93,7 +117,7 @@ export function summaryMarkdown(report: CheckReport): string {
   )
   const fixable = report.drift.some((d) => d.kind !== 'unreducible')
   return (
-    `${heading}❌ ${report.drift.length} file${report.drift.length === 1 ? '' : 's'} differ from their sources.\n\n` +
+    `${heading}❌ ${report.drift.length === 1 ? '1 file differs from its source' : `${report.drift.length} files differ from their sources`}.\n\n` +
     '| File | Target | What happened | What to do |\n| --- | --- | --- | --- |\n' +
     rows.join('\n') +
     '\n\n' +

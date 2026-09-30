@@ -49,6 +49,16 @@ export const config: PluginConfig = {
         args: ['-y', '@delorenj/mcp-server-trello'],
         envFile: '${workspaceFolder}/.env',
       },
+      envVars: [
+        {
+          name: 'TRELLO_API_KEY',
+          hint: 'Create at trello.com/app-key -> API Key',
+        },
+        {
+          name: 'TRELLO_TOKEN',
+          hint: 'Generate at trello.com/app-key -> Token (click "Generate a Token")',
+        },
+      ],
     },
   ],
 };

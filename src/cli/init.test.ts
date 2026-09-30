@@ -238,8 +238,7 @@ describe('stack-config: getAgentToolInjections', () => {
     const injections = getAgentToolInjections(STACK_SANITY_LINEAR)
     const teamLeadTools = injections.get('team-lead')
     expect(teamLeadTools).toBeDefined()
-    expect(teamLeadTools).toContain('linear/create_issue')
-    expect(teamLeadTools).toContain('linear/list_issues')
+    expect(teamLeadTools).toContain('linear/*')
   })
 
   it('injects supabase tools into data-engineer when supabase selected', () => {
@@ -254,7 +253,7 @@ describe('stack-config: getAgentToolInjections', () => {
     const injections = getAgentToolInjections(STACK_FULL)
     const teamLeadTools = injections.get('team-lead')!
     // Linear + Slack tools on team-lead
-    expect(teamLeadTools).toContain('linear/create_issue')
+    expect(teamLeadTools).toContain('linear/*')
     expect(teamLeadTools).toContain('slack/*')
   })
 
@@ -493,9 +492,7 @@ describe('VS Code adapter install', () => {
       join(tempDir, '.github', 'agents', 'team-lead.agent.md'),
       'utf8'
     )
-    expect(teamLead).toContain("'linear/create_issue'")
-    expect(teamLead).toContain("'linear/list_issues'")
-    expect(teamLead).toContain("'linear/update_issue'")
+    expect(teamLead).toContain("'linear/*'")
   })
 
   it('does NOT inject tools when no plugins selected', async () => {

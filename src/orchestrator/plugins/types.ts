@@ -70,8 +70,12 @@ export interface PluginConfig {
 
 export interface PreviousMcpConfig {
   mcpConfig: McpServerConfig;
-  /** The env vars that release injected. Omit when they are the current ones. */
-  envVars?: EnvVarRequirement[];
+  /**
+   * The env vars that release injected, written out even when they match the
+   * current ones: if a later release changes them, this entry must still
+   * describe what its own release wrote, or `sync` stops recognising it.
+   */
+  envVars: EnvVarRequirement[];
 }
 
 export interface McpInput {

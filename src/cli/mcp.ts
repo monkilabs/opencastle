@@ -1,6 +1,6 @@
 import { resolve, dirname } from 'node:path';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { getIncludedMcpServers } from './stack-config.js';
 import { PLUGINS } from '../orchestrator/plugins/index.js';
 import { UnreadableConfigError } from './types.js';
@@ -196,7 +196,7 @@ export function upgradeGeneratedServers(
     if (have === canonical(current)) continue;
     const earlier = [entryFor(serverFor(plugin, ide), ide, true)];
     for (const prev of plugin.previousMcpConfigs ?? []) {
-      const old = serverFor({ mcpConfig: prev.mcpConfig, envVars: prev.envVars ?? plugin.envVars }, ide);
+      const old = serverFor({ mcpConfig: prev.mcpConfig, envVars: prev.envVars }, ide);
       earlier.push(entryFor(old, ide), entryFor(old, ide, true));
     }
     if (earlier.some((e) => canonical(e) === have)) {
@@ -205,28 +205,6 @@ export function upgradeGeneratedServers(
     }
   }
   return upgraded;
-}
-
-/**
- * Would a rebuild move any entry in this target's MCP config forward?
- *
- * Asked by `sync` before it decides there is nothing to do. Read-only: it runs
- * the same matcher over a copy. A config that is absent or will not parse is
- * someone else's question and answers false here.
- */
-export function mcpConfigHasStaleDefaults(projectRoot: string, ide: IdeChoice): boolean {
-  const abs = resolve(projectRoot, getMcpConfigRelPath(ide));
-  if (!existsSync(abs)) return false;
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
-  } catch {
-    return false;
-  }
-  const container = parsed[containerKeyFor(ide)];
-  if (!container || typeof container !== 'object' || Array.isArray(container)) return false;
-  const copy = structuredClone(container) as Record<string, unknown>;
-  return upgradeGeneratedServers(copy, ide, new Set(Object.keys(copy))).length > 0;
 }
 
 /**
@@ -533,14 +511,14 @@ export async function rebuildMcpConfig(
   ide: IdeChoice,
   stack: StackConfig,
   repoInfo?: RepoInfo
-): Promise<string[]> {
+): Promise<{ upgraded: string[]; removed: string[] }> {
   const destRelPath = getMcpConfigRelPath(ide);
   const destPath = resolve(projectRoot, destRelPath);
 
   if (!existsSync(destPath)) {
     // No existing config — scaffold fresh
     await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
-    return [];
+    return { upgraded: [], removed: [] };
   }
 
   // Read existing config. Committed generated JSON is exactly what a merge
@@ -578,9 +556,13 @@ export async function rebuildMcpConfig(
   // Only remove plugin-managed servers that are NOT in the new stack selection.
   // Servers already in the config for the new stack are left untouched so
   // user customizations (env vars, args) are preserved.
+  // Returned so `sync` can say so: deleting a server from a file the user
+  // commits, without a word, reads as a bug when it turns up in review.
+  const removed: string[] = [];
   for (const key of Object.keys(existingServers)) {
     if (allPluginServerKeys.has(key) && !includedServers.has(key)) {
       delete existingServers[key];
+      removed.push(key);
     }
   }
 
@@ -643,5 +625,5 @@ export async function rebuildMcpConfig(
 
   // Re-scaffold: merges new plugin servers into the cleaned config
   await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
-  return upgraded;
+  return { upgraded, removed };
 }

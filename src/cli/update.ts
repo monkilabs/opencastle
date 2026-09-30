@@ -14,7 +14,7 @@ import {
   getCustomizationsTransform,
   isEnvVarSatisfied,
 } from './stack-config.js'
-import { rebuildMcpConfig, getMcpConfigRelPath, mcpConfigHasStaleDefaults } from './mcp.js'
+import { rebuildMcpConfig, getMcpConfigRelPath } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
@@ -197,15 +197,10 @@ export default async function update({
     } catch {
       return true
     }
-    // An MCP server entry still exactly as an earlier release wrote it, whose
-    // default has since changed, is work outstanding. `doctor` prescribes this
-    // command for it — a package missing from npm, a remote server Claude Code
-    // cannot load — and MCP configs are never compared for drift, so without
-    // this the short-circuit answered "Everything matches its sources" and the
-    // remedy did nothing.
-    for (const ide of ides) {
-      if (mcpConfigHasStaleDefaults(projectRoot, ide as IdeChoice)) return true
-    }
+    // The drift report also counts an MCP server entry still exactly as an
+    // earlier release wrote it, whose default has since changed. `doctor`
+    // prescribes this command for those — a package missing from npm, a remote
+    // server Claude Code cannot load — so the short-circuit must see them.
     try {
       const { buildCheckReport } = await import('./sync-check.js')
       const report = await buildCheckReport(pkgRoot, projectRoot)
@@ -498,14 +493,15 @@ export default async function update({
   // `opencastle add supabase` edited the manifest, recompiled, and left the skill
   // matrix and MCP config describing the stack from before the pack was added.
   const upgradedServers = new Set<string>()
+  const removedServers = new Set<string>()
   if (newStack) {
     for (const ide of ides) {
       for (const step of [
         () => updateSkillMatrixFile(projectRoot, ide, newStack),
         async () => {
-          for (const key of await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo)) {
-            upgradedServers.add(key)
-          }
+          const { upgraded, removed } = await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo)
+          for (const key of upgraded) upgradedServers.add(key)
+          for (const key of removed) removedServers.add(key)
         },
       ]) {
         try {
@@ -571,6 +567,13 @@ export default async function update({
     console.log(
       `  ${c.green('✓')} Moved ${upgradedServers.size} MCP server(s) to the current default: ` +
         [...upgradedServers].sort().join(', '),
+    )
+  }
+  if (removedServers.size > 0) {
+    console.log(
+      `  ${c.yellow('-')} Removed ${removedServers.size} MCP server(s) this project's stack no longer includes: ` +
+        [...removedServers].sort().join(', ') +
+        c.dim(' (opencastle add <pack> brings one back)'),
     )
   }
   for (const file of unreadable) {

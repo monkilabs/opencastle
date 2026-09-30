@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readManifest } from './manifest.js';
-import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
+import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied, getIncludedMcpServers } from './stack-config.js';
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import {
@@ -474,6 +474,14 @@ export function checkMcpFromPaths(projectRoot: string, mcpPaths: string[]): Chec
   return { ok: true, label: 'MCP configuration', detail: `${found.length} MCP config(s)` };
 }
 
+/**
+ * The plugin servers this project's stack includes — the set a rebuild keeps.
+ * The MCP audit needs it to say truthfully what `sync` will do to an entry.
+ */
+function includedServers(manifest: Manifest): Set<string> {
+  return getIncludedMcpServers(resolveStack(manifest), manifest.repoInfo);
+}
+
 // ── Main doctor command ───────────────────────────────────────
 
 const DOCTOR_HELP = `
@@ -857,7 +865,7 @@ export async function runAdapterChecks(
     }
     const mcpPaths = adapter.getManagedPaths().customizable.filter((p) => !p.endsWith('/'));
     out.push(checkMcpFromPaths(projectRoot, mcpPaths));
-    out.push(checkMcpSupplyChain(projectRoot, ide as IdeChoice));
+    out.push(checkMcpSupplyChain(projectRoot, ide as IdeChoice, includedServers(manifest)));
   }
   return out;
 }
@@ -968,7 +976,7 @@ export default async function doctor({ args }: CliContext): Promise<void> {
       // MCP config check — non-directory entries in the adapter's customizable paths
       const mcpPaths = managedPaths.customizable.filter((p) => !p.endsWith('/'));
       checkResults.push(checkMcpFromPaths(projectRoot, mcpPaths));
-      checkResults.push(checkMcpSupplyChain(projectRoot, ide as IdeChoice));
+      checkResults.push(checkMcpSupplyChain(projectRoot, ide as IdeChoice, includedServers(manifest)));
 
       ideGroups.push({
         label: IDE_LABELS[ide as IdeChoice] ?? ide,

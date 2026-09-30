@@ -33,6 +33,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', 'chrome-devtools-mcp@latest'],
       },
+      envVars: [],
     },
   ],
 };

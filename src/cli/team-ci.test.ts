@@ -49,7 +49,7 @@ describe.skipIf(!built)('a stale MCP default is fixed by the command doctor name
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('doctor fails on it, sync at the same version fixes it, doctor passes', () => {
+  it('doctor and CI both fail on it, sync at the same version fixes it, both pass', () => {
     // What every release before this one wrote into .mcp.json for Supabase.
     writeFileSync(
       join(dir, '.mcp.json'),
@@ -59,6 +59,10 @@ describe.skipIf(!built)('a stale MCP default is fixed by the command doctor name
     const before = run(dir, ['doctor'])
     expect(before.code).toBe(1)
     expect(before.out).toContain('opencastle sync fixes Supabase')
+    // The check a team runs in CI must not be green over what doctor fails.
+    const check = run(dir, ['sync', '--check'])
+    expect(check.code).toBe(1)
+    expect(check.out).toContain('still an earlier OpenCastle default: Supabase')
 
     const sync = run(dir, ['sync', '--yes'])
     expect(sync.code).toBe(0)
@@ -66,6 +70,29 @@ describe.skipIf(!built)('a stale MCP default is fixed by the command doctor name
 
     const config = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'))
     expect(config.mcpServers.Supabase).toEqual({ type: 'http', url: 'https://mcp.supabase.com/mcp' })
+    expect(run(dir, ['doctor']).code).toBe(0)
+    expect(run(dir, ['sync', '--check']).code).toBe(0)
+  })
+
+  it('an edited entry: the remedy doctor names brings back the current default', () => {
+    // Edited since OpenCastle wrote it, so sync must leave it — and doctor must
+    // not say otherwise.
+    writeFileSync(
+      join(dir, '.mcp.json'),
+      JSON.stringify({ mcpServers: { Supabase: { url: 'https://mcp.supabase.com/mcp', note: 'ours' } } }, null, 2) + '\n',
+    )
+    const doctor = run(dir, ['doctor'])
+    expect(doctor.code).toBe(1)
+    expect(doctor.out).toContain('delete the entry and run opencastle sync --force')
+    expect(run(dir, ['sync', '--check']).code).toBe(1)
+
+    // Follow it literally.
+    const config = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'))
+    delete config.mcpServers.Supabase
+    writeFileSync(join(dir, '.mcp.json'), JSON.stringify(config, null, 2) + '\n')
+    expect(run(dir, ['sync', '--force', '--yes']).code).toBe(0)
+    const after = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'))
+    expect(after.mcpServers.Supabase).toEqual({ type: 'http', url: 'https://mcp.supabase.com/mcp' })
     expect(run(dir, ['doctor']).code).toBe(0)
   })
 
@@ -104,7 +131,7 @@ describe.skipIf(!built)('sync --check on GitHub Actions', () => {
 
     const r = run(dir, ['sync', '--check'], { GITHUB_ACTIONS: 'true', GITHUB_STEP_SUMMARY: summary, GITHUB_WORKSPACE: dir })
     expect(r.code).toBe(1)
-    expect(r.out).toMatch(/::error file=\.claude\/agents\/developer\.agent\.md,title=Generated file edited in place::/)
+    expect(r.out).toMatch(/::error file=\.claude\/agents\/developer\.agent\.md,title=Generated file differs from its source::/)
     expect(readFileSync(summary, 'utf8')).toContain('`.claude/agents/developer.agent.md`')
   })
 

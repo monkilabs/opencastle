@@ -35,6 +35,7 @@ export const config: PluginConfig = {
         command: 'npx',
         args: ['-y', '@anthropic/prisma-mcp@latest'],
       },
+      envVars: [],
     },
   ],
 };

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { escapeData, escapeProperty, annotationPath, annotations, summaryMarkdown, reportToGitHub } from './github-report.js'
+import { escapeData, escapeProperty, annotationPath, annotations, summaryMarkdown, reportToGitHub, COMPARISON_FAILED } from './github-report.js'
 import type { CheckReport } from './sync-check.js'
 
 const clean: CheckReport = { installed: true, ides: ['claude-code', 'cursor'], drift: [], checked: 42 }
@@ -41,16 +41,44 @@ describe('annotations', () => {
   it('writes one error per drifted file, each with its own remedy', () => {
     const lines = annotations(drifted, '/ws', '/ws')
     expect(lines).toHaveLength(4)
-    expect(lines[0]).toMatch(/^::error file=\.cursor\/rules\/general\.mdc,title=Generated file edited in place::/)
+    expect(lines[0]).toMatch(/^::error file=\.cursor\/rules\/general\.mdc,title=Generated file differs from its source::/)
     expect(lines[0]).toContain('.opencastle/')
+    // An upgrade nobody recompiled after looks the same; do not blame an edit.
+    expect(lines[0]).not.toMatch(/edited in place/i)
     expect(lines[1]).toContain('commit the result')
     expect(lines[2]).toContain('deletes it')
-    expect(lines[3]).toContain('two start markers')
+    expect(lines[3]).toMatch(/^::error file=CLAUDE\.md,/)
+    expect(lines[3]).toContain('CLAUDE.md (claude-code): two start markers')
     expect(lines[3]).toContain('Fix: keep one pair')
   })
-  it('pins no file when the comparison itself failed', () => {
-    const failed: CheckReport = { ...clean, drift: [{ ide: 'all', path: 'EACCES: denied', kind: 'unreducible' }] }
-    expect(annotations(failed, '/ws')[0]).toMatch(/^::error title=/)
+  it('pins a project-wide file to itself', () => {
+    const report: CheckReport = {
+      ...clean,
+      drift: [{ ide: 'all', path: '.gitignore', kind: 'unreducible', detail: 'cannot be read — EACCES', fix: 'fix the permissions' }],
+    }
+    const line = annotations(report, '/ws', '/ws')[0]
+    expect(line).toMatch(/^::error file=\.gitignore,/)
+    expect(line).toContain('.gitignore (all): cannot be read')
+  })
+  it('pins no file when the comparison itself failed, and still says what failed', () => {
+    const failed: CheckReport = {
+      ...clean,
+      drift: [{ ide: 'all', path: 'EACCES: permission denied, scandir /p/.claude', kind: 'unreducible', detail: COMPARISON_FAILED, fix: 'fix the path named above' }],
+    }
+    const line = annotations(failed, '/ws')[0]
+    expect(line).toMatch(/^::error title=/)
+    expect(line).toContain('EACCES: permission denied')
+    expect(summaryMarkdown(failed)).toContain('The comparison could not run: EACCES')
+    expect(summaryMarkdown(failed)).not.toContain('differ')
+  })
+  it('explains an earlier MCP default', () => {
+    const report: CheckReport = {
+      ...clean,
+      drift: [{ ide: 'claude-code', path: '.mcp.json', kind: 'outdated', detail: 'still an earlier OpenCastle default: Supabase', fix: 'opencastle sync' }],
+    }
+    const line = annotations(report, '/ws', '/ws')[0]
+    expect(line).toMatch(/^::error file=\.mcp\.json,title=MCP server still at an earlier default::/)
+    expect(line).toContain('replaces only entries still exactly as OpenCastle wrote them')
   })
   it('says what to run when nothing is installed', () => {
     expect(annotations({ ...clean, installed: false }, '/ws')[0]).toContain('opencastle init')
@@ -66,6 +94,9 @@ describe('summaryMarkdown', () => {
     expect(md).toContain('| File | Target | What happened | What to do |')
     expect(md).toContain('`.cursor/rules/general.mdc`')
     expect(md).toContain('Run `npx opencastle sync`')
+  })
+  it('agrees in number', () => {
+    expect(summaryMarkdown({ ...drifted, drift: drifted.drift.slice(0, 1) })).toContain('1 file differs from its source')
   })
   it('keeps a pipe in a path from breaking the table', () => {
     const md = summaryMarkdown({ ...drifted, drift: [{ ide: 'cursor', path: 'a|b.mdc', kind: 'extra' }] })

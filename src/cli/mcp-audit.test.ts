@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { packageLaunch, isPinned, auditMcpConfig, checkMcpSupplyChain } from './mcp-audit.js'
+import { packageLaunch, isPinned, auditMcpConfig, checkMcpSupplyChain, unwrapShell } from './mcp-audit.js'
 
 describe('packageLaunch', () => {
   it('reads the package npx runs, past its own flags', () => {
@@ -45,8 +45,30 @@ describe('packageLaunch', () => {
     expect(packageLaunch('npx', ['github:org/repo'])).toBeNull()
   })
 
-  it('does not guess past an option it does not know', () => {
-    expect(packageLaunch('npx', ['--registry', 'https://example.com', 'foo'])).toBeNull()
+  it('skips the value of an option it knows, and stops at one it does not', () => {
+    expect(packageLaunch('npx', ['-y', '--registry', 'https://r.example.com', 'foo@1.0.0'])!.name).toBe('foo')
+    expect(packageLaunch('npx', ['--registry=https://r.example.com', 'foo'])!.version).toBeNull()
+    expect(packageLaunch('npx', ['--weird', 'x', 'foo'])).toBeNull()
+  })
+
+  it('reads only the runner’s flags — what follows the package is the server’s', () => {
+    // `--no` after the package is an argument to the server, not to npx.
+    expect(packageLaunch('npx', ['-y', 'foo@latest', '--no'])!.localOnly).toBe(false)
+  })
+
+  it('sees through the cmd /c wrapper Claude Code documents for Windows', () => {
+    expect(unwrapShell('cmd', ['/c', 'npx', '-y', 'foo'])).toEqual({ command: 'npx', args: ['-y', 'foo'] })
+    expect(packageLaunch('cmd', ['/c', 'npx', '-y', 'foo@latest'])).toMatchObject({ name: 'foo', version: 'latest' })
+  })
+
+  it('reads uvx, including --from and ==', () => {
+    expect(packageLaunch('uvx', ['mcp-server-fetch'])).toMatchObject({ name: 'mcp-server-fetch', version: null })
+    expect(packageLaunch('uvx', ['mcp-server-fetch==2025.4.7'])).toMatchObject({ version: '2025.4.7' })
+    expect(packageLaunch('uvx', ['--from', 'pkg@1.2.3', 'pkg-mcp'])).toMatchObject({ name: 'pkg', version: '1.2.3' })
+  })
+
+  it('names no package for a shell string', () => {
+    expect(packageLaunch('npx', ['-c', 'echo hi'])).toBeNull()
   })
 })
 
@@ -66,7 +88,7 @@ describe('isPinned', () => {
 
 describe('auditMcpConfig', () => {
   it('reads the VS Code dialect', () => {
-    const findings = auditMcpConfig(
+    const { findings, outdated } = auditMcpConfig(
       { servers: { Playwright: { type: 'stdio', command: 'npx', args: ['-y', '@playwright/mcp@latest'] } } },
       'vscode',
     )
@@ -75,20 +97,22 @@ describe('auditMcpConfig', () => {
         server: 'Playwright',
         problem: 'unpinned',
         subject: '@playwright/mcp@latest',
-        pluginKey: true,
-        bySync: true,
         pkg: '@playwright/mcp',
+        sync: 'replaces',
+        plugin: 'playwright',
       },
     ])
+    expect(outdated).toEqual(['Playwright'])
   })
 
   it('reads the OpenCode dialect, where command is an array', () => {
-    const findings = auditMcpConfig({ mcp: { Mine: { type: 'local', command: ['npx', '-y', 'thing'] } } }, 'opencode')
-    expect(findings).toMatchObject([{ server: 'Mine', problem: 'unpinned', pluginKey: false, bySync: false }])
+    const { findings } = auditMcpConfig({ mcp: { Mine: { type: 'local', command: ['npx', '-y', 'thing'] } } }, 'opencode')
+    expect(findings).toMatchObject([{ server: 'Mine', problem: 'unpinned', sync: 'keeps' }])
+    expect(findings[0].plugin).toBeUndefined()
   })
 
   it('names a package that does not exist on npm', () => {
-    const findings = auditMcpConfig(
+    const { findings } = auditMcpConfig(
       { mcpServers: { Netlify: { command: 'npx', args: ['-y', 'netlify-mcp@latest'] } } },
       'cursor',
     )
@@ -97,12 +121,12 @@ describe('auditMcpConfig', () => {
 
   it('flags a remote server Claude Code would read as stdio, and only there', () => {
     const config = { mcpServers: { Supabase: { url: 'https://mcp.supabase.com/mcp' } } }
-    expect(auditMcpConfig(config, 'claude-code')).toMatchObject([{ server: 'Supabase', problem: 'untyped-remote' }])
-    expect(auditMcpConfig(config, 'cursor')).toEqual([])
-    expect(auditMcpConfig({ mcpServers: { Supabase: { type: 'http', url: 'https://x' } } }, 'claude-code')).toEqual([])
+    expect(auditMcpConfig(config, 'claude-code').findings).toMatchObject([{ server: 'Supabase', problem: 'untyped-remote' }])
+    expect(auditMcpConfig(config, 'cursor').findings).toEqual([])
+    expect(auditMcpConfig({ mcpServers: { Supabase: { type: 'http', url: 'https://x' } } }, 'claude-code').findings).toEqual([])
   })
 
-  it('passes pinned, project-local and remote servers', () => {
+  it('passes pinned, project-local, remote and local servers, and counts them', () => {
     const config = {
       mcpServers: {
         Playwright: { command: 'npx', args: ['-y', '@playwright/mcp@0.0.83'] },
@@ -111,7 +135,33 @@ describe('auditMcpConfig', () => {
         Remote: { type: 'http', url: 'https://mcp.example.com' },
       },
     }
-    expect(auditMcpConfig(config, 'claude-code')).toEqual([])
+    const audit = auditMcpConfig(config, 'claude-code')
+    expect(audit.findings).toEqual([])
+    expect(audit.passed).toBe(4)
+    expect(audit.unaudited).toEqual([])
+  })
+
+  it('says what it could not read instead of passing it', () => {
+    const audit = auditMcpConfig(
+      {
+        mcpServers: {
+          Box: { command: 'docker', args: ['run', '-i', 'mcp/fetch:latest'] },
+          Odd: { command: 'npx', args: ['--weird', 'x', 'foo'] },
+        },
+      },
+      'cursor',
+    )
+    expect(audit.passed).toBe(0)
+    expect(audit.unaudited.map((u) => u.server)).toEqual(['Box', 'Odd'])
+  })
+
+  it('knows sync removes a plugin server the stack does not include', () => {
+    const { findings } = auditMcpConfig(
+      { mcpServers: { Supabase: { url: 'https://mcp.supabase.com/mcp' } } },
+      'claude-code',
+      new Set(),
+    )
+    expect(findings).toMatchObject([{ server: 'Supabase', sync: 'removes', plugin: 'supabase' }])
   })
 })
 
@@ -153,6 +203,21 @@ describe('checkMcpSupplyChain', () => {
     expect(r.fix).toMatch(/^fix Mine by hand/)
   })
 
+  it('does not say sync fixes a server that sync will delete', () => {
+    write('.mcp.json', { mcpServers: { Supabase: { url: 'https://mcp.supabase.com/mcp' } } })
+    const r = checkMcpSupplyChain(root, 'claude-code', new Set())
+    expect(r.fix).toContain('opencastle sync removes Supabase')
+    expect(r.fix).toContain('opencastle add supabase')
+    expect(r.fix).not.toContain('fixes')
+  })
+
+  it('warns, rather than passing, when it cannot read what a server launches', () => {
+    write('.cursor/mcp.json', { mcpServers: { Box: { command: 'docker', args: ['run', '-i', 'mcp/fetch:latest'] } } })
+    const r = checkMcpSupplyChain(root, 'cursor')
+    expect(r).toMatchObject({ ok: true, warning: true })
+    expect(r.detail).toContain('Box (container image)')
+  })
+
   it('tells an edited plugin entry apart from one sync still owns', () => {
     write('.cursor/mcp.json', {
       mcpServers: {
@@ -163,6 +228,7 @@ describe('checkMcpSupplyChain', () => {
     const r = checkMcpSupplyChain(root, 'cursor')
     expect(r.fix).toContain('opencastle sync fixes chrome-devtools')
     expect(r.fix).toContain('Playwright changed since OpenCastle wrote them')
+    expect(r.fix).toContain('opencastle sync --force')
   })
 
   it('fails on a server that cannot load', () => {
