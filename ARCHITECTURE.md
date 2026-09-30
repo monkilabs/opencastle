@@ -303,6 +303,34 @@ Tasks can write artifacts to `.opencastle/artifacts/{convoy-id}/{task-id}/`:
 
 ---
 
+## MCP Servers
+
+Each plugin that brings an MCP server declares it once
+([`src/orchestrator/plugins/*/config.ts`](src/orchestrator/plugins/)), and every
+adapter writes it in that target's dialect — `servers` for VS Code,
+`mcpServers` for most others, OpenCode's `mcp` with `local`/`remote` entries.
+
+An MCP server is code an agent runs with the developer's credentials, so the
+defaults are held to the rules a supply-chain review would apply:
+
+- **Pinned or owned.** A server launched through a package runner is pinned to
+  an exact version, or runs the project's own dependency with `npx --no` (Prisma,
+  Convex, Nx — the version the project's lockfile pins), or is the vendor's own
+  remote server. [`pins.test.ts`](src/orchestrator/plugins/pins.test.ts) enforces
+  it. `npm run mcp:check` confirms every pin still exists on the registry and runs
+  weekly in CI; `npm run mcp:bump` moves pins to the latest release.
+- **Moved forward, never overwritten.** A rebuild leaves existing entries alone,
+  because people tune them. Plugins record the defaults earlier releases wrote
+  (`previousMcpConfigs`); an entry still byte for byte one of those is replaced on
+  `sync` and named in its output. An edited entry stays the user's.
+- **Audited.** `doctor` and the status command read every target's MCP config,
+  including servers the user added ([`mcp-audit.ts`](src/cli/mcp-audit.ts)): an
+  unpinned package warns; a package missing from npm, or a remote server Claude
+  Code would read as stdio, fails. Each finding carries the remedy that works for
+  it — `sync` only for entries it still owns.
+
+---
+
 ## Observability
 
 All execution is logged to `.opencastle/logs/events.ndjson` using the `opencastle log` CLI:
@@ -330,6 +358,11 @@ The [dashboard](src/dashboard/) provides a web UI for exploring convoy runs, tas
 | `doctor` | Diagnose configuration problems |
 | `remove` | Remove OpenCastle, keeping or deleting generated files |
 | `convoy` | Experimental: plan and run multi-step work |
+
+On GitHub Actions, `sync --check` also writes an `::error` annotation on each
+drifted file and a table to `$GITHUB_STEP_SUMMARY`
+([`github-report.ts`](src/cli/github-report.ts)); elsewhere its output is
+unchanged.
 
 `log` and `lesson` also exist but are invoked by agents from generated
 instructions rather than by people, so they are not listed in help.

@@ -74,7 +74,7 @@ opencastle              # what's installed, what drifted, what to run next
 opencastle sync         # recompile every target from source
 opencastle sync --check # fail if anything drifted (for CI)
 opencastle add stripe   # adopt a new tool, recompile
-opencastle doctor       # diagnose setup problems
+opencastle doctor       # diagnose setup problems, audit MCP servers
 ```
 
 Running `opencastle` with no arguments is the one command worth remembering. It
@@ -115,6 +115,31 @@ Upgrading from 0.35 or earlier? Run `opencastle sync` once — it rewrites the
 `.gitignore` block, repairs the manifest, and adopts root files an older release
 generated, keeping a `.opencastle-backup` of each. See
 [the quickstart](docs/quickstart.md#upgrading-from-035-or-earlier).
+
+<br>
+
+## Built for teams
+
+Everyone keeps the assistant they like. The team keeps one reviewed source.
+
+- **Drift shows up on the pull request.** On GitHub Actions, `sync --check`
+  annotates each drifted file with that file's own fix and writes a table to the
+  run's summary page. Nothing to configure: it reads `GITHUB_ACTIONS`.
+- **MCP servers are pinned like dependencies.** Every server OpenCastle adds is
+  the vendor's own remote server, the project's own copy of a tool it already
+  uses (`npx --no`), or a package at an exact version — never `@latest`. Every
+  laptop and every CI run gets the same code. Upgrading OpenCastle moves them
+  forward in one reviewable diff, and an entry you edited is left alone.
+- **`doctor` audits what your agents launch**, including servers you added
+  yourself: a package with no exact version, one that no longer exists on npm,
+  or a remote server your assistant cannot load. Each finding names the fix that
+  works for it.
+- **Open formats where they exist.** Codex and OpenCode read `AGENTS.md`, Claude
+  Code skills are `SKILL.md` folders in the Agent Skills format, and every
+  assistant gets MCP.
+
+Where this is heading — shared baselines across repositories, an MCP allowlist,
+config review in the PR: **[docs/teams.md](docs/teams.md)**.
 
 <br>
 

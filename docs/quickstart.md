@@ -103,6 +103,10 @@ and exits non-zero when a generated file no longer matches its source — someon
 edited `.cursor/rules/foo.mdc` by hand, or upgraded without recompiling. Without
 this, drift is invisible: a stale rule file still loads fine.
 
+On GitHub Actions the same step also annotates each drifted file in the pull
+request, with that file's own fix, and writes a table to the run's summary page.
+Other CI systems get the plain report and the exit code.
+
 ## Everyday commands
 
 | Command | What it does |
@@ -111,7 +115,7 @@ this, drift is invisible: a stale rule file still loads fine.
 | `opencastle sync` | Recompile every target |
 | `opencastle sync --check` | Fail on drift, write nothing |
 | `opencastle add <pack>` | Adopt a tool and recompile |
-| `opencastle doctor` | Deeper diagnostics with fixes |
+| `opencastle doctor` | Deeper diagnostics with fixes, including an audit of MCP servers |
 | `opencastle remove` | Uninstall, keeping or deleting files |
 
 Run `opencastle <command> --help` for the flags.
