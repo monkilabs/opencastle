@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', 'chrome-devtools-mcp@latest'],
+    args: ['-y', 'chrome-devtools-mcp@1.10.1'],
   },
   authType: 'none',
   envVars: [],
@@ -26,4 +26,13 @@ export const config: PluginConfig = {
   officialDocs: 'https://developer.chrome.com/docs/devtools',
   mcpPackage: 'chrome-devtools-mcp',
   preselected: true,
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'chrome-devtools-mcp@latest'],
+      },
+    },
+  ],
 };

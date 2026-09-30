@@ -54,6 +54,24 @@ export interface PluginConfig {
 
   /** VS Code input prompts required by this plugin's MCP config (e.g. tenant ID) */
   mcpInputs?: McpInput[];
+
+  /**
+   * What earlier releases generated for this server, newest first.
+   *
+   * `sync` leaves a server entry alone once it is in a config, because people
+   * tune them — an extra env var, a different flag. That also meant a default we
+   * had to change never reached anyone who already had it: a package that was
+   * unpublished from npm stayed in every existing config, and so did every
+   * `@latest`. An entry that is still byte for byte one of these was never
+   * customised, so it is ours to replace; anything else stays the user's.
+   */
+  previousMcpConfigs?: PreviousMcpConfig[];
+}
+
+export interface PreviousMcpConfig {
+  mcpConfig: McpServerConfig;
+  /** The env vars that release injected. Omit when they are the current ones. */
+  envVars?: EnvVarRequirement[];
 }
 
 export interface McpInput {

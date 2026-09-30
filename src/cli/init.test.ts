@@ -67,6 +67,13 @@ const STACK_SANITY_LINEAR: StackConfig = {
   teamTools: ['linear'],
 }
 
+/** One remote server and one launched through npx, for the format tests. */
+const STACK_SANITY_PLAYWRIGHT: StackConfig = {
+  ides: ['vscode'],
+  techTools: ['sanity', 'playwright'],
+  teamTools: [],
+}
+
 const STACK_SUPABASE_SLACK: StackConfig = {
   ides: ['vscode'],
   techTools: ['supabase'],
@@ -184,13 +191,9 @@ describe('stack-config: getRequiredMcpEnvVars', () => {
     expect(vars).toHaveLength(0)
   })
 
-  it('returns LINEAR_API_KEY when linear is selected', () => {
+  it('asks for no Linear key — Linear’s own server signs in with OAuth', () => {
     const vars = getRequiredMcpEnvVars(STACK_SANITY_LINEAR)
-    expect(vars).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ envVar: 'LINEAR_API_KEY' }),
-      ])
-    )
+    expect(vars.map((v) => v.envVar)).not.toContain('LINEAR_API_KEY')
   })
 
   it('returns SLACK_MCP_XOXB_TOKEN when slack is selected', () => {
@@ -527,12 +530,10 @@ describe('VS Code adapter install', () => {
     expect(sanityServer.type).toBe('http')
     expect(sanityServer.url).toBe('https://mcp.sanity.io')
 
-    // Linear uses stdio
+    // Linear is Linear's own remote server
     const linearServer = servers.Linear as Record<string, unknown>
-    expect(linearServer.type).toBe('stdio')
-    expect(linearServer.command).toBe('npx')
-    expect(linearServer.args).toContain('-y')
-    expect(linearServer.args).toContain('@mseep/linear-mcp')
+    expect(linearServer.type).toBe('http')
+    expect(linearServer.url).toBe('https://mcp.linear.app/mcp')
   })
 
   it('generates empty MCP config when no tools selected', async () => {
@@ -683,7 +684,7 @@ describe('Cursor adapter install', () => {
 
   it('generates Cursor MCP config with mcpServers format', async () => {
     const adapter = await IDE_ADAPTERS['cursor']()
-    await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
+    await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_PLAYWRIGHT, EMPTY_REPO_INFO)
 
     const mcpConfig = await readJson<Record<string, unknown>>(
       join(tempDir, '.cursor', 'mcp.json')
@@ -700,11 +701,11 @@ describe('Cursor adapter install', () => {
     expect(servers.Sanity.url).toBe('https://mcp.sanity.io')
     expect(servers.Sanity).not.toHaveProperty('type')
 
-    // stdio servers get command + args (no type field)
-    expect(servers.Linear).toBeDefined()
-    expect(servers.Linear.command).toBe('npx')
-    expect(servers.Linear.args).toContain('@mseep/linear-mcp')
-    expect(servers.Linear).not.toHaveProperty('type')
+    // stdio servers get command + args (no type field), pinned
+    expect(servers.Playwright).toBeDefined()
+    expect(servers.Playwright.command).toBe('npx')
+    expect((servers.Playwright.args as string[]).some((a) => /^@playwright\/mcp@\d/.test(a))).toBe(true)
+    expect(servers.Playwright).not.toHaveProperty('type')
   })
 
   it('getManagedPaths returns expected Cursor paths', async () => {
@@ -914,7 +915,7 @@ describe('OpenCode adapter install', () => {
 
   it('generates OpenCode MCP config with mcp format', async () => {
     const adapter = await IDE_ADAPTERS['opencode']()
-    await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
+    await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_PLAYWRIGHT, EMPTY_REPO_INFO)
 
     const mcpConfig = await readJson<Record<string, unknown>>(
       join(tempDir, 'opencode.json')
@@ -933,9 +934,11 @@ describe('OpenCode adapter install', () => {
     expect(mcp.Sanity.url).toBe('https://mcp.sanity.io')
 
     // stdio servers → type: 'local', command as array
-    expect(mcp.Linear).toBeDefined()
-    expect(mcp.Linear.type).toBe('local')
-    expect(mcp.Linear.command).toEqual(['npx', '-y', '@mseep/linear-mcp'])
+    expect(mcp.Playwright).toBeDefined()
+    expect(mcp.Playwright.type).toBe('local')
+    const command = mcp.Playwright.command as string[]
+    expect(command.slice(0, 2)).toEqual(['npx', '-y'])
+    expect(command[2]).toMatch(/^@playwright\/mcp@\d/)
   })
 
   it('workflows do NOT have prefix in opencode adapter', async () => {

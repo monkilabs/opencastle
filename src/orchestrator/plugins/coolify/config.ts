@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@masonator/coolify-mcp'],
+    args: ['-y', '@masonator/coolify-mcp@3.7.0'],
   },
   authType: 'env-token',
   envVars: [
@@ -26,4 +26,13 @@ export const config: PluginConfig = {
   docsUrl: null,
   officialDocs: 'https://coolify.io/docs',
   mcpPackage: '@masonator/coolify-mcp',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@masonator/coolify-mcp'],
+      },
+    },
+  ],
 };

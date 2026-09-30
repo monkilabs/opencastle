@@ -1,10 +1,10 @@
 import { resolve, dirname } from 'node:path';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { getIncludedMcpServers } from './stack-config.js';
 import { PLUGINS } from '../orchestrator/plugins/index.js';
 import { UnreadableConfigError } from './types.js';
-import type { McpInput } from '../orchestrator/plugins/types.js';
+import type { McpInput, McpServerConfig, EnvVarRequirement } from '../orchestrator/plugins/types.js';
 import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice, CopyResults } from './types.js';
 
 // ── IDE-specific MCP format transformation ────────────────────
@@ -21,11 +21,15 @@ interface VsCodeServer {
 /**
  * Transform a VS Code–format MCP config into the format
  * expected by the given IDE.
+ *
+ * `legacy` reproduces what releases before this one wrote, so an entry still in
+ * that shape can be recognised as ours and brought forward. It is never written.
  */
 function transformMcpForIde(
   ide: IdeChoice,
   servers: Record<string, VsCodeServer>,
-  inputs?: McpInput[]
+  inputs?: McpInput[],
+  options: { legacy?: boolean } = {},
 ): Record<string, unknown> {
   switch (ide) {
     case 'cursor':
@@ -46,7 +50,13 @@ function transformMcpForIde(
           // Strip VS Code ${input:...} placeholders for non-VS Code IDEs
           let url = server.url ?? '';
           url = url.replace(/\$\{input:\w+\}/g, 'REPLACE_ME');
-          mcpServers[name] = { url };
+          // Claude Code reads an entry with no `type` as a stdio server, and its
+          // MCP docs call a bare `url` a configuration error. Every remote server
+          // this wrote into `.mcp.json` — Supabase, Stripe, Vercel and the rest —
+          // was therefore a stdio server with no command, and never loaded. The
+          // other targets in this group take the bare `url`.
+          mcpServers[name] =
+            ide === 'claude-code' && !options.legacy ? { type: 'http', url } : { url };
         }
       }
       return { mcpServers };
@@ -121,6 +131,105 @@ function serialiseLike(original: string, value: unknown): string {
 }
 
 /**
+ * One plugin's server as the VS Code–format config, with the env vars other
+ * targets need spelled out — they have no `envFile`.
+ */
+function serverFor(
+  plugin: { mcpConfig?: McpServerConfig; envVars: EnvVarRequirement[] },
+  ide: IdeChoice,
+): VsCodeServer {
+  const serverConfig = { ...plugin.mcpConfig! } as VsCodeServer;
+  if (ide !== 'vscode' && plugin.envVars.length > 0) {
+    const envBlock: Record<string, string> = { ...(serverConfig.env ?? {}) };
+    for (const ev of plugin.envVars) {
+      envBlock[ev.name] = `\${${ev.name}}`;
+    }
+    serverConfig.env = envBlock;
+    delete serverConfig.envFile;
+  }
+  return serverConfig;
+}
+
+function containerKeyFor(ide: IdeChoice): string {
+  return ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers';
+}
+
+/** One server entry exactly as it is written into `ide`'s config. */
+function entryFor(server: VsCodeServer, ide: IdeChoice, legacy = false): unknown {
+  const out = transformMcpForIde(ide, { entry: server }, undefined, { legacy });
+  return (out[containerKeyFor(ide)] as Record<string, unknown>).entry;
+}
+
+/** Key order is not meaning: compare two parsed JSON values as values. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+}
+
+/**
+ * Bring forward plugin servers that still read exactly as an earlier release
+ * wrote them. Returns the server keys it replaced.
+ *
+ * A rebuild leaves an existing entry alone, because people tune them. That was
+ * also why a default we had to change never reached an existing install: three
+ * servers pointed at npm packages that do not exist — one of them unpublished,
+ * so its name is anyone's to claim — and every remote server in `.mcp.json` was
+ * written in a shape Claude Code cannot load. An entry that is byte for byte
+ * what we generated was never customised, so replacing it takes nothing of the
+ * user's. Anything that differs, even by one argument, stays theirs, and
+ * `doctor` says what is wrong with it instead.
+ */
+export function upgradeGeneratedServers(
+  existingServers: Record<string, unknown>,
+  ide: IdeChoice,
+  included: Set<string>,
+): string[] {
+  const upgraded: string[] = [];
+  for (const plugin of Object.values(PLUGINS)) {
+    const key = plugin.mcpServerKey;
+    if (!key || !plugin.mcpConfig || !included.has(key) || !(key in existingServers)) continue;
+    const current = entryFor(serverFor(plugin, ide), ide);
+    const have = canonical(existingServers[key]);
+    if (have === canonical(current)) continue;
+    const earlier = [entryFor(serverFor(plugin, ide), ide, true)];
+    for (const prev of plugin.previousMcpConfigs ?? []) {
+      const old = serverFor({ mcpConfig: prev.mcpConfig, envVars: prev.envVars ?? plugin.envVars }, ide);
+      earlier.push(entryFor(old, ide), entryFor(old, ide, true));
+    }
+    if (earlier.some((e) => canonical(e) === have)) {
+      existingServers[key] = current;
+      upgraded.push(key);
+    }
+  }
+  return upgraded;
+}
+
+/**
+ * Would a rebuild move any entry in this target's MCP config forward?
+ *
+ * Asked by `sync` before it decides there is nothing to do. Read-only: it runs
+ * the same matcher over a copy. A config that is absent or will not parse is
+ * someone else's question and answers false here.
+ */
+export function mcpConfigHasStaleDefaults(projectRoot: string, ide: IdeChoice): boolean {
+  const abs = resolve(projectRoot, getMcpConfigRelPath(ide));
+  if (!existsSync(abs)) return false;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(readFileSync(abs, 'utf8')) as Record<string, unknown>;
+  } catch {
+    return false;
+  }
+  const container = parsed[containerKeyFor(ide)];
+  if (!container || typeof container !== 'object' || Array.isArray(container)) return false;
+  const copy = structuredClone(container) as Record<string, unknown>;
+  return upgradeGeneratedServers(copy, ide, new Set(Object.keys(copy))).length > 0;
+}
+
+/**
  * Scaffold or merge the MCP server config into the target project.
  *
  * Builds the server list from plugin configs based on the user's
@@ -151,16 +260,7 @@ export async function scaffoldMcpConfig(
 
     for (const plugin of Object.values(PLUGINS)) {
       if (plugin.mcpServerKey && included.has(plugin.mcpServerKey)) {
-        const serverConfig = { ...plugin.mcpConfig! } as VsCodeServer;
-        if (resolvedIde !== 'vscode' && plugin.envVars.length > 0) {
-          const envBlock: Record<string, string> = { ...(serverConfig.env ?? {}) };
-          for (const ev of plugin.envVars) {
-            envBlock[ev.name] = `\${${ev.name}}`;
-          }
-          serverConfig.env = envBlock;
-          delete serverConfig.envFile;
-        }
-        servers[plugin.mcpServerKey] = serverConfig;
+        servers[plugin.mcpServerKey] = serverFor(plugin, resolvedIde);
         if (plugin.mcpInputs) {
           inputs.push(...plugin.mcpInputs);
         }
@@ -433,14 +533,14 @@ export async function rebuildMcpConfig(
   ide: IdeChoice,
   stack: StackConfig,
   repoInfo?: RepoInfo
-): Promise<void> {
+): Promise<string[]> {
   const destRelPath = getMcpConfigRelPath(ide);
   const destPath = resolve(projectRoot, destRelPath);
 
   if (!existsSync(destPath)) {
     // No existing config — scaffold fresh
     await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
-    return;
+    return [];
   }
 
   // Read existing config. Committed generated JSON is exactly what a merge
@@ -483,6 +583,10 @@ export async function rebuildMcpConfig(
       delete existingServers[key];
     }
   }
+
+  // Entries still exactly as an earlier release wrote them move to the current
+  // default; customised ones are left alone (see `upgradeGeneratedServers`).
+  const upgraded = upgradeGeneratedServers(existingServers, ide, includedServers);
 
   // For VS Code: remove only inputs belonging to removed servers
   if (ide === 'vscode') {
@@ -539,4 +643,5 @@ export async function rebuildMcpConfig(
 
   // Re-scaffold: merges new plugin servers into the cleaned config
   await scaffoldMcpConfig(projectRoot, destRelPath, stack, repoInfo, ide);
+  return upgraded;
 }

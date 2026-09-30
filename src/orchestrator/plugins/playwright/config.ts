@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@playwright/mcp@latest'],
+    args: ['-y', '@playwright/mcp@0.0.83'],
   },
   authType: 'none',
   envVars: [],
@@ -23,4 +23,13 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#playwright',
   officialDocs: 'https://playwright.dev/docs/intro',
   mcpPackage: '@playwright/mcp',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@playwright/mcp@latest'],
+      },
+    },
+  ],
 };

@@ -9,26 +9,36 @@ export const config: PluginConfig = {
   hint: 'Issue tracking with MCP integration',
   skillName: 'linear-task-management',
   mcpServerKey: 'Linear',
+  // Linear's own remote server, signed in with OAuth — no API key in .env. It
+  // replaces a third-party republish of a community server.
   mcpConfig: {
-    type: 'stdio',
-    command: 'npx',
-    args: ['-y', '@mseep/linear-mcp'],
-    envFile: '${workspaceFolder}/.env',
+    type: 'http',
+    url: 'https://mcp.linear.app/mcp',
   },
-  authType: 'env-token',
-  envVars: [
-    {
-      name: 'LINEAR_API_KEY',
-      hint: 'Create at linear.app → Settings → API → Personal API keys',
-    },
-  ],
+  authType: 'oauth',
+  envVars: [],
   agentToolMap: {
     'team-lead': [
       'linear/create_issue', 'linear/list_issues', 'linear/update_issue',
-      'linear/list_teams', 'linear/list_projects', 'linear/get_issue', 'linear/search_issues',
+      'linear/list_teams', 'linear/list_projects', 'linear/get_issue',
     ],
   },
   docsUrl: 'https://www.opencastle.dev/guides/linear-setup',
-  officialDocs: 'https://linear.app/docs',
-  mcpPackage: '@mseep/linear-mcp',
+  officialDocs: 'https://linear.app/docs/mcp',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@mseep/linear-mcp'],
+        envFile: '${workspaceFolder}/.env',
+      },
+      envVars: [
+        {
+          name: 'LINEAR_API_KEY',
+          hint: 'Create at linear.app → Settings → API → Personal API keys',
+        },
+      ],
+    },
+  ],
 };

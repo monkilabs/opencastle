@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', 'strapi-mcp'],
+    args: ['-y', 'strapi-mcp@0.2.3'],
   },
   authType: 'none',
   envVars: [],
@@ -38,4 +38,13 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#strapi',
   officialDocs: 'https://docs.strapi.io/',
   mcpPackage: 'strapi-mcp',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'strapi-mcp'],
+      },
+    },
+  ],
 };

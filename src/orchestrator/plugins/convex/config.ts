@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', 'convex@latest', 'mcp', 'start'],
+    args: ['--no', 'convex', 'mcp', 'start'],
   },
   authType: 'none',
   envVars: [],
@@ -30,4 +30,13 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#convex',
   officialDocs: 'https://docs.convex.dev/',
   mcpPackage: 'convex',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'convex@latest', 'mcp', 'start'],
+      },
+    },
+  ],
 };

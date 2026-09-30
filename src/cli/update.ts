@@ -14,7 +14,7 @@ import {
   getCustomizationsTransform,
   isEnvVarSatisfied,
 } from './stack-config.js'
-import { rebuildMcpConfig, getMcpConfigRelPath } from './mcp.js'
+import { rebuildMcpConfig, getMcpConfigRelPath, mcpConfigHasStaleDefaults } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
@@ -196,6 +196,15 @@ export default async function update({
       }
     } catch {
       return true
+    }
+    // An MCP server entry still exactly as an earlier release wrote it, whose
+    // default has since changed, is work outstanding. `doctor` prescribes this
+    // command for it — a package missing from npm, a remote server Claude Code
+    // cannot load — and MCP configs are never compared for drift, so without
+    // this the short-circuit answered "Everything matches its sources" and the
+    // remedy did nothing.
+    for (const ide of ides) {
+      if (mcpConfigHasStaleDefaults(projectRoot, ide as IdeChoice)) return true
     }
     try {
       const { buildCheckReport } = await import('./sync-check.js')
@@ -488,11 +497,16 @@ export default async function update({
   // — a flag only ever set inside the interactive reconfigure branch — meant
   // `opencastle add supabase` edited the manifest, recompiled, and left the skill
   // matrix and MCP config describing the stack from before the pack was added.
+  const upgradedServers = new Set<string>()
   if (newStack) {
     for (const ide of ides) {
       for (const step of [
         () => updateSkillMatrixFile(projectRoot, ide, newStack),
-        () => rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo),
+        async () => {
+          for (const key of await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo)) {
+            upgradedServers.add(key)
+          }
+        },
       ]) {
         try {
           await step()
@@ -549,6 +563,15 @@ export default async function update({
   if (newStack && unreadable.length === 0) {
     console.log(`  ${c.green('✓')} Updated skill matrix`)
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
+  }
+  // Said, because it changes a file the user commits: an entry we generated has
+  // moved to a new default (a pinned version, a server that exists, a shape the
+  // assistant can load), and the diff should not come as a surprise in review.
+  if (upgradedServers.size > 0) {
+    console.log(
+      `  ${c.green('✓')} Moved ${upgradedServers.size} MCP server(s) to the current default: ` +
+        [...upgradedServers].sort().join(', '),
+    )
   }
   for (const file of unreadable) {
     const [abs, why] = file.split('\u0000')
