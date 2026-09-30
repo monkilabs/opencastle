@@ -16,6 +16,7 @@ import {
   diagnoseManagedFile,
 } from './managed-block.js'
 import { c } from './prompt.js'
+import { reportToGitHub } from './github-report.js'
 import type { CliContext, IdeChoice, StackConfig } from './types.js'
 
 /**
@@ -560,6 +561,7 @@ export async function runCheck({ pkgRoot, args }: CliContext): Promise<void> {
     }
     if (args.includes('--json')) console.log(JSON.stringify(failure, null, 2))
     else render(failure)
+    reportToGitHub(failure, process.cwd(), { json: args.includes('--json') })
     process.exit(1)
   }
 
@@ -568,6 +570,9 @@ export async function runCheck({ pkgRoot, args }: CliContext): Promise<void> {
   } else {
     render(report)
   }
+  // On GitHub Actions only: annotations on the files in the pull request, and a
+  // table on the run's summary page. Everywhere else this is a no-op.
+  reportToGitHub(report, process.cwd(), { json: args.includes('--json') })
 
   if (!report.installed || report.drift.length > 0) process.exit(1)
 }
