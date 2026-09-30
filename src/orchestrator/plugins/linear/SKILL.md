@@ -7,24 +7,16 @@ description: "Creates and names Linear issues, assigns labels and priorities, ma
 
 # Task Management with Linear
 
-Team ID, workflow state UUIDs, and label UUIDs: [tracker-config.md](../../.opencastle/project/tracker-config.md). Docs: https://linear.app/docs
+Team, workflow states and labels: [tracker-config.md](../../.opencastle/project/tracker-config.md). Docs: https://linear.app/docs/mcp
 
-## The `stateId` UUID trap
+## The MCP server
 
-`update_issue` requires a workflow state **UUID**. Passing a display name like `"In Progress"` always fails with `stateId must be a UUID`. The names returned by `list_issues` / `get_issue` are display-only and are *not* valid `stateId` values.
+Linear's own remote server (`https://mcp.linear.app/mcp`), signed in with OAuth — each teammate as themselves, so issue history shows who did what. It finds, creates and updates issues, projects and comments, and lists teams, cycles, statuses and labels. Tool names change between server versions: read the tool list the server offers instead of assuming a name.
 
-```json
-// works — UUID read from tracker-config.md
-{ "issueId": "TAS-42", "stateId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
-// fails — name, not UUID
-{ "issueId": "TAS-42", "status": "In Progress" }
-```
+## Gotchas
 
-If `tracker-config.md` has no state UUIDs: skip status updates and log a warning. To populate them, ask the user for Linear *Settings → Teams → Workflow* (the UUID is in the browser URL per state) or the GraphQL `workflowStates { nodes { id name } }` query. Labels and teams are UUIDs too (`teamId`, `labelIds`).
-
-## Other gotchas
-
-- **Linear MCP has no comment API.** To record a blocker, edit the issue description.
+- **Look up, don't guess.** Read the team's statuses and labels from the server before setting them, and record the ones the team uses in `tracker-config.md`.
+- **Blockers go in a comment** on the issue, not in the description — the description is the spec.
 - Treat a create as successful only if it returns an issue ID (`TAS-42`) — verify before delegating.
 - GitHub integration auto-transitions on PR events (push → In Progress, review → In Review, merge → Done), configured in *Settings → Team → Pull request automation*. Link by putting `TAS-123` in the branch or PR title.
 - On resume, re-read every issue status before acting; a stale local view causes double work.

@@ -128,8 +128,10 @@ Everyone keeps the assistant they like. The team keeps one reviewed source.
 - **MCP servers are pinned like dependencies.** Every server OpenCastle adds is
   the vendor's own remote server, the project's own copy of a tool it already
   uses (`npx --no`), or a package at an exact version — never `@latest`. Every
-  laptop and every CI run gets the same code. Upgrading OpenCastle moves them
-  forward in one reviewable diff, and an entry you edited is left alone.
+  laptop and every CI run starts the same server version. (A pin fixes the
+  server's own version, not the versions of its dependencies, which npx resolves
+  per machine.) Upgrading OpenCastle moves them forward in one reviewable diff,
+  and an entry you edited is left alone.
 - **`doctor` audits what your agents launch**, including servers you added
   yourself: a package with no exact version, one that no longer exists on npm,
   or a remote server your assistant cannot load. Each finding names the fix that

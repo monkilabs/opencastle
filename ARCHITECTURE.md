@@ -327,7 +327,12 @@ defaults are held to the rules a supply-chain review would apply:
   including servers the user added ([`mcp-audit.ts`](src/cli/mcp-audit.ts)): an
   unpinned package warns; a package missing from npm, or a remote server Claude
   Code would read as stdio, fails. Each finding carries the remedy that works for
-  it — `sync` only for entries it still owns.
+  it — `sync` only for entries it still owns. What it cannot read (a container
+  image, a runner option it does not know) it reports as not audited rather than
+  passing.
+- **Checked in CI.** `sync --check` runs the same audit, so it cannot pass what
+  `doctor` fails: an entry `sync` would move forward is drift (`outdated`), and a
+  failure only a person can clear is `unreducible`.
 
 ---
 

@@ -88,6 +88,7 @@ const commands = [
     details: [
       { heading: 'What is preserved', content: `<p>Your customizations in <code>.opencastle/</code> are never overwritten. Framework directories are regenerated wholesale so renamed or removed sources do not leave stale files behind.</p>` },
       { heading: 'In CI', content: `<p><code>sync --check</code> compiles to a scratch directory and compares, so a hand-edited rule file or a forgotten recompile fails the build. On GitHub Actions it also annotates each drifted file in the pull request with that file's own fix, and writes a table to the run's summary page — no configuration, it reads <code>GITHUB_ACTIONS</code>. With <code>--json</code> the annotations are left out so the output stays parseable.</p>
+<p>It reads MCP configs with the same audit <code>doctor</code> runs, so the two cannot disagree: a server entry still at an earlier OpenCastle default is drift that <code>sync</code> clears, and a broken server only a person can fix fails the check with its remedy.</p>
 <pre><code>- uses: actions/setup-node@v4
   with: { node-version: 22 }
 - run: npx opencastle sync --check</code></pre>` },

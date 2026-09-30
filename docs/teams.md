@@ -37,7 +37,7 @@ toward it and what should come next, in order of leverage.
 | Change | Why it matters to a team |
 | --- | --- |
 | `sync --check` annotates drifted files on GitHub Actions and writes a run summary | Drift is seen by the PR author and reviewer, not only by whoever opens the job log |
-| Every MCP default pinned, project-local (`npx --no`), or the vendor's remote server | Every laptop and CI run launches the same code; upgrades are a reviewable diff |
+| Every MCP default pinned, project-local (`npx --no`), or the vendor's remote server | Every laptop and CI run starts the same server version; upgrades are a reviewable diff |
 | Three defaults replaced: two packages that were never published, one unpublished from npm | The servers start at all — and nobody can claim the vacated name |
 | Remote servers in `.mcp.json` carry `"type": "http"` | Claude Code loads them; before, it read them as stdio servers with no command |
 | `sync` moves entries still exactly as an earlier release wrote them | Existing installs get fixes without anyone's edits being overwritten |
@@ -112,6 +112,19 @@ per-assistant dialects only where an assistant needs one. Fewer generated files
 means less to review and less to drift.
 
 ## Open questions to verify
+
+- A pinned `npx` server pins the server's version, not its dependency tree:
+  npx resolves those per machine with no lockfile. Closing that gap means
+  installing servers as project dev-dependencies (and launching them with
+  `npx --no`) or preferring remote servers — worth offering as a strict mode.
+- `previousMcpConfigs` records the defaults this tool's plugin files have held
+  since the plugins moved to their current layout. Entries from older releases
+  in a different shape are treated as edited: `doctor` says so and names the
+  remedy (delete the entry and `sync --force`), but they are not moved
+  automatically.
+- Figma's remote server lists the clients it supports; OpenCode, Windsurf and
+  Antigravity are not on that list. Those targets may need Figma's desktop
+  server (`http://127.0.0.1:3845/mcp`) instead, which needs a per-target config.
 
 - The Windsurf, Codex and Antigravity MCP outputs should be checked against each
   vendor's current documentation, the way the Claude Code shape was: remote

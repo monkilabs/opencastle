@@ -9,7 +9,7 @@ import { PLUGINS } from '../../../../src/orchestrator/plugins/index';
  * prevent: once the sources were pinned and three dead packages replaced,
  * sixteen cards still said `@latest` or named a package that is not on npm.
  * The snippet is the VS Code form `init` writes — `servers`, plus `inputs` when
- * the server takes any. `docs-accuracy.test.ts` keeps hand-written JSON out.
+ * the server takes any. `website-plugins.test.ts` keeps hand-written JSON out.
  */
 function mcpSnippet(id: string): string {
   const plugin = Object.values(PLUGINS).find((p) => p.id === id);
@@ -148,8 +148,8 @@ const categories = [
           <strong>Pinned like dependencies.</strong> Every MCP server OpenCastle writes is
           the vendor's own remote server, the project's own copy of a tool it already
           depends on (<code>npx --no</code>), or a package pinned to an exact version —
-          never <code>@latest</code>. Every teammate and every CI run gets the same
-          server, and an upgrade arrives as a reviewable diff. <code>opencastle doctor</code>
+          never <code>@latest</code>. Every teammate and every CI run starts the same
+          server version, and an upgrade arrives as a reviewable diff. <code>opencastle doctor</code>
           audits servers you add yourself by the same rules.
         </div>
 
@@ -368,8 +368,9 @@ const categories = [
             </table>
             <div class="callout">
               <strong>Sign-in:</strong> Netlify's official server signs you in through the browser
-              on first use. A personal access token in <code>NETLIFY_PERSONAL_ACCESS_TOKEN</code> is
-              only a fallback — keep it in <code>.env</code>, never in the committed config.
+              on first use. If that fails, Netlify documents a personal access token fallback —
+              see its <a href="https://github.com/netlify/netlify-mcp" target="_blank" rel="noopener">README</a>,
+              and keep the token out of any config you commit.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('netlify')}</code></pre>
@@ -799,6 +800,9 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             <div class="callout">
               <strong>OAuth:</strong> Figma's own remote server. Your assistant opens a browser
               window to sign in the first time it connects — no token in <code>.env</code>.
+              Figma lists the clients its remote server supports, among them Claude Code,
+              Cursor, VS Code and Codex. For an assistant not on that list, use Figma's desktop
+              server at <code>http://127.0.0.1:3845/mcp</code> with the Figma desktop app running.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('figma')}</code></pre>
