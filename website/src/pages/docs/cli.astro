@@ -77,17 +77,26 @@ const commands = [
     description: 'Compiles the framework sources into each configured assistant format, preserving everything under <code>.opencastle/</code>. Run it after upgrading the package, or when <code>opencastle</code> reports that generated files are older than their sources.',
     usage: 'npx opencastle sync [options]',
     options: [
+      { flag: '--check', desc: 'Compare against a fresh compile and exit non-zero on drift; writes nothing' },
+      { flag: '--json', desc: 'Machine-readable report (with --check)' },
       { flag: '--dry-run', desc: 'Preview what would change' },
       { flag: '--force', desc: 'Sync even when versions match' },
       { flag: '--reconfigure', desc: 'Re-run IDE and integration selection' },
+      { flag: '--yes', desc: 'Skip confirmation prompts' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
       { heading: 'What is preserved', content: `<p>Your customizations in <code>.opencastle/</code> are never overwritten. Framework directories are regenerated wholesale so renamed or removed sources do not leave stale files behind.</p>` },
+      { heading: 'In CI', content: `<p><code>sync --check</code> compiles to a scratch directory and compares, so a hand-edited rule file or a forgotten recompile fails the build. On GitHub Actions it also annotates each drifted file in the pull request with that file's own fix, and writes a table to the run's summary page — no configuration, it reads <code>GITHUB_ACTIONS</code>. With <code>--json</code> the annotations are left out so the output stays parseable.</p>
+<pre><code>- uses: actions/setup-node@v4
+  with: { node-version: 22 }
+- run: npx opencastle sync --check</code></pre>` },
+      { heading: 'MCP servers move forward, edits stay', content: `<p>A server entry is left alone once it is in your config, because people tune them. An entry still exactly as an earlier release wrote it — a retired package, an <code>@latest</code>, a shape your assistant cannot load — is replaced with the current default, and the output names each one. Anything you edited stays yours.</p>` },
       { heading: 'Previously called update', content: `<p><code>opencastle update</code> still works as an alias. The operation is a compile-and-sync rather than a version bump, so the name follows what it does.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle sync', desc: 'Recompile all targets' },
+      { cmd: 'npx opencastle sync --check', desc: 'Fail on drift, for CI' },
       { cmd: 'npx opencastle sync --dry-run', desc: 'See what would change' },
     ],
   },
@@ -117,13 +126,19 @@ const commands = [
     category: 'diagnostics',
     name: 'doctor',
     summary: 'Diagnose setup problems',
-    description: 'Checks the manifest, per-assistant generated files, the skill matrix, MCP configuration, and required environment variables, and pairs each finding with the command that fixes it.',
+    description: 'Checks the manifest, per-assistant generated files, the skill matrix, MCP configuration, and required environment variables, audits what each MCP config launches, and pairs each finding with the command that fixes it.',
     usage: 'npx opencastle doctor [options]',
     options: [
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
       { heading: 'When to run it', content: `<p>After upgrading, after a merge that touched generated files, or whenever an assistant does not seem to be picking up the config. For a quick "is anything stale" answer, plain <code>opencastle</code> is faster.</p>` },
+      { heading: 'What it checks in MCP configs', content: `<p>An MCP server is code your agents run with your credentials, so <code>doctor</code> reads every target's MCP config the way a supply-chain review would — including servers you added yourself:</p>
+<ul>
+  <li><strong>Warning</strong> — a package launched without an exact version (<code>@latest</code>, a range, or none), so each machine runs whatever was published last.</li>
+  <li><strong>Failure</strong> — a package that is not on npm, or a remote server in <code>.mcp.json</code> with no <code>"type"</code>, which Claude Code reads as a stdio server and never loads.</li>
+</ul>
+<p>Each finding names the fix that works for it: <code>opencastle sync</code> for entries still as OpenCastle wrote them, a fix by hand for everything else.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle doctor', desc: 'Run all checks' },

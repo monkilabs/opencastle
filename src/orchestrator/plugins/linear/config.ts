@@ -23,7 +23,7 @@ export const config: PluginConfig = {
       'linear/list_teams', 'linear/list_projects', 'linear/get_issue',
     ],
   },
-  docsUrl: 'https://www.opencastle.dev/guides/linear-setup',
+  docsUrl: 'https://www.opencastle.dev/docs/plugins#linear',
   officialDocs: 'https://linear.app/docs/mcp',
   previousMcpConfigs: [
     {

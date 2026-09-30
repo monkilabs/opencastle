@@ -595,7 +595,6 @@ $ gh pr create --title "feat: personal portfolio (convoy cvy_3kx9)"</code></pre>
               <li>Git installed and available on your PATH</li>
               <li>An AI coding IDE — VS Code with GitHub Copilot, Cursor, or Claude Code</li>
               <li>A Linear workspace with at least one project</li>
-              <li>A LINEAR_API_KEY (Settings → API → Personal API keys)</li>
               <li>A shared repository that your team has access to</li>
             </ul>
           </section>
@@ -622,18 +621,17 @@ $ npx opencastle init</code></pre>
   ✓ Created 47 files
   ✓ Updated .gitignore with OpenCastle entries</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Keep your API keys ready — you'll need <code>LINEAR_API_KEY</code> later. Store keys in <code>.env</code> locally and use CI secrets for pipelines.</div>
+            <div class="recipe-tip"><strong>Tip:</strong> Linear needs no API key: OpenCastle configures Linear's own remote MCP server, which signs each teammate in with OAuth. Nothing secret goes into <code>.env</code> or the committed config.</div>
           </section>
 
           <!-- Step 2 -->
           <section class="recipe-section recipe-step" id="team-step-2">
             <div class="recipe-step__number">2</div>
             <h3 class="recipe-section__heading">Step 2: Connect Linear</h3>
-            <p class="recipe-section__body">Provide a Linear API key and verify your OpenCastle setup with the doctor command. Store the key in your <code>.env</code> file so it's available to MCP servers.</p>
+            <p class="recipe-section__body">Verify the setup with the doctor command, then open your assistant: the first time it connects to Linear it opens a browser window to sign in.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ echo 'LINEAR_API_KEY=lin_api_ABC123def456...' >> .env
-$ npx opencastle doctor</code></pre>
+              <pre><code>$ npx opencastle doctor</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  🏰 OpenCastle Doctor
@@ -647,7 +645,7 @@ $ npx opencastle doctor</code></pre>
   ✓ MCP environment variables
   ✓ .env file</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Add the key to <code>.env</code> for local development and to your CI provider as a secret for pipeline runs. After updating secrets, restart your terminal or IDE to pick up the change. Verify the key works by testing Linear connectivity from your MCP-enabled IDE.</div>
+            <div class="recipe-tip"><strong>Tip:</strong> Each teammate signs in once, with their own Linear account, so issue history shows who did what. No shared key to rotate.</div>
           </section>
 
           <!-- Step 3 -->
@@ -815,12 +813,12 @@ $ gh pr create --title "feat: auth flow (convoy cvy_9a2)" --body "Closes: PRJ-21
             <h3 class="recipe-section__heading">Tips &amp; Troubleshooting</h3>
             <div class="recipe-troubleshooting">
               <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">LINEAR_API_KEY not found</p>
-                <p class="recipe-troubleshooting__solution">Make sure you exported the full key (starts with <code>lin_api_</code>) into your shell or <code>.env</code>. After saving the file, restart your terminal or IDE so environment variables are reloaded, then re-run <code>npx opencastle doctor</code> to confirm connectivity.</p>
+                <p class="recipe-troubleshooting__problem">Linear tools do not appear in the assistant</p>
+                <p class="recipe-troubleshooting__solution">Run <code>npx opencastle doctor</code>: it flags an MCP config your assistant cannot load. Installs from before the switch to Linear's own server are moved over by <code>npx opencastle sync</code> unless you edited the entry.</p>
               </div>
               <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Doctor reports missing MCP environment variables</p>
-                <p class="recipe-troubleshooting__solution">Check that your <code>.env</code> file contains the <code>LINEAR_API_KEY</code> and any other MCP-required keys. Use the Linear web UI to verify the key permissions; if needed, create a new personal API key and update your <code>.env</code>.</p>
+                <p class="recipe-troubleshooting__problem">The browser sign-in never appears</p>
+                <p class="recipe-troubleshooting__solution">Restart the assistant so it reconnects to the server. If your network blocks <code>mcp.linear.app</code>, ask for it to be allowed — the server is remote.</p>
               </div>
               <div class="recipe-troubleshooting__item">
                 <p class="recipe-troubleshooting__problem">Task descriptions don't match Linear issues</p>

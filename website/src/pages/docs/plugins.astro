@@ -1,5 +1,25 @@
 ---
 import '../../styles/global.css';
+import { PLUGINS } from '../../../../src/orchestrator/plugins/index';
+
+/**
+ * Each card's MCP config, read from the plugin that ships it.
+ *
+ * These were hand-copied JSON, and they drifted the way the product exists to
+ * prevent: once the sources were pinned and three dead packages replaced,
+ * sixteen cards still said `@latest` or named a package that is not on npm.
+ * The snippet is the VS Code form `init` writes — `servers`, plus `inputs` when
+ * the server takes any. `docs-accuracy.test.ts` keeps hand-written JSON out.
+ */
+function mcpSnippet(id: string): string {
+  const plugin = Object.values(PLUGINS).find((p) => p.id === id);
+  if (!plugin?.mcpServerKey || !plugin.mcpConfig) {
+    throw new Error(`plugins.astro: no MCP server declared for "${id}"`);
+  }
+  const out: Record<string, unknown> = { servers: { [plugin.mcpServerKey]: plugin.mcpConfig } };
+  if (plugin.mcpInputs?.length) out.inputs = plugin.mcpInputs;
+  return JSON.stringify(out, null, 2);
+}
 
 const title = 'Plugin Setup Guide — OpenCastle';
 const description = 'Configure plugins for your AI coding agents. Each plugin bundles skills, optional MCP server configs, and agent tool mappings.';
@@ -124,6 +144,14 @@ const categories = [
           Each plugin bundles skills, optional MCP server configs, and agent tool mappings.
           Select a category from the sidebar or browse all plugins below.
         </p>
+        <div class="callout">
+          <strong>Pinned like dependencies.</strong> Every MCP server OpenCastle writes is
+          the vendor's own remote server, the project's own copy of a tool it already
+          depends on (<code>npx --no</code>), or a package pinned to an exact version —
+          never <code>@latest</code>. Every teammate and every CI run gets the same
+          server, and an upgrade arrives as a reviewable diff. <code>opencastle doctor</code>
+          audits servers you add yourself by the same rules.
+        </div>
 
         <!-- ====== CMS Plugins ====== -->
         <section class="docs-category" id="cms-plugins" data-category>
@@ -145,14 +173,7 @@ const categories = [
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Sanity": {
-      "type": "http",
-      "url": "https://mcp.sanity.io"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('sanity')}</code></pre>
           </div>
 
           <div class="plugin-card" id="contentful">
@@ -167,15 +188,7 @@ const categories = [
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Contentful": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@contentful/mcp-server"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('contentful')}</code></pre>
           </div>
 
           <div class="plugin-card" id="strapi">
@@ -190,15 +203,7 @@ const categories = [
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Strapi": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "strapi-mcp"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('strapi')}</code></pre>
           </div>
         </section>
 
@@ -222,14 +227,7 @@ const categories = [
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Supabase": {
-      "type": "http",
-      "url": "https://mcp.supabase.com/mcp"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('supabase')}</code></pre>
           </div>
 
           <div class="plugin-card" id="convex">
@@ -244,15 +242,7 @@ const categories = [
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Convex": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "convex@latest", "mcp", "start"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('convex')}</code></pre>
           </div>
 
           <div class="plugin-card" id="prisma">
@@ -262,20 +252,12 @@ const categories = [
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
                 <td><span class="badge badge--none">No auth</span></td>
-                <td><code>@anthropic/prisma-mcp</code></td>
+                <td>Bundled with <code>prisma</code> — your project's own copy</td>
                 <td><a href="https://www.prisma.io/docs" target="_blank" rel="noopener">prisma.io/docs</a></td>
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Prisma": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@anthropic/prisma-mcp@latest"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('prisma')}</code></pre>
           </div>
 
           <div class="plugin-card" id="drizzle">
@@ -312,15 +294,7 @@ const categories = [
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "next-devtools": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "next-devtools-mcp@latest"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('nextjs')}</code></pre>
           </div>
 
           <div class="plugin-card" id="astro">
@@ -335,14 +309,7 @@ const categories = [
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Astro docs": {
-      "type": "http",
-      "url": "https://mcp.docs.astro.build/mcp"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('astro')}</code></pre>
           </div>
 
           <div class="plugin-card" id="expo">
@@ -361,14 +328,7 @@ const categories = [
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Expo": {
-      "type": "http",
-      "url": "https://mcp.expo.dev/mcp"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('expo')}</code></pre>
           </div>
         </section>
 
@@ -392,14 +352,7 @@ const categories = [
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Vercel": {
-      "type": "http",
-      "url": "https://mcp.vercel.com"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('vercel')}</code></pre>
           </div>
 
           <div class="plugin-card" id="netlify">
@@ -408,27 +361,18 @@ const categories = [
             <table class="plugin-table">
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
-                <td><code class="badge badge--apikey">API Key</code></td>
-                <td><code>netlify-mcp</code></td>
-                <td><a href="https://docs.netlify.com" target="_blank" rel="noopener">docs.netlify.com</a></td>
+                <td><code class="badge badge--oauth">OAuth</code></td>
+                <td><code>@netlify/mcp</code></td>
+                <td><a href="https://github.com/netlify/netlify-mcp" target="_blank" rel="noopener">github.com/netlify/netlify-mcp</a></td>
               </tr></tbody>
             </table>
-            <div class="callout callout--warning">
-              <strong>Required env var:</strong> <code>NETLIFY_AUTH_TOKEN</code><br />
-              Generate at app.netlify.com &rarr; User Settings &rarr; Applications &rarr; Personal access tokens.
-              Add it to your <code>.env</code> file:
-              <pre><code>NETLIFY_AUTH_TOKEN="your-token-here"</code></pre>
+            <div class="callout">
+              <strong>Sign-in:</strong> Netlify's official server signs you in through the browser
+              on first use. A personal access token in <code>NETLIFY_PERSONAL_ACCESS_TOKEN</code> is
+              only a fallback — keep it in <code>.env</code>, never in the committed config.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Netlify": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "netlify-mcp@latest"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('netlify')}</code></pre>
           </div>
 
           <div class="plugin-card" id="cloudflare">
@@ -447,14 +391,7 @@ const categories = [
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Cloudflare": {
-      "type": "http",
-      "url": "https://mcp.cloudflare.com/mcp"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('cloudflare')}</code></pre>
           </div>
 
           <div class="plugin-card" id="coolify">
@@ -477,16 +414,7 @@ const categories = [
 COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Coolify": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@masonator/coolify-mcp"],
-      "envFile": "\${workspaceFolder}/.env"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('coolify')}</code></pre>
           </div>
         </section>
 
@@ -506,15 +434,7 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "NX": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["nx", "mcp"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('nx')}</code></pre>
           </div>
 
           <div class="plugin-card" id="turborepo">
@@ -568,15 +488,7 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Playwright": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@playwright/mcp@latest"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('playwright')}</code></pre>
           </div>
 
           <div class="plugin-card" id="cypress">
@@ -608,15 +520,7 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               </tr></tbody>
             </table>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "chrome-devtools": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest"]
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('chrome-devtools')}</code></pre>
           </div>
         </section>
 
@@ -630,29 +534,17 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
             <table class="plugin-table">
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
-                <td><code class="badge badge--apikey">API Key</code></td>
-                <td><code>@mseep/linear-mcp</code></td>
-                <td><a href="https://linear.app/docs" target="_blank" rel="noopener">linear.app/docs</a></td>
+                <td><code class="badge badge--oauth">OAuth</code></td>
+                <td>HTTP/OAuth</td>
+                <td><a href="https://linear.app/docs/mcp" target="_blank" rel="noopener">linear.app/docs/mcp</a></td>
               </tr></tbody>
             </table>
-            <div class="callout callout--warning">
-              <strong>Required env var:</strong> <code>LINEAR_API_KEY</code><br />
-              Create at linear.app &rarr; Settings &rarr; API &rarr; Personal API keys.
-              Add it to your <code>.env</code> file:
-              <pre><code>LINEAR_API_KEY="lin_api_your-key-here"</code></pre>
+            <div class="callout">
+              <strong>OAuth:</strong> Linear's own remote server. Your assistant opens a browser
+              window to sign in the first time it connects — no API key in <code>.env</code>.
             </div>
-            <p><a href="/docs/linear-setup" class="setup-link">Detailed setup guide &rarr;</a></p>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Linear": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@mseep/linear-mcp"],
-      "envFile": "\${workspaceFolder}/.env"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('linear')}</code></pre>
           </div>
 
           <div class="plugin-card" id="jira">
@@ -671,14 +563,7 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Jira": {
-      "type": "http",
-      "url": "https://mcp.atlassian.com/v1/mcp"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('jira')}</code></pre>
           </div>
 
           <div class="plugin-card" id="trello">
@@ -701,16 +586,7 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
 TRELLO_TOKEN="your-token-here"</code></pre>
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Trello": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@delorenj/mcp-server-trello"],
-      "envFile": "\${workspaceFolder}/.env"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('trello')}</code></pre>
           </div>
         </section>
 
@@ -819,19 +695,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
 
             <p><strong>VS Code</strong> — ensure <code>.vscode/mcp.json</code> includes
             (automatic if you ran <code>npx opencastle init</code> with Slack enabled):</p>
-            <pre><code>{`{
-  "servers": {
-    "Slack": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@kazuph/mcp-slack"],
-      "envFile": "\${workspaceFolder}/.env",
-      "env": {
-        "SLACK_MCP_ADD_MESSAGE_TOOL": "true"
-      }
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('slack')}</code></pre>
 
             <div class="callout">
               <strong>Note:</strong> The <code>SLACK_MCP_ADD_MESSAGE_TOOL</code> env var
@@ -884,14 +748,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Microsoft Teams": {
-      "type": "http",
-      "url": "https://agent365.svc.cloud.microsoft/agents/tenants/\${input:tenant_id}/servers/mcp_TeamsServer"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('teams')}</code></pre>
             <div class="callout">
               <strong>Note:</strong> Replace <code>${`\${input:tenant_id}`}</code> with your
               Microsoft 365 tenant ID. In VS Code, this will prompt you for the value
@@ -920,14 +777,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Notion": {
-      "type": "http",
-      "url": "https://mcp.notion.com/mcp"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('notion')}</code></pre>
           </div>
         </section>
 
@@ -941,28 +791,17 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             <table class="plugin-table">
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
-                <td><code class="badge badge--apikey">API Key</code></td>
-                <td><code>@anthropic/figma-mcp</code></td>
-                <td><a href="https://www.figma.com/developers/api" target="_blank" rel="noopener">figma.com/developers/api</a></td>
+                <td><code class="badge badge--oauth">OAuth</code></td>
+                <td>HTTP/OAuth</td>
+                <td><a href="https://help.figma.com/hc/en-us/articles/32132100833559-Guide-to-the-Figma-MCP-server" target="_blank" rel="noopener">Figma MCP server guide</a></td>
               </tr></tbody>
             </table>
-            <div class="callout callout--warning">
-              <strong>Required env var:</strong> <code>FIGMA_ACCESS_TOKEN</code><br />
-              Generate at figma.com &rarr; Settings &rarr; Personal access tokens.
-              Add it to your <code>.env</code> file:
-              <pre><code>FIGMA_ACCESS_TOKEN="your-token-here"</code></pre>
+            <div class="callout">
+              <strong>OAuth:</strong> Figma's own remote server. Your assistant opens a browser
+              window to sign in the first time it connects — no token in <code>.env</code>.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Figma": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@anthropic/figma-mcp@latest"],
-      "envFile": "\${workspaceFolder}/.env"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('figma')}</code></pre>
           </div>
         </section>
 
@@ -988,16 +827,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               <pre><code>RESEND_API_KEY="re_your-key-here"</code></pre>
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Resend": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "resend-mcp"],
-      "envFile": "\${workspaceFolder}/.env"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('resend')}</code></pre>
           </div>
         </section>
 
@@ -1021,14 +851,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               a browser window for authentication when you first connect.
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Stripe": {
-      "type": "http",
-      "url": "https://mcp.stripe.com"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('stripe')}</code></pre>
           </div>
         </section>
 
@@ -1054,16 +877,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               <pre><code>SENTRY_ACCESS_TOKEN="sntrys_your-token-here"</code></pre>
             </div>
             <h4>MCP Config</h4>
-            <pre><code>{`{
-  "servers": {
-    "Sentry": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@sentry/mcp-server@latest"],
-      "envFile": "\${workspaceFolder}/.env"
-    }
-  }
-}`}</code></pre>
+            <pre><code>{mcpSnippet('sentry')}</code></pre>
           </div>
         </section>
 
