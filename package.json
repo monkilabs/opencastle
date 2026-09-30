@@ -49,6 +49,8 @@
     "prepublishOnly": "npm run build",
     "dashboard:etl:empty": "tsx src/dashboard/scripts/etl.ts --db .opencastle/__no_demo_db__ --out src/dashboard/public/data",
     "verify:claims": "npm run cli:build && bash scripts/verify-claims.sh",
+    "mcp:check": "node scripts/mcp-pins.mjs",
+    "mcp:bump": "node scripts/mcp-pins.mjs --bump",
     "matrix": "npm run cli:build && node scripts/command-matrix.mjs --tier=1",
     "matrix:full": "npm run cli:build && node scripts/command-matrix.mjs --tier=2",
     "matrix:all": "npm run cli:build && node scripts/command-matrix.mjs --tier=3",
