@@ -1,0 +1,1471 @@
+---
+import '../../styles/global.css';
+
+const title = 'OpenCastle for Teams — OpenCastle';
+const description = 'Share one AI assistant standard across every repository: baselines your repositories extend, a policy for the MCP servers agents may start, a lock file that records what every assistant is given, and a review of what each change does.';
+
+const overviewSections = [
+  { id: 'problem', label: 'The Problem' },
+  { id: 'layers', label: 'Layers' },
+];
+const walkthroughSections = [
+  { id: 'example', label: 'Worked Example' },
+];
+const referenceSections = [
+  { id: 'config', label: 'Config Reference' },
+  { id: 'policy', label: 'Policy' },
+  { id: 'lock', label: 'The Lock File' },
+  { id: 'commands', label: 'Team Commands' },
+];
+const adoptionSections = [
+  { id: 'rollout', label: 'Rollout Recipe' },
+  { id: 'limits', label: 'Limits' },
+];
+
+const sectionIcons: Record<string, string> = {
+  problem: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  layers: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  example: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
+  config: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
+  policy: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  lock: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  commands: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
+  rollout: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
+  limits: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+};
+
+/* ---------- Code and output shown on the page ---------- */
+/* The output below is real: it comes from a project that extends a baseline,
+   run with the release this page documents. Long lists are trimmed with "…". */
+
+const baselineTree = `@acme/opencastle-baseline/
+├── package.json      "opencastle": { "baseline": "layer" }, "files": ["layer/"]
+└── layer/
+    ├── config.json
+    ├── instructions/
+    │   ├── api-style.md
+    │   └── security.md
+    └── skills/
+        └── secure-coding/
+            └── SKILL.md`;
+
+const baselineConfig = `// layer/config.json
+{
+  // Acme's standard for every repository
+  "policy": {
+    "mcp": {
+      "allow": ["chrome-devtools", "next-devtools", "internal-docs", "acme-*", "Linear", "Sentry"],
+      "remoteHosts": ["*.acme.dev", "mcp.linear.app"],
+      "requirePinned": true
+    },
+    "require": ["skills/secure-coding", "instructions/security"],
+    "contextBudget": 12000
+  },
+  "mcpServers": {
+    "internal-docs": {
+      "url": "https://docs-mcp.acme.dev/mcp",
+      "headers": { "Authorization": "Bearer \${ACME_DOCS_TOKEN}" }
+    }
+  }
+}`;
+
+const projectConfig = `// .opencastle/config.json
+{
+  "$schema": "https://www.opencastle.dev/schema/config.json",
+  "extends": ["@acme/opencastle-baseline"],
+  "exclude": ["skills/seo-patterns"],
+  "mcpServers": {
+    "acme-db": {
+      "command": "npx",
+      "args": ["-y", "@acme/db-mcp@2.2.0"],
+      "env": { "ACME_DB_URL": "\${ACME_DB_URL}" }
+    },
+    "acme-flags": { "url": "https://flags.acme.dev/mcp" }
+  }
+}`;
+
+const syncOutput = `  ✓ Rebuilt MCP config
+  ✓ Compiled @acme/opencastle-baseline 1.5.0 and this project's own sources (4 items)
+  ✓ Updated .opencastle/lock.json (opencastle review explains the change)
+
+  ⚠  Environment variables still needed:
+
+     ACME_DOCS_TOKEN
+     └ used by the internal-docs MCP server (@acme/opencastle-baseline/layer/config.json)
+
+     ACME_DB_URL
+     └ used by the acme-db MCP server (.opencastle/config.json)`;
+
+const explainOutput = `$ npx opencastle explain
+
+  What the AI assistants in this repository are given
+
+  Layers  OpenCastle 0.35.3 → @acme/opencastle-baseline 1.5.0 → this project  (later layers add to and override earlier ones)
+  Targets VS Code, Claude Code, Cursor, OpenCode
+
+  Always loaded — ~5518 tokens before every task: instructions ~1864, the skill and agent index ~3655
+    • ai-optimization ~450 tokens (OpenCastle)
+    • api-style ~17 tokens (@acme/opencastle-baseline)
+    • general ~1381 tokens (OpenCastle)
+    • security ~17 tokens (@acme/opencastle-baseline, required)
+    budget: 12000 tokens
+
+  Skills — loaded when a task matches the description (37)
+    • deploy-runbook (this project)
+      How this shop deploys. Use when releasing, rolling back, or touching the deploy pipeline.
+    • secure-coding (@acme/opencastle-baseline, required)
+      Acme's secure coding rules. Use when handling auth, secrets, user input, or anything touching customer data.
+    …
+    • and 30 from OpenCastle: accessibility-standards, agent-hooks, agent-memory, …
+
+  Left out
+    • skills/seo-patterns (excluded by this project)
+
+  MCP servers — tools every assistant can start (6)
+    • Linear (linear integration)
+      remote: https://mcp.linear.app/mcp
+    • acme-db (this project)
+      runs: npx -y @acme/db-mcp@2.2.0
+    • acme-flags (this project)
+      remote: https://flags.acme.dev/mcp
+    • chrome-devtools (chrome-devtools integration)
+      runs: npx -y chrome-devtools-mcp@1.10.1
+    • internal-docs (@acme/opencastle-baseline)
+      remote: https://docs-mcp.acme.dev/mcp
+    • next-devtools (nextjs integration)
+      runs: npx -y next-devtools-mcp@0.4.0
+    – Slack not written: not on the MCP allowlist of @acme/opencastle-baseline
+
+  The team's policy
+    • MCP servers allowed: Linear, Sentry, acme-*, chrome-devtools, internal-docs, next-devtools
+    • Remote servers may connect to: *.acme.dev, mcp.linear.app
+    • Every local server must be pinned to an exact version (@acme/opencastle-baseline)
+    • Required everywhere: instructions/security, skills/secure-coding
+
+  Your setup
+    ✗ ACME_DOCS_TOKEN — used by the internal-docs MCP server (@acme/opencastle-baseline/layer/config.json); set it in .env or your shell
+    ✗ ACME_DB_URL — used by the acme-db MCP server (.opencastle/config.json); set it in .env or your shell
+    → Linear: your assistant opens a browser to sign in the first time it starts the server`;
+
+const doctorOutput = `$ npx opencastle doctor
+  …
+  ✓ Team sources  extends @acme/opencastle-baseline@1.5.0; team content: 2 skills, 2 instructions; 3 team MCP server(s); MCP allowlist in force
+  ✓ Always-loaded context  ~5.5k tokens (instructions ~1.9k, skill and agent index ~3.7k); budget 12.0k (@acme/opencastle-baseline)
+  ! Team instructions match this repository  skills/deploy-runbook runs "npm run deploy:prod", which package.json does not define; skills/deploy-runbook names \`src/deploy/config.ts\`, which does not exist
+  ✓ OpenCastle version  0.35.3, the version that compiled this project
+  …
+
+$ npx opencastle sync --check
+
+  ✓ 361 generated files match their sources across 4 targets.`;
+
+const refusedOutput = `  ✗ The team's sources have 2 problem(s); nothing was compiled.
+
+    ✗ .opencastle/config.json: defines MCP server "scratchpad", which @acme/opencastle-baseline does not allow
+      → add it to policy.mcp.allow in @acme/opencastle-baseline, or remove it
+    ✗ .opencastle/config.json: MCP server "scratchpad" runs scratchpad-mcp without an exact version — every machine runs whatever was published last
+      → pin it as scratchpad-mcp@x.y.z (@acme/opencastle-baseline requires pinned servers)`;
+
+const handAddedOutput = `$ npx opencastle sync --check
+
+  ✗ 1 MCP config(s) have a server only a person can fix.
+
+  Needs a person (no command will change these)
+    ! .mcp.json (claude-code)
+      my-tool: not on the MCP allowlist of @acme/opencastle-baseline
+      → fix my-tool by hand in .mcp.json`;
+
+const reviewOutput = `### OpenCastle — what this change does to the AI assistants
+
+Compared with \`origin/main\`. **3 change(s) marked ⚠️ deserve a careful look.**
+
+**Layers**
+
+- @acme/opencastle-baseline 1.4.0 → 1.5.0
+
+**What every assistant reads**
+
+- ⚠️ New always-loaded instruction **api-style** from @acme/opencastle-baseline (~17 tokens, loaded on every request)
+- skill **secure-coding** changed — @acme/opencastle-baseline
+
+**MCP servers**
+
+- MCP server **acme-db**: 2.1.0 → 2.2.0
+- ⚠️ New MCP server **acme-flags** from this project — remote, flags.acme.dev
+
+**Policy**
+
+- ⚠️ The MCP allowlist now also allows Sentry
+
+**Context**
+
+- Every assistant loads ~5518 tokens before the task (was ~5501, +0%)`;
+
+const fleetOutput = `$ npx opencastle fleet shop admin
+
+  Fleet — 2 repositories
+
+  • shop        opencastle 0.35.3  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~5518 tokens up front
+  • admin       opencastle 0.35.3  @acme/opencastle-baseline@1.4.0  4 target(s), 5 MCP server(s), ~5501 tokens up front
+
+  opencastle: 0.35.3 (2) — all on one version
+  @acme/opencastle-baseline: 1.4.0 (1), 1.5.0 (1) — 1 behind 1.5.0: admin
+
+  MCP servers running differently across repositories
+    ~ acme-db
+      npx -y @acme/db-mcp@2.2.0  — shop
+      npx -y @acme/db-mcp@2.1.0  — admin`;
+
+const fullConfig = `// .opencastle/config.json — every field
+{
+  "$schema": "https://www.opencastle.dev/schema/config.json",
+  "opencastle": "^0.35.0",
+  // A package, then a directory in this monorepo. The first is the lowest layer.
+  "extends": ["@acme/opencastle-baseline", "../packages/opencastle-web"],
+  "exclude": ["skills/seo-patterns", "agents/researcher"],
+  "mcpServers": {
+    "acme-db": {
+      "command": "npx",
+      "args": ["-y", "@acme/db-mcp@2.2.0"],
+      "env": { "ACME_DB_URL": "\${ACME_DB_URL}" },
+      "description": "Read-only access to the staging database"
+    },
+    "acme-flags": {
+      "url": "https://flags.acme.dev/mcp",
+      "headers": { "Authorization": "Bearer \${ACME_FLAGS_TOKEN}" }
+    }
+  },
+  "policy": {
+    "mcp": {
+      "allow": ["acme-*", "Linear", "chrome-devtools"],
+      "remoteHosts": ["*.acme.dev", "mcp.linear.app"],
+      "requirePinned": true
+    },
+    "require": ["instructions/security"],
+    "contextBudget": 8000
+  }
+}`;
+
+const lockExcerpt = `{
+  "$comment": "Written by opencastle sync — do not edit. Change .opencastle/ (or a baseline) and run sync; opencastle review explains a change.",
+  "lockfileVersion": 1,
+  "opencastle": "0.35.3",
+  "targets": ["claude-code", "cursor", "opencode", "vscode"],
+  "integrations": ["chrome-devtools", "linear", "nextjs", "slack", "vitest"],
+  "layers": [
+    { "id": "opencastle", "kind": "core", "version": "0.35.3" },
+    { "id": "@acme/opencastle-baseline", "kind": "baseline", "version": "1.5.0",
+      "integrity": "sha256-sr5W5wAoB1BqPaAzA1az1Tc/GSHapmYSUEd9eCW8jtM=" },
+    { "id": "project", "kind": "project" }
+  ],
+  "content": {
+    "instructions/security": { "from": "@acme/opencastle-baseline", "sha": "48f1aafec3a5", "tokens": 17 },
+    "skills/deploy-runbook": { "from": "project", "sha": "82dc100b1d90",
+      "description": "How this shop deploys. Use when releasing, rolling back, or touching the deploy pipeline." },
+    …
+  },
+  "excluded": { "skills/seo-patterns": "project" },
+  "mcp": {
+    "acme-db": { "from": "project", "transport": "stdio",
+      "launch": "npx -y @acme/db-mcp@2.2.0", "env": ["ACME_DB_URL"] },
+    "internal-docs": { "from": "@acme/opencastle-baseline", "transport": "http",
+      "launch": "https://docs-mcp.acme.dev/mcp", "env": ["ACME_DOCS_TOKEN"] },
+    "Linear": { "from": "plugin:linear", "transport": "http",
+      "launch": "https://mcp.linear.app/mcp", "auth": "oauth" },
+    …
+  },
+  "blocked": { "Slack": "not on the MCP allowlist of @acme/opencastle-baseline" },
+  "policy": {
+    "allow": { "@acme/opencastle-baseline": ["Linear", "Sentry", "acme-*", "chrome-devtools", "internal-docs", "next-devtools"] },
+    "remoteHosts": { "@acme/opencastle-baseline": ["*.acme.dev", "mcp.linear.app"] },
+    "requirePinned": "@acme/opencastle-baseline",
+    "require": ["instructions/security", "skills/secure-coding"],
+    "contextBudget": 12000
+  },
+  "context": { "tokens": 5518, "instructions": 1864, "index": 3655 }
+}`;
+
+const codeowners = `# What every AI assistant is given (opencastle ci). Every change to it moves
+# the lock, so these two lines route all of them to the owners.
+/.opencastle/lock.json @acme/platform
+/.opencastle/config.json @acme/platform`;
+
+const ciWorkflow = `# Written by \`opencastle ci\`. Fails a pull request when the AI assistant config
+# every developer gets differs from its sources or breaks the team's policy,
+# and summarises what the change does to the assistants.
+name: AI assistant config
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  opencastle:
+    runs-on: ubuntu-latest
+    steps:
+      # Pin actions to a commit SHA if your organisation requires it.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Generated config matches its sources and policy
+        run: npx -y opencastle@0.35.3 sync --check
+      - name: What this pull request changes
+        if: github.event_name == 'pull_request'
+        run: npx -y opencastle@0.35.3 review --base origin/\${{ github.base_ref }}`;
+
+const baselineCheckOutput = `$ npx opencastle baseline init --name @acme/opencastle-baseline
+
+  ✓ Created the baseline @acme/opencastle-baseline in opencastle-baseline/
+
+$ npx opencastle baseline check opencastle-baseline
+
+  Baseline @acme/opencastle-baseline 0.1.0
+
+  Contributes: 1 skills, 1 instructions
+  A repository extending it loads ~5254 tokens up front, with OpenCastle's own content
+
+  ✓ Ready to publish.`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href="https://www.opencastle.dev/docs/teams/" />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://www.opencastle.dev/docs/teams/" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="https://www.opencastle.dev/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="https://www.opencastle.dev/og-image.png" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+  </head>
+  <body>
+    <header class="docs-header">
+      <div class="docs-header__inner">
+        <div class="docs-header__brand">
+          <a href="/" class="docs-header__logo-link">
+            <img class="docs-header__icon" src="/icon-192.png" alt="OpenCastle" width="28" height="28" />
+          </a>
+          <h1 class="docs-header__title">
+            <a href="/docs/" class="docs-header__breadcrumb-link">Docs</a>
+            <span class="docs-header__breadcrumb-sep">/</span>
+            OpenCastle for Teams
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <div class="docs-layout">
+      <nav class="docs-sidebar" id="docs-sidebar">
+        <ul class="docs-sidebar__list">
+          {overviewSections.map((s, i) => (
+            <li>
+              <a class={`docs-sidebar__link${i === 0 ? ' docs-sidebar__link--active' : ''}`} href={`#${s.id}`}>
+                <Fragment set:html={sectionIcons[s.id]} />
+                {s.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="docs-sidebar__divider"></div>
+        <p class="docs-sidebar__label">Walkthrough</p>
+        <ul class="docs-sidebar__list">
+          {walkthroughSections.map((s) => (
+            <li>
+              <a class="docs-sidebar__link" href={`#${s.id}`}>
+                <Fragment set:html={sectionIcons[s.id]} />
+                {s.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="docs-sidebar__divider"></div>
+        <p class="docs-sidebar__label">Reference</p>
+        <ul class="docs-sidebar__list">
+          {referenceSections.map((s) => (
+            <li>
+              <a class="docs-sidebar__link" href={`#${s.id}`}>
+                <Fragment set:html={sectionIcons[s.id]} />
+                {s.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <div class="docs-sidebar__divider"></div>
+        <p class="docs-sidebar__label">Adoption</p>
+        <ul class="docs-sidebar__list">
+          {adoptionSections.map((s) => (
+            <li>
+              <a class="docs-sidebar__link" href={`#${s.id}`}>
+                <Fragment set:html={sectionIcons[s.id]} />
+                {s.label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <main class="docs-main">
+        <section class="docs-hero">
+          <h2 class="docs-hero__heading">OpenCastle for Teams</h2>
+          <p class="docs-hero__sub">
+            One source for every assistant, shared across every repository you own: a
+            baseline your repositories extend, a policy for the MCP servers your agents
+            may start, a lock file that records what every assistant is given, and a
+            review that says what each change does.
+          </p>
+        </section>
+
+        <!-- ═══════════ The problem ═══════════ -->
+        <section class="docs-section" id="problem">
+          <h3 class="section-title">The Problem</h3>
+          <p>
+            A team runs several assistants side by side, and each reads its own format.
+            Without one source, nobody reviews what the agents are told, nobody notices
+            when one repository's rules drift from another's, and nobody can say which
+            MCP servers — code that runs with every developer's credentials — the agents
+            actually start.
+          </p>
+          <p>
+            OpenCastle compiles one source into the native format of seven assistants.
+            For teams it adds four things:
+          </p>
+          <ul class="docs-list">
+            <li><strong>Baselines</strong> — your organisation's instructions, skills, agents, MCP servers and policy in an npm package that every repository extends. Your package manager fetches and pins it; your upgrade bot rolls it out.</li>
+            <li><strong>Policy</strong> — which MCP servers may run, which hosts remote ones may reach, whether they must be pinned, which items no repository may drop, and how much context may load before a task. It only tightens.</li>
+            <li><strong>The lock</strong> — <code>.opencastle/lock.json</code>, one reviewable record of what every assistant is given, checked in CI.</li>
+            <li><strong>Five commands</strong> — <code>explain</code> for onboarding, <code>review</code> for pull requests, <code>ci</code> to wire it up, <code>baseline</code> to publish a standard, <code>fleet</code> to see where it has landed.</li>
+          </ul>
+        </section>
+
+        <!-- ═══════════ Layers ═══════════ -->
+        <section class="docs-section" id="layers">
+          <h3 class="section-title">Layers</h3>
+          <p>
+            What the assistants in a repository receive is built from layers. Each layer is a
+            directory laid out the same way, and later layers add to and override earlier ones.
+          </p>
+
+          <div class="architecture-card">
+            <div class="architecture-card__header">Layers, bottom to top</div>
+            <div class="architecture-card__flow">
+              <div class="architecture-card__node">OpenCastle — its own agents, skills, instructions, prompts and workflows, and the integrations your stack uses</div>
+              <div class="architecture-card__arrow">then each baseline in <code>extends</code>, in order</div>
+              <div class="architecture-card__node">@acme/opencastle-baseline — the package's <code>layer/</code></div>
+              <div class="architecture-card__arrow">then the repository itself</div>
+              <div class="architecture-card__node architecture-card__node--lead">This repository — <code>.opencastle/</code></div>
+              <div class="architecture-card__arrow">compiled into every target</div>
+              <div class="architecture-card__row">
+                <div class="architecture-card__node">Claude Code</div>
+                <div class="architecture-card__node">Copilot</div>
+                <div class="architecture-card__node">Cursor</div>
+                <div class="architecture-card__node">Windsurf</div>
+                <div class="architecture-card__node">OpenCode</div>
+                <div class="architecture-card__node">Codex CLI</div>
+                <div class="architecture-card__node">Antigravity</div>
+              </div>
+            </div>
+          </div>
+
+          <p>A layer holds any of these:</p>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead><tr><th>Path</th><th>What it is</th></tr></thead>
+              <tbody>
+                <tr><td><code>config.json</code></td><td><code>extends</code>, <code>exclude</code>, <code>mcpServers</code>, <code>policy</code> and <code>opencastle</code> — see the <a class="docs-link" href="#config">config reference</a></td></tr>
+                <tr><td><code>instructions/*.md</code></td><td>Rules every assistant reads before every task</td></tr>
+                <tr><td><code>{'skills/<name>/SKILL.md'}</code></td><td>Knowledge an assistant loads when a task matches the skill's <code>description</code></td></tr>
+                <tr><td><code>agents/*.agent.md</code></td><td>Personas to delegate to</td></tr>
+                <tr><td><code>prompts/*.md</code></td><td>Reusable prompts and commands</td></tr>
+                <tr><td><code>workflows/*.md</code></td><td>Multi-step workflow templates</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            In a repository the layer is <code>.opencastle/</code>. In a baseline it is the
+            directory the package names in its <code>package.json</code>:
+            <code>{'"opencastle": { "baseline": "layer" }'}</code>. Only <code>config.json</code>
+            and the five content directories are read as a layer; the rest of
+            <code>.opencastle/</code> — stack notes, lessons, the manifest — is not part of it.
+          </p>
+          <p>
+            Items are named by kind and name: <code>skills/deploy-runbook</code>,
+            <code>instructions/security</code>, <code>agents/reviewer</code>. An item with the
+            same name as one below replaces it whole — a skill's directory is not merged file by
+            file. <code>exclude</code> removes an item from below. <code>sync</code> fills in
+            what each assistant's format needs: an instruction with no frontmatter is given
+            <code>{"applyTo: '**'"}</code>, so Copilot loads it everywhere as the other assistants
+            do. An instruction with frontmatter of its own is passed through as written, so
+            include <code>{"applyTo: '**'"}</code> in it, or Copilot will not load it on its own. A
+            skill or agent with no <code>description</code> compiles with a warning: no
+            assistant can tell when to load a skill that does not describe itself.
+          </p>
+          <div class="key-insight">
+            <p><strong>Policy runs the other way.</strong> Content from a higher layer wins; rules from a lower layer hold. A repository can add to its baseline's policy and make it stricter, but nothing it writes loosens what the baseline set.</p>
+          </div>
+        </section>
+
+        <div class="section-divider">
+          <span class="section-divider__line"></span>
+          <span class="section-divider__label">Walkthrough</span>
+          <span class="section-divider__line"></span>
+        </div>
+
+        <!-- ═══════════ Worked example ═══════════ -->
+        <section class="docs-section" id="example">
+          <h3 class="section-title">Worked Example</h3>
+          <p>
+            Acme publishes a baseline, <code>@acme/opencastle-baseline</code>. A repository called
+            <em>shop</em> extends it, adds a skill of its own and two MCP servers. The output below
+            comes from that setup, with long lists trimmed.
+          </p>
+
+          <h4 class="arch-subheading">1. The baseline package</h4>
+          <pre><code>{baselineTree}</code></pre>
+          <pre><code>{baselineConfig}</code></pre>
+          <p>
+            Two always-loaded instructions and a skill, one remote MCP server for every repository,
+            and a policy: six allowed server names, one of them a wildcard for Acme's own servers; two
+            hosts; exact versions; two items no repository may drop; and a budget of 12,000 tokens
+            loaded before each task.
+          </p>
+
+          <h4 class="arch-subheading">2. The repository</h4>
+          <p>
+            <em>shop</em> installs the baseline as a devDependency — <code>npm i -D @acme/opencastle-baseline</code> —
+            so the version lives in <code>package.json</code> and the lockfile pins it. Then it extends it:
+          </p>
+          <pre><code>{projectConfig}</code></pre>
+          <p>
+            It also has a skill of its own, <code>.opencastle/skills/deploy-runbook/SKILL.md</code>, and
+            leaves out an OpenCastle skill it has no use for. <code>npx opencastle sync</code> compiles all of it:
+          </p>
+          <pre><code>{syncOutput}</code></pre>
+
+          <h4 class="arch-subheading">3. Each assistant gets its own spelling</h4>
+          <p>
+            The variable is written once, as <code>{'${ACME_DOCS_TOKEN}'}</code>. There is no syntax every
+            assistant expands, so each receives its own:
+          </p>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead><tr><th>Assistant</th><th>File</th><th>The header it receives</th></tr></thead>
+              <tbody>
+                <tr><td>Claude Code</td><td><code>.mcp.json</code></td><td><code>{'Bearer ${ACME_DOCS_TOKEN}'}</code></td></tr>
+                <tr><td>Cursor, Windsurf</td><td><code>.cursor/mcp.json</code>, <code>.windsurf/mcp.json</code></td><td><code>{'Bearer ${env:ACME_DOCS_TOKEN}'}</code></td></tr>
+                <tr><td>OpenCode</td><td><code>opencode.json</code></td><td><code>{'Bearer {env:ACME_DOCS_TOKEN}'}</code></td></tr>
+                <tr><td>VS Code</td><td><code>.vscode/mcp.json</code></td><td><code>{'Bearer ${input:ACME_DOCS_TOKEN}'}</code> — a password input VS Code asks for once and keeps</td></tr>
+                <tr><td>Codex CLI, Antigravity</td><td><code>.codex/mcp.json</code>, <code>.agents/mcp_config.json</code></td><td><code>{'Bearer ${ACME_DOCS_TOKEN}'}</code>, until their syntax is confirmed</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            For <code>acme-db</code>, whose <code>env</code> only passes <code>ACME_DB_URL</code> through,
+            VS Code gets <code>{'"envFile": "${workspaceFolder}/.env"'}</code> instead of a prompt.
+          </p>
+
+          <h4 class="arch-subheading">4. What a new teammate sees: explain</h4>
+          <p>
+            Someone joining the team runs one command to learn what their assistant is given here and
+            what they still have to do:
+          </p>
+          <pre><code>{explainOutput}</code></pre>
+
+          <h4 class="arch-subheading">5. What CI checks: doctor and sync --check</h4>
+          <pre><code>{doctorOutput}</code></pre>
+          <p>
+            The warning is <code>doctor</code> reading the team's own content: the deploy skill tells
+            every agent to run a script and read a file that do not exist in this repository, and an agent
+            would follow it.
+          </p>
+          <p>
+            Now suppose someone adds a server called <code>scratchpad</code>, launched as
+            <code>npx -y scratchpad-mcp</code>, to <em>shop</em>'s <code>mcpServers</code>. The baseline
+            does not allow it and requires exact versions, so <code>sync</code> refuses and writes nothing:
+          </p>
+          <pre><code>{refusedOutput}</code></pre>
+          <p>
+            <code>sync --check</code> and <code>doctor</code> fail with the same two problems. A server
+            added by hand to an MCP config is held to the same policy:
+          </p>
+          <pre><code>{handAddedOutput}</code></pre>
+
+          <h4 class="arch-subheading">6. What a reviewer sees: review</h4>
+          <p>
+            A pull request moves the baseline from 1.4.0 to 1.5.0 — which adds an instruction, changes
+            a skill and allows Sentry — and in the same change <em>shop</em> bumps its database server and
+            adds <code>acme-flags</code>. Most of the diff is regenerated files in four assistants' formats.
+            <code>opencastle review</code> writes this to the job summary instead:
+          </p>
+          <pre><code>{reviewOutput}</code></pre>
+
+          <h4 class="arch-subheading">7. Across repositories: fleet</h4>
+          <p>
+            Acme's platform team checks where the new version has landed, from the locks committed in
+            each checkout:
+          </p>
+          <pre><code>{fleetOutput}</code></pre>
+        </section>
+
+        <div class="section-divider">
+          <span class="section-divider__line"></span>
+          <span class="section-divider__label">Reference</span>
+          <span class="section-divider__line"></span>
+        </div>
+
+        <!-- ═══════════ Config reference ═══════════ -->
+        <section class="docs-section" id="config">
+          <h3 class="section-title">Config Reference</h3>
+          <p>
+            <code>.opencastle/config.json</code> in a repository; <code>config.json</code> at the root of a
+            baseline's layer. It is JSON with comments and trailing commas allowed. Point
+            <code>$schema</code> at <a class="docs-link" href="/schema/config.json">https://www.opencastle.dev/schema/config.json</a>
+            for completion in your editor. An unknown key is an error; when it is close to a real one, the
+            message suggests the key you probably meant.
+          </p>
+          <pre><code>{fullConfig}</code></pre>
+
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead><tr><th>Field</th><th>Type</th><th>What it does</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><code>extends</code></td><td>string[]</td>
+                  <td>Baselines to build on; the first entry is the lowest layer. Either a package name — installed as a devDependency and found in <code>node_modules</code> from this file's directory upwards, the way Node finds a package — or a path starting with <code>./</code> or <code>../</code>, relative to this file. A version here (<code>pkg@1.2.3</code>) is refused: it belongs in <code>package.json</code>, where your lockfile pins it. Absolute paths are refused too. A baseline's own <code>extends</code> load beneath it; one reached twice loads once; a cycle is an error.</td>
+                </tr>
+                <tr>
+                  <td><code>exclude</code></td><td>string[]</td>
+                  <td>Items from the layers below to leave out, as <code>kind/name</code>: <code>skills/seo-patterns</code>, <code>agents/researcher</code>. Naming something no lower layer provides is a warning. Excluding an item a lower layer's policy requires is an error.</td>
+                </tr>
+                <tr>
+                  <td><code>mcpServers</code></td><td>object</td>
+                  <td>Servers every assistant gets, keyed by name (letters, digits, <code>.</code>, <code>_</code> and <code>-</code>). A layer above can redefine a server by name, and a team server named like an integration's replaces it. <code>sync</code> writes them exactly as defined, rewrites an entry someone edited in a target's MCP config, and removes one an earlier sync wrote that no layer defines any more.</td>
+                </tr>
+                <tr>
+                  <td><code>…command</code>, <code>args</code>, <code>env</code></td><td>string, string[], object</td>
+                  <td>A local server: what to run, its arguments, and its environment.</td>
+                </tr>
+                <tr>
+                  <td><code>…url</code>, <code>headers</code></td><td>string, object</td>
+                  <td>A remote server: its http(s) URL and the headers to send. A server has either <code>command</code> or <code>url</code>, never both.</td>
+                </tr>
+                <tr>
+                  <td><code>…type</code>, <code>description</code></td><td>string</td>
+                  <td><code>type</code> is <code>stdio</code> or <code>http</code>, inferred from <code>command</code> or <code>url</code> when left out. <code>description</code> is for people reading the config; it is not written to the assistants' files.</td>
+                </tr>
+                <tr>
+                  <td><code>policy.mcp.allow</code></td><td>string[]</td>
+                  <td>Server names an assistant may start; <code>*</code> matches any run of characters. See <a class="docs-link" href="#policy">Policy</a>.</td>
+                </tr>
+                <tr>
+                  <td><code>policy.mcp.remoteHosts</code></td><td>string[]</td>
+                  <td>Hosts remote servers may connect to. <code>*.acme.dev</code> matches any subdomain of acme.dev, not acme.dev itself; anything else must match exactly.</td>
+                </tr>
+                <tr>
+                  <td><code>policy.mcp.requirePinned</code></td><td>boolean</td>
+                  <td>Every server launched through a package runner (<code>npx</code>, <code>npm exec</code>, <code>pnpm dlx</code>, <code>yarn dlx</code>, <code>bunx</code>, <code>uvx</code>, <code>pipx run</code>) names an exact version, or runs the project's own copy with <code>npx --no</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>policy.require</code></td><td>string[]</td>
+                  <td>Items, as <code>kind/name</code>, that no layer above may exclude or replace.</td>
+                </tr>
+                <tr>
+                  <td><code>policy.contextBudget</code></td><td>integer</td>
+                  <td>Tokens every assistant may load before it reads the task: the always-loaded instructions plus the index of skills and agents, estimated at four characters per token.</td>
+                </tr>
+                <tr>
+                  <td><code>opencastle</code></td><td>string</td>
+                  <td>The OpenCastle versions this layer works with, as a semver range: exact, <code>^</code>, <code>~</code>, <code>0.35.x</code>, comparators such as <code>{'>=0.35.0 <0.37.0'}</code>, and <code>||</code>. Every layer's range must hold, or nothing compiles.</td>
+                </tr>
+                <tr>
+                  <td><code>$schema</code></td><td>string</td>
+                  <td>The published schema, for your editor. Ignored when compiling.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            <strong>Variables.</strong> Write every variable as <code>{'${NAME}'}</code> in <code>env</code>,
+            <code>headers</code>, <code>args</code> or <code>url</code>; <code>{'${env:NAME}'}</code> and
+            <code>{'{env:NAME}'}</code> are read as the same thing. Keep the values in <code>.env</code> or
+            your shell. <code>explain</code> lists every variable the servers read and whether you have set it.
+          </p>
+        </section>
+
+        <!-- ═══════════ Policy ═══════════ -->
+        <section class="docs-section" id="policy">
+          <h3 class="section-title">Policy</h3>
+          <p>
+            Policy is how the owners of a baseline make a standard hold in every repository that
+            extends it. Any layer can add to it; no layer can loosen what a layer below set.
+          </p>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead><tr><th>Rule</th><th>How layers combine</th><th>When it is broken</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><code>mcp.allow</code></td>
+                  <td>A server must be on every layer's list. Allowing a server a lower layer refuses has no effect, and says so.</td>
+                  <td>A team server: compile error. An integration's server: left out of every assistant, with the reason in the lock and in <code>explain</code>. Any other server in an MCP config, such as one added by hand: <code>doctor</code> and <code>sync --check</code> fail.</td>
+                </tr>
+                <tr>
+                  <td><code>mcp.remoteHosts</code></td>
+                  <td>A remote server's host must be on every layer's list.</td>
+                  <td>As for <code>allow</code>.</td>
+                </tr>
+                <tr>
+                  <td><code>mcp.requirePinned</code></td>
+                  <td>Once a layer turns it on, it stays on; <code>false</code> above it has no effect, and says so.</td>
+                  <td>A team server: compile error. A server in an MCP config: <code>doctor</code> and <code>sync --check</code> fail. Without the rule, an unpinned server is only a warning.</td>
+                </tr>
+                <tr>
+                  <td><code>require</code></td>
+                  <td>Accumulates.</td>
+                  <td>Excluding or replacing a required item: compile error.</td>
+                </tr>
+                <tr>
+                  <td><code>contextBudget</code></td>
+                  <td>The smallest wins.</td>
+                  <td>Not an error. <code>doctor</code> warns and names the largest contributors; <code>review</code> marks the change ⚠️.</td>
+                </tr>
+                <tr>
+                  <td><code>opencastle</code></td>
+                  <td>Every layer's range must hold.</td>
+                  <td>Compile error.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            <strong>Credentials</strong> need no policy. A team server with a credential written into it —
+            a value in <code>env</code>, <code>headers</code>, <code>args</code> or the URL shaped like a real
+            token, or a long random value under a name such as <code>TOKEN</code> or <code>API_KEY</code> — is a
+            compile error, and the same in any MCP config fails <code>doctor</code> and <code>sync --check</code>.
+            The message names where the credential is, never its value.
+          </p>
+          <p>
+            <strong>A compile error</strong> means <code>sync</code> writes nothing and says why;
+            <code>sync --check</code> and <code>doctor</code> fail with the same message; <code>review</code>
+            and <code>explain</code> refuse, because there is nothing coherent to describe.
+          </p>
+          <div class="key-insight">
+            <p><strong>Why integration servers are left out rather than refused:</strong> your team chose the policy, and an integration's skill is still useful without its server. A server your own layers define is a decision someone made in the config, so a conflict with the policy stops the build.</p>
+          </div>
+        </section>
+
+        <!-- ═══════════ Lock ═══════════ -->
+        <section class="docs-section" id="lock">
+          <h3 class="section-title">The Lock File</h3>
+          <p>
+            <code>sync</code> writes <code>.opencastle/lock.json</code>. Commit it. One change to a baseline
+            regenerates dozens of files across several assistants, and nobody reviews that; the lock is the
+            one file that says, in a shape a person can read, what every assistant is given.
+          </p>
+          <ul class="docs-list">
+            <li><strong>Layers</strong> — each with its version, and for a baseline a digest of its content, so a baseline that changed without a version bump still shows.</li>
+            <li><strong>Content</strong> — every instruction, skill, agent, prompt and workflow, with the layer it came from (or the integration, as <code>plugin:&lt;id&gt;</code>), a hash of what was compiled, what it replaced, its description, and for instructions an estimate of their tokens.</li>
+            <li><strong>MCP servers</strong> — each with where it came from, whether it is local or remote, the command line or URL, and the names of the variables it reads. Integration servers the policy refused are listed under <code>blocked</code>, with why.</li>
+            <li><strong>Policy</strong> — the effective rules, and which layer set each.</li>
+            <li><strong>Context</strong> — the tokens every assistant loads before a task.</li>
+          </ul>
+          <pre><code>{lockExcerpt}</code></pre>
+          <p>
+            It is deterministic — no timestamps, no absolute paths, keys in a fixed order — so it changes only
+            when what the assistants get changes, and two branches conflict on it only when they disagree.
+            <code>sync --check</code> fails when it is missing or stale. Do not edit it: change
+            <code>.opencastle/</code> or the baseline and run <code>sync</code>.
+          </p>
+          <p>
+            Every change to what an assistant is given moves the lock, so owning the lock routes all of them to
+            the right reviewers. <code>opencastle ci --owners @acme/platform</code> appends this to
+            <code>.github/CODEOWNERS</code>:
+          </p>
+          <pre><code>{codeowners}</code></pre>
+        </section>
+
+        <!-- ═══════════ Team commands ═══════════ -->
+        <section class="docs-section" id="commands">
+          <h3 class="section-title">Team Commands</h3>
+          <p>
+            Five commands, each described in full in the <a class="docs-link" href="/docs/cli#teams">CLI reference</a>.
+          </p>
+
+          <h4 class="arch-subheading">explain</h4>
+          <pre><code>npx opencastle explain [--all] [--json]</code></pre>
+          <p>
+            What every assistant here is given: the layers, what is always loaded and what it costs, the team's
+            skills, agents, prompts and workflows by origin (<code>--all</code> lists OpenCastle's own too), the
+            MCP servers, the policy, and under <em>Your setup</em> the variables you have not set and the servers
+            that will ask you to sign in. A variable counts as set when it is in your shell or in <code>.env</code>
+            at the project root.
+          </p>
+
+          <h4 class="arch-subheading">review</h4>
+          <pre><code>npx opencastle review [--base &lt;ref&gt;] [--markdown] [--json]</code></pre>
+          <p>
+            Compares the lock committed at <code>--base</code> (default <code>HEAD</code>; on a GitHub Actions pull
+            request, <code>origin/&lt;base branch&gt;</code>) with what the current sources compile to, and says what
+            changed in sentences. It marks ⚠️: a baseline added, dropped, or changed without a version change; a new
+            or changed always-loaded instruction; a required item that moved or went; every new MCP server, and one
+            that now launches differently or reads different variables; a widened or removed allowlist or host list;
+            pinning or a requirement dropped; the budget removed; and context growth over 10% or past the
+            budget. On GitHub Actions it also appends the Markdown to the job summary. It exits 0 whatever it finds —
+            <code>sync --check</code> is the gate — and 1 only when it cannot compare, for instance when the base is
+            not a commit here; in CI, check out with <code>fetch-depth: 0</code>. If the committed lock is stale, it
+            says so first.
+          </p>
+
+          <h4 class="arch-subheading">ci</h4>
+          <pre><code>npx opencastle ci [--owners &lt;team&gt;] [--force] [--dry-run]</code></pre>
+          <p>
+            Writes <code>.github/workflows/opencastle.yml</code>. For <em>shop</em>, <code>--dry-run</code> shows this
+            workflow:
+          </p>
+          <pre><code>{ciWorkflow}</code></pre>
+          <p>
+            It installs dependencies with the package manager your lockfile names (npm, pnpm, Yarn or Bun), so
+            baselines resolve. When <code>opencastle</code> is one of your devDependencies it runs that copy —
+            <code>npx --no opencastle</code>, <code>pnpm exec opencastle</code> or <code>yarn opencastle</code> —
+            so laptops and CI run the version your lockfile pins. Otherwise, as here, it pins the release that last
+            compiled the project and tells you to add the devDependency. Run it from a subdirectory of a monorepo and
+            the workflow is named after that directory, filtered to its paths, and runs there. An existing workflow is
+            replaced only with <code>--force</code>; CODEOWNERS is left alone if it already routes the lock.
+          </p>
+
+          <h4 class="arch-subheading">baseline</h4>
+          <pre><code>npx opencastle baseline &lt;init|check&gt; [dir] [--name &lt;pkg&gt;] [--json]</code></pre>
+          <p>
+            <code>init</code> scaffolds a baseline package in <code>./opencastle-baseline</code> or the directory you
+            name: a <code>package.json</code> that declares the layer and ships it in <code>"files"</code>, a
+            <code>layer/</code> with an example instruction, skill and policy, a README on publishing and adopting it,
+            and a CI workflow that runs <code>check</code>. It refuses a directory that already has a
+            <code>package.json</code>. <code>check</code> resolves the baseline exactly as a repository extending it
+            would and reports what it contributes and how many tokens load up front. It fails — exit 1 — when the
+            package does not declare <code>{'"opencastle": { "baseline": "<dir>" }'}</code>, when <code>"files"</code>
+            would leave the layer out of <code>npm publish</code>, or when the config, content or policy has an error.
+          </p>
+          <pre><code>{baselineCheckOutput}</code></pre>
+
+          <h4 class="arch-subheading">fleet</h4>
+          <pre><code>npx opencastle fleet &lt;dir...&gt; [--json]</code></pre>
+          <p>
+            Reads the committed <code>.opencastle/lock.json</code> of each directory — nothing is installed or
+            fetched — and shows which OpenCastle and baseline versions each repository runs, which lag behind the
+            newest, and which MCP servers launch differently across them. Directories without
+            <code>.opencastle/</code> are skipped; one without a lock is listed as not yet synced by a release that
+            writes one.
+          </p>
+
+          <h4 class="arch-subheading">And what changed in doctor and sync</h4>
+          <p>
+            <code>doctor</code> now also reports whether the team sources resolve; the always-loaded context
+            against the budget, naming the three largest contributors when it is over; <code>npm run</code> scripts
+            named anywhere in team content, and backticked paths named in the repository's own content, that no longer
+            exist; and an OpenCastle older than the one that compiled the project. <code>sync</code> refuses to
+            compile with an older release than the one that last compiled the project — it would replace newer output
+            with older, and the next teammate's sync would put it back — unless you pass <code>--force</code>.
+          </p>
+        </section>
+
+        <div class="section-divider">
+          <span class="section-divider__line"></span>
+          <span class="section-divider__label">Adoption</span>
+          <span class="section-divider__line"></span>
+        </div>
+
+        <!-- ═══════════ Rollout ═══════════ -->
+        <section class="docs-section" id="rollout">
+          <h3 class="section-title">Rollout Recipe</h3>
+          <ol class="steps">
+            <li>
+              <strong>Create the baseline.</strong> <code>npx opencastle baseline init --name @acme/opencastle-baseline</code>.
+              Move the rules every repository shares into <code>layer/instructions/</code> and keep them short — every
+              token there loads before every task in every repository. Put detail in <code>layer/skills/</code>, which
+              loads only when a task needs it. Set the policy in <code>layer/config.json</code>.
+            </li>
+            <li>
+              <strong>Check and publish.</strong> <code>npx opencastle baseline check</code> validates it the way every
+              repository will read it; the scaffolded workflow runs the same check on every pull request. Publish it to
+              your registry like any other package.
+            </li>
+            <li>
+              <strong>Adopt it in each repository.</strong> <code>npm i -D @acme/opencastle-baseline opencastle</code>,
+              add <code>{'"extends": ["@acme/opencastle-baseline"]'}</code> to <code>.opencastle/config.json</code>,
+              run <code>npx opencastle sync</code>, and commit the generated files and the lock. Having
+              <code>opencastle</code> in devDependencies means everyone runs one version.
+            </li>
+            <li>
+              <strong>Wire up CI.</strong> <code>npx opencastle ci --owners @acme/platform</code>, then commit the
+              workflow and <code>.github/CODEOWNERS</code>.
+            </li>
+            <li>
+              <strong>Let your upgrade bot roll out new versions.</strong> When you publish a new baseline, Renovate or
+              Dependabot opens one pull request per repository. The bot changes only <code>package.json</code> and your
+              lockfile, so <code>sync --check</code> fails on its pull request until someone runs
+              <code>npx opencastle sync</code> on the branch and pushes. That is the point: the review summary on the
+              same pull request says what the new version changes in that repository before anyone merges it.
+            </li>
+            <li>
+              <strong>Review in pull requests.</strong> Read the ⚠️ lines closely: a new MCP server, a widened
+              allowlist, a new always-loaded instruction. With CODEOWNERS in place, the owners approve every change to
+              what the assistants are given.
+            </li>
+            <li>
+              <strong>Watch the fleet.</strong> <code>npx opencastle fleet ~/src/*</code> over your checkouts shows who
+              is behind and which servers run at different versions.
+            </li>
+          </ol>
+        </section>
+
+        <!-- ═══════════ Limits ═══════════ -->
+        <section class="docs-section" id="limits">
+          <h3 class="section-title">Limits</h3>
+          <ul class="docs-list">
+            <li><strong>OpenCastle fetches nothing.</strong> A baseline must be installed where Node would find it — npm, pnpm, Yarn and workspaces all work, and so does a git dependency your package manager installs. CI must install dependencies before it runs OpenCastle; the workflow <code>ci</code> writes does.</li>
+            <li><strong>GitHub Actions only, for now.</strong> <code>ci</code> writes a GitHub Actions workflow, and the annotations and job summary are GitHub's. Elsewhere, run <code>sync --check</code> and <code>review --markdown</code> in your own pipeline. <code>review</code> writes to the job summary, not a pull request comment.</li>
+            <li><strong><code>fleet</code> reads checkouts.</strong> There is no hosted view; you point it at directories you have cloned.</li>
+            <li><strong>The context figure is an estimate.</strong> It is one number — four characters per token over the merged instructions and the skill and agent index — not a measurement of what each assistant loads.</li>
+            <li><strong>A pin fixes a server's own version,</strong> not its dependencies, which <code>npx</code> resolves on each machine. Launching the project's own copy with <code>npx --no</code>, or a remote server, avoids that.</li>
+            <li><strong>Codex CLI, Windsurf and Antigravity are less certain.</strong> Codex CLI and Antigravity receive <code>{'${NAME}'}</code> until their variable syntax is confirmed. OpenCastle writes <code>.codex/mcp.json</code>, while Codex CLI configures MCP servers in TOML, and Windsurf's MCP config is documented as one global file — so team servers may not reach those assistants yet.</li>
+            <li><strong>Replacing is all or nothing.</strong> A layer that provides an item with the same name replaces the whole item; two layers' versions of one skill are never merged.</li>
+            <li><strong>Policy covers what is present, not what it says.</strong> It decides which servers run and which items must exist; it does not read the text of instructions.</li>
+            <li><strong>Dead references are checked narrowly.</strong> Scripts named as <code>npm run</code> (or <code>pnpm</code>, <code>yarn</code>, <code>bun run</code>) are checked in all team content; backticked paths only in the repository's own content, and only under a top-level directory that exists.</li>
+          </ul>
+          <p>
+            What is still open, and why: <a class="docs-link" href="https://github.com/monkilabs/opencastle/blob/main/docs/teams.md" target="_blank" rel="noopener noreferrer">docs/teams.md</a>.
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <footer class="footer">
+      <div class="footer__inner">
+        <span class="footer__copyright">
+          MIT License · Filip Mares · 2026
+        </span>
+        <ul class="footer__links">
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="https://github.com/monkilabs/opencastle" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="https://github.com/monkilabs/opencastle/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a></li>
+        </ul>
+      </div>
+    </footer>
+
+    <style>
+      :root {
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #111118;
+        --bg-tertiary: #1a1a24;
+        --border-primary: #1e1e2e;
+        --border-secondary: #2a2a3a;
+        --border-color: rgba(255, 255, 255, 0.06);
+        --text-primary: #e2e2e8;
+        --text-secondary: #8888a0;
+        --text-tertiary: #55556a;
+        --text-accent: #a78bfa;
+        --accent-glow: rgba(167, 139, 250, .12);
+        --max-width: 1280px;
+        --transition-fast: .15s ease;
+      }
+
+      /* ── Header ── */
+      .docs-header {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: rgba(10, 10, 15, .85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-primary);
+        height: 56px;
+      }
+      .docs-header__inner {
+        max-width: var(--max-width);
+        margin: 0 auto;
+        padding: 0 1.5rem;
+        height: 100%;
+        display: flex;
+        align-items: center;
+      }
+      .docs-header__brand {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+      }
+      .docs-header__logo-link {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+      }
+      .docs-header__breadcrumb-link {
+        color: var(--text-secondary);
+        text-decoration: none;
+        transition: color var(--transition-fast);
+      }
+      .docs-header__breadcrumb-link:hover {
+        color: var(--text-accent);
+      }
+      .docs-header__breadcrumb-sep {
+        color: var(--text-tertiary);
+        margin: 0 2px;
+        font-weight: 400;
+      }
+      .docs-header__icon { border-radius: 6px; }
+      .docs-header__title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -.01em;
+      }
+
+      /* ── Layout ── */
+      .docs-layout {
+        display: flex;
+        max-width: var(--max-width);
+        margin: 0 auto;
+        position: relative;
+      }
+
+      /* ── Sidebar ── */
+      .docs-sidebar {
+        position: sticky;
+        top: 56px;
+        height: calc(100vh - 56px);
+        width: 200px;
+        flex-shrink: 0;
+        padding: 24px 0 24px 24px;
+        overflow-y: auto;
+        display: none;
+      }
+      @media (min-width: 1024px) {
+        .docs-sidebar { display: block; }
+      }
+      .docs-sidebar__list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .docs-sidebar__link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 14px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--text-tertiary);
+        text-decoration: none;
+        border-radius: 8px;
+        transition: color var(--transition-fast), background var(--transition-fast);
+        line-height: 1.4;
+      }
+      .docs-sidebar__link:hover {
+        color: var(--text-secondary);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .docs-sidebar__link--active {
+        color: var(--text-accent);
+        background: rgba(167, 139, 250, 0.08);
+        font-weight: 600;
+      }
+      .docs-sidebar__link :global(svg) {
+        flex-shrink: 0;
+        opacity: 0.7;
+      }
+      .docs-sidebar__link--active :global(svg) {
+        opacity: 1;
+      }
+      .docs-sidebar__divider {
+        height: 1px;
+        background: var(--border-primary);
+        margin: 12px 14px;
+      }
+      .docs-sidebar__label {
+        font-size: .65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--text-tertiary);
+        padding: 8px 14px 4px;
+      }
+
+      /* ── Main ── */
+      .docs-main {
+        flex: 1;
+        min-width: 0;
+        max-width: 860px;
+        padding: 32px 24px 64px;
+      }
+
+      /* ── Hero ── */
+      .docs-hero {
+        margin-bottom: 2.5rem;
+      }
+      .docs-hero__heading {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -.02em;
+        margin-bottom: .5rem;
+      }
+      .docs-hero__sub {
+        color: var(--text-secondary);
+        font-size: 1.05rem;
+        line-height: 1.6;
+      }
+
+      /* ── Sections ── */
+      .docs-section {
+        margin-bottom: 3rem;
+        scroll-margin-top: 72px;
+      }
+      .docs-section p {
+        color: var(--text-secondary);
+        font-size: .95rem;
+        line-height: 1.7;
+        margin-bottom: 1rem;
+      }
+      .docs-section p strong,
+      .docs-section p em {
+        color: var(--text-primary);
+      }
+      .section-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        letter-spacing: -.01em;
+        margin-bottom: .75rem;
+        padding-bottom: .5rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .arch-subheading {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: -.01em;
+        margin: 1.75rem 0 .6rem;
+      }
+      .section-divider {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin: 3rem 0 2rem;
+      }
+      .section-divider__line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border-secondary), transparent);
+      }
+      .section-divider__label {
+        font-size: .75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--text-accent);
+        white-space: nowrap;
+      }
+
+      /* ── Lists ── */
+      .docs-list {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 1.5rem;
+      }
+      .docs-list li {
+        color: var(--text-secondary);
+        font-size: .9rem;
+        line-height: 1.6;
+        padding-left: 1.25rem;
+        position: relative;
+        margin-bottom: .5rem;
+      }
+      .docs-list li::before {
+        content: '→';
+        position: absolute;
+        left: 0;
+        color: var(--text-accent);
+      }
+      .docs-list li strong {
+        color: var(--text-primary);
+      }
+      .steps {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 1.5rem;
+        counter-reset: step;
+      }
+      .steps li {
+        counter-increment: step;
+        position: relative;
+        padding: .75rem 0 .75rem 2.5rem;
+        color: var(--text-secondary);
+        font-size: .9rem;
+        line-height: 1.7;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .steps li:last-child {
+        border-bottom: none;
+      }
+      .steps li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: .85rem;
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 50%;
+        background: rgba(167, 139, 250, .12);
+        color: var(--text-accent);
+        font-size: .75rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .steps li strong {
+        color: var(--text-primary);
+      }
+      .docs-link { color: var(--text-accent); text-decoration: none; }
+      .docs-link:hover { text-decoration: underline; }
+
+      /* ── Key insight ── */
+      .key-insight {
+        padding: 1.25rem;
+        background: var(--accent-glow);
+        border: 1px solid rgba(167, 139, 250, .2);
+        border-radius: 10px;
+        margin: 1rem 0 1.5rem;
+      }
+      .key-insight p {
+        color: var(--text-secondary);
+        font-size: .9rem;
+        line-height: 1.6;
+        margin: 0;
+      }
+      .key-insight strong {
+        color: var(--text-accent);
+      }
+
+      /* ── Layer diagram ── */
+      .architecture-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-primary);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+      }
+      .architecture-card__header {
+        padding: .75rem 1.25rem;
+        font-size: .8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--text-accent);
+        border-bottom: 1px solid var(--border-primary);
+        background: rgba(167, 139, 250, 0.04);
+      }
+      .architecture-card__flow {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .75rem;
+        padding: 1.5rem;
+        text-align: center;
+      }
+      .architecture-card__node {
+        padding: .5rem 1.25rem;
+        border-radius: 8px;
+        font-size: .85rem;
+        font-weight: 600;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-secondary);
+        color: var(--text-primary);
+      }
+      .architecture-card__node--lead {
+        background: rgba(167, 139, 250, 0.1);
+        border-color: rgba(167, 139, 250, 0.3);
+        color: var(--text-accent);
+      }
+      .architecture-card__arrow {
+        font-size: .75rem;
+        color: var(--text-tertiary);
+        font-style: italic;
+      }
+      .architecture-card__row {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .architecture-card__row .architecture-card__node {
+        font-size: .75rem;
+        padding: .35rem .75rem;
+      }
+
+      /* ── Tables ── */
+      .comparison-table-wrap {
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+        border-radius: 10px;
+        border: 1px solid var(--border-primary);
+      }
+      .comparison-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .875rem;
+      }
+      .comparison-table thead tr {
+        background: rgba(167, 139, 250, 0.06);
+        border-bottom: 1px solid var(--border-secondary);
+      }
+      .comparison-table th {
+        padding: .65rem 1rem;
+        text-align: left;
+        font-size: .75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--text-accent);
+        white-space: nowrap;
+      }
+      .comparison-table td {
+        padding: .65rem 1rem;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: top;
+      }
+      .comparison-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+      .comparison-table tbody tr:nth-child(even) td {
+        background: rgba(255, 255, 255, 0.015);
+      }
+      .comparison-table td:first-child {
+        font-weight: 600;
+        color: var(--text-primary);
+        white-space: nowrap;
+      }
+
+      /* ── Code ── */
+      code {
+        background: var(--bg-tertiary);
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        color: #c9d1d9;
+        font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      }
+      pre {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 8px 0 16px;
+        overflow-x: auto;
+      }
+      pre code {
+        display: block;
+        padding: 16px;
+        background: none;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        white-space: pre;
+      }
+
+      /* ── Mobile sidebar toggle ── */
+      .docs-mobile-toggle {
+        display: none;
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 60;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        transition: background var(--transition-fast);
+      }
+      .docs-mobile-toggle:hover { background: var(--bg-tertiary); }
+      @media (max-width: 1023px) {
+        .docs-mobile-toggle { display: flex; }
+        .docs-sidebar--open {
+          display: block;
+          position: fixed;
+          top: 56px;
+          left: 0;
+          width: 220px;
+          height: calc(100vh - 56px);
+          background: var(--bg-secondary);
+          border-right: 1px solid var(--border-color);
+          z-index: 55;
+          padding: 16px;
+        }
+      }
+      @media (max-width: 640px) {
+        .comparison-table td:first-child { white-space: normal; }
+      }
+    </style>
+
+    <button class="docs-mobile-toggle" id="mobile-toggle" type="button" aria-label="Toggle navigation">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+
+    <script>
+      const sidebar = document.getElementById('docs-sidebar');
+      const mobileToggle = document.getElementById('mobile-toggle');
+      const sidebarLinks = sidebar?.querySelectorAll('.docs-sidebar__link');
+
+      // Highlight the section in view
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            sidebarLinks?.forEach(link => {
+              link.classList.toggle('docs-sidebar__link--active',
+                link.getAttribute('href') === `#${entry.target.id}`);
+            });
+          }
+        });
+      }, { rootMargin: '-80px 0px -60% 0px' });
+
+      document.querySelectorAll('.docs-section').forEach(s => observer.observe(s));
+
+      mobileToggle?.addEventListener('click', () => {
+        sidebar?.classList.toggle('docs-sidebar--open');
+      });
+
+      sidebarLinks?.forEach(link => {
+        link.addEventListener('click', () => {
+          sidebar?.classList.remove('docs-sidebar--open');
+        });
+      });
+
+      document.addEventListener('click', (e) => {
+        if (sidebar?.classList.contains('docs-sidebar--open') &&
+            !sidebar.contains(e.target as Node) &&
+            e.target !== mobileToggle) {
+          sidebar.classList.remove('docs-sidebar--open');
+        }
+      });
+    </script>
+  </body>
+</html>

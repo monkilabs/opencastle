@@ -107,6 +107,48 @@ On GitHub Actions the same step also annotates each drifted file in the pull
 request, with that file's own fix, and writes a table to the run's summary page.
 Other CI systems get the plain report and the exit code.
 
+## For a team
+
+When the setup is shared — by several people, or several repositories — three
+commands do most of the work.
+
+```bash
+opencastle ci --owners @acme/platform
+```
+
+This writes `.github/workflows/opencastle.yml` (if you wrote one in step 4, pass
+`--force` to replace it). It installs your dependencies, runs `sync --check`, and on a
+pull request adds `opencastle review`'s summary of what the change does to every
+assistant. `--owners` adds CODEOWNERS lines so changes to
+`.opencastle/lock.json` and `.opencastle/config.json` go to those reviewers.
+
+To share one standard across repositories, put it in a baseline package:
+
+```bash
+opencastle baseline init --name @acme/opencastle-baseline
+```
+
+Publish it, add it to each repository with `npm i -D @acme/opencastle-baseline`,
+and extend it:
+
+```jsonc
+// .opencastle/config.json
+{ "extends": ["@acme/opencastle-baseline"] }
+```
+
+`opencastle sync` compiles it into every assistant and writes
+`.opencastle/lock.json`. Commit both.
+
+A new teammate runs:
+
+```bash
+opencastle explain
+```
+
+It shows what their assistant is given, where each piece comes from, and which
+environment variables and sign-ins they still need. The full guide, including
+the policy a baseline can set: [opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/).
+
 ## Everyday commands
 
 | Command | What it does |
@@ -116,6 +158,7 @@ Other CI systems get the plain report and the exit code.
 | `opencastle sync --check` | Fail on drift, write nothing |
 | `opencastle add <pack>` | Adopt a tool and recompile |
 | `opencastle doctor` | Deeper diagnostics with fixes, including an audit of MCP servers |
+| `opencastle explain` | What every assistant here is given, and what you still need to set up |
 | `opencastle remove` | Uninstall, keeping or deleting files |
 
 Run `opencastle <command> --help` for the flags.
@@ -124,7 +167,8 @@ Run `opencastle <command> --help` for the flags.
 
 | Path | Yours or ours |
 |------|---------------|
-| `.opencastle/` | **Yours.** Project conventions, stack notes, lessons. Never overwritten. |
+| `.opencastle/` | **Yours.** Project conventions, stack notes, lessons, and the team config. Never overwritten. |
+| `.opencastle/lock.json` | Ours. What every assistant is given, rewritten by `sync`. |
 | Everything around the managed block in `CLAUDE.md` etc. | **Yours.** Kept byte for byte. |
 | The managed block itself | Ours. Regenerated on every sync. |
 | `.claude/`, `.cursor/rules/`, `.github/` | Ours. Regenerated on every sync. |

@@ -1,6 +1,7 @@
 # OpenCastle for teams
 
-> Back to [README](../README.md) · Status: proposal, September 2026
+> Back to [README](../README.md) · Status: first release shipped, September 2026 ·
+> How to use it: [opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/)
 
 A single developer's assistant config is a solved problem. A team's is not.
 Teams run several assistants side by side, each reads its own format, and
@@ -9,7 +10,8 @@ nobody can say which MCP servers — code that runs with every developer's
 credentials — the team's agents actually launch.
 
 That is the gap OpenCastle should close. This document records what shipped
-toward it and what should come next, in order of leverage.
+toward it and what is still open, in order of leverage. The guide to using what
+shipped is on the website; this is the record of decisions and gaps.
 
 ## Why now
 
@@ -43,54 +45,58 @@ toward it and what should come next, in order of leverage.
 | `sync` moves entries still exactly as an earlier release wrote them | Existing installs get fixes without anyone's edits being overwritten |
 | `doctor` audits what every MCP config launches | Covers servers the team added by hand, with a remedy per finding |
 | Weekly `mcp:check` workflow | A pin that disappears from the registry turns a check red here first |
+| **Shared baselines**: `extends` in `.opencastle/config.json` names npm packages (devDependencies, found in `node_modules`) or relative paths; layers merge OpenCastle → baselines → project | One standard across every repository. The package manager fetches and pins it, and an upgrade bot rolls it out one pull request per repository |
+| Team content in `.opencastle/` and in each baseline — `instructions/`, `agents/`, `skills/<name>/SKILL.md`, `prompts/`, `workflows/` — compiled into all seven targets | A skill or rule written once reaches every assistant, with no per-assistant copy |
+| Team MCP servers written in each target's variable syntax; retired ones removed | `${NAME}` written once; Cursor, Windsurf, OpenCode and VS Code each receive a spelling they expand |
+| **Policy** that only tightens: `mcp.allow`, `mcp.remoteHosts`, `mcp.requirePinned`, `require`, `contextBudget`, and the `opencastle` version range | A baseline's rules hold in every repository that extends it. A team server the policy refuses is a compile error; an integration server it refuses is left out |
+| Credentials written inline refused in team config, and failed in every MCP config `doctor` reads | A token in a committed file fails the check instead of shipping |
+| `.opencastle/lock.json`, written by `sync` and compared by `sync --check` | One deterministic, reviewable record of what every assistant is given; CODEOWNERS on it routes every such change to owners |
+| **Review the meaning**: `opencastle review`, on the job summary in CI | Reviewers read "New MCP server acme-flags from this project" or "The MCP allowlist now also allows Sentry", marked ⚠️ where it matters — not a hundred lines of generated Markdown |
+| **Instruction health** in `doctor`: always-loaded context against the budget with the largest contributors, dead `npm run` scripts and repository paths in team content, CLI version skew | Rot and bloat show up before an agent follows a stale instruction |
+| **Onboarding**: `opencastle explain` | A new teammate sees what their assistant gets, where each piece comes from, and which variables and sign-ins they still need |
+| **CI setup**: `opencastle ci [--owners <team>]` | The drift and policy check, the review summary and CODEOWNERS lines in one command |
+| `opencastle baseline init` and `check` | A baseline package scaffolded with its CI check, and validated the way every repository extending it will read it — including that `npm publish` ships the layer |
+| **Fleet**: `opencastle fleet <dir...>` | Which repositories run which OpenCastle and baseline versions, and which MCP servers run differently, from committed locks alone |
+| `sync` refuses to downgrade a project a newer release compiled | Two teammates on different versions no longer rewrite each other's output |
+| Integration servers' variables written as `${env:NAME}` for Cursor and Windsurf and `{env:NAME}` for OpenCode | Cursor and OpenCode passed the `${NAME}` written before to the server as literal text |
 
 ## Next, in order of leverage
 
-### 1. A shared baseline across repositories
+### 1. Team servers that reach Codex and Windsurf
 
-Most teams have tens of repositories and configure each one separately today.
+OpenCastle writes `.codex/mcp.json` for Codex CLI, which configures MCP servers
+in TOML, and `.windsurf/mcp.json` for Windsurf, whose MCP config is documented
+as one global file in the user's home directory. Until each is compiled to
+where its assistant reads it — or, for Windsurf, `explain` says what to add to
+the global file — a team server may not reach those two assistants at all.
 
-```jsonc
-// .opencastle/config.json
-{ "extends": "@acme/opencastle-baseline@1.4.0" }
-```
+### 2. VS Code without a prompt per variable
 
-The baseline — an npm package or a git ref — carries the organisation's
-instructions, skills, workflow templates and approved MCP servers; each
-repository layers its own on top in `.opencastle/`. The resolved baseline
-version is recorded in the manifest, so `sync --check` fails when a repository
-falls behind, and a baseline change reaches every repository as one PR each.
+A team server's `env` entry that only forwards a variable becomes VS Code's
+`envFile`; any other reference — a header, an argument — becomes a password
+input VS Code asks for once. If VS Code's `mcp.json` expands `${env:NAME}` in
+those fields, writing that instead would remove the prompts. Unverified.
 
-### 2. An MCP allowlist
+### 3. Pinning the whole dependency tree
 
-The baseline declares which servers may run, from where, at which versions.
-`doctor` and `sync --check` fail on anything else, including servers added by
-hand. Beyond pinning: flag secrets written inline in a committed config, and
-prefer remote servers with OAuth — per-person identity, nothing shared in `.env`
-— wherever the vendor offers one.
+A pinned `npx` server pins the server's own version, not its dependency tree:
+npx resolves that per machine with no lockfile. A stricter policy — servers
+installed as the project's devDependencies and launched with `npx --no`, or
+remote — would close the gap, and `requirePinned` is the natural place to
+offer it.
 
-### 3. Review the meaning, not the generated files
+### 4. CI beyond GitHub Actions
 
-A source change regenerates many files across several assistants. On a pull
-request, `sync --check` should summarise what changes for each assistant in
-words — "Cursor gains two rules; the Claude Code *testing-workflow* skill
-changed; Linear's server moves to 2.1.0" — so reviewers review behaviour. Ship
-a `CODEOWNERS` template for `.opencastle/` so the standard has an owner.
+`opencastle ci` writes a GitHub Actions workflow, and the annotations and job
+summary are GitHub's. `sync --check` and `review --markdown` run anywhere, but a
+GitLab CI template — and posting the review as a merge request or pull request
+comment rather than only a job summary — is still to do.
 
-### 4. Instruction health
+### 5. A hosted fleet view
 
-Context engineering applies to the team's own instructions too. `doctor` should
-flag rot and bloat:
-
-- file paths and package scripts named in instructions that no longer exist;
-- always-loaded context per assistant above a budget, with the files that
-  contribute most — the fix is usually moving detail into an on-demand skill.
-
-### 5. Onboarding in one command
-
-`opencastle explain` prints, for each assistant, what a new teammate's agent
-will load and why: which rules, which skills and when they trigger, which MCP
-servers and what they can reach.
+`fleet` reads repositories you have checked out. An organisation-wide view
+would read each repository's committed lock through the forge's API, without
+cloning, and answer "who is behind on the baseline" continuously.
 
 ### 6. Adoption signals without surveillance
 
@@ -109,14 +115,37 @@ lead actually asks.
 
 Write `AGENTS.md` and Agent Skills for every assistant that reads them, and keep
 per-assistant dialects only where an assistant needs one. Fewer generated files
-means less to review and less to drift.
+means less to review and less to drift — and the lock already records what each
+assistant is given, so the reduction can be reviewed like any other change.
 
 ## Open questions to verify
 
-- A pinned `npx` server pins the server's version, not its dependency tree:
-  npx resolves those per machine with no lockfile. Closing that gap means
-  installing servers as project dev-dependencies (and launching them with
-  `npx --no`) or preferring remote servers — worth offering as a strict mode.
+- Windsurf's MCP config is documented as a global file. Whether the
+  `${env:NAME}` written into a team server's headers is honoured there — and
+  whether a project-level `.windsurf/mcp.json` is read at all — needs checking
+  against the current release.
+- A team instruction with frontmatter of its own is passed through as written.
+  Without `applyTo`, Copilot does not load it on its own, while the lock,
+  `explain` and the context budget count it as always loaded. Should
+  `sync` add `applyTo: '**'` when an instruction's frontmatter has none?
+- Codex CLI and Antigravity receive `${NAME}` for team and integration servers
+  alike; neither assistant's variable syntax has been confirmed.
+- How each assistant treats an unset variable in its own syntax — an empty
+  string, the literal text, or a server that fails to start — and whether Claude
+  Code's `${VAR:-default}` is the safer spelling there.
+- Always-loaded context is one estimate — four characters per token, over the
+  merged instructions and the skill and agent index — not a count per
+  assistant. What each target loads differs: Copilot scopes instructions with
+  `applyTo`, and each assistant builds its own index. Whether a per-target
+  number is worth the complexity is open.
+- The lock records a digest of each baseline's files as they are on disk. A
+  relative-path baseline checked out with CRLF line endings on one machine and
+  LF on another would record different digests, and `sync --check` would
+  disagree between them. A package installed from a registry is byte-identical
+  everywhere; a `.gitattributes` rule avoids it for a path.
+- `explain` counts a variable as set when it is in the shell or in `.env` at
+  the project root. A VS Code user whose server reads it from a password input
+  is reported as missing it.
 - `previousMcpConfigs` records the defaults this tool's plugin files have held
   since the plugins moved to their current layout. Entries from older releases
   in a different shape are treated as edited: `doctor` says so and names the
@@ -129,20 +158,16 @@ means less to review and less to drift.
 - Figma's remote server lists the clients it supports; OpenCode, Windsurf and
   Antigravity are not on that list. Those targets may need Figma's desktop
   server (`http://127.0.0.1:3845/mcp`) instead, which needs a per-target config.
-
 - The Windsurf, Codex and Antigravity MCP outputs should be checked against each
   vendor's current documentation, the way the Claude Code shape was: remote
-  servers may need a different key there, and Codex CLI configures MCP servers in
-  TOML.
-- Generated env blocks use `${VAR}`. Confirm how each assistant treats an unset
-  variable, and whether `${VAR:-}` (which Claude Code supports) is the safer
-  default.
+  servers may need a different key there.
 
 ## How we will know it works
 
 - Share of an organisation's repositories whose `sync --check` is green on the
   default branch.
-- Time from a baseline release to every repository synced.
+- Time from a baseline release to every repository synced — `opencastle fleet`
+  shows who is behind.
 - Distinct versions of each MCP server running across repositories — the target
-  is one.
+  is one, and `fleet` lists every server that runs differently.
 - `doctor` findings per repository, trending to zero.

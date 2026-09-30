@@ -63,22 +63,40 @@ const features = [
 
 const teamPoints = [
   {
-    icon: 'pr',
-    title: 'Drift shows up on the pull request',
+    icon: 'layers',
+    title: 'One standard, every repository',
     description:
-      'Someone hand-edits a generated rule, or upgrades without recompiling. On GitHub Actions, sync --check annotates each drifted file with its own fix and writes a summary to the run page. Nothing to configure.',
+      'Put your instructions, skills, agents, MCP servers and policy in a baseline package. Each repository installs it as a devDependency and extends it; your lockfile pins it and your upgrade bot rolls it out.',
+  },
+  {
+    icon: 'policy',
+    title: 'Policy that only tightens',
+    description:
+      'Which MCP servers may run, which hosts remote ones may reach, exact versions, items no repository may drop, a context budget. A repository can tighten it, never relax it, and servers added by hand are held to it too.',
   },
   {
     icon: 'pin',
-    title: 'MCP servers pinned like dependencies',
+    title: 'A lock you can review',
     description:
-      'Every server OpenCastle adds is the vendor’s own remote server, the project’s own copy of a tool it already uses, or an exact version — never @latest. Every laptop and every CI run starts the same server version, and upgrades arrive as a reviewable diff.',
+      '.opencastle/lock.json records which layers ran at which versions, where every skill and instruction came from, and every MCP server. With CODEOWNERS on it, every change to what the assistants get goes to its owners.',
+  },
+  {
+    icon: 'review',
+    title: 'Review the meaning, not the diff',
+    description:
+      'opencastle review turns dozens of regenerated files into sentences on the pull request, and marks with ⚠️ what deserves a careful look: a new MCP server, a widened allowlist, a new always-loaded instruction.',
+  },
+  {
+    icon: 'pr',
+    title: 'Drift shows up on the pull request',
+    description:
+      'Someone hand-edits a generated rule, or upgrades without recompiling. On GitHub Actions, sync --check annotates each drifted file with its own fix and writes a summary to the run page.',
   },
   {
     icon: 'audit',
-    title: 'Doctor audits what your agents launch',
+    title: 'MCP servers pinned and audited',
     description:
-      'Including servers you added yourself: a package with no exact version, one that no longer exists on npm, or a remote server your assistant cannot load. Each finding names the fix that works for it.',
+      'Every server OpenCastle adds is the vendor’s remote server, the project’s own copy, or an exact version. Doctor audits every config, including servers you added: unpinned or missing packages, credentials written inline, servers the policy does not allow.',
   },
 ];
 
@@ -97,6 +115,9 @@ const workflows = [
 ];
 
 const featureIcons: Record<string, string> = {
+  layers: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  policy: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  review: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
   pr: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>`,
   pin: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
   audit: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
@@ -297,8 +318,8 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         </h2>
         <p class="section__subtitle">
           Assistant config is part of your engineering standard, so it gets what
-          the rest of the standard gets: one reviewed source, a CI check, and
-          dependencies you can audit.
+          the rest of the standard gets: one reviewed source shared across your
+          repositories, a policy, a CI check, and a record of every change.
         </p>
         <div class="features-grid">
           {teamPoints.map((f) => (
@@ -316,16 +337,23 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             <span class="code-block__dot" />
           </div>
           <div class="code-block__body">
-            <pre><span class="code-comment"># .github/workflows/opencastle.yml — drift fails the PR, and says where</span>
-<span class="code-folder">- uses: actions/setup-node@v4</span>
-<span class="code-folder">  with: {'{'} node-version: 22 {'}'}</span>
-<span class="code-folder">- run: npx opencastle sync --check</span></pre>
+            <pre><span class="code-comment"># .opencastle/config.json — extend your organisation's baseline</span>
+<span class="code-folder">{'{'}</span>
+<span class="code-key">  "extends"</span>: [<span class="code-string">"@acme/opencastle-baseline"</span>],
+<span class="code-key">  "exclude"</span>: [<span class="code-string">"skills/seo-patterns"</span>]
+<span class="code-folder">{'}'}</span>
+
+<span class="code-comment"># Compile it into every assistant and write .opencastle/lock.json</span>
+<span class="code-folder">$ npx opencastle sync</span>
+<span class="code-comment"># Drift, policy and a review of what changed, on every pull request</span>
+<span class="code-folder">$ npx opencastle ci --owners @acme/platform</span></pre>
           </div>
         </div>
         <p class="tier-intro">
           Open formats where they exist: Codex and OpenCode read <code>AGENTS.md</code>,
           Claude Code skills are <code>SKILL.md</code> folders in the Agent Skills
-          format, and every assistant gets MCP.
+          format, and every assistant gets MCP. How the layers, policy and lock fit
+          together, with a worked example: <a href="/docs/teams">OpenCastle for Teams</a>.
         </p>
       </div>
     </section>
