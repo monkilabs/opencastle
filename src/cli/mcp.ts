@@ -7,7 +7,7 @@ import { UnreadableConfigError } from './types.js';
 import type { McpInput, McpServerConfig, EnvVarRequirement } from '../orchestrator/plugins/types.js';
 import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice, CopyResults } from './types.js';
 import type { TeamMcpPlan } from './layers.js';
-import type { TeamMcpServer } from './team-config.js';
+import { EDITOR_VARIABLES, type TeamMcpServer } from './team-config.js';
 
 // ── IDE-specific MCP format transformation ────────────────────
 
@@ -45,9 +45,11 @@ export function envRef(ide: IdeChoice, name: string): string {
   }
 }
 
-/** Rewrite every `${NAME}` in a value into the target's own spelling. */
+/** Rewrite every `${NAME}` in a value into the target's own spelling; editor variables stay as written. */
 function rewriteRefs(value: string, ide: IdeChoice): string {
-  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => envRef(ide, name));
+  return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, name: string) =>
+    EDITOR_VARIABLES.has(name) ? m : envRef(ide, name),
+  );
 }
 
 /**
@@ -213,18 +215,21 @@ function canonical(value: unknown): string {
  * A team server as one target's config entry, with the VS Code inputs it needs.
  *
  * Team layers write variables one way, `${NAME}`, and each target gets its own
- * spelling. VS Code has no environment syntax for these fields: an `env` entry
- * that only forwards a variable is dropped, because the server inherits the
- * editor's environment and `.env` through `envFile`; any other reference —
- * a header, an argument — becomes a password input VS Code asks for once and
- * keeps in its secret storage.
+ * spelling. For VS Code the integrations' convention holds: a variable a local
+ * server only forwards comes from `.env` through `envFile` (and the editor's
+ * own environment, which the server inherits) — VS Code opened from the Dock
+ * does not see the shell's variables, so `.env` is what works however it was
+ * launched. A reference anywhere else — a header, an argument — becomes a
+ * password input VS Code asks for once and keeps in its secret storage.
+ * Editor variables such as `${workspaceFolder}` are passed through untouched.
  */
 export function teamEntryFor(key: string, server: TeamMcpServer, ide: IdeChoice): { entry: unknown; inputs: McpInput[] } {
   const inputs: McpInput[] = [];
   const http = server.type === 'http' || (!server.type && Boolean(server.url) && !server.command);
   if (ide === 'vscode') {
     const toInput = (value: string): string =>
-      value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, name: string) => {
+      value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, name: string) => {
+        if (EDITOR_VARIABLES.has(name)) return m;
         if (!inputs.some((i) => i.id === name)) {
           inputs.push({ id: name, type: 'promptString', description: `${name} for the ${key} MCP server`, password: true });
         }
@@ -303,6 +308,17 @@ function applyTeamPlan(
     }
   }
   if (Object.keys(servers).length > 0 || containerKey in existing) existing[containerKey] = servers;
+  // Inputs only a retired team server asked for go with it; left behind, they
+  // were the last thing in a `.vscode/mcp.json` an uninstall then kept.
+  if (ide === 'vscode' && Array.isArray(existing.inputs) && (plan.retiredInputs ?? []).length > 0) {
+    const needed = new Set(inputs.map((i) => i.id));
+    const kept = (existing.inputs as McpInput[]).filter((i) => needed.has(i.id) || !plan.retiredInputs!.includes(i.id));
+    if (kept.length !== (existing.inputs as McpInput[]).length) {
+      if (kept.length > 0) existing.inputs = kept;
+      else delete existing.inputs;
+      removed.push('inputs');
+    }
+  }
   if (ide === 'vscode' && inputs.length > 0) {
     const have = (existing.inputs as McpInput[] | undefined) ?? [];
     const ids = new Set(have.map((i) => i.id));
@@ -314,7 +330,7 @@ function applyTeamPlan(
     }
     existing.inputs = have;
   }
-  return { written: written.filter((k) => k !== 'inputs'), removed };
+  return { written: written.filter((k) => k !== 'inputs'), removed: removed.filter((k) => k !== 'inputs') };
 }
 
 /**
@@ -578,6 +594,8 @@ export function willKeepSomethingAfterStrip(
   ide?: IdeChoice,
   /** Servers the team's layers had OpenCastle write — ours to take back too. */
   teamKeys: string[] = [],
+  /** VS Code inputs those servers asked for. */
+  teamInputs: string[] = [],
 ): boolean {
   const containerKeys = ide
     ? [ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers']
@@ -589,9 +607,10 @@ export function willKeepSomethingAfterStrip(
       .map((p) => p.mcpServerKey!),
     ...teamKeys,
   ]);
-  const ourInputIds = new Set(
-    Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id)),
-  );
+  const ourInputIds = new Set([
+    ...Object.values(PLUGINS).flatMap((p) => (p.mcpInputs ?? []).map((i) => i.id)),
+    ...teamInputs,
+  ]);
 
   for (const containerKey of containerKeys) {
     const servers = (parsed[containerKey] ?? {}) as Record<string, unknown>;
@@ -616,6 +635,7 @@ export async function stripManagedMcpServers(
   ide: IdeChoice,
   createdByUs = false,
   teamKeys: string[] = [],
+  teamInputs: string[] = [],
 ): Promise<'deleted' | 'stripped' | 'absent' | 'unreadable'> {
   const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
   if (!existsSync(destPath)) return 'absent';
@@ -639,7 +659,7 @@ export async function stripManagedMcpServers(
   // A copy to compare against: `willKeepSomethingAfterStrip` edits `parsed` in
   // place, so this is the only record of what the file said before.
   const untouched = JSON.stringify(parsed);
-  const keepsSomething = willKeepSomethingAfterStrip(parsed, ide, teamKeys);
+  const keepsSomething = willKeepSomethingAfterStrip(parsed, ide, teamKeys, teamInputs);
 
   // Nothing of ours was in there, so there is nothing to do — and in particular
   // nothing to delete.

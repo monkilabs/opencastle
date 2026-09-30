@@ -58,8 +58,8 @@ const args = expandEqualsForm(rawArgs)
 const GLOBAL_FLAGS = ['--help', '-h', '--version', '-v', '--debug']
 const COMMAND_FLAGS = {
   init: ['--customize', '--dry-run', '--dryRun', '--reconfigure', '--yes', '-y'],
-  sync: ['--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
-  update: ['--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
+  sync: ['--allow-downgrade', '--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
+  update: ['--allow-downgrade', '--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
   doctor: [],
   remove: ['--all', '--dry-run', '--keep-files', '--yes'],
   add: ['--dry-run', '--list'],

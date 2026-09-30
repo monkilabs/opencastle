@@ -137,8 +137,10 @@ const explainOutput = `$ npx opencastle explain
     – Slack not written: not on the MCP allowlist of @acme/opencastle-baseline
 
   The team's policy
-    • MCP servers allowed: Linear, Sentry, acme-*, chrome-devtools, internal-docs, next-devtools
-    • Remote servers may connect to: *.acme.dev, mcp.linear.app
+    • MCP servers must be on every one of these allowlists:
+        @acme/opencastle-baseline: Linear, Sentry, acme-*, chrome-devtools, internal-docs, next-devtools
+    • Remote servers may only reach hosts every one of these allows:
+        @acme/opencastle-baseline: *.acme.dev, mcp.linear.app
     • Every local server must be pinned to an exact version (@acme/opencastle-baseline)
     • Required everywhere: instructions/security, skills/secure-coding
 
@@ -195,7 +197,7 @@ Compared with \`origin/main\`. **3 change(s) marked ⚠️ deserve a careful loo
 
 **Policy**
 
-- ⚠️ The MCP allowlist now also allows Sentry
+- ⚠️ @acme/opencastle-baseline's MCP allowlist now also allows Sentry
 
 **Context**
 
@@ -508,10 +510,10 @@ $ npx opencastle baseline check opencastle-baseline
             <code>instructions/security</code>, <code>agents/reviewer</code>. An item with the
             same name as one below replaces it whole — a skill's directory is not merged file by
             file. <code>exclude</code> removes an item from below. <code>sync</code> fills in
-            what each assistant's format needs: an instruction with no frontmatter is given
-            <code>{"applyTo: '**'"}</code>, so Copilot loads it everywhere as the other assistants
-            do. An instruction with frontmatter of its own is passed through as written, so
-            include <code>{"applyTo: '**'"}</code> in it, or Copilot will not load it on its own. A
+            what each assistant's format needs: an instruction that does not set <code>applyTo</code>
+            is given <code>{"applyTo: '**'"}</code>, so Copilot loads it everywhere as the other assistants
+            do. Line endings are normalised and OS files such as <code>.DS_Store</code> are skipped, so the
+            lock comes out the same on every machine; a link pointing out of the layer is not followed. A
             skill or agent with no <code>description</code> compiles with a warning: no
             assistant can tell when to load a skill that does not describe itself.
           </p>
@@ -576,7 +578,9 @@ $ npx opencastle baseline check opencastle-baseline
           </div>
           <p>
             For <code>acme-db</code>, whose <code>env</code> only passes <code>ACME_DB_URL</code> through,
-            VS Code gets <code>{'"envFile": "${workspaceFolder}/.env"'}</code> instead of a prompt.
+            VS Code gets <code>{'"envFile": "${workspaceFolder}/.env"'}</code> instead of a prompt. Editor
+            variables such as <code>{'${workspaceFolder}'}</code> in a server's arguments are passed through as
+            written, not treated as environment variables.
           </p>
 
           <h4 class="arch-subheading">4. What a new teammate sees: explain</h4>
@@ -650,7 +654,7 @@ $ npx opencastle baseline check opencastle-baseline
                 </tr>
                 <tr>
                   <td><code>exclude</code></td><td>string[]</td>
-                  <td>Items from the layers below to leave out, as <code>kind/name</code>: <code>skills/seo-patterns</code>, <code>agents/researcher</code>. Naming something no lower layer provides is a warning. Excluding an item a lower layer's policy requires is an error.</td>
+                  <td>Items from the layers below to leave out, as <code>kind/name</code>: <code>skills/seo-patterns</code>, <code>agents/researcher</code> — or an MCP server a lower layer defines or an integration brings, as <code>mcpServers/Slack</code>. Naming content no lower layer provides is a warning. Excluding an item a lower layer's policy requires is an error.</td>
                 </tr>
                 <tr>
                   <td><code>mcpServers</code></td><td>object</td>
@@ -682,7 +686,7 @@ $ npx opencastle baseline check opencastle-baseline
                 </tr>
                 <tr>
                   <td><code>policy.require</code></td><td>string[]</td>
-                  <td>Items, as <code>kind/name</code>, that no layer above may exclude or replace.</td>
+                  <td>Items, as <code>kind/name</code>, that must be present. One that existed at or below the requiring layer may not be excluded or replaced above it; one that did not can be provided by any layer above.</td>
                 </tr>
                 <tr>
                   <td><code>policy.contextBudget</code></td><td>integer</td>
@@ -844,7 +848,10 @@ $ npx opencastle baseline check opencastle-baseline
             so laptops and CI run the version your lockfile pins. Otherwise, as here, it pins the release that last
             compiled the project and tells you to add the devDependency. Run it from a subdirectory of a monorepo and
             the workflow is named after that directory, filtered to its paths, and runs there. An existing workflow is
-            replaced only with <code>--force</code>; CODEOWNERS is left alone if it already routes the lock.
+            replaced only with <code>--force</code>. <code>--owners</code> appends to the CODEOWNERS file GitHub already
+            reads — <code>.github/</code>, the root or <code>docs/</code>, in that order — and creates
+            <code>.github/CODEOWNERS</code> only when there is none, since GitHub reads the first it finds; it leaves the
+            file alone if it already routes the lock.
           </p>
 
           <h4 class="arch-subheading">baseline</h4>
@@ -878,7 +885,9 @@ $ npx opencastle baseline check opencastle-baseline
             named anywhere in team content, and backticked paths named in the repository's own content, that no longer
             exist; and an OpenCastle older than the one that compiled the project. <code>sync</code> refuses to
             compile with an older release than the one that last compiled the project — it would replace newer output
-            with older, and the next teammate's sync would put it back — unless you pass <code>--force</code>.
+            with older, and the next teammate's sync would put it back — unless you pass
+            <code>--allow-downgrade</code>. <code>sync --check</code> run by an older release says so and compares
+            nothing, instead of reporting every file as drifted.
           </p>
         </section>
 

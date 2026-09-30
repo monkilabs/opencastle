@@ -6,6 +6,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { resolveSources, materialize, type CompileSource } from './layers.js'
@@ -14,6 +15,9 @@ import { buildCheckReport } from './sync-check.js'
 import { writeManifest } from './manifest.js'
 import { recordLockFor, type Lock } from './lock.js'
 import { diffLocks, reviewMarkdown } from './review.js'
+import { auditMcpConfig, describeFinding } from './mcp-audit.js'
+import { parseLock, serializeLock } from './lock.js'
+import { emptyPolicy } from './policy.js'
 import { buildFleet } from './fleet.js'
 import { planCi } from './ci.js'
 import type { IdeChoice, StackConfig, Manifest } from './types.js'
@@ -166,7 +170,7 @@ describe('integration servers get per-target variables too', () => {
 describe('sync --check sees what the team sources say', () => {
   let project: string
   const manifest: Manifest = {
-    version: '9.9.9',
+    version: '0.0.1',
     ide: 'claude-code',
     ides: ['claude-code'],
     installedAt: '2026-01-01T00:00:00.000Z',
@@ -295,7 +299,7 @@ describe('review: a change in sentences', () => {
     expect(plain).toContain('@acme/base 1.4.0 → 1.5.0')
     expect(plain).toContain('MCP server **Sentry**: 0.42.0 → 0.43.0')
     expect(flagged).toContain('New MCP server **acme-docs** from @acme/base — remote, docs.acme.dev; reads DOCS_TOKEN')
-    expect(flagged).toContain('The MCP allowlist now also allows acme-docs')
+    expect(flagged).toContain("@acme/base's MCP allowlist now also allows acme-docs")
     expect(flagged.some((t) => t.startsWith('New always-loaded instruction **api-style**'))).toBe(true)
     expect(flagged.some((t) => t.includes('+18%'))).toBe(true)
     expect(reviewMarkdown({ base: 'origin/main', firstLock: false, lines })).toContain('**4 change(s) marked ⚠️ deserve a careful look.**')
@@ -310,7 +314,7 @@ describe('review: a change in sentences', () => {
     const head = lock({ content: {}, excluded: { 'skills/deploy': 'project' }, policy: {} })
     const texts = diffLocks(lock(), head).map((l) => `${l.level}:${l.text}`)
     expect(texts).toContain('info:skill **deploy** removed — excluded by this project (was from this project)')
-    expect(texts).toContain('review:The MCP allowlist was removed — any server may now be written')
+    expect(texts).toContain('review:@acme/base no longer restricts which MCP servers may run')
   })
 })
 
@@ -365,3 +369,124 @@ describe('ci: the workflow a team commits', () => {
   })
 })
 
+describe('what review found, kept fixed (compiler and commands)', () => {
+  let project: string
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), 'team-review-fixes-'))
+  })
+  afterEach(() => {
+    rmSync(project, { recursive: true, force: true })
+  })
+
+  it("keeps an editor variable an editor variable in every target", async () => {
+    write(project, { '.opencastle/config.json': JSON.stringify({ mcpServers: { local: { command: 'node', args: ['${workspaceFolder}/tools/mcp.js'] } } }) })
+    const stack: StackConfig = { ides: ['cursor', 'vscode'], techTools: [], teamTools: [] }
+    const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot)
+    try {
+      await rebuildMcpConfig(project, 'cursor', stack, undefined, src.mcp)
+      await rebuildMcpConfig(project, 'vscode', stack, undefined, src.mcp)
+    } finally {
+      src.dispose()
+    }
+    expect(JSON.parse(readFileSync(join(project, '.cursor', 'mcp.json'), 'utf8')).mcpServers.local.args).toEqual(['${workspaceFolder}/tools/mcp.js'])
+    const vscode = JSON.parse(readFileSync(join(project, '.vscode', 'mcp.json'), 'utf8'))
+    expect(vscode.servers.local.args).toEqual(['${workspaceFolder}/tools/mcp.js'])
+    expect(vscode.inputs).toBeUndefined()
+  })
+
+  it('takes back the VS Code input only a retired server asked for', async () => {
+    const stack: StackConfig = { ides: ['vscode'], techTools: [], teamTools: [] }
+    write(project, {
+      '.vscode/mcp.json': JSON.stringify({
+        servers: { 'acme-docs': { type: 'http', url: 'https://docs.acme.dev/mcp', headers: { Authorization: 'Bearer ${input:DOCS_TOKEN}' } } },
+        inputs: [
+          { id: 'DOCS_TOKEN', type: 'promptString', description: 'x', password: true },
+          { id: 'mine', type: 'promptString', description: 'kept' },
+        ],
+      }),
+    })
+    const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot, ['acme-docs'], ['DOCS_TOKEN'])
+    try {
+      await rebuildMcpConfig(project, 'vscode', stack, undefined, src.mcp)
+    } finally {
+      src.dispose()
+    }
+    const config = JSON.parse(readFileSync(join(project, '.vscode', 'mcp.json'), 'utf8'))
+    expect(config.servers['acme-docs']).toBeUndefined()
+    expect(config.inputs).toEqual([{ id: 'mine', type: 'promptString', description: 'kept' }])
+  })
+
+  it('never puts the URL — and whatever its query string holds — in a finding', () => {
+    const team = { expected: {}, definedIn: {}, retired: [], blocked: new Map(), policy: { ...emptyPolicy(), hostLists: [{ by: 'project', where: 'x', patterns: ['docs.acme.dev'] }] } }
+    const audit = auditMcpConfig(
+      { mcpServers: { hand: { type: 'http', url: 'https://mcp.other.example/mcp?api_key=sk-proj-abcdefghijklmnopqrstuvwxyz' } } },
+      'claude-code',
+      undefined,
+      team,
+    )
+    const text = audit.findings.map(describeFinding).join('\n')
+    expect(text).toContain('mcp.other.example is not an allowed host')
+    expect(text).not.toContain('sk-proj')
+  })
+
+  it('warns about ${NAME} where the assistant only expands its own spelling', () => {
+    const audit = auditMcpConfig({ mcpServers: { mine: { command: 'node', args: ['x.js'], env: { TOKEN: '${TOKEN}' } } } }, 'cursor')
+    expect(audit.findings.map(describeFinding)).toEqual([
+      'mine: this assistant does not expand ${TOKEN}; it reaches the server as literal text (write ${env:TOKEN})',
+    ])
+  })
+
+  it('refuses a lock it cannot read rather than crashing on it', () => {
+    expect(parseLock('{"lockfileVersion": 2}')).toBeNull()
+    expect(parseLock('{"lockfileVersion": 1, "layers": "x"}')).toBeNull()
+  })
+
+  it('flags a team server whose settings changed under the same launch line', () => {
+    const base = parseLock(serializeLock({
+      lockfileVersion: 1, opencastle: '1.0.0', targets: [], integrations: [], layers: [], content: {},
+      mcp: { tools: { from: 'project', transport: 'stdio', launch: 'node x.js', sha: 'aaaaaaaaaaaa' } },
+      context: { tokens: 1, instructions: 0, index: 1 },
+    }))!
+    const head = { ...base, mcp: { tools: { ...base.mcp.tools, sha: 'bbbbbbbbbbbb' } } }
+    expect(diffLocks(base, head)).toEqual([expect.objectContaining({ level: 'review', text: expect.stringContaining('has different settings') })])
+  })
+
+  it("summarises a project's first lock instead of listing OpenCastle's content", () => {
+    const head = parseLock(serializeLock({
+      lockfileVersion: 1, opencastle: '1.0.0', targets: ['cursor'], integrations: [],
+      layers: [{ id: 'opencastle', kind: 'core', version: '1.0.0' }],
+      content: { 'instructions/general': { from: 'opencastle', sha: 'a', tokens: 900 }, 'skills/a': { from: 'opencastle', sha: 'b' }, 'skills/mine': { from: 'project', sha: 'c' } },
+      mcp: {}, context: { tokens: 1000, instructions: 900, index: 100 },
+    }))!
+    const lines = diffLocks(null, head)
+    expect(lines.map((l) => l.text)).toEqual([
+      'skill **mine** from this project',
+      'and 2 item(s) from OpenCastle and its integrations',
+      'Every assistant loads ~1000 tokens before the task',
+    ])
+  })
+
+  it('ci: installs from the root lockfile in a monorepo subdirectory, and watches it', () => {
+    execFileSync('git', ['init', '-q'], { cwd: project })
+    write(project, {
+      'package.json': JSON.stringify({ workspaces: ['apps/*'] }),
+      'package-lock.json': '{}',
+      'apps/web/package.json': JSON.stringify({ devDependencies: { opencastle: '^0.36.0' } }),
+      CODEOWNERS: '* @acme/everyone\n',
+    })
+    const plan = planCi(join(project, 'apps', 'web'), '0.36.0', '@acme/platform')
+    expect(plan.workflow).toContain('working-directory: apps/web')
+    expect(plan.workflow).toMatch(/run: npm ci\n\s+working-directory: \.\n/)
+    expect(plan.workflow).toContain("paths: ['apps/web/**', 'package.json', 'package-lock.json', '.github/workflows/opencastle-web.yml']")
+    // The CODEOWNERS GitHub already reads, not a new one that would shadow it.
+    expect(plan.codeowners?.path).toBe(join(project, 'CODEOWNERS'))
+    expect(plan.codeowners?.block).toContain('/apps/web/.opencastle/lock.json @acme/platform')
+  })
+
+  it('ci: gives pnpm a version when package.json does not name one', () => {
+    write(project, { 'package.json': '{}', 'pnpm-lock.yaml': '' })
+    expect(planCi(project, '0.36.0').workflow).toContain('version: 10')
+    write(project, { 'package.json': JSON.stringify({ packageManager: 'pnpm@9.12.0' }) })
+    expect(planCi(project, '0.36.0').workflow).not.toContain('version: 10')
+  })
+})

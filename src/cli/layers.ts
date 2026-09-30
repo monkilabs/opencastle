@@ -17,7 +17,8 @@ import { getOrchestratorRoot, getPluginsRoot } from './copy.js'
 import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getIncludedMcpServers, getRequiredMcpEnvVars } from './stack-config.js'
 import { splitFrontmatter, parseFrontmatterString } from './adapters/frontmatter.js'
 import { packageLaunch, isPinned } from './mcp-audit.js'
-import { disallowedBy, hostDisallowedBy, findInlineSecret, emptyPolicy, type EffectivePolicy } from './policy.js'
+import { disallowedBy, hostDisallowedBy, findInlineSecret, emptyPolicy, globMatch, hostOfUrl, hostAllowedBy, type EffectivePolicy } from './policy.js'
+import { LOCAL_DIRS } from './gitignore.js'
 import { satisfies } from './version-range.js'
 import {
   CONTENT_KINDS,
@@ -29,6 +30,7 @@ import {
   type ContentKind,
   type TeamConfig,
   type TeamIssue,
+  envNamesIn,
   type TeamMcpServer,
 } from './team-config.js'
 import type { RepoInfo, StackConfig } from './types.js'
@@ -72,6 +74,8 @@ export interface ContentItem {
   overrides?: string
   /** The integration a plugin skill belongs to. */
   plugin?: string
+  /** Where links inside a team item may point; anything else is skipped. */
+  within?: string[]
 }
 
 export interface TeamServer {
@@ -160,10 +164,48 @@ export function compiledPath(kind: ContentKind, name: string): string {
   }
 }
 
-function listDir(dir: string): Array<{ name: string; isDir: boolean }> {
+/**
+ * Files an editor or an OS drops beside real content. Compiling them made the
+ * lock differ between a Mac and CI — `.DS_Store` in a team skill changed its
+ * digest and appeared as generated output on one machine only.
+ */
+function isJunk(name: string): boolean {
+  return name.startsWith('.') || name === 'Thumbs.db' || name === 'desktop.ini'
+}
+
+/**
+ * Bytes as they mean the same on every machine: text with LF line endings.
+ * Git on Windows checks text out with CRLF, and a digest over raw bytes then
+ * called an unchanged baseline changed.
+ */
+export function canonicalBytes(buf: Buffer): Buffer {
+  const head = buf.subarray(0, 8000)
+  if (head.includes(0)) return buf
+  const text = buf.toString('utf8')
+  return text.includes('\r\n') ? Buffer.from(text.replace(/\r\n/g, '\n'), 'utf8') : buf
+}
+
+function isInside(root: string, abs: string): boolean {
+  const rel = relative(root, abs)
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+}
+
+function listDir(dir: string, within?: string[]): Array<{ name: string; isDir: boolean }> {
   if (!existsSync(dir)) return []
   try {
     return readdirSync(dir, { withFileTypes: true })
+      .filter((e) => !isJunk(e.name))
+      .filter((e) => {
+        // A link out of the layer would copy whatever it points at — a system
+        // file, another project — into every assistant's config.
+        if (!within || !e.isSymbolicLink()) return true
+        try {
+          const real = realpathSync(join(dir, e.name))
+          return within.some((root) => isInside(root, real))
+        } catch {
+          return false
+        }
+      })
       .map((e) => {
         let isDir = e.isDirectory()
         if (!isDir && e.isSymbolicLink()) {
@@ -181,13 +223,28 @@ function listDir(dir: string): Array<{ name: string; isDir: boolean }> {
   }
 }
 
+/** The directories a layer's links may point into: itself, and the project. */
+function allowedRoots(layer: Layer, projectRoot: string | null): string[] {
+  const roots: string[] = []
+  for (const r of [layer.root, projectRoot]) {
+    if (!r) continue
+    try {
+      roots.push(realpathSync(r))
+    } catch {
+      roots.push(r)
+    }
+  }
+  return roots
+}
+
 function scanLayer(layer: Layer, projectRoot: string | null): { items: ContentItem[]; issues: TeamIssue[] } {
   const items: ContentItem[] = []
   const issues: TeamIssue[] = []
   const dirs = layer.kind === 'core' ? CORE_DIR : LAYER_DIR
+  const within = layer.kind === 'core' ? undefined : allowedRoots(layer, projectRoot)
   for (const kind of CONTENT_KINDS) {
     const dir = join(layer.root, dirs[kind])
-    for (const entry of listDir(dir)) {
+    for (const entry of listDir(dir, within)) {
       if (kind === 'skills') {
         if (!entry.isDir) continue
         if (!existsSync(join(dir, entry.name, 'SKILL.md'))) {
@@ -213,17 +270,29 @@ function scanLayer(layer: Layer, projectRoot: string | null): { items: ContentIt
         })
         continue
       }
-      items.push({ kind, name, layer: layer.id, path: join(dir, entry.name) })
+      items.push({ kind, name, layer: layer.id, path: join(dir, entry.name), ...(within && { within }) })
     }
   }
   return { items, issues }
 }
 
-/** Every file under a directory, relative, sorted. */
-export function filesUnder(root: string): string[] {
+/**
+ * Every file under a directory, relative, sorted. A directory reached twice
+ * through links is walked once, so a link loop ends instead of recursing.
+ */
+export function filesUnder(root: string, within?: string[]): string[] {
   const out: string[] = []
+  const seen = new Set<string>()
   const walk = (dir: string, prefix: string): void => {
-    for (const e of listDir(dir)) {
+    let real = dir
+    try {
+      real = realpathSync(dir)
+    } catch {
+      return
+    }
+    if (seen.has(real)) return
+    seen.add(real)
+    for (const e of listDir(dir, within)) {
       if (e.isDir) walk(join(dir, e.name), `${prefix}${e.name}/`)
       else out.push(`${prefix}${e.name}`)
     }
@@ -239,9 +308,9 @@ function layerIntegrity(root: string): string {
   for (const part of parts) {
     const abs = join(root, part)
     if (!existsSync(abs)) continue
-    const files = statSync(abs).isDirectory() ? filesUnder(abs).map((f) => `${part}/${f}`) : [part]
+    const files = statSync(abs).isDirectory() ? filesUnder(abs, [root]).map((f) => `${part}/${f}`) : [part]
     for (const f of files) {
-      hash.update(f).update('\0').update(readFileSync(join(root, f))).update('\0')
+      hash.update(f).update('\0').update(canonicalBytes(readFileSync(join(root, f)))).update('\0')
     }
   }
   return `sha256-${hash.digest('base64')}`
@@ -319,6 +388,17 @@ function loadExtends(
     }
     id = display(ctx.projectRoot, root)
     configWhere = `${id}/${LAYER_CONFIG_FILE}`
+    // These directories are gitignored as local run output, so a baseline kept
+    // there works on one laptop and is missing from every clone and from CI.
+    const ignored = LOCAL_DIRS.find((d) => isInside(join(ctx.projectRoot, d), root))
+    if (ignored) {
+      ctx.issues.push({
+        level: 'warning',
+        where: declaredIn,
+        message: `extends "${spec}", inside ${ignored}/, which git ignores — no clone or CI run will have it`,
+        fix: 'keep a shared baseline somewhere committed, e.g. a top-level directory or a package',
+      })
+    }
     try {
       version = (JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { version?: string }).version
     } catch {
@@ -440,6 +520,14 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
   // ── Content ──────────────────────────────────────────────────
   const items = new Map<string, ContentItem>()
   const key = (i: { kind: ContentKind; name: string }): string => `${i.kind}/${i.name}`
+  // Every layer's version of every item, in layer order: what `require` needs
+  // to tell "replaced what the baseline shipped" from "provided it, as asked".
+  const history = new Map<string, ContentItem[]>()
+  const remember = (k: string, item: ContentItem): void => {
+    const list = history.get(k) ?? []
+    list.push(item)
+    history.set(k, list)
+  }
 
   // OpenCastle's own content, less what the stack leaves out. Those are not
   // exclusions anyone wrote, so a team layer naming one is not a mistake.
@@ -456,6 +544,7 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
       continue
     }
     items.set(key(item), item)
+    remember(key(item), item)
   }
   // Integration skills: one SKILL.md per included plugin.
   const pluginsRoot = getPluginsRoot(pkgRoot)
@@ -470,7 +559,9 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
     }
     const k = `skills/${entry.name}`
     const prev = items.get(k)
-    items.set(k, { kind: 'skills', name: entry.name, layer: 'opencastle', path: skill, plugin: entry.name, ...(prev && { overrides: prev.layer }) })
+    const item: ContentItem = { kind: 'skills', name: entry.name, layer: 'opencastle', path: skill, plugin: entry.name, ...(prev && { overrides: prev.layer }) }
+    items.set(k, item)
+    remember(k, item)
   }
 
   const excluded: ResolvedSources['excluded'] = []
@@ -478,6 +569,8 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
     if (layer.kind === 'core') continue
     const where = layer.configFile ?? layer.id
     for (const ref of layer.config.exclude ?? []) {
+      // Servers are excluded where servers are merged, below.
+      if (ref.startsWith('mcpServers/')) continue
       const prev = items.get(ref)
       if (prev) {
         items.delete(ref)
@@ -495,7 +588,9 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
     issues.push(...scanned.issues)
     for (const item of scanned.items) {
       const prev = items.get(key(item))
-      items.set(key(item), prev ? { ...item, overrides: prev.layer } : item)
+      const placed = prev ? { ...item, overrides: prev.layer } : item
+      items.set(key(item), placed)
+      remember(key(item), placed)
     }
   }
 
@@ -557,12 +652,18 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
       )
       continue
     }
-    if ((layerIndex.get(item.layer) ?? 0) > (layerIndex.get(by) ?? 0)) {
+    // What the requiring layer saw: the last version at or below it. If there
+    // was one, nothing above may replace it; if there was none, the layer is
+    // asking for it to be provided, and whoever provides it satisfies that.
+    const at = layerIndex.get(by) ?? 0
+    const asShipped = [...(history.get(ref) ?? [])].reverse().find((i) => (layerIndex.get(i.layer) ?? 0) <= at)
+    if (asShipped && asShipped !== item && (layerIndex.get(item.layer) ?? 0) > at) {
+      const from = asShipped.layer === 'opencastle' ? 'OpenCastle' : asShipped.layer
       issues.push({
         level: 'error',
         where: layers[layerIndex.get(item.layer) ?? 0].configFile ?? item.layer,
-        message: `${item.layer} replaces ${ref}, which ${by} requires as it ships it`,
-        fix: `give yours another name and keep the required one, or ask the owners of ${by}`,
+        message: `${item.layer} replaces ${ref} (from ${from}), which ${by} requires unchanged`,
+        fix: `give yours another name and keep ${from}'s, or ask the owners of ${by}`,
       })
     }
   }
@@ -593,9 +694,20 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
 
   // ── Team MCP servers ─────────────────────────────────────────
   const servers = new Map<string, TeamServer>()
+  const blocked = new Map<string, string>()
+  const excludedServers = new Map<string, string>()
   for (const layer of layers) {
     if (layer.kind === 'core') continue
     const where = layer.configFile ?? layer.id
+    // A layer opts out of a server a layer below defines — or an integration
+    // brings — by excluding it, as it excludes a skill.
+    for (const ref of layer.config.exclude ?? []) {
+      if (!ref.startsWith('mcpServers/')) continue
+      const k = ref.slice('mcpServers/'.length)
+      if (servers.has(k)) servers.delete(k)
+      excludedServers.set(k, layer.id)
+      excluded.push({ ref, by: layer.id, from: 'mcp' })
+    }
     for (const [k, raw] of Object.entries(layer.config.mcpServers ?? {})) {
       const shape = checkServerShape(k, raw, where)
       if (shape.length > 0) {
@@ -612,29 +724,42 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
         }),
       }
       servers.set(k, { key: k, from: layer.id, server, where })
+      excludedServers.delete(k)
     }
   }
-  for (const ts of servers.values()) {
+  for (const ts of [...servers.values()]) {
     const { key: k, server, where } = ts
-    const refused = disallowedBy(policy, k)
-    if (refused) {
+    // Refused by a layer above the one that defines it: that layer is opting
+    // out, and the server is left out like a refused integration. Refused by
+    // the defining layer's own policy or one below it: the layer is breaking a
+    // rule it is held to, and that is an error.
+    const defining = layerIndex.get(ts.from) ?? 0
+    const refusing = policy.allowLists.filter((l) => !l.patterns.some((p) => globMatch(p, k)))
+    const url = serverTransport(server) === 'http' ? server.url : undefined
+    const hostRefusing = url ? policy.hostLists.filter((l) => !hostAllowedBy(l.patterns, url)) : []
+    const all = [...refusing, ...hostRefusing]
+    if (all.length > 0 && all.every((l) => (layerIndex.get(l.by) ?? 0) > defining)) {
+      servers.delete(k)
+      blocked.set(k, refusing.length > 0 ? `not on the MCP allowlist of ${refusing.map((l) => l.by).join(', ')}` : `${hostOfUrl(url ?? '')} is not an allowed host for ${hostRefusing.map((l) => l.by).join(', ')}`)
+      continue
+    }
+    if (refusing.length > 0) {
+      const by = refusing.map((l) => l.by).join(', ')
       issues.push({
         level: 'error',
         where,
-        message: `defines MCP server "${k}", which ${refused} does not allow`,
-        fix: `add it to policy.mcp.allow in ${refused}, or remove it`,
+        message: `defines MCP server "${k}", which ${by} does not allow`,
+        fix: `add it to policy.mcp.allow in ${by}, or remove it`,
       })
     }
-    if (serverTransport(server) === 'http' && server.url) {
-      const hostRefused = hostDisallowedBy(policy, server.url)
-      if (hostRefused) {
-        issues.push({
-          level: 'error',
-          where,
-          message: `MCP server "${k}" connects to ${server.url}, a host ${hostRefused} does not allow`,
-          fix: `add the host to policy.mcp.remoteHosts in ${hostRefused}, or remove the server`,
-        })
-      }
+    if (hostRefusing.length > 0) {
+      const by = hostRefusing.map((l) => l.by).join(', ')
+      issues.push({
+        level: 'error',
+        where,
+        message: `MCP server "${k}" connects to ${hostOfUrl(url ?? '')}, a host ${by} does not allow`,
+        fix: `add the host to policy.mcp.remoteHosts in ${by}, or remove the server`,
+      })
     }
     if (server.command) {
       const launch = packageLaunch(server.command, server.args ?? [])
@@ -661,13 +786,13 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
   // Integration servers the stack brings in that the policy refuses. Not an
   // error: the team chose the policy, and the integration's skill is still
   // useful without its server. They are left out and the lock says why.
-  const blocked = new Map<string, string>()
+  for (const [k, by] of excludedServers) blocked.set(k, `excluded by ${by}`)
   const includedServers = stack
     ? getIncludedMcpServers(stack, repoInfo)
     : new Set(Object.values(PLUGINS).map((p) => p.mcpServerKey).filter((k): k is string => Boolean(k)))
   for (const plugin of Object.values(PLUGINS)) {
     const k = plugin.mcpServerKey
-    if (!k || !plugin.mcpConfig || !includedServers.has(k) || servers.has(k)) continue
+    if (!k || !plugin.mcpConfig || !includedServers.has(k) || servers.has(k) || blocked.has(k)) continue
     const refused = disallowedBy(policy, k)
     if (refused) {
       blocked.set(k, `not on the MCP allowlist of ${refused}`)
@@ -675,7 +800,7 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
     }
     if (plugin.mcpConfig.type === 'http' && plugin.mcpConfig.url) {
       const hostRefused = hostDisallowedBy(policy, plugin.mcpConfig.url)
-      if (hostRefused) blocked.set(k, `${new URL(plugin.mcpConfig.url).hostname} is not an allowed host for ${hostRefused}`)
+      if (hostRefused) blocked.set(k, `${hostOfUrl(plugin.mcpConfig.url)} is not an allowed host for ${hostRefused}`)
     }
   }
 
@@ -722,6 +847,8 @@ export interface TeamMcpPlan {
   retired: string[]
   /** Integration servers the policy refuses; never written, removed if present. */
   blocked: string[]
+  /** VS Code inputs only the retired servers asked for. */
+  retiredInputs?: string[]
 }
 
 export interface CompileSource {
@@ -734,9 +861,16 @@ export interface CompileSource {
 
 /** Team files as the adapters expect them: LF line endings, and frontmatter where a target needs it. */
 function normaliseTeamText(kind: ContentKind, name: string, text: string): string {
-  const lf = text.replace(/^﻿/, '').replace(/\r\n/g, '\n')
-  const hasFrontmatter = /^---\n[\s\S]*?\n---\n/.test(lf)
-  if (hasFrontmatter) return lf
+  const lf = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  const fm = /^---\n([\s\S]*?)\n---\n/.exec(lf)
+  if (fm) {
+    // An instruction with a description and no `applyTo` is still an
+    // instruction: every other target loads it always, so Copilot must too.
+    if (kind === 'instructions' && !/^applyTo\s*:/m.test(fm[1])) {
+      return `---\n${fm[1]}\napplyTo: '**'\n---\n${lf.slice(fm[0].length)}`
+    }
+    return lf
+  }
   if (kind === 'instructions') {
     // Copilot loads `.github/instructions/*.instructions.md` only where
     // `applyTo` matches; the other targets load every instruction always.
@@ -747,14 +881,18 @@ function normaliseTeamText(kind: ContentKind, name: string, text: string): strin
   return lf
 }
 
-function copyTree(from: string, to: string, transform?: (rel: string, text: string) => string): void {
+function copyTree(
+  from: string,
+  to: string,
+  opts: { team: boolean; within?: string[]; transform?: (rel: string, text: string) => string } = { team: false },
+): void {
   mkdirSync(to, { recursive: true })
-  for (const rel of filesUnder(from)) {
+  for (const rel of filesUnder(from, opts.within)) {
     const dest = join(to, rel)
     mkdirSync(dirname(dest), { recursive: true })
     const buf = readFileSync(join(from, rel))
-    if (transform && rel.endsWith('.md')) writeFileSync(dest, transform(rel, buf.toString('utf8')))
-    else writeFileSync(dest, buf)
+    if (opts.transform && rel.endsWith('.md')) writeFileSync(dest, opts.transform(rel, buf.toString('utf8')))
+    else writeFileSync(dest, opts.team ? canonicalBytes(buf) : buf)
   }
 }
 
@@ -762,7 +900,12 @@ function copyTree(from: string, to: string, transform?: (rel: string, text: stri
  * Write the merged content to a scratch directory in the layout the adapters
  * read. The caller disposes it.
  */
-export function materialize(resolved: ResolvedSources, pkgRoot: string, previousTeamServers: string[] = []): CompileSource {
+export function materialize(
+  resolved: ResolvedSources,
+  pkgRoot: string,
+  previousTeamServers: string[] = [],
+  previousTeamVariables: string[] = [],
+): CompileSource {
   const root = mkdtempSync(join(tmpdir(), 'opencastle-src-'))
   try {
     const coreRoot = getOrchestratorRoot(pkgRoot)
@@ -778,7 +921,13 @@ export function materialize(resolved: ResolvedSources, pkgRoot: string, previous
           mkdirSync(dest, { recursive: true })
           writeFileSync(join(dest, 'SKILL.md'), readFileSync(item.path))
         } else {
-          copyTree(item.path, dest, team ? (rel, text) => (rel === 'SKILL.md' ? normaliseTeamText('skills', item.name, text) : text.replace(/\r\n/g, '\n')) : undefined)
+          copyTree(item.path, dest, {
+            team,
+            within: item.within,
+            transform: team
+              ? (rel, text) => (rel === 'SKILL.md' ? normaliseTeamText('skills', item.name, text) : text.replace(/\r\n/g, '\n'))
+              : undefined,
+          })
         }
         continue
       }
@@ -793,7 +942,7 @@ export function materialize(resolved: ResolvedSources, pkgRoot: string, previous
   return {
     root,
     resolved,
-    mcp: mcpPlan(resolved, previousTeamServers),
+    mcp: mcpPlan(resolved, previousTeamServers, previousTeamVariables),
     dispose: () => rmSync(root, { recursive: true, force: true }),
   }
 }
@@ -803,15 +952,24 @@ export function materialize(resolved: ResolvedSources, pkgRoot: string, previous
  * wrote that no layer defines now (named by the committed lock), and the
  * integrations its policy refuses.
  */
-export function mcpPlan(resolved: ResolvedSources, previousTeamServers: string[] = []): TeamMcpPlan {
+export function mcpPlan(
+  resolved: ResolvedSources,
+  previousTeamServers: string[] = [],
+  previousTeamVariables: string[] = [],
+): TeamMcpPlan {
   const servers: Record<string, TeamMcpServer> = {}
+  const used = new Set<string>()
   for (const [k, ts] of [...resolved.servers.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     servers[k] = ts.server
+    for (const v of [...Object.values(ts.server.env ?? {}), ...Object.values(ts.server.headers ?? {}), ...(ts.server.args ?? []), ts.server.url ?? '']) {
+      for (const name of envNamesIn(v)) used.add(name)
+    }
   }
   return {
     servers,
     retired: previousTeamServers.filter((k) => !(k in servers)).sort(),
     blocked: [...resolved.blocked.keys()].sort(),
+    retiredInputs: previousTeamVariables.filter((v) => !used.has(v)).sort(),
   }
 }
 
@@ -869,10 +1027,19 @@ export function requiredEnvVars(
       ...Object.values(ts.server.headers ?? {}),
       ...(ts.server.args ?? []),
       ts.server.url ?? '',
+      ts.server.command ?? '',
     ]) {
-      for (const m of value.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) names.add(m[1])
+      for (const name of envNamesIn(value)) names.add(name)
     }
     for (const name of [...names].sort()) {
+      // One entry per variable. Two servers reading the same token listed it
+      // twice, and `init` wrote two `NAME=` lines to .env — where the empty
+      // second one is what a dotenv loader keeps.
+      const have = out.find((o) => o.envVar === name)
+      if (have) {
+        have.hint = `${have.hint}; also the ${ts.key} MCP server`
+        continue
+      }
       out.push({ server: ts.key, envVar: name, hint: `used by the ${ts.key} MCP server (${ts.where})` })
     }
   }

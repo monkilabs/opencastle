@@ -154,7 +154,8 @@ A layer is a directory laid out like `.opencastle/`: `config.json` (schema at
 `instructions/*.md` (always loaded), `agents/*.agent.md`,
 `skills/<name>/SKILL.md`, `prompts/*.md` and `workflows/*.md`. Items are keyed
 `kind/name`. A later layer's item replaces an earlier one with the same key,
-and `exclude` drops one from below. A baseline's own `extends` load beneath
+and `exclude` drops one from below — content, or an MCP server as
+`mcpServers/<name>`. A baseline's own `extends` load beneath
 it; a baseline reached twice loads once, at the lowest place it appears; a
 cycle is an error.
 
@@ -166,8 +167,10 @@ cycle is an error.
   in `extends` (`pkg@1.2.3`) and an absolute path are refused.
 - **Materialized source.** `materialize()` writes the merged items to a scratch
   directory shaped like `src/orchestrator/`, normalising team files on the way:
-  LF line endings, `applyTo: '**'` on an instruction without frontmatter (so
-  Copilot loads it too), a `name` on an agent without frontmatter. Every adapter
+  LF line endings (so a digest is the same on every checkout), `applyTo: '**'`
+  on any instruction that does not set one (so Copilot loads it too), a `name`
+  on an agent without frontmatter. OS files such as `.DS_Store`, and links that
+  point out of the layer, are skipped. Every adapter
   compiles from that directory, so all seven targets receive team content with
   no per-target code, and `sync`, `sync --check`, `review` and `explain` read
   one resolution.
@@ -176,24 +179,29 @@ cycle is an error.
   a host on every `mcp.remoteHosts`; `requirePinned`, once on, stays on;
   `require` accumulates; the smallest `contextBudget` wins; every `opencastle`
   version range must hold.
-  A team server the policy refuses, an unpinned server under `requirePinned`, a
-  credential written inline, a required item excluded or replaced, an
-  unsatisfied version range or a baseline that is not installed is an error:
-  `sync` writes nothing and `sync --check` fails. An *integration* server the
-  policy refuses is not an error — it is left out of every target and the lock
-  records why.
+  A team server refused by its own layer's policy or one below it, an unpinned
+  server under `requirePinned`, a credential written inline, a required item
+  excluded — or replaced above the layer that requires it — an unsatisfied
+  version range or a baseline that is not installed is an error: `sync` writes
+  nothing and `sync --check` fails. A server a *higher* layer's policy refuses
+  is left out instead, as is an integration server the policy refuses: that is
+  how a repository opts out of a baseline's server. The lock records why.
 - **Team MCP servers** are written in each target's variable syntax
   ([`mcp.ts`](src/cli/mcp.ts)): `${NAME}` for Claude Code, `${env:NAME}` for
   Cursor and Windsurf, `{env:NAME}` for OpenCode. VS Code forwards a plain
   `env` variable through `envFile` and turns any other reference into a
   password input. Codex and Antigravity keep `${NAME}` until their syntax is
-  confirmed. A server an earlier sync wrote that no layer defines any more is
-  removed; the committed lock names which those are.
+  confirmed. Editor variables such as `${workspaceFolder}` pass through as
+  written. A server an earlier sync wrote that no layer defines any more is
+  removed, with any VS Code input only it used; the committed lock names which
+  those are, so `sync` holds the lock back while an MCP config cannot be read.
 - **The lock** ([`lock.ts`](src/cli/lock.ts)). `.opencastle/lock.json` records
   the layers with their versions and a digest of each baseline's content; every
   item with the layer it came from, a content hash and, for instructions, a
-  token estimate; every MCP server with how it launches and which variables it
-  reads; what was excluded or blocked; the effective policy; and the
+  token estimate; every MCP server with how it launches, which variables it
+  reads and, for a team server, a digest of its whole definition (so a literal
+  environment value or header moves the lock); what was excluded or blocked;
+  each layer's policy; and the
   always-loaded context. No timestamps, no absolute paths, keys in a fixed
   order, so it changes only when what the assistants get changes. `sync` writes
   it, `sync --check` compares it like any generated file, `review` diffs it
@@ -204,7 +212,8 @@ cycle is an error.
   against the budget, naming the largest contributors when it is over; `npm run`
   scripts named in team content, and backticked paths named in the project's
   own content, that no longer exist; and a CLI older than the release that
-  compiled the project, which `sync` refuses to downgrade without `--force`.
+  compiled the project, which `sync` refuses to downgrade without
+  `--allow-downgrade` and `sync --check` reports instead of comparing.
 
 ---
 

@@ -101,17 +101,50 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string)
     : `npx -y opencastle@${cliVersion}`
 
   const install: string[] = []
+  let installRel = ''
   if (installRoot) {
-    const rel = installRoot === repoRoot ? '' : installRoot.slice(repoRoot.length + 1).split('\\').join('/')
-    const at = rel ? `\n        working-directory: ${rel}` : ''
-    if (pm === 'pnpm') install.push('      - uses: pnpm/action-setup@v4', `      - run: pnpm install --frozen-lockfile${at}`)
-    else if (pm === 'yarn') install.push('      - run: corepack enable', `      - run: yarn install --immutable${at}`)
-    else if (pm === 'bun') install.push('      - uses: oven-sh/setup-bun@v2', `      - run: bun install --frozen-lockfile${at}`)
-    else install.push(`      - run: ${existsSync(join(installRoot, 'package-lock.json')) ? 'npm ci' : 'npm install'}${at}`)
+    installRel = installRoot === repoRoot ? '' : installRoot.slice(repoRoot.length + 1).split('\\').join('/')
+    // Always explicit in a subdirectory project: the job's default directory is
+    // the project, and a lockfile at the repository root installs from there —
+    // `npm ci` in a subdirectory that is not a workspace finds no lockfile.
+    const at = prefix || installRel ? `\n        working-directory: ${installRel || '.'}` : ''
+    let manager = ''
+    try {
+      manager = (JSON.parse(readFileSync(join(installRoot, 'package.json'), 'utf8')) as { packageManager?: string }).packageManager ?? ''
+    } catch {
+      manager = ''
+    }
+    if (pm === 'pnpm') {
+      // The action needs a version, from `packageManager` or here.
+      install.push('      - uses: pnpm/action-setup@v4')
+      if (!manager.startsWith('pnpm@')) install.push('        with:', '          version: 10  # match the pnpm your lockfile was written with')
+      install.push(`      - run: pnpm install --frozen-lockfile${at}`)
+    } else if (pm === 'yarn') {
+      // Yarn 1 ignores --immutable; --frozen-lockfile is its spelling.
+      const classic = !manager.startsWith('yarn@') || manager.startsWith('yarn@1')
+      install.push('      - run: corepack enable', `      - run: yarn install ${classic ? '--frozen-lockfile' : '--immutable'}${at}`)
+    } else if (pm === 'bun') {
+      install.push('      - uses: oven-sh/setup-bun@v2', `      - run: bun install --frozen-lockfile${at}`)
+    } else {
+      install.push(`      - run: ${existsSync(join(installRoot, 'package-lock.json')) ? 'npm ci' : 'npm install'}${at}`)
+    }
   }
 
   const name = prefix ? `opencastle-${basename(prefix)}` : 'opencastle'
   const workflowPath = join(repoRoot, '.github', 'workflows', `${name}.yml`)
+  // A subdirectory project runs only when something it depends on changes:
+  // its own files, the lockfile a baseline upgrade moves, and this workflow.
+  const paths = prefix
+    ? [
+        `${prefix}/**`,
+        ...(installRel !== prefix ? [installRel ? `${installRel}/package.json` : 'package.json'] : []),
+        ...['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb']
+          .filter((f) => installRoot && existsSync(join(installRoot, f)))
+          .map((f) => (installRel ? `${installRel}/${f}` : f)),
+        `.github/workflows/${name}.yml`,
+      ]
+    : []
+  const pathFilter = paths.length > 0 ? [`    paths: [${[...new Set(paths)].map((p) => `'${p}'`).join(', ')}]`] : []
   const lines = [
     '# Written by `opencastle ci`. Fails a pull request when the AI assistant config',
     "# every developer gets differs from its sources or breaks the team's policy,",
@@ -120,10 +153,10 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string)
     '',
     'on:',
     '  pull_request:',
-    ...(prefix ? [`    paths: ['${prefix}/**']`] : []),
+    ...pathFilter,
     '  push:',
     `    branches: [${branch}]`,
-    ...(prefix ? [`    paths: ['${prefix}/**']`] : []),
+    ...pathFilter,
     '',
     'permissions:',
     '  contents: read',
@@ -152,8 +185,12 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string)
   const plan: Plan = { workflowPath, workflow: lines.join('\n'), pinned }
   if (owners) {
     const at = prefix ? `/${prefix}/` : '/'
+    // GitHub reads the first CODEOWNERS it finds — .github/, then the root,
+    // then docs/ — and ignores the rest. Creating .github/CODEOWNERS beside an
+    // existing one would switch every other ownership rule off.
+    const existing = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS'].map((p) => join(repoRoot, p)).find((p) => existsSync(p))
     plan.codeowners = {
-      path: join(repoRoot, '.github', 'CODEOWNERS'),
+      path: existing ?? join(repoRoot, '.github', 'CODEOWNERS'),
       block: [
         '',
         '# What every AI assistant is given (opencastle ci). Every change to it moves',

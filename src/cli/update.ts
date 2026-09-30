@@ -29,7 +29,7 @@ import {
   requiredEnvVars,
   type ResolvedSources,
 } from './layers.js'
-import { buildLock, writeLock, readLock, teamServerKeys, LOCK_REL } from './lock.js'
+import { buildLock, writeLock, LOCK_REL, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 
 /** Print what is wrong with the team's sources, and that nothing was written. */
@@ -64,6 +64,8 @@ const UPDATE_HELP = `
   Options:
     --dry-run         Preview what would be changed without writing files
     --force           Force update even if versions match
+    --allow-downgrade Recompile with this OpenCastle even though a newer one
+                      compiled the project
     --reconfigure     Re-run IDE and stack selection
     --help, -h        Show this help
 `
@@ -171,18 +173,23 @@ export default async function update({
 
   // An older OpenCastle than the one that compiled the project would replace
   // newer output with older, and the next teammate's sync would put it back —
-  // a pull request war nobody chose. Refused unless asked for by name.
+  // a pull request war nobody chose. Refused unless asked for by name: not by
+  // `--force`, which the tool's own remedies prescribe for other reasons, and
+  // which a teammate on an old CLI would otherwise run into a downgrade.
   {
     const mine = parseVersion(pkg.version)
     const theirs = parseVersion(manifest.version)
-    if (mine && theirs && compareVersions(mine, theirs) < 0 && !args.includes('--force')) {
-      console.error(
-        `\n  ${c.red('✗')} This project was compiled by OpenCastle ${manifest.version}; this is ${pkg.version}.`,
-      )
-      console.error(`    ${c.dim('Syncing would replace newer generated files with older ones. Run the project\'s version —')}`)
-      console.error(`    ${c.dim(`npx opencastle@${manifest.version} sync, or add it to devDependencies so everyone runs one —`)}`)
-      console.error(`    ${c.dim('or pass --force to downgrade on purpose.')}\n`)
-      process.exit(1)
+    if (mine && theirs && compareVersions(mine, theirs) < 0) {
+      if (!args.includes('--allow-downgrade')) {
+        console.error(
+          `\n  ${c.red('✗')} This project was compiled by OpenCastle ${manifest.version}; this is ${pkg.version}.`,
+        )
+        console.error(`    ${c.dim('Syncing would replace newer generated files with older ones. Run the project\'s version —')}`)
+        console.error(`    ${c.dim(`npx opencastle@${manifest.version} sync, or add it to devDependencies so everyone runs one —`)}`)
+        console.error(`    ${c.dim('or pass --allow-downgrade to go back to this version on purpose.')}\n`)
+        process.exit(1)
+      }
+      console.log(`  ${c.yellow('!')} Downgrading this project from OpenCastle ${manifest.version} to ${pkg.version}, as asked.`)
     }
   }
 
@@ -534,16 +541,17 @@ export default async function update({
     closePrompts()
     process.exit(1)
   }
-  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  // Deduplicated, and re-sorted by what the adapters declare today — two targets
+  // that share AGENTS.md used to record it twice, and a manifest from before
+  // root files were co-owned still files them under `framework`.
+  const allManagedPaths = await resolveManagedPaths({ ...manifest, ides })
   const teamWritten = new Set<string>()
   const teamRemoved = new Set<string>()
   const upgradedServers = new Set<string>()
   const removedServers = new Set<string>()
   let lockWritten = false
-  // Deduplicated, and re-sorted by what the adapters declare today — two targets
-  // that share AGENTS.md used to record it twice, and a manifest from before
-  // root files were co-owned still files them under `framework`.
-  const allManagedPaths = await resolveManagedPaths({ ...manifest, ides })
+  let lockHeld = false
+  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
   try {
     for (const ide of ides) {
       const adapter = await IDE_ADAPTERS[ide]()
@@ -597,8 +605,17 @@ export default async function update({
     }
 
     // What every assistant is now given, for review. Written last, from the
-    // same source the targets were compiled from.
-    lockWritten = await writeLock(projectRoot, buildLock(source, { ides, stack: newStack, repoInfo }))
+    // same source the targets were compiled from — and not at all while an MCP
+    // config could not be read. The lock is how the next sync knows which team
+    // servers to take back out; recording a retirement before every config has
+    // had the server removed would leave it in the unreadable one for good,
+    // with every check green.
+    const mcpPaths = new Set(ides.map((i) => getMcpConfigRelPath(i as IdeChoice)))
+    lockHeld = unreadable.some((u) => {
+      const name = u.split('\u0000')[0]
+      return mcpPaths.has((isAbsolute(name) ? relative(projectRoot, name) : name).replace(/\\/g, '/'))
+    })
+    if (!lockHeld) lockWritten = await writeLock(projectRoot, buildLock(source, { ides, stack: newStack, repoInfo }))
   } finally {
     source.dispose()
   }
@@ -687,6 +704,17 @@ export default async function update({
   }
   if (lockWritten) {
     console.log(`  ${c.green('✓')} Updated ${LOCK_REL} ${c.dim('(opencastle review explains the change)')}`)
+  }
+  if (lockHeld) {
+    console.log(`  ${c.yellow('!')} Left ${LOCK_REL} as it was until every MCP config can be read — fix the file named below and sync again.`)
+  }
+  // An integration the stack includes but the policy refuses is left out on
+  // purpose; saying nothing made `add stripe` look like it had worked.
+  if (resolved.blocked.size > 0) {
+    console.log(`  ${c.yellow('-')} Left out ${resolved.blocked.size} MCP server(s):`)
+    for (const [key, why] of [...resolved.blocked].sort(([a], [b]) => (a < b ? -1 : 1))) {
+      console.log(`     ${key} ${c.dim(`— ${why}`)}`)
+    }
   }
   const teamWarnings = resolved.issues.filter((i) => i.level === 'warning')
   if (teamWarnings.length > 0) {

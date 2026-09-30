@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync } from 'node:fs'
 import { isAbsolute, relative, resolve, sep } from 'node:path'
 import type { CheckReport, Drift, DriftKind } from './sync-check.js'
+import { LOCK_REL } from './lock.js'
 
 /**
  * Drift, told to GitHub in the two forms a pull request shows.
@@ -35,6 +36,7 @@ function isComparisonFailure(d: Drift): boolean {
 }
 
 function titleOf(d: Drift): string {
+  if (d.origin === 'version') return 'OpenCastle is older than the project'
   return d.origin === 'team' ? 'Team config problem' : TITLES[d.kind]
 }
 
@@ -45,6 +47,9 @@ function explain(d: Drift): string {
     // Not "edited by hand": the same state follows an upgrade nobody recompiled
     // after, and blaming an edit that never happened sends people looking for it.
     case 'changed':
+      if (d.path === LOCK_REL) {
+        return `${d.path}: the sources changed and nobody has run sync since. Run \`opencastle sync\` and commit the result; \`opencastle review\` explains the change.`
+      }
       return `${where} differs from a fresh compile of its source. Run \`opencastle sync\` and commit the result. If the difference is a hand edit you want to keep, move it into .opencastle/ first — sync overwrites generated files.`
     case 'missing':
       return `${where} should exist but does not. Run \`opencastle sync\` and commit the result; generated config is committed like a lockfile.`
@@ -96,7 +101,7 @@ export function annotations(report: CheckReport, projectRoot: string, workspace?
     // unpinned.
     // A team problem can sit in a baseline package, which is not a file in the
     // pull request; pinning the annotation there pins it to nothing.
-    const pinnable = !isComparisonFailure(d) && (d.origin !== 'team' || existsSync(resolve(projectRoot, d.path)))
+    const pinnable = !isComparisonFailure(d) && ((d.origin !== 'team' && d.origin !== 'version') || existsSync(resolve(projectRoot, d.path)))
     if (pinnable) props.unshift(`file=${escapeProperty(annotationPath(d.path, projectRoot, workspace))}`)
     return `::error ${props.join(',')}::${escapeData(explain(d))}`
   })
@@ -125,7 +130,9 @@ export function summaryMarkdown(report: CheckReport): string {
   const fixable = report.drift.some((d) => d.kind !== 'unreducible')
   return (
     `${heading}❌ ${
-      report.drift.every((d) => d.origin === 'team')
+      report.drift.some((d) => d.origin === 'version')
+        ? 'This OpenCastle is older than the one that compiled the project, so nothing was compared'
+        : report.drift.every((d) => d.origin === 'team')
         ? `The team's sources have ${report.drift.length === 1 ? 'a problem' : `${report.drift.length} problems`}, so nothing was compared`
         : report.drift.every((d) => d.origin === 'mcp' && d.kind === 'unreducible')
         ? `${report.drift.length} MCP config${report.drift.length === 1 ? ' has' : 's have'} a server only a person can fix`

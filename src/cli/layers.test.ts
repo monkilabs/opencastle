@@ -7,7 +7,7 @@
  * quietly drop or replace what the baseline requires, policy only tightens, and
  * a baseline is found exactly where the package manager put it.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -238,7 +238,7 @@ describe('resolving layers', () => {
     })
     const errors = resolveHere().issues.filter((i) => i.level === 'error').map((i) => i.message)
     expect(errors).toContain('excludes instructions/security, which @acme/base requires')
-    expect(errors).toContain('project replaces skills/secure-coding, which @acme/base requires as it ships it')
+    expect(errors).toContain('project replaces skills/secure-coding (from @acme/base), which @acme/base requires unchanged')
   })
 
   it('holds MCP servers to the policy: allowlist, hosts, pinning, and credentials', () => {
@@ -264,7 +264,8 @@ describe('resolving layers', () => {
     const errors = r.issues.filter((i) => i.level === 'error').map((i) => i.message)
     const warnings = r.issues.filter((i) => i.level === 'warning').map((i) => i.message)
     expect(errors.some((m) => m.includes('"acme-loose" runs @acme/loose-mcp without an exact version'))).toBe(true)
-    expect(errors.some((m) => m.includes('"docs" connects to https://docs.example.com/mcp, a host @acme/base does not allow'))).toBe(true)
+    // The host alone: a URL can carry a credential in its query string.
+    expect(errors.some((m) => m.includes('"docs" connects to docs.example.com, a host @acme/base does not allow'))).toBe(true)
     expect(errors.some((m) => m.includes('"rogue", which @acme/base does not allow'))).toBe(true)
     expect(errors.some((m) => m.includes('"acme-leak" has a credential written into headers.Authorization'))).toBe(true)
     expect(errors.some((m) => m.includes('acme-db'))).toBe(false)
@@ -371,7 +372,147 @@ describe('the merged source and the lock', () => {
     expect(lock.layers.map((l: { id: string }) => l.id)).toEqual(['opencastle', '@acme/base', 'project'])
     expect(lock.content['skills/secure-coding'].from).toBe('@acme/base')
     expect(lock.excluded).toEqual({ 'skills/seo-patterns': 'project' })
-    expect(lock.mcp['acme-db']).toEqual({ from: 'project', transport: 'stdio', launch: 'npx -y @acme/db-mcp@2.1.0', env: ['DB_URL'] })
+    expect(lock.mcp['acme-db']).toMatchObject({ from: 'project', transport: 'stdio', launch: 'npx -y @acme/db-mcp@2.1.0', env: ['DB_URL'] })
+    expect(lock.mcp['acme-db'].sha).toMatch(/^[0-9a-f]{12}$/)
     expect(lock.context.tokens).toBeGreaterThan(0)
+  })
+})
+
+describe('what review found, kept fixed', () => {
+  let project: string
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), 'layers-review-'))
+  })
+  afterEach(() => {
+    rmSync(project, { recursive: true, force: true })
+  })
+  const resolveHere = (stack: StackConfig = noTools) => resolveSources({ pkgRoot, projectRoot: project, stack })
+  const lockOf = (stack: StackConfig = noTools): string => {
+    const src = materialize(resolveHere(stack), pkgRoot)
+    try {
+      return serializeLock(buildLock(src, { ides: ['claude-code'], stack }))
+    } finally {
+      src.dispose()
+    }
+  }
+
+  it('a required item the project provides — rather than replaces — satisfies the requirement', () => {
+    baseline(project, '@acme/base', '1.0.0', { 'config.json': '{ "policy": { "require": ["instructions/security", "skills/testing-workflow"] } }' })
+    write(project, {
+      '.opencastle/config.json': '{ "extends": ["@acme/base"] }',
+      '.opencastle/instructions/security.md': '# Security\n',
+      '.opencastle/skills/testing-workflow/SKILL.md': skill('testing-workflow'),
+    })
+    const errors = resolveHere().issues.filter((i) => i.level === 'error').map((i) => i.message)
+    // Provided where nothing existed: fine. Replacing OpenCastle's own: named as OpenCastle's.
+    expect(errors).toEqual(['project replaces skills/testing-workflow (from OpenCastle), which @acme/base requires unchanged'])
+  })
+
+  it('lets a project opt out of a server a baseline defines, by exclude or by its own allowlist', () => {
+    baseline(project, '@acme/base', '1.0.0', {
+      'config.json': JSON.stringify({ mcpServers: { 'acme-tools': { url: 'https://tools.acme.dev/mcp' }, 'acme-docs': { url: 'https://docs.acme.dev/mcp' } } }),
+    })
+    write(project, {
+      '.opencastle/config.json': JSON.stringify({ extends: ['@acme/base'], exclude: ['mcpServers/acme-tools'], policy: { mcp: { allow: ['Linear'] } } }),
+    })
+    const r = resolveHere()
+    expect(r.issues.filter((i) => i.level === 'error')).toEqual([])
+    expect(r.servers.size).toBe(0)
+    expect(r.blocked.get('acme-tools')).toBe('excluded by project')
+    expect(r.blocked.get('acme-docs')).toBe('not on the MCP allowlist of project')
+  })
+
+  it('passes editor variables through, and does not list them as environment variables', () => {
+    write(project, {
+      '.opencastle/config.json': JSON.stringify({
+        mcpServers: { local: { command: 'node', args: ['${workspaceFolder}/tools/mcp.js'], env: { TOKEN: '${API_TOKEN}' } } },
+      }),
+    })
+    const vars = requiredEnvVars(resolveHere(), noTools).map((v) => v.envVar)
+    expect(vars).toEqual(['API_TOKEN'])
+  })
+
+  it('lists a variable two servers share once', () => {
+    write(project, {
+      '.opencastle/config.json': JSON.stringify({
+        mcpServers: {
+          a: { url: 'https://a.dev/mcp', headers: { Authorization: 'Bearer ${ACME_TOKEN}' } },
+          b: { url: 'https://b.dev/mcp', headers: { Authorization: 'Bearer ${ACME_TOKEN}' } },
+        },
+      }),
+    })
+    const vars = requiredEnvVars(resolveHere(), noTools)
+    expect(vars.filter((v) => v.envVar === 'ACME_TOKEN')).toHaveLength(1)
+  })
+
+  it('gives Copilot applyTo on an instruction whose frontmatter has none', () => {
+    write(project, { '.opencastle/instructions/rule.md': '---\ndescription: a rule\n---\n\n# Rule\n' })
+    const src = materialize(resolveHere(), pkgRoot)
+    try {
+      expect(readFileSync(join(src.root, 'instructions', 'rule.instructions.md'), 'utf8')).toBe("---\ndescription: a rule\napplyTo: '**'\n---\n\n# Rule\n")
+    } finally {
+      src.dispose()
+    }
+  })
+
+  it('makes the same lock whatever the OS left beside the content or did to line endings', () => {
+    write(project, {
+      'shared/skills/s/SKILL.md': skill('s'),
+      'shared/skills/s/notes.txt': 'one\ntwo\n',
+      '.opencastle/config.json': '{ "extends": ["../shared"] }',
+      '.opencastle/skills/p/SKILL.md': skill('p'),
+    })
+    const clean = lockOf()
+    write(project, {
+      'shared/skills/s/notes.txt': 'one\r\ntwo\r\n',
+      'shared/skills/s/SKILL.md': skill('s').replace(/\n/g, '\r\n'),
+      'shared/skills/.DS_Store': 'junk',
+      '.opencastle/skills/p/.DS_Store': 'junk',
+    })
+    expect(lockOf()).toBe(clean)
+  })
+
+  it('does not follow a link out of the layer', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'layers-outside-'))
+    try {
+      writeFileSync(join(outside, 'secret.txt'), 'not yours')
+      write(project, { '.opencastle/skills/s/SKILL.md': skill('s') })
+      symlinkSync(join(outside, 'secret.txt'), join(project, '.opencastle', 'skills', 's', 'linked.txt'))
+      const src = materialize(resolveHere(), pkgRoot)
+      try {
+        expect(existsSync(join(src.root, 'skills', 's', 'linked.txt'))).toBe(false)
+      } finally {
+        src.dispose()
+      }
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('warns about a baseline kept in a directory git ignores', () => {
+    write(project, {
+      '.opencastle/baselines/org/skills/x/SKILL.md': skill('x'),
+      '.opencastle/config.json': '{ "extends": ["./baselines/org"] }',
+    })
+    expect(resolveHere().issues.map((i) => i.message).join('\n')).toContain('which git ignores')
+  })
+})
+
+describe('credential detection, tuned', () => {
+  it('does not stop a compile over identifiers, settings or paths', () => {
+    expect(findInlineSecret({ env: { OAUTH_CLIENT_ID: 'Iv1.8a61f9b3a7aba766' } })).toBeNull()
+    expect(findInlineSecret({ env: { AUTH_MODE: 'oauth2-client-credentials' } })).toBeNull()
+    expect(findInlineSecret({ env: { AWS_SECRET_ID: 'prod/app/db-credentials-v2' } })).toBeNull()
+    expect(findInlineSecret({ env: { TOKEN_SHA: 'a'.repeat(64).replace(/a/g, (_, i) => String(i % 10)) } })).toBeNull()
+    expect(findInlineSecret({ command: 'npx', args: ['-y', 's@1.0.0', '--token-file=secrets/token1.txt'] })).toBeNull()
+  })
+
+  it('catches the formats and shapes it used to miss', () => {
+    expect(findInlineSecret({ env: { ANYTHING: 'npm_' + 'a1B2c3D4e5'.repeat(3) + 'a1B2c3' } })).toBe('env.ANYTHING')
+    expect(findInlineSecret({ env: { OPENAI_KEY: 'q8w7e6r5t4y3u2i1o0p9' } })).toBe('env.OPENAI_KEY')
+    expect(findInlineSecret({ command: 'npx', args: ['-y', 's@1.0.0', '--key', 'q8w7e6r5t4y3u2i1o0p9'] })).toBe('args')
+    expect(findInlineSecret({ env: { DATABASE_URL: 'postgres://app:hunter2@db.internal/app' } })).toBe('env.DATABASE_URL')
+    expect(findInlineSecret({ headers: { Authorization: 'Basic dXNlcjpwYXNz' } })).toBe('headers.Authorization')
+    expect(findInlineSecret({ env: { DB_PASSWORD: 'x9$Kq2mZ7vLp4wN8' } })).toBe('env.DB_PASSWORD')
   })
 })

@@ -82,7 +82,8 @@ const commands = [
       { flag: '--check', desc: 'Compare against a fresh compile and exit non-zero on drift; writes nothing' },
       { flag: '--json', desc: 'Machine-readable report (with --check)' },
       { flag: '--dry-run', desc: 'Preview what would change' },
-      { flag: '--force', desc: 'Sync even when versions match, or with an older release than the one that compiled the project' },
+      { flag: '--force', desc: 'Sync even when versions match' },
+      { flag: '--allow-downgrade', desc: 'Recompile with this OpenCastle even though a newer one compiled the project' },
       { flag: '--reconfigure', desc: 'Re-run IDE and integration selection' },
       { flag: '--yes', desc: 'Skip confirmation prompts' },
       { flag: '--help, -h', desc: 'Show help' },
@@ -90,7 +91,7 @@ const commands = [
     details: [
       { heading: 'What is preserved', content: `<p>Your customizations in <code>.opencastle/</code> are never overwritten. Framework directories are regenerated wholesale so renamed or removed sources do not leave stale files behind.</p>` },
       { heading: 'Team sources and the lock', content: `<p>When <code>.opencastle/config.json</code> exists, <code>sync</code> resolves it first: the baselines it extends, the project's own instructions, skills and agents, its MCP servers, and the policy. Any error — a baseline that is not installed, a server the policy refuses, a credential written inline — and nothing is written. Otherwise it compiles everything into every target and writes <code>.opencastle/lock.json</code>, the record of what every assistant is given; commit it. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
-<p>A project compiled by a newer OpenCastle than the one you are running is refused — it would replace newer output with older, and the next teammate's sync would put it back. Run the project's version, or pass <code>--force</code> to downgrade on purpose. The manifest is rewritten only when something it records changed.</p>` },
+<p>A project compiled by a newer OpenCastle than the one you are running is refused — it would replace newer output with older, and the next teammate's sync would put it back. Run the project's version, or pass <code>--allow-downgrade</code> to go back on purpose. The manifest is rewritten only when something it records changed.</p>` },
       { heading: 'In CI', content: `<p><code>sync --check</code> compiles to a scratch directory and compares, so a hand-edited rule file or a forgotten recompile fails the build. On GitHub Actions it also annotates each drifted file in the pull request with that file's own fix, and writes a table to the run's summary page — no configuration, it reads <code>GITHUB_ACTIONS</code>. With <code>--json</code> the annotations are left out so the output stays parseable.</p>
 <p>It reads MCP configs with the same audit <code>doctor</code> runs, so the two cannot disagree: a server entry still at an earlier OpenCastle default is drift that <code>sync</code> clears, and a broken server only a person can fix fails the check with its remedy. It also fails when the team's sources do not resolve or break the policy, and when <code>.opencastle/lock.json</code> is missing or stale.</p>
 <pre><code>- uses: actions/setup-node@v4

@@ -6,7 +6,7 @@ import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { getIncludedMcpServers } from './stack-config.js'
 import { splitFrontmatter, parseFrontmatterString } from './adapters/frontmatter.js'
 import { compiledPath, filesUnder, type CompileSource, type LayerKind } from './layers.js'
-import { serverTransport, type ContentKind } from './team-config.js'
+import { serverTransport, envNamesIn, type ContentKind } from './team-config.js'
 import type { RepoInfo, StackConfig } from './types.js'
 
 /**
@@ -48,6 +48,13 @@ export interface LockServer {
   launch: string
   env?: string[]
   auth?: string
+  /**
+   * For a team server, a digest of its whole definition. The launch line and
+   * the variable names do not show a literal environment value or header —
+   * `NODE_OPTIONS`, an API base URL — and a change there has to move the lock,
+   * or the review and the owners the lock routes to never see it.
+   */
+  sha?: string
 }
 
 export interface LockLayer {
@@ -107,6 +114,15 @@ function sorted<T>(entries: Array<[string, T]>): Record<string, T> {
   const out: Record<string, T> = {}
   for (const [k, v] of entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) out[k] = v
   return out
+}
+
+/** A server definition as a string that does not depend on key order. */
+function canonicalServer(value: unknown): string {
+  return JSON.stringify(value, (_k, v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  )
 }
 
 /** The command line a stdio server runs, as one string. */
@@ -208,10 +224,12 @@ export function buildLock(source: CompileSource, opts: LockOptions): Lock {
       ...Object.values(ts.server.headers ?? {}),
       ...(ts.server.args ?? []),
       ts.server.url ?? '',
+      ts.server.command ?? '',
     ]) {
-      for (const m of value.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) names.add(m[1])
+      for (const name of envNamesIn(value)) names.add(name)
     }
     if (names.size > 0) server.env = [...names].sort()
+    server.sha = sha12([['', Buffer.from(canonicalServer(ts.server))]])
     mcp.push([ts.key, server])
   }
 
@@ -271,14 +289,36 @@ export function serializeLock(lock: Lock): string {
   return JSON.stringify(lock, null, 2) + '\n'
 }
 
+/**
+ * A lock, or null when the text is not one this release can read. Checked
+ * field by field: `fleet` reads locks from many repositories, and one written
+ * by hand or by a future release must not take the whole report down.
+ */
 export function parseLock(text: string): Lock | null {
+  let parsed: Lock
   try {
-    const parsed = JSON.parse(text) as Lock
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.lockfileVersion !== 'number') return null
-    return parsed
+    parsed = JSON.parse(text) as Lock
   } catch {
     return null
   }
+  const obj = (v: unknown): boolean => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+  if (
+    !obj(parsed) ||
+    parsed.lockfileVersion !== LOCKFILE_VERSION ||
+    typeof parsed.opencastle !== 'string' ||
+    !Array.isArray(parsed.targets) ||
+    !Array.isArray(parsed.integrations) ||
+    !Array.isArray(parsed.layers) ||
+    !parsed.layers.every((l) => obj(l) && typeof l.id === 'string') ||
+    !obj(parsed.content) ||
+    !obj(parsed.mcp) ||
+    !Object.values(parsed.mcp).every((m) => obj(m) && typeof m.from === 'string' && typeof m.launch === 'string') ||
+    !obj(parsed.context) ||
+    typeof parsed.context.tokens !== 'number'
+  ) {
+    return null
+  }
+  return parsed
 }
 
 /** The committed lock, or null when there is none or it cannot be read. */
@@ -330,10 +370,23 @@ export async function recordLockFor(
   const stack = resolveStack({ ...manifest, ides })
   const resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: manifest.repoInfo })
   if (hasErrors(resolved)) throw new Error(formatIssues(resolved.issues).join('\n'))
-  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
   try {
     await writeLock(projectRoot, buildLock(source, { ides, stack, repoInfo: manifest.repoInfo }))
   } finally {
     source.dispose()
   }
+}
+
+/**
+ * What the committed lock says a previous sync wrote for the team: its server
+ * keys, and the variables those servers read (VS Code inputs among them).
+ * Passed to `materialize` so `sync` can take back what no layer defines now.
+ */
+export function priorTeam(projectRoot: string): [string[], string[]] {
+  const lock = readLock(projectRoot)
+  const keys = teamServerKeys(lock)
+  const vars = new Set<string>()
+  for (const k of keys) for (const v of lock?.mcp[k]?.env ?? []) vars.add(v)
+  return [keys, [...vars].sort()]
 }

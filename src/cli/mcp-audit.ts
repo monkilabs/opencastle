@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { getMcpConfigRelPath, upgradeGeneratedServers, canonicalJson } from './mcp.js'
 import type { IdeChoice } from './types.js'
-import { disallowedBy, hostDisallowedBy, findInlineSecret, type EffectivePolicy } from './policy.js'
+import { disallowedBy, hostDisallowedBy, findInlineSecret, hostOfUrl, type EffectivePolicy } from './policy.js'
+import { EDITOR_VARIABLES } from './team-config.js'
 
 /**
  * What a project's MCP config actually launches, read the way a supply-chain
@@ -36,6 +37,7 @@ export type McpProblem =
   | 'inline-secret'
   | 'not-allowed'
   | 'host-not-allowed'
+  | 'unexpanded-variable'
 
 /** What `opencastle sync` will do to an entry. */
 export type SyncEffect = 'replaces' | 'removes' | 'keeps'
@@ -359,10 +361,18 @@ export function auditMcpConfig(
       if (url && !refused) {
         const hostBy = hostDisallowedBy(team.policy, url)
         if (hostBy) {
-          audit.findings.push({ ...base, problem: 'host-not-allowed', subject: url, refusedBy: hostBy })
+          // The host, never the URL: its query string may hold a credential.
+          audit.findings.push({ ...base, problem: 'host-not-allowed', subject: hostOfUrl(url), refusedBy: hostBy })
           refused = true
         }
       }
+    }
+    // `${NAME}` where the assistant expands only its own spelling reaches the
+    // server as those characters, in place of the value. Entries sync writes
+    // are already right; this is for ones someone edited or added.
+    if (sync === 'keeps') {
+      const wrong = unexpandedVariable(entry, ide)
+      if (wrong) audit.findings.push({ ...base, problem: 'unexpanded-variable', subject: wrong })
     }
     // A credential in a committed file is a leak however the server launches.
     const secretAt = findInlineSecret(entry)
@@ -416,7 +426,36 @@ export function auditMcpConfig(
 
 /** Whether a finding fails the check, given the policy in force. */
 export function isFailure(f: McpFinding, policy?: EffectivePolicy): boolean {
+  if (f.problem === 'unexpanded-variable') return false
   return f.problem !== 'unpinned' || Boolean(policy?.requirePinned)
+}
+
+/** How each target that does not expand `${NAME}` spells it instead. */
+const OWN_SPELLING: Partial<Record<IdeChoice, (name: string) => string>> = {
+  cursor: (n) => `\${env:${n}}`,
+  windsurf: (n) => `\${env:${n}}`,
+  opencode: (n) => `{env:${n}}`,
+}
+
+/** The first `${NAME}` this target would pass through literally, as `NAME → spelling`, or null. */
+function unexpandedVariable(entry: Record<string, unknown>, ide: IdeChoice): string | null {
+  const spell = OWN_SPELLING[ide]
+  if (!spell) return null
+  const values: unknown[] = []
+  for (const field of ['env', 'environment', 'headers']) {
+    const block = entry[field]
+    if (block && typeof block === 'object' && !Array.isArray(block)) values.push(...Object.values(block as Record<string, unknown>))
+  }
+  if (Array.isArray(entry.args)) values.push(...entry.args)
+  if (Array.isArray(entry.command)) values.push(...entry.command)
+  values.push(entry.url, entry.serverUrl)
+  for (const v of values) {
+    if (typeof v !== 'string') continue
+    for (const m of v.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+      if (!EDITOR_VARIABLES.has(m[1])) return `\${${m[1]}} → ${spell(m[1])}`
+    }
+  }
+  return null
 }
 
 /** One finding in words, saying so when it fails only because the team requires pinning. */
@@ -442,6 +481,8 @@ export function describeFinding(f: McpFinding): string {
       return `${f.server}: not on the MCP allowlist of ${f.refusedBy}`
     case 'host-not-allowed':
       return `${f.server}: ${f.subject} is not an allowed host for ${f.refusedBy}`
+    case 'unexpanded-variable':
+      return `${f.server}: this assistant does not expand ${f.subject.split(' → ')[0]}; it reaches the server as literal text (write ${f.subject.split(' → ')[1]})`
   }
 }
 
@@ -529,37 +570,37 @@ export function checkMcpSupplyChain(
 
   const audit = auditMcpConfig(parsed, ide, included, team)
   const broken = audit.findings.filter((f) => isFailure(f, team?.policy))
-  const unpinned = audit.findings.filter((f) => !isFailure(f, team?.policy))
+  const warned = audit.findings.filter((f) => !isFailure(f, team?.policy))
+  const unpinned = warned.filter((f) => f.problem === 'unpinned')
+  const spelled = warned.filter((f) => f.problem === 'unexpanded-variable')
   const unaudited = audit.unaudited.length
     ? `not audited — ${audit.unaudited.map((u) => `${u.server} (${u.why})`).join(', ')}`
     : ''
+  const warnings = [
+    unpinned.length > 0 ? `not pinned to an exact version — ${unpinned.map(describeFinding).join(', ')}` : '',
+    spelled.length > 0 ? spelled.map(describeFinding).join('; ') : '',
+    unaudited,
+  ].filter(Boolean)
 
   if (broken.length > 0) {
     // The rest in the same line: a failure used to hide them, so fixing it was
     // followed by a second, surprise round of warnings.
-    const also = [
-      unpinned.length > 0 ? `not pinned — ${unpinned.map(describeFinding).join(', ')}` : '',
-      unaudited,
-    ].filter(Boolean)
     return {
       ok: false,
       label: LABEL,
-      detail: [broken.map((f) => describeFindingUnder(f, team?.policy)).join('; '), ...also].join('; also '),
+      detail: [broken.map((f) => describeFindingUnder(f, team?.policy)).join('; '), ...warnings].join('; also '),
       fix: remedyFor([...broken, ...unpinned], rel),
     }
   }
-  if (unpinned.length > 0 || unaudited) {
-    const said = [
-      unpinned.length > 0 ? `not pinned to an exact version — ${unpinned.map(describeFinding).join(', ')}` : '',
-      unaudited,
-    ].filter(Boolean)
+  if (warnings.length > 0) {
     const fixes = [
       unpinned.length > 0
         ? `${remedyFor(unpinned, rel)} (pin as name@x.y.z; each machine otherwise runs whatever was published last)`
         : '',
+      spelled.length > 0 ? `use each assistant's own variable spelling in ${rel}, as shown` : '',
       unaudited ? `check by hand what ${audit.unaudited.map((u) => u.server).join(', ')} launch` : '',
     ].filter(Boolean)
-    return { ok: true, warning: true, label: LABEL, detail: said.join('; '), fix: fixes.join('; ') }
+    return { ok: true, warning: true, label: LABEL, detail: warnings.join('; '), fix: fixes.join('; ') }
   }
   return {
     ok: true,

@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { readManifest } from './manifest.js'
 import { resolveStack } from './stack-config.js'
 import { resolveSources, materialize, hasErrors, formatIssues } from './layers.js'
-import { buildLock, parseLock, readLock, serializeLock, teamServerKeys, LOCK_REL, type Lock, type LockServer } from './lock.js'
+import { buildLock, parseLock, serializeLock, LOCK_REL, type Lock, type LockServer, priorTeam } from './lock.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
 
@@ -106,8 +106,37 @@ function origin(from: string): string {
   return from === 'project' ? 'this project' : from
 }
 
+/**
+ * A project's first lock, summarised. Listing every item as "new" produced a
+ * hundred lines on the upgrade that introduced the lock, with OpenCastle's own
+ * instructions flagged for review — noise that trains people to skip the
+ * summary. What is worth reading is what is not OpenCastle's.
+ */
+function firstLockSummary(head: Lock): ReviewLine[] {
+  const lines: ReviewLine[] = []
+  const add = (section: ReviewLine['section'], text: string, level: Attention = 'info'): void => {
+    lines.push({ section, text, level })
+  }
+  for (const l of head.layers) {
+    if (l.kind === 'baseline') add('layers', `Extends ${l.id}${l.version ? ` ${l.version}` : ''}`, 'review')
+  }
+  const own = Object.entries(head.content).filter(([, i]) => i.from !== 'opencastle' && !i.from.startsWith('plugin:'))
+  for (const [ref, item] of own) {
+    const [kind, name] = splitRef(ref)
+    add('content', `${KIND_LABEL[kind]?.[0] ?? kind} **${name}** from ${origin(item.from)}`, kind === 'instructions' ? 'review' : 'info')
+  }
+  const core = Object.keys(head.content).length - own.length
+  add('content', `and ${core} item(s) from OpenCastle and its integrations`)
+  for (const [key, s] of Object.entries(head.mcp)) {
+    add('mcp', `MCP server **${key}** from ${origin(s.from)} — ${describeServer(s)}`, s.from.startsWith('plugin:') ? 'info' : 'review')
+  }
+  add('context', `Every assistant loads ~${head.context.tokens} tokens before the task`)
+  return lines
+}
+
 /** Compare two locks. `base` null means the project had none — its first lock. */
 export function diffLocks(base: Lock | null, head: Lock): ReviewLine[] {
+  if (!base) return firstLockSummary(head)
   const lines: ReviewLine[] = []
   const add = (section: ReviewLine['section'], text: string, level: Attention = 'info'): void => {
     lines.push({ section, text, level })
@@ -203,6 +232,9 @@ export function diffLocks(base: Lock | null, head: Lock): ReviewLine[] {
       const bEnv = (was.env ?? []).join(',')
       const hEnv = (s.env ?? []).join(',')
       if (bEnv !== hEnv) add('mcp', `MCP server **${key}** now reads ${s.env?.length ? s.env.join(', ') : 'no variables'}`, 'review')
+      else if (was.sha !== s.sha) {
+        add('mcp', `MCP server **${key}** has different settings — its environment or headers changed (${origin(s.from)})`, 'review')
+      }
       continue
     }
     const bump = sameServerNewVersion(was, s)
@@ -216,33 +248,46 @@ export function diffLocks(base: Lock | null, head: Lock): ReviewLine[] {
   }
 
   // ── Policy ──────────────────────────────────────────────────
+  // Per layer, because that is how it applies: a server must be on every
+  // layer's list. A union of the lists read as "still allowed" after the one
+  // list that actually restricted something was dropped.
   const bp = b.policy ?? {}
   const hp = head.policy ?? {}
-  const flat = (m?: Record<string, string[]>): Set<string> => new Set(Object.values(m ?? {}).flat())
-  const allowB = flat(bp.allow)
-  const allowH = flat(hp.allow)
-  if (bp.allow && !hp.allow) add('policy', 'The MCP allowlist was removed — any server may now be written', 'review')
-  else if (!bp.allow && hp.allow && base) add('policy', `An MCP allowlist now applies: ${list([...allowH].sort())}`)
-  else {
-    const grew = [...allowH].filter((x) => !allowB.has(x))
-    const shrank = [...allowB].filter((x) => !allowH.has(x))
-    if (grew.length) add('policy', `The MCP allowlist now also allows ${list(grew)}`, 'review')
-    if (shrank.length) add('policy', `The MCP allowlist no longer allows ${list(shrank)}`)
+  const perLayer = (
+    before: Record<string, string[]> | undefined,
+    after: Record<string, string[]> | undefined,
+    what: { noun: string; gone: string; now: string },
+  ): void => {
+    for (const [by, was] of Object.entries(before ?? {})) {
+      const now = after?.[by]
+      if (!now) {
+        add('policy', `${origin(by)} no longer restricts ${what.gone}`, 'review')
+        continue
+      }
+      const grew = now.filter((x) => !was.includes(x))
+      const shrank = was.filter((x) => !now.includes(x))
+      if (grew.length) add('policy', `${origin(by)}'s ${what.noun} now also allows ${list(grew)}`, 'review')
+      if (shrank.length) add('policy', `${origin(by)}'s ${what.noun} no longer allows ${list(shrank)}`)
+    }
+    for (const [by, now] of Object.entries(after ?? {})) {
+      if (!before?.[by]) add('policy', `${origin(by)} now ${what.now}: ${list(now)}`)
+    }
   }
-  const hostsB = flat(bp.remoteHosts)
-  const hostsH = flat(hp.remoteHosts)
-  const moreHosts = [...hostsH].filter((x) => !hostsB.has(x))
-  if (bp.remoteHosts && !hp.remoteHosts) add('policy', 'Remote MCP servers may now connect to any host', 'review')
-  else if (moreHosts.length && bp.remoteHosts) add('policy', `Remote MCP servers may now also connect to ${list(moreHosts)}`, 'review')
+  perLayer(bp.allow, hp.allow, { noun: 'MCP allowlist', gone: 'which MCP servers may run', now: 'allows only these MCP servers' })
+  perLayer(bp.remoteHosts, hp.remoteHosts, {
+    noun: 'remote host list',
+    gone: 'which hosts remote MCP servers may reach',
+    now: 'lets remote MCP servers reach only',
+  })
   if (bp.requirePinned && !hp.requirePinned) add('policy', 'MCP servers no longer have to be pinned to an exact version', 'review')
-  if (!bp.requirePinned && hp.requirePinned && base) add('policy', `MCP servers must now be pinned (${hp.requirePinned})`)
+  if (!bp.requirePinned && hp.requirePinned) add('policy', `MCP servers must now be pinned (${origin(hp.requirePinned)})`)
   const reqB = new Set(bp.require ?? [])
   const reqH = new Set(hp.require ?? [])
   const unrequired = [...reqB].filter((r) => !reqH.has(r))
   const newlyRequired = [...reqH].filter((r) => !reqB.has(r))
   if (unrequired.length) add('policy', `No longer required: ${list(unrequired)}`, 'review')
-  if (newlyRequired.length && base) add('policy', `Now required: ${list(newlyRequired)}`)
-  if (bp.contextBudget !== hp.contextBudget && base) {
+  if (newlyRequired.length) add('policy', `Now required: ${list(newlyRequired)}`)
+  if (bp.contextBudget !== hp.contextBudget) {
     add('policy', `Context budget ${bp.contextBudget ?? 'none'} → ${hp.contextBudget ?? 'none'} tokens`, hp.contextBudget === undefined ? 'review' : 'info')
   }
 
@@ -354,7 +399,7 @@ async function headLock(pkgRoot: string, projectRoot: string): Promise<{ lock: L
   if (hasErrors(resolved)) {
     throw new Error(`the team's sources do not resolve:\n${formatIssues(resolved.issues.filter((i) => i.level === 'error')).join('\n')}`)
   }
-  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
   try {
     const lock = buildLock(source, { ides, stack, repoInfo: manifest.repoInfo })
     const committed = resolve(projectRoot, LOCK_REL)

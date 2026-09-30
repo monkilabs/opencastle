@@ -7,8 +7,9 @@ import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { getMcpConfigRelPath, expectedTeamEntries } from './mcp.js'
 import { resolveStack, getIncludedMcpServers } from './stack-config.js'
 import { auditMcpConfig, describeFindingUnder, remedyFor, isFailure, type TeamAuditContext } from './mcp-audit.js'
-import { resolveSources, materialize, hasErrors, type CompileSource } from './layers.js'
-import { buildLock, serializeLock, readLock, teamServerKeys, LOCK_REL } from './lock.js'
+import { resolveSources, materialize, hasErrors, cliVersionOf, type CompileSource } from './layers.js'
+import { parseVersion, compareVersions } from './version-range.js'
+import { buildLock, serializeLock, LOCK_REL, priorTeam } from './lock.js'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { gitignoreNeedsRebuild } from './gitignore.js'
 import {
@@ -60,7 +61,7 @@ export interface Drift {
    * parse, a baseline that is not installed, a policy the sources break. The
    * comparison cannot run until it is fixed, and `sync` refuses to compile.
    */
-  origin?: 'mcp' | 'team'
+  origin?: 'mcp' | 'team' | 'version'
   /** The classifier's own words, so the checker and `doctor` cannot diverge. */
   detail?: string
   /** What resolves it, per entry — these do not share a remedy. */
@@ -265,6 +266,32 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
   const stack: StackConfig = resolveStack({ ...manifest, ides })
   const repoInfo = manifest.repoInfo ?? mergeStackIntoRepoInfo(await detectRepoInfo(projectRoot), stack)
 
+  // An older OpenCastle than the one that compiled the project cannot say
+  // whether the project is right: its output is not the project's. Comparing
+  // anyway reported every changed file and prescribed a `sync` that refuses.
+  {
+    const running = cliVersionOf(pkgRoot)
+    const mine = parseVersion(running)
+    const theirs = parseVersion(manifest.version)
+    if (mine && theirs && compareVersions(mine, theirs) < 0) {
+      return {
+        installed: true,
+        ides,
+        checked: 0,
+        drift: [
+          {
+            ide: 'all',
+            path: '.opencastle/manifest.json',
+            kind: 'unreducible',
+            origin: 'version',
+            detail: `compiled by OpenCastle ${manifest.version}; this is ${running}, so nothing was compared`,
+            fix: `run the project's version — npx opencastle@${manifest.version} sync --check, or add opencastle to devDependencies`,
+          },
+        ],
+      }
+    }
+  }
+
   // The team's layers, resolved exactly as `sync` resolves them. A problem in
   // them — a baseline not installed, a config that does not parse, a server
   // the policy forbids — means there is nothing to compare against: say that,
@@ -287,7 +314,7 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
         })),
     }
   }
-  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
   try {
     return await compareProject(pkgRoot, projectRoot, ides, stack, repoInfo, source)
   } finally {
@@ -529,11 +556,15 @@ async function compareProject(
       // Leaving the second out let `doctor` say "sync removes it" while this
       // passed and `sync` short-circuited — a remedy that did nothing.
       const teamKeys = new Set(Object.keys(team.expected))
+      const container = (parsed as Record<string, unknown> | null)?.[ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers']
+      const present = new Set(container && typeof container === 'object' ? Object.keys(container as object) : [])
       const pluginOutdated = audit.outdated.filter((k) => !teamKeys.has(k))
-      const teamOutdated = audit.outdated.filter((k) => teamKeys.has(k))
+      const teamMissing = audit.outdated.filter((k) => teamKeys.has(k) && !present.has(k))
+      const teamDiffers = audit.outdated.filter((k) => teamKeys.has(k) && present.has(k))
       const changes = [
         pluginOutdated.length > 0 ? `still an earlier OpenCastle default: ${pluginOutdated.join(', ')}` : '',
-        teamOutdated.length > 0 ? `not as the team config defines them, so sync writes: ${teamOutdated.join(', ')}` : '',
+        teamMissing.length > 0 ? `missing the team's servers, which sync adds: ${teamMissing.join(', ')}` : '',
+        teamDiffers.length > 0 ? `not as the team config defines them, so sync writes: ${teamDiffers.join(', ')}` : '',
         audit.removed.length > 0
           ? `not in this project's stack, so sync removes: ${audit.removed.join(', ')} ` +
             `(opencastle add ${pluginIds(audit.removed).join(' ')} keeps them)`
@@ -647,26 +678,40 @@ function render(report: CheckReport): void {
   // source"; say what it is when it is all there is.
   const mcpOnly = report.drift.every((d) => d.origin === 'mcp' && d.kind === 'unreducible')
   const teamOnly = report.drift.every((d) => d.origin === 'team')
+  const olderCli = report.drift.some((d) => d.origin === 'version')
   console.log(
-    teamOnly
+    olderCli
+      ? `\n  ${c.red('✗')} This OpenCastle is older than the one that compiled the project.\n`
+      : teamOnly
       ? `\n  ${c.red('✗')} The team's sources have ${report.drift.length} problem(s), so nothing could be compared.\n`
       : mcpOnly
         ? `\n  ${c.red('✗')} ${report.drift.length} MCP config(s) have a server only a person can fix.\n`
         : `\n  ${c.red('✗')} ${report.drift.length} file(s) differ from their sources.\n`,
   )
 
-  if (changed.length > 0) {
-    console.log(`  ${c.bold('Edited in place')} ${c.dim('(your change will be lost on the next sync)')}`)
-    for (const d of changed) console.log(`    ${c.yellow('~')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+  // The lock is not edited by anyone; when it differs, the sources moved and
+  // nobody has synced. Filed under "edited in place" it told people they had
+  // an edit to lose.
+  const lockDrift = [...changed, ...missing].filter((d) => d.path === LOCK_REL)
+  const changedFiles = changed.filter((d) => d.path !== LOCK_REL)
+  const missingFiles = missing.filter((d) => d.path !== LOCK_REL)
+  if (lockDrift.length > 0) {
+    console.log(`  ${c.bold('Sources changed since the last sync')}`)
+    for (const d of lockDrift) console.log(`    ${c.yellow('~')} ${d.path} ${c.dim(`(${d.detail ?? d.kind})`)}`)
     console.log('')
   }
-  if (missing.length > 0) {
+  if (changedFiles.length > 0) {
+    console.log(`  ${c.bold('Differs from a fresh compile')} ${c.dim('(an edit here is lost on the next sync — make it in .opencastle/)')}`)
+    for (const d of changedFiles) console.log(`    ${c.yellow('~')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+    console.log('')
+  }
+  if (missingFiles.length > 0) {
     console.log(`  ${c.bold('Never generated')}`)
-    for (const d of missing) console.log(`    ${c.red('-')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+    for (const d of missingFiles) console.log(`    ${c.red('-')} ${d.path} ${c.dim(`(${d.ide})`)}`)
     console.log('')
   }
   if (extra.length > 0) {
-    console.log(`  ${c.bold('Added by hand')} ${c.dim('(deleted on the next sync)')}`)
+    console.log(`  ${c.bold('Not produced by any source')} ${c.dim('(removed on the next sync)')}`)
     for (const d of extra) console.log(`    ${c.red('+')} ${d.path} ${c.dim(`(${d.ide})`)}`)
     console.log('')
   }

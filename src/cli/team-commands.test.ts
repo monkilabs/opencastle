@@ -127,15 +127,41 @@ describe.skipIf(!built)('a repository extending a baseline', () => {
     expect(readFileSync(join(dir, '.opencastle', 'manifest.json'), 'utf8')).toBe(before)
   })
 
-  it('refuses to downgrade a project compiled by a newer OpenCastle', () => {
+  it('refuses to downgrade a project compiled by a newer OpenCastle — --force included', () => {
     const path = join(dir, '.opencastle', 'manifest.json')
     const manifest = JSON.parse(readFileSync(path, 'utf8'))
     manifest.version = '99.0.0'
     writeFileSync(path, JSON.stringify(manifest))
+    for (const args of [['sync', '--yes'], ['sync', '--force', '--yes']]) {
+      const sync = run(dir, args)
+      expect(sync.code).toBe(1)
+      expect(sync.out).toContain('compiled by OpenCastle 99.0.0')
+    }
+    const doctor = run(dir, ['doctor'])
+    expect(doctor.code).toBe(1)
+    expect(doctor.out).toContain('older than the 99.0.0')
+    // The check says why it compared nothing, instead of prescribing the sync that refuses.
+    const check = run(dir, ['sync', '--check'])
+    expect(check.code).toBe(1)
+    expect(check.out).toContain('older than the one that compiled the project')
+    expect(check.out).not.toContain('Fix: opencastle sync')
+    const down = run(dir, ['sync', '--allow-downgrade', '--yes'])
+    expect(down.code).toBe(0)
+    expect(down.out).toContain('Downgrading this project from OpenCastle 99.0.0')
+  })
+
+  it('holds the lock back while an MCP config cannot be read, so a retired server is not forgotten', () => {
+    write(dir, { '.opencastle/config.json': JSON.stringify({ extends: ['@acme/base'] }) })
+    const lockBefore = readFileSync(join(dir, '.opencastle', 'lock.json'), 'utf8')
+    writeFileSync(join(dir, '.vscode', 'mcp.json'), '{ not json')
     const sync = run(dir, ['sync', '--yes'])
-    expect(sync.code).toBe(1)
-    expect(sync.out).toContain('compiled by OpenCastle 99.0.0')
-    expect(run(dir, ['doctor']).out).toContain('older than the 99.0.0')
+    expect(sync.out).toContain('Left .opencastle/lock.json as it was')
+    expect(readFileSync(join(dir, '.opencastle', 'lock.json'), 'utf8')).toBe(lockBefore)
+  })
+
+  it('says which integration servers the policy left out', () => {
+    const add = run(dir, ['add', 'sentry'])
+    expect(add.out.replace(/\x1b\[[0-9;]*m/g, '')).toMatch(/Left out 1 MCP server\(s\):\s+Sentry — not on the MCP allowlist of @acme\/base/)
   })
 
   it('writes the CI workflow and routes the lock to its owners', () => {
@@ -171,6 +197,19 @@ describe.skipIf(!built)('a baseline package', () => {
     const report = JSON.parse(check.out)
     expect(report.errors).toEqual([])
     expect(report.contributes).toMatchObject({ skills: 1, instructions: 1 })
+  })
+
+  it('fails one whose layer sits outside the package, as every consumer would', () => {
+    run(dir, ['baseline', 'init', 'base', '--name', '@acme/base'])
+    const path = join(dir, 'base', 'package.json')
+    const pkg = JSON.parse(readFileSync(path, 'utf8'))
+    pkg.opencastle.baseline = '../shared'
+    delete pkg.files
+    writeFileSync(path, JSON.stringify(pkg))
+    mkdirSync(join(dir, 'shared'), { recursive: true })
+    const check = run(dir, ['baseline', 'check', 'base'])
+    expect(check.code).toBe(1)
+    expect(check.out).toContain('points outside the package')
   })
 
   it('fails one that would publish empty', () => {

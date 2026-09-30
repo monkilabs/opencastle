@@ -51,7 +51,7 @@ shipped is on the website; this is the record of decisions and gaps.
 | **Policy** that only tightens: `mcp.allow`, `mcp.remoteHosts`, `mcp.requirePinned`, `require`, `contextBudget`, and the `opencastle` version range | A baseline's rules hold in every repository that extends it. A team server the policy refuses is a compile error; an integration server it refuses is left out |
 | Credentials written inline refused in team config, and failed in every MCP config `doctor` reads | A token in a committed file fails the check instead of shipping |
 | `.opencastle/lock.json`, written by `sync` and compared by `sync --check` | One deterministic, reviewable record of what every assistant is given; CODEOWNERS on it routes every such change to owners |
-| **Review the meaning**: `opencastle review`, on the job summary in CI | Reviewers read "New MCP server acme-flags from this project" or "The MCP allowlist now also allows Sentry", marked ⚠️ where it matters — not a hundred lines of generated Markdown |
+| **Review the meaning**: `opencastle review`, on the job summary in CI | Reviewers read "New MCP server acme-flags from this project" or "@acme/opencastle-baseline's MCP allowlist now also allows Sentry", marked ⚠️ where it matters — not a hundred lines of generated Markdown |
 | **Instruction health** in `doctor`: always-loaded context against the budget with the largest contributors, dead `npm run` scripts and repository paths in team content, CLI version skew | Rot and bloat show up before an agent follows a stale instruction |
 | **Onboarding**: `opencastle explain` | A new teammate sees what their assistant gets, where each piece comes from, and which variables and sign-ins they still need |
 | **CI setup**: `opencastle ci [--owners <team>]` | The drift and policy check, the review summary and CODEOWNERS lines in one command |
@@ -124,10 +124,6 @@ assistant is given, so the reduction can be reviewed like any other change.
   `${env:NAME}` written into a team server's headers is honoured there — and
   whether a project-level `.windsurf/mcp.json` is read at all — needs checking
   against the current release.
-- A team instruction with frontmatter of its own is passed through as written.
-  Without `applyTo`, Copilot does not load it on its own, while the lock,
-  `explain` and the context budget count it as always loaded. Should
-  `sync` add `applyTo: '**'` when an instruction's frontmatter has none?
 - Codex CLI and Antigravity receive `${NAME}` for team and integration servers
   alike; neither assistant's variable syntax has been confirmed.
 - How each assistant treats an unset variable in its own syntax — an empty
@@ -138,11 +134,9 @@ assistant is given, so the reduction can be reviewed like any other change.
   assistant. What each target loads differs: Copilot scopes instructions with
   `applyTo`, and each assistant builds its own index. Whether a per-target
   number is worth the complexity is open.
-- The lock records a digest of each baseline's files as they are on disk. A
-  relative-path baseline checked out with CRLF line endings on one machine and
-  LF on another would record different digests, and `sync --check` would
-  disagree between them. A package installed from a registry is byte-identical
-  everywhere; a `.gitattributes` rule avoids it for a path.
+- Retiring a team server relies on the committed lock naming it. A developer
+  whose MCP config is kept out of git, and who pulls a lock that has already
+  dropped the server, keeps it until they remove it by hand.
 - `explain` counts a variable as set when it is in the shell or in `.env` at
   the project root. A VS Code user whose server reads it from a password input
   is reported as missing it.

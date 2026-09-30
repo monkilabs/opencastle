@@ -20,6 +20,8 @@ const SYNC_HELP = `
     --check           Report drift and exit non-zero; writes nothing (for CI)
     --dry-run         Preview what would change
     --force           Sync even when versions match
+    --allow-downgrade Recompile with this OpenCastle even though a newer one
+                      compiled the project
     --reconfigure     Re-run IDE and stack selection
     --yes             Skip the confirmation prompt
     --json            Machine-readable output (with --check)

@@ -12,7 +12,7 @@ import {
   type ResolvedSources,
   type TeamMcpPlan,
 } from './layers.js'
-import { contentReport, readLock, teamServerKeys, tokensOf } from './lock.js'
+import { contentReport, priorTeam, tokensOf } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import type { TeamAuditContext } from './mcp-audit.js'
 import type { IdeChoice, Manifest } from './types.js'
@@ -40,7 +40,7 @@ export interface TeamState {
 export function teamStateFor(pkgRoot: string, projectRoot: string, manifest: Manifest): TeamState {
   const stack = resolveStack(manifest)
   const resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: manifest.repoInfo })
-  return { resolved, plan: mcpPlan(resolved, teamServerKeys(readLock(projectRoot))) }
+  return { resolved, plan: mcpPlan(resolved, ...priorTeam(projectRoot)) }
 }
 
 /** What the MCP audit needs to hold one target's config to the team's decisions. */
@@ -141,7 +141,7 @@ export function checkContextBudget(pkgRoot: string, state: TeamState): HealthRes
 const REFERENCES = 'Team instructions match this repository'
 
 /** Scripts named in instructions, as `npm run <name>` and friends. */
-const SCRIPT_RUN = /\b(?:npm|pnpm|yarn|bun)\s+run\s+([A-Za-z0-9:_.-]+)/g
+const SCRIPT_RUN = /\b(?:npm|pnpm|yarn|bun)\s+run\s+([A-Za-z0-9:_.][A-Za-z0-9:_.-]*)/g
 /** A repository path written in backticks. */
 const PATH_SPAN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@/-]*\/[A-Za-z0-9_.@/-]*[A-Za-z0-9_-])`/g
 
@@ -217,9 +217,10 @@ export function checkVersionSkew(cliVersion: string, manifest: Manifest): Health
   if (!mine || !theirs) return { ok: true, label: VERSION, detail: `running ${cliVersion}` }
   const cmp = compareVersions(mine, theirs)
   if (cmp < 0) {
+    // A failure, not a warning: `sync` refuses to run, and `sync --check`
+    // compares nothing, until the project's version is the one running.
     return {
-      ok: true,
-      warning: true,
+      ok: false,
       label: VERSION,
       detail: `running ${cliVersion}, older than the ${manifest.version} that last compiled this project`,
       fix: `use the project's version — add opencastle@${manifest.version} to devDependencies and run npx opencastle, so everyone runs the same one`,

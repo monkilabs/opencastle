@@ -39,10 +39,16 @@ export interface TeamIssue {
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 export const ITEM_REF = new RegExp(`^(${CONTENT_KINDS.join('|')})/[A-Za-z0-9][A-Za-z0-9._-]*$`)
+/** What `exclude` may name: content, or an MCP server a layer below defines. */
+export const EXCLUDE_REF = new RegExp(`^(${[...CONTENT_KINDS, 'mcpServers'].join('|')})/[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 const ItemRef = v.pipe(
   v.string(),
   v.regex(ITEM_REF, 'must name a kind and an item, e.g. "skills/seo-patterns" or "agents/content-engineer"'),
+)
+const ExcludeRef = v.pipe(
+  v.string(),
+  v.regex(EXCLUDE_REF, 'must name a kind and an item, e.g. "skills/seo-patterns" or "mcpServers/Slack"'),
 )
 
 const McpServer = v.strictObject({
@@ -71,7 +77,7 @@ export const TeamConfigSchema = v.strictObject({
   $schema: v.optional(v.string()),
   opencastle: v.optional(v.pipe(v.string(), v.minLength(1))),
   extends: v.optional(v.array(v.pipe(v.string(), v.minLength(1)))),
-  exclude: v.optional(v.array(ItemRef)),
+  exclude: v.optional(v.array(ExcludeRef)),
   mcpServers: v.optional(
     v.record(v.pipe(v.string(), v.regex(NAME, 'server names are letters, digits, ".", "_" and "-"')), McpServer),
   ),
@@ -186,7 +192,7 @@ function dropTrailingCommas(text: string): string {
 export function parseTeamConfig(text: string, where: string): { config: TeamConfig | null; issues: TeamIssue[] } {
   let raw: unknown
   try {
-    raw = JSON.parse(stripJsonc(text.replace(/^﻿/, '')))
+    raw = JSON.parse(stripJsonc(text.replace(/^\uFEFF/, '')))
   } catch (err) {
     return {
       config: null,
@@ -216,6 +222,37 @@ export function parseTeamConfig(text: string, where: string): { config: TeamConf
     issues.push({ level: 'error', where, message: `${path ? `${path}: ` : ''}${issue.message}` })
   }
   return { config: null, issues }
+}
+
+/**
+ * Variables an editor fills in itself. `${workspaceFolder}` is not an
+ * environment variable, and rewriting it as one — `${env:workspaceFolder}` for
+ * Cursor, a password prompt in VS Code — broke the path it named.
+ */
+export const EDITOR_VARIABLES = new Set([
+  'workspaceFolder',
+  'workspaceFolderBasename',
+  'workspaceRoot',
+  'userHome',
+  'pathSeparator',
+  'cwd',
+  'execPath',
+  'file',
+  'fileBasename',
+  'fileDirname',
+  'fileExtname',
+  'relativeFile',
+  'lineNumber',
+  'selectedText',
+])
+
+/** The environment variables a value refers to as `${NAME}`, editor variables aside. */
+export function envNamesIn(value: string): string[] {
+  const out: string[] = []
+  for (const m of value.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)) {
+    if (!EDITOR_VARIABLES.has(m[1]) && !out.includes(m[1])) out.push(m[1])
+  }
+  return out
 }
 
 /** How a server launches: a URL means remote, a command means local. */

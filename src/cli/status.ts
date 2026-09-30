@@ -7,7 +7,6 @@ import { detectAssistantConfigs } from './detect.js'
 import { missingRequiredCustomizations } from './managed-paths.js'
 import { UnreadableConfigError } from './types.js'
 import { c } from './prompt.js'
-import { readLock } from './lock.js'
 import type { CliContext, IdeAdapter, Manifest } from './types.js'
 
 /**
@@ -206,7 +205,7 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     // Nor is a problem in the team's own sources, which stops the comparison
     // before it starts; `doctor`'s team check names it, with the fix.
     const outdatedOutput = report.drift.filter(
-      (d) => !(d.origin === 'mcp' && d.kind === 'unreducible') && d.origin !== 'team',
+      (d) => !(d.origin === 'mcp' && d.kind === 'unreducible') && d.origin !== 'team' && d.origin !== 'version',
     )
     stale = outdatedOutput.length > 0
     for (const d of outdatedOutput) drifted.add(d.ide)
@@ -322,9 +321,18 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     nextReason = `${unmanaged.join(', ')} config exists but is not being compiled`
   }
 
-  const baselines = (readLock(projectRoot)?.layers ?? [])
-    .filter((l) => l.kind === 'baseline')
-    .map((l) => `${l.id}${l.version ? ` ${l.version}` : ''}`)
+  // From the sources as they are now, not the committed lock: after an edit
+  // to `extends` the lock still names the old baseline until the next sync.
+  let baselines: string[] = []
+  try {
+    const { resolveSources } = await import('./layers.js')
+    const { resolveStack } = await import('./stack-config.js')
+    baselines = resolveSources({ pkgRoot, projectRoot, stack: resolveStack(manifest), repoInfo: manifest.repoInfo })
+      .layers.filter((l) => l.kind === 'baseline')
+      .map((l) => `${l.id}${l.version ? ` ${l.version}` : ''}`)
+  } catch {
+    baselines = []
+  }
 
   return {
     installed: true,

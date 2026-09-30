@@ -40,16 +40,33 @@ export function disallowedBy(policy: EffectivePolicy, key: string): string | nul
   return refusing.length > 0 ? refusing.map((l) => l.by).join(', ') : null
 }
 
-/** The layers that refuse a remote URL's host, or null when it is allowed. */
-export function hostDisallowedBy(policy: EffectivePolicy, url: string): string | null {
-  if (policy.hostLists.length === 0) return null
+/**
+ * A URL's host, and only its host. Messages name this and never the URL: a
+ * query string can carry a credential, and printing it to say the host is not
+ * allowed would leak it into terminals, CI logs and pull request annotations.
+ */
+export function hostOfUrl(url: string): string {
+  try {
+    return new URL(url.replace(/\$\{[^}]*\}|\{env:[^}]*\}/g, 'x')).hostname
+  } catch {
+    return '(an unreadable URL)'
+  }
+}
+
+/** Whether one list of host patterns allows a URL. */
+export function hostAllowedBy(patterns: string[], url: string): boolean {
   let host: string
   try {
     host = new URL(url.replace(/\$\{[^}]*\}|\{env:[^}]*\}/g, 'x')).hostname
   } catch {
-    return policy.hostLists.map((l) => l.by).join(', ')
+    return false
   }
-  const refusing = policy.hostLists.filter((l) => !l.patterns.some((p) => hostMatches(p, host)))
+  return patterns.some((p) => hostMatches(p, host))
+}
+
+/** The layers that refuse a remote URL's host, or null when it is allowed. */
+export function hostDisallowedBy(policy: EffectivePolicy, url: string): string | null {
+  const refusing = policy.hostLists.filter((l) => !hostAllowedBy(l.patterns, url))
   return refusing.length > 0 ? refusing.map((l) => l.by).join(', ') : null
 }
 
@@ -65,9 +82,15 @@ const TOKEN_FORMATS = new RegExp(
       'sk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}',
       'sk_(?:live|test)_[A-Za-z0-9]{16,}',
       'rk_(?:live|test)_[A-Za-z0-9]{16,}',
+      'whsec_[A-Za-z0-9]{24,}',
       'gh[pousr]_[A-Za-z0-9]{30,}',
       'github_pat_[A-Za-z0-9_]{30,}',
       'glpat-[A-Za-z0-9_-]{20,}',
+      'npm_[A-Za-z0-9]{36}',
+      'hf_[A-Za-z0-9]{30,}',
+      'sbp_[a-f0-9]{40}',
+      'shpat_[a-f0-9]{32}',
+      'dop_v1_[a-f0-9]{64}',
       'xox[abeprs]-[A-Za-z0-9-]{10,}',
       'AKIA[0-9A-Z]{16}',
       'lin_(?:api|oauth)_[A-Za-z0-9]{20,}',
@@ -81,13 +104,21 @@ const TOKEN_FORMATS = new RegExp(
     ')',
 )
 
-/** Names that say "this value is a credential". */
-const SECRET_NAME = /(token|secret|password|passwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|authorization|auth)/i
+/**
+ * Names that say "this value is a credential". `auth` and `key` only as whole
+ * words: `OAUTH_CLIENT_ID` is an identifier and `AUTH_MODE` a setting, and
+ * flagging them stopped a compile over nothing secret.
+ */
+const SECRET_NAME = /(token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key|private[_-]?key|credential|authorization|(^|[_-])auth$|(^|[_-])key$)/i
+
+/** Names that end like a pointer to a secret, not the secret itself. */
+const NOT_A_SECRET = /[_-](id|mode|url|uri|file|path|dir|region|name|sha|hash|type|endpoint|host|port|user|username|header|scheme)$/i
 
 const PLACEHOLDER = /^(?:replace[_-]?me|change[_-]?me|your[_-].*|<[^>]*>|x{3,}|\*+|todo|tbd|null|none|true|false|\d{1,6})$/i
 
+/** `${NAME}`, `${env:NAME}`, `{env:NAME}`, `{file:…}` anywhere; `$NAME` only as the whole value. */
 function isReference(value: string): boolean {
-  return /\$\{[^}]+\}|\{env:[^}]+\}|\{file:[^}]+\}|\$[A-Z_][A-Z0-9_]*/.test(value)
+  return /\$\{[^}]+\}|\{env:[^}]+\}|\{file:[^}]+\}/.test(value) || /^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value)
 }
 
 /** A value that could be a credential: long, no spaces, letters and digits, not a path or URL. */
@@ -97,14 +128,30 @@ function looksRandom(value: string): boolean {
     !/\s/.test(value) &&
     /[A-Za-z]/.test(value) &&
     /\d/.test(value) &&
-    !/^(?:https?:|\/|\.|~|[A-Za-z]:\\)/.test(value)
+    !/^(?:https?:|\/|\.|~|[A-Za-z]:\\)/.test(value) &&
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+$/.test(value)
   )
+}
+
+/** A URL with a password in it: `postgres://user:pass@host/db`. */
+function urlWithPassword(value: string): boolean {
+  if (isReference(value)) return false
+  try {
+    const u = new URL(value)
+    return Boolean(u.password) && !isReference(decodeURIComponent(u.password))
+  } catch {
+    return false
+  }
 }
 
 function isSecretValue(name: string, raw: string): boolean {
   const value = raw.replace(/^(?:Bearer|Basic|Token|token)\s+/, '').trim()
   if (value === '' || isReference(value) || PLACEHOLDER.test(value)) return false
   if (TOKEN_FORMATS.test(value)) return true
+  if (urlWithPassword(value)) return true
+  // Anything written into an Authorization header is the credential itself.
+  if (/^authorization$/i.test(name)) return value.length >= 8
+  if (NOT_A_SECRET.test(name)) return false
   return SECRET_NAME.test(name) && looksRandom(value)
 }
 

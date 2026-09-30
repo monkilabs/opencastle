@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { readManifest } from './manifest.js'
 import { resolveStack, isEnvVarSatisfied } from './stack-config.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
-import { buildLock, readLock, teamServerKeys, type Lock } from './lock.js'
+import { buildLock, type Lock, priorTeam } from './lock.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { c } from './prompt.js'
@@ -56,7 +56,7 @@ async function build(pkgRoot: string, projectRoot: string): Promise<ExplainRepor
   if (hasErrors(resolved)) {
     throw new Error(`the team's sources do not resolve:\n${formatIssues(resolved.issues.filter((i) => i.level === 'error')).join('\n')}`)
   }
-  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
   let lock: Lock
   try {
     lock = buildLock(source, { ides, stack, repoInfo: manifest.repoInfo })
@@ -159,8 +159,15 @@ function render(report: ExplainReport, all: boolean): void {
   if (lock.policy) {
     out(`  ${c.bold("The team's policy")}`)
     const p = lock.policy
-    if (p.allow) out(`    ${c.dim('•')} MCP servers allowed: ${[...new Set(Object.values(p.allow).flat())].join(', ')}`)
-    if (p.remoteHosts) out(`    ${c.dim('•')} Remote servers may connect to: ${[...new Set(Object.values(p.remoteHosts).flat())].join(', ')}`)
+    // Per layer: a server must be on every list, so a union would overstate it.
+    if (p.allow) {
+      out(`    ${c.dim('•')} MCP servers must be on every one of these allowlists:`)
+      for (const [who, list] of Object.entries(p.allow)) out(`        ${c.dim(`${by(who)}:`)} ${list.join(', ')}`)
+    }
+    if (p.remoteHosts) {
+      out(`    ${c.dim('•')} Remote servers may only reach hosts every one of these allows:`)
+      for (const [who, list] of Object.entries(p.remoteHosts)) out(`        ${c.dim(`${by(who)}:`)} ${list.join(', ')}`)
+    }
     if (p.requirePinned) out(`    ${c.dim('•')} Every local server must be pinned to an exact version (${p.requirePinned})`)
     if (p.require) out(`    ${c.dim('•')} Required everywhere: ${p.require.join(', ')}`)
     if (p.opencastle) out(`    ${c.dim('•')} OpenCastle version: ${Object.values(p.opencastle).join(' and ')}`)

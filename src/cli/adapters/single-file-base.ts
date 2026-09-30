@@ -277,7 +277,10 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         const integrations = new Set(
           [...src.resolved.items.values()].filter((i) => i.plugin && i.layer === 'opencastle').map((i) => i.name),
         )
-        const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name)
+        // Code-point order, not the machine's locale: under a Danish or
+        // Estonian locale `localeCompare` ordered names differently, and the
+        // root file then differed between two teammates' checkouts.
+        const byName = (a: { name: string }, b: { name: string }): number => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
         const ordered = [
           ...subdirs.filter((e) => !integrations.has(e.name)).sort(byName),
           ...subdirs.filter((e) => integrations.has(e.name)).sort(byName),

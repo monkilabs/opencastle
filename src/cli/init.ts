@@ -18,7 +18,7 @@ import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js
 import { resolveManagedPaths, declaredManagedPaths } from './managed-paths.js'
 import { noteUnreadable } from './unreadable-report.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
-import { buildLock, writeLock, readLock, teamServerKeys } from './lock.js'
+import { buildLock, writeLock, priorTeam } from './lock.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -411,7 +411,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const unreadable: string[] = []
   const failedTargets: Array<{ ide: string; message: string }> = []
 
-  const source = materialize(resolved, pkgRoot, teamServerKeys(readLock(projectRoot)))
+  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
   try {
     for (const ide of ides) {
       const adapter = await IDE_ADAPTERS[ide]()

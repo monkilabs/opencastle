@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, relative, resolve } from 'node:path'
+import { isAbsolute, join, relative, resolve } from 'node:path'
 import { resolveSources, materialize, cliVersionOf, formatIssues, hasErrors } from './layers.js'
 import { contentReport, tokensOf } from './lock.js'
 import { CONFIG_SCHEMA_URL } from './team-config.js'
@@ -205,6 +205,11 @@ function check(pkgRoot: string, dir: string): CheckReport {
     } else {
       layerRoot = resolve(root, pkg.opencastle.baseline)
       const rel = relative(root, layerRoot).split('\\').join('/')
+      // Consumers refuse a layer outside the package, so this must too — or
+      // it would pass here and fail in every repository that extends it.
+      if (rel.startsWith('..') || isAbsolute(rel)) {
+        errors.push(`package.json: "opencastle.baseline" points outside the package (${pkg.opencastle.baseline}), which no repository extending it will accept`)
+      }
       // `files` decides what `npm publish` ships. A baseline whose layer is not
       // in it publishes as an empty package, and every repository extending it
       // compiles nothing from it — with no error anywhere.
