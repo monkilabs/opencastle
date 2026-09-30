@@ -55,6 +55,8 @@ export interface McpAudit {
   findings: McpFinding[]
   /** Servers `sync` would move to the current default, problem or not. */
   outdated: string[]
+  /** Plugin servers the stack no longer includes, which `sync` deletes. */
+  removed: string[]
   /** Servers whose launch was read and passed. */
   passed: number
   /** Servers that launch something this audit cannot read, with why. */
@@ -75,11 +77,16 @@ export const NONEXISTENT_PACKAGES: Record<string, string> = {
 /** Runners that fetch a package from a registry and execute it. */
 const RUNNERS: Record<string, string[]> = {
   npx: [],
+  npm: ['exec'],
   bunx: [],
   pnpm: ['dlx'],
   yarn: ['dlx'],
   uvx: [],
+  pipx: ['run'],
 }
+
+/** Runners from the Python ecosystem, whose specs pin with `==`. */
+const PYTHON_RUNNERS = new Set(['uvx', 'pipx'])
 
 /** Container runtimes: they fetch code too, and this audit does not read images. */
 const CONTAINER_RUNTIMES = new Set(['docker', 'podman'])
@@ -141,7 +148,8 @@ export function packageLaunch(rawCommand: string, rawArgs: string[]): PackageLau
   if (!lead) return null
   if (lead.some((word, i) => args[i] !== word)) return null
   const rest = args.slice(lead.length)
-  const valueFlags = bin === 'uvx' ? VALUE_FLAGS.uvx : VALUE_FLAGS.default
+  const python = PYTHON_RUNNERS.has(bin)
+  const valueFlags = python ? VALUE_FLAGS.uvx : VALUE_FLAGS.default
 
   // Only flags *before* the package are the runner's. Everything after it is
   // passed to the server, so `npx -y foo@latest --no` is not project-local.
@@ -149,15 +157,15 @@ export function packageLaunch(rawCommand: string, rawArgs: string[]): PackageLau
   let spec: string | undefined
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]
-    if (bin === 'uvx' && arg === '--from') {
+    if (python && (arg === '--from' || arg === '--spec')) {
       spec = rest[i + 1]
       break
     }
-    if (bin !== 'uvx' && (arg === '-p' || arg === '--package')) {
+    if (!python && (arg === '-p' || arg === '--package')) {
       spec = rest[i + 1]
       break
     }
-    if (arg.startsWith('--package=') || arg.startsWith('--from=')) {
+    if (arg.startsWith('--package=') || arg.startsWith('--from=') || arg.startsWith('--spec=')) {
       spec = arg.slice(arg.indexOf('=') + 1)
       break
     }
@@ -191,7 +199,7 @@ export function packageLaunch(rawCommand: string, rawArgs: string[]): PackageLau
   let name = spec
   let version: string | null = null
   const eq = spec.indexOf('==')
-  if (bin === 'uvx' && eq > 0) {
+  if (python && eq > 0) {
     name = spec.slice(0, eq)
     version = spec.slice(eq + 2)
   } else {
@@ -201,7 +209,7 @@ export function packageLaunch(rawCommand: string, rawArgs: string[]): PackageLau
       version = spec.slice(at + 1)
     }
   }
-  return { spec, name, version, localOnly: bin === 'npx' && localOnly }
+  return { spec, name, version, localOnly: (bin === 'npx' || bin === 'npm') && localOnly }
 }
 
 /** True when the launch always runs the same code. */
@@ -250,7 +258,7 @@ export function auditMcpConfig(config: unknown, ide: IdeChoice, included?: Set<s
       .filter((p) => p.mcpServerKey)
       .map((p) => [p.mcpServerKey as string, p.id]),
   )
-  const audit: McpAudit = { findings: [], outdated: [], passed: 0, unaudited: [] }
+  const audit: McpAudit = { findings: [], outdated: [], removed: [], passed: 0, unaudited: [] }
   for (const [server, entry] of serverEntries(config)) {
     const plugin = pluginByKey.get(server)
     let sync: SyncEffect = 'keeps'
@@ -261,6 +269,7 @@ export function auditMcpConfig(config: unknown, ide: IdeChoice, included?: Set<s
       }
     }
     if (sync === 'replaces') audit.outdated.push(server)
+    if (sync === 'removes') audit.removed.push(server)
     const base = { server, sync, ...(plugin ? { plugin } : {}) }
 
     const line = commandLine(entry)
@@ -268,7 +277,11 @@ export function auditMcpConfig(config: unknown, ide: IdeChoice, included?: Set<s
       const { command, args } = unwrapShell(line.command, line.args)
       const bin = binName(command)
       if (CONTAINER_RUNTIMES.has(bin)) {
-        audit.unaudited.push({ server, why: 'container image' })
+        // A digest names exactly one image. A tag — `:latest` or `:1.2` — can be
+        // moved, and reading where the image sits among docker's own options is
+        // beyond this check, so anything else is reported, not passed.
+        if (args.some((a) => /@sha256:[0-9a-f]{64}$/.test(a))) audit.passed++
+        else audit.unaudited.push({ server, why: 'container image without a digest' })
         continue
       }
       const launch = packageLaunch(command, args)

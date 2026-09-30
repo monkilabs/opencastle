@@ -122,6 +122,10 @@ means less to review and less to drift.
   in a different shape are treated as edited: `doctor` says so and names the
   remedy (delete the entry and `sync --force`), but they are not moved
   automatically.
+- `doctor` and `sync --check` decide which plugin servers a project includes
+  from the repository facts recorded at the last `init` or `sync`; `sync`
+  re-detects them. If a deployment or monorepo file appears in between, the two
+  can briefly disagree about a server until the next sync records the change.
 - Figma's remote server lists the clients it supports; OpenCode, Windsurf and
   Antigravity are not on that list. Those targets may need Figma's desktop
   server (`http://127.0.0.1:3845/mcp`) instead, which needs a per-target config.

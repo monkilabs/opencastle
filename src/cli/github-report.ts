@@ -26,7 +26,7 @@ const TITLES: Record<DriftKind, string> = {
   changed: 'Generated file differs from its source',
   missing: 'Generated file never committed',
   extra: 'File added inside generated output',
-  outdated: 'MCP server still at an earlier default',
+  outdated: 'MCP config that sync would change',
   unreducible: 'Needs a person',
 }
 
@@ -47,7 +47,7 @@ function explain(d: Drift): string {
     case 'extra':
       return `${where} sits in generated output but no source produces it, so the next \`opencastle sync\` deletes it.`
     case 'outdated':
-      return `${where}: ${d.detail ?? 'an MCP server is still at an earlier default'}. Run \`opencastle sync\` and commit — it replaces only entries still exactly as OpenCastle wrote them.`
+      return `${where}: ${d.detail ?? 'an MCP server entry sync would change'}. Run \`opencastle sync\` and commit — it touches only entries OpenCastle wrote and nobody edited.`
     case 'unreducible':
       if (isComparisonFailure(d)) return `The comparison could not run: ${d.path}.${d.fix ? ` Fix: ${d.fix}` : ''}`
       return [`${where}: ${d.detail ?? 'needs a person'}`, d.fix && `Fix: ${d.fix}`].filter(Boolean).join('. ')
@@ -117,7 +117,13 @@ export function summaryMarkdown(report: CheckReport): string {
   )
   const fixable = report.drift.some((d) => d.kind !== 'unreducible')
   return (
-    `${heading}❌ ${report.drift.length === 1 ? '1 file differs from its source' : `${report.drift.length} files differ from their sources`}.\n\n` +
+    `${heading}❌ ${
+      report.drift.every((d) => d.origin === 'mcp' && d.kind === 'unreducible')
+        ? `${report.drift.length} MCP config${report.drift.length === 1 ? ' has' : 's have'} a server only a person can fix`
+        : report.drift.length === 1
+          ? '1 file differs from its source'
+          : `${report.drift.length} files differ from their sources`
+    }.\n\n` +
     '| File | Target | What happened | What to do |\n| --- | --- | --- | --- |\n' +
     rows.join('\n') +
     '\n\n' +

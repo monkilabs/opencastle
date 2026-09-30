@@ -67,6 +67,12 @@ describe('packageLaunch', () => {
     expect(packageLaunch('uvx', ['--from', 'pkg@1.2.3', 'pkg-mcp'])).toMatchObject({ name: 'pkg', version: '1.2.3' })
   })
 
+  it('reads npm exec and pipx run', () => {
+    expect(packageLaunch('npm', ['exec', '--yes', 'foo@latest'])).toMatchObject({ name: 'foo', version: 'latest' })
+    expect(packageLaunch('pipx', ['run', 'pkg==1.2.3'])).toMatchObject({ name: 'pkg', version: '1.2.3' })
+    expect(packageLaunch('pipx', ['run', '--spec', 'pkg==1.2.3', 'pkg-mcp'])).toMatchObject({ version: '1.2.3' })
+  })
+
   it('names no package for a shell string', () => {
     expect(packageLaunch('npx', ['-c', 'echo hi'])).toBeNull()
   })
@@ -155,6 +161,12 @@ describe('auditMcpConfig', () => {
     expect(audit.unaudited.map((u) => u.server)).toEqual(['Box', 'Odd'])
   })
 
+  it('passes a container image pinned by digest, and only that', () => {
+    const digest = 'mcp/fetch@sha256:' + 'a'.repeat(64)
+    expect(auditMcpConfig({ mcpServers: { Box: { command: 'docker', args: ['run', '-i', digest] } } }, 'cursor').passed).toBe(1)
+    expect(auditMcpConfig({ mcpServers: { Box: { command: 'docker', args: ['run', '-i', 'mcp/fetch:1.2'] } } }, 'cursor').unaudited).toHaveLength(1)
+  })
+
   it('knows sync removes a plugin server the stack does not include', () => {
     const { findings } = auditMcpConfig(
       { mcpServers: { Supabase: { url: 'https://mcp.supabase.com/mcp' } } },
@@ -215,7 +227,7 @@ describe('checkMcpSupplyChain', () => {
     write('.cursor/mcp.json', { mcpServers: { Box: { command: 'docker', args: ['run', '-i', 'mcp/fetch:latest'] } } })
     const r = checkMcpSupplyChain(root, 'cursor')
     expect(r).toMatchObject({ ok: true, warning: true })
-    expect(r.detail).toContain('Box (container image)')
+    expect(r.detail).toContain('Box (container image without a digest)')
   })
 
   it('tells an edited plugin entry apart from one sync still owns', () => {

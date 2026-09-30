@@ -77,8 +77,8 @@ describe('annotations', () => {
       drift: [{ ide: 'claude-code', path: '.mcp.json', kind: 'outdated', detail: 'still an earlier OpenCastle default: Supabase', fix: 'opencastle sync' }],
     }
     const line = annotations(report, '/ws', '/ws')[0]
-    expect(line).toMatch(/^::error file=\.mcp\.json,title=MCP server still at an earlier default::/)
-    expect(line).toContain('replaces only entries still exactly as OpenCastle wrote them')
+    expect(line).toMatch(/^::error file=\.mcp\.json,title=MCP config that sync would change::/)
+    expect(line).toContain('touches only entries OpenCastle wrote and nobody edited')
   })
   it('says what to run when nothing is installed', () => {
     expect(annotations({ ...clean, installed: false }, '/ws')[0]).toContain('opencastle init')
@@ -94,6 +94,13 @@ describe('summaryMarkdown', () => {
     expect(md).toContain('| File | Target | What happened | What to do |')
     expect(md).toContain('`.cursor/rules/general.mdc`')
     expect(md).toContain('Run `npx opencastle sync`')
+  })
+  it('does not call a broken MCP server a file that differs from its source', () => {
+    const report: CheckReport = {
+      ...clean,
+      drift: [{ ide: 'claude-code', path: '.mcp.json', kind: 'unreducible', origin: 'mcp', detail: 'x', fix: 'y' }],
+    }
+    expect(summaryMarkdown(report)).toContain('1 MCP config has a server only a person can fix')
   })
   it('agrees in number', () => {
     expect(summaryMarkdown({ ...drifted, drift: drifted.drift.slice(0, 1) })).toContain('1 file differs from its source')

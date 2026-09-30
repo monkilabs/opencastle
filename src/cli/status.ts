@@ -198,8 +198,11 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   try {
     const { buildCheckReport } = await import('./sync-check.js')
     const report = await buildCheckReport(pkgRoot, projectRoot)
-    stale = report.drift.length > 0
-    for (const d of report.drift) drifted.add(d.ide)
+    // A broken MCP server only a person can fix is not stale output: `doctor`'s
+    // failing check reports it, with its remedy, in the next line of this screen.
+    const outdatedOutput = report.drift.filter((d) => !(d.origin === 'mcp' && d.kind === 'unreducible'))
+    stale = outdatedOutput.length > 0
+    for (const d of outdatedOutput) drifted.add(d.ide)
   } catch (err) {
     // The comparison could not run — but that alone does not say whose fault it
     // is. A package without its sources is our problem and no reason to call

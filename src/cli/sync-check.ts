@@ -7,6 +7,7 @@ import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { getMcpConfigRelPath } from './mcp.js'
 import { resolveStack, getIncludedMcpServers } from './stack-config.js'
 import { auditMcpConfig, describeFinding, remedyFor } from './mcp-audit.js'
+import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { gitignoreNeedsRebuild } from './gitignore.js'
 import {
   carriesLegacyBody,
@@ -48,6 +49,12 @@ export interface Drift {
   ide: string
   path: string
   kind: DriftKind
+  /**
+   * Set on drift the MCP audit found. A broken server only a person can fix is
+   * a reason for CI to fail, but not a reason for `sync` to recompile or for
+   * the status line to say generated files are stale — neither is true of it.
+   */
+  origin?: 'mcp'
   /** The classifier's own words, so the checker and `doctor` cannot diverge. */
   detail?: string
   /** What resolves it, per entry — these do not share a remedy. */
@@ -60,6 +67,14 @@ export interface CheckReport {
   drift: Drift[]
   /** Files compared, for reporting scale. */
   checked: number
+}
+
+/** The plugin ids behind server keys, for an `opencastle add` line. */
+function pluginIds(servers: string[]): string[] {
+  const ids = Object.values(PLUGINS)
+    .filter((p) => p.mcpServerKey && servers.includes(p.mcpServerKey))
+    .map((p) => p.id)
+  return [...new Set(ids)]
 }
 
 /** Every file under a directory, relative to it, sorted for stable output. */
@@ -420,14 +435,19 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
       // never loads while this reported every file matching its source, and CI —
       // the one place a team would see it — stayed green.
       const audit = auditMcpConfig(parsed, ide as IdeChoice, included)
-      if (audit.outdated.length > 0) {
-        drift.push({
-          ide,
-          path: rel,
-          kind: 'outdated',
-          detail: `still an earlier OpenCastle default: ${audit.outdated.join(', ')}`,
-          fix: 'opencastle sync',
-        })
+      // Everything `sync` would change in the file, in one entry: entries it
+      // moves forward, and plugin servers the stack dropped, which it deletes.
+      // Leaving the second out let `doctor` say "sync removes it" while this
+      // passed and `sync` short-circuited — a remedy that did nothing.
+      const changes = [
+        audit.outdated.length > 0 ? `still an earlier OpenCastle default: ${audit.outdated.join(', ')}` : '',
+        audit.removed.length > 0
+          ? `not in this project's stack, so sync removes: ${audit.removed.join(', ')} ` +
+            `(opencastle add ${pluginIds(audit.removed).join(' ')} keeps them)`
+          : '',
+      ].filter(Boolean)
+      if (changes.length > 0) {
+        drift.push({ ide, path: rel, kind: 'outdated', detail: changes.join('; '), fix: 'opencastle sync', origin: 'mcp' })
       }
       // Failures `sync` will not clear — an entry someone edited, or their own.
       // Unpinned ones are warnings in `doctor` and are not drift here either.
@@ -439,6 +459,7 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
           kind: 'unreducible',
           detail: stuck.map(describeFinding).join('; '),
           fix: remedyFor(stuck, rel),
+          origin: 'mcp',
         })
       }
     }
@@ -525,7 +546,14 @@ function render(report: CheckReport): void {
   const outdated = report.drift.filter((d) => d.kind === 'outdated')
   const unreducible = report.drift.filter((d) => d.kind === 'unreducible')
 
-  console.log(`\n  ${c.red('✗')} ${report.drift.length} file(s) differ from their sources.\n`)
+  // A broken MCP server nobody generated is not a file that "differs from its
+  // source"; say what it is when it is all there is.
+  const mcpOnly = report.drift.every((d) => d.origin === 'mcp' && d.kind === 'unreducible')
+  console.log(
+    mcpOnly
+      ? `\n  ${c.red('✗')} ${report.drift.length} MCP config(s) have a server only a person can fix.\n`
+      : `\n  ${c.red('✗')} ${report.drift.length} file(s) differ from their sources.\n`,
+  )
 
   if (changed.length > 0) {
     console.log(`  ${c.bold('Edited in place')} ${c.dim('(your change will be lost on the next sync)')}`)

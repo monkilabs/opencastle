@@ -96,6 +96,51 @@ describe.skipIf(!built)('a stale MCP default is fixed by the command doctor name
     expect(run(dir, ['doctor']).code).toBe(0)
   })
 
+  it('a plugin server the stack dropped: doctor, CI and sync agree it goes', () => {
+    // An old Figma default in a project whose stack has no Figma.
+    const config = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'))
+    config.mcpServers.Figma = {
+      command: 'npx',
+      args: ['-y', '@anthropic/figma-mcp@latest'],
+      env: { FIGMA_ACCESS_TOKEN: '${FIGMA_ACCESS_TOKEN}' },
+    }
+    writeFileSync(join(dir, '.mcp.json'), JSON.stringify(config, null, 2) + '\n')
+
+    const doctor = run(dir, ['doctor'])
+    expect(doctor.code).toBe(1)
+    expect(doctor.out).toContain('opencastle sync removes Figma')
+    const check = run(dir, ['sync', '--check'])
+    expect(check.code).toBe(1)
+    expect(check.out).toContain('so sync removes: Figma')
+
+    const sync = run(dir, ['sync', '--yes'])
+    expect(sync.out).toContain('Removed 1 MCP server(s)')
+    expect(JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8')).mcpServers.Figma).toBeUndefined()
+    expect(run(dir, ['doctor']).code).toBe(0)
+    expect(run(dir, ['sync', '--check']).code).toBe(0)
+  })
+
+  it('a broken server of the user’s own fails CI, and sync leaves the repo alone', () => {
+    const config = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'))
+    config.mcpServers.context7 = { url: 'https://mcp.context7.com/mcp' }
+    writeFileSync(join(dir, '.mcp.json'), JSON.stringify(config, null, 2) + '\n')
+
+    const check = run(dir, ['sync', '--check'])
+    expect(check.code).toBe(1)
+    expect(check.out).toContain('only a person can fix')
+    expect(check.out).toContain('fix context7 by hand')
+
+    // Recompiling cannot fix it, so sync must not rewrite committed files for it.
+    const manifest = join(dir, '.opencastle', 'manifest.json')
+    const before = readFileSync(manifest, 'utf8')
+    const sync = run(dir, ['sync', '--yes'])
+    expect(sync.out).toContain('Everything matches its sources')
+    expect(readFileSync(manifest, 'utf8')).toBe(before)
+
+    // And the front door does not call it stale output.
+    expect(run(dir, []).out).not.toContain('no longer match their sources')
+  })
+
   it('leaves a server someone wrote, and says so', () => {
     const own = { command: 'npx', args: ['-y', 'our-internal-mcp'] }
     const config = JSON.parse(readFileSync(join(dir, '.mcp.json'), 'utf8'))

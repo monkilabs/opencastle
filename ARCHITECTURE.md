@@ -331,8 +331,10 @@ defaults are held to the rules a supply-chain review would apply:
   image, a runner option it does not know) it reports as not audited rather than
   passing.
 - **Checked in CI.** `sync --check` runs the same audit, so it cannot pass what
-  `doctor` fails: an entry `sync` would move forward is drift (`outdated`), and a
-  failure only a person can clear is `unreducible`.
+  `doctor` fails: whatever `sync` would change in an MCP config — an entry it
+  moves forward, a plugin server the stack dropped — is `outdated` drift, and a
+  failure only a person can clear is `unreducible`. The latter fails CI but does
+  not make `sync` recompile or the status line call the output stale.
 
 ---
 

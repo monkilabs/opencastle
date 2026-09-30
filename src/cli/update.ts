@@ -204,7 +204,9 @@ export default async function update({
     try {
       const { buildCheckReport } = await import('./sync-check.js')
       const report = await buildCheckReport(pkgRoot, projectRoot)
-      return report.drift.length > 0
+      // Not a broken MCP server only a person can fix: recompiling cannot clear
+      // it, and doing so on every run rewrote the committed manifest for nothing.
+      return report.drift.some((d) => !(d.origin === 'mcp' && d.kind === 'unreducible'))
     } catch {
       // If the comparison itself fails, err towards doing the work.
       return true
