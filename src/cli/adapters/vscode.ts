@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { basename, resolve } from 'node:path'
 import { mkdir, readFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
@@ -7,6 +7,7 @@ import { scaffoldMcpConfigInto } from '../mcp.js'
 import { getAgentTransform } from '../stack-config.js'
 import { withSource, type CompileSource } from '../layers.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
+import { isOurVscodePrompt, legacyVscodePrompts, vscodePromptFile, withCommandName } from '../command-namespace.js'
 
 /**
  * VS Code / GitHub Copilot adapter.
@@ -18,7 +19,7 @@ import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, 
  *   instructions/              → .github/instructions/
  *   skills/                    → .github/skills/
  *   agent-workflows/           → .github/agent-workflows/
- *   prompts/                   → .github/prompts/
+ *   prompts/<name>.prompt.md   → .github/prompts/oc.<name>.prompt.md  (/oc:<name>)
  *   customizations/            → .opencastle/  (scaffolded once)
  */
 
@@ -44,9 +45,22 @@ const FRAMEWORK_DIRS = [
 function copyRulesFor(
   dir: string,
   stack?: StackConfig,
-): { filter?: (_name: string, _srcPath: string) => boolean; transform?: CopyDirOptions['transform'] } {
+): Pick<CopyDirOptions, 'filter' | 'transform' | 'rename'> {
   if (dir === 'agents') {
     return { transform: stack ? getAgentTransform(stack) : undefined }
+  }
+  if (dir === 'prompts') {
+    // The `oc:` namespace. VS Code reads prompt files from the top of
+    // `.github/prompts/` only, so it goes in the file name as `oc.` and in the
+    // command name — the frontmatter `name`, which VS Code prefers — as `oc:`.
+    const PROMPT = '.prompt.md'
+    return {
+      rename: (name) => (name.endsWith(PROMPT) ? vscodePromptFile(name) : name),
+      transform: (content, srcPath) =>
+        srcPath.endsWith(PROMPT)
+          ? withCommandName(content, basename(srcPath).slice(0, -PROMPT.length))
+          : content,
+    }
   }
   if (dir === 'agent-workflows') {
     // The directory's own README documents the templates for contributors; it is
@@ -126,9 +140,7 @@ async function installFrom(
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    const { filter, transform } = copyRulesFor(dir, stack)
-
-    const sub = await copyDir(srcDir, destDir, { filter, transform })
+    const sub = await copyDir(srcDir, destDir, copyRulesFor(dir, stack))
     mergeCopyResults(results, sub)
   }
 
@@ -180,7 +192,12 @@ async function updateFrom(src: CompileSource, projectRoot: string, stack: StackC
   const beforeSweep = new Map<string, string>()
   for (const dir of FRAMEWORK_DIRS) {
     const abs = resolve(destRoot, dir)
-    for (const rel of filesUnderDir(abs)) beforeSweep.set(resolve(abs, rel), `.github/${dir}/${rel}`)
+    for (const rel of filesUnderDir(abs)) {
+      const shown = `.github/${dir}/${rel}`
+      // A prompt someone wrote beside ours is theirs to keep.
+      if (!ownsFile(shown, projectRoot)) continue
+      beforeSweep.set(resolve(abs, rel), shown)
+    }
   }
 
   // Recompile over the existing tree, then sweep — not the other way round.
@@ -196,9 +213,7 @@ async function updateFrom(src: CompileSource, projectRoot: string, stack: StackC
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    const { filter, transform } = copyRulesFor(dir, stack)
-
-    const sub = await copyDir(srcDir, destDir, { overwrite: true, filter, transform })
+    const sub = await copyDir(srcDir, destDir, { overwrite: true, ...copyRulesFor(dir, stack) })
     mergeCopyResults(results, sub)
     for (const abs of sub.visited ?? []) visited.add(abs)
   }
@@ -216,6 +231,32 @@ async function updateFrom(src: CompileSource, projectRoot: string, stack: StackC
   }
 
   return results
+}
+
+const PROMPTS_DIR = '.github/prompts/'
+
+/**
+ * `.github/prompts/` is shared: VS Code reads prompt files only at its top, so
+ * OpenCastle's `oc.` files and a person's own sit side by side. Every other
+ * framework directory is wholly generated.
+ */
+export function ownsFile(rel: string, projectRoot: string): boolean {
+  const norm = rel.replace(/\\/g, '/')
+  if (!norm.startsWith(PROMPTS_DIR)) return true
+  const name = norm.slice(PROMPTS_DIR.length)
+  // VS Code reads nothing deeper, and OpenCastle writes nothing deeper.
+  if (name.includes('/')) return false
+  return isOurVscodePrompt(name, resolve(projectRoot, norm), projectRoot)
+}
+
+/** The one framework directory this target shares with the user. */
+export function getSharedDirs(): string[] {
+  return [PROMPTS_DIR]
+}
+
+/** The un-namespaced prompts a release before 1.0 wrote. `update`'s sweep removes them. */
+export function getLegacyOutputs(projectRoot: string): string[] {
+  return legacyVscodePrompts(projectRoot)
 }
 
 export function getManagedPaths(): ManagedPaths {

@@ -262,10 +262,10 @@ After your summary, suggest next steps:
 Now that your `.opencastle/` configuration is complete, here's what you can do:
 
 1. **Review remaining TODOs** — Scan `.opencastle/` for any remaining `<!-- TODO: verify -->` comments and fill in missing values (e.g., tracker team IDs that require API access)
-2. **Implement a feature** — Use the **"Implement Feature"** prompt to have the Team Lead orchestrate a full feature build with task tracking, delegation, and verification
-3. **Fix a bug** — Use the **"Bug Fix"** prompt for structured triage, root cause analysis, and fix with tracker tracking
-4. **Brainstorm first** — Not sure how to approach something? Use the **"Brainstorm"** prompt to explore requirements and trade-offs before committing to a plan
-5. **Generate a convoy spec** — Use the **"Generate Convoy"** prompt to create a `.convoy.yml` spec for autonomous convoy execution with `npx opencastle convoy run --file <spec>` CLI command.
+2. **Implement a feature** — Use the **"Implement Feature"** prompt (`/oc:implement-feature` in Claude Code and Copilot) to have the Team Lead orchestrate a full feature build with task tracking, delegation, and verification
+3. **Fix a bug** — Use the **"Bug Fix"** prompt (`/oc:bug-fix`) for structured triage, root cause analysis, and fix with tracker tracking
+4. **Brainstorm first** — Not sure how to approach something? Use the **"Brainstorm"** prompt (`/oc:brainstorm`) to explore requirements and trade-offs before committing to a plan
+5. **Generate a convoy spec** — Use the **"Generate Convoy"** prompt (`/oc:generate-convoy`) to create a `.convoy.yml` spec for autonomous convoy execution with `npx opencastle convoy run --file <spec>` CLI command.
 
 ## Guidelines
 

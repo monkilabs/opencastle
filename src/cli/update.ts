@@ -458,6 +458,14 @@ export default async function update({
     for (const p of preview.framework) {
       console.log(`    ${c.yellow('↻')} ${p}`)
     }
+    // Named here because they are deleted, not updated: commands an earlier
+    // release wrote before the `oc:` namespace.
+    const legacy: string[] = []
+    for (const ide of ides) legacy.push(...((await IDE_ADAPTERS[ide]()).getLegacyOutputs?.(projectRoot) ?? []))
+    if (legacy.length > 0) {
+      console.log(`\n  ${c.dim('[dry-run]')} Files from before the oc: namespace that would be removed:\n`)
+      for (const p of legacy) console.log(`    ${c.red('-')} ${p}`)
+    }
     if (preview.merged.length > 0) {
       console.log(`\n  ${c.dim('[dry-run]')} Files where only the managed block changes:\n`)
       for (const p of preview.merged) {

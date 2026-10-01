@@ -58,6 +58,7 @@ shipped is on the website; this is the record of decisions and gaps.
 | `opencastle baseline init` and `check` | A baseline package scaffolded with its CI check, and validated the way every repository extending it will read it — including that `npm publish` ships the layer |
 | **Fleet**: `opencastle fleet <dir...>` | Which repositories run which OpenCastle and baseline versions, and which MCP servers run differently, from committed locks alone |
 | `sync` refuses to downgrade a project a newer release compiled | Two teammates on different versions no longer rewrite each other's output |
+| **Namespaced commands**: `/oc:bug-fix` in Claude Code (`.claude/commands/oc/`) and Copilot (`.github/prompts/oc.*.prompt.md`), a team's own prompts included; `sync` removes the un-namespaced files an earlier release wrote | A teammate's own `/bug-fix` keeps working beside ours, and `sync`, `sync --check` and `remove` never touch a command OpenCastle did not write |
 | Integration servers' variables written as `${env:NAME}` for Cursor and Windsurf and `{env:NAME}` for OpenCode | Cursor and OpenCode passed the `${NAME}` written before to the server as literal text |
 
 ## Next, in order of leverage

@@ -172,11 +172,21 @@ Run `opencastle <command> --help` for the flags.
 | Everything around the managed block in `CLAUDE.md` etc. | **Yours.** Kept byte for byte. |
 | The managed block itself | Ours. Regenerated on every sync. |
 | `.claude/`, `.cursor/rules/`, `.github/` | Ours. Regenerated on every sync. |
+| `.claude/commands/` outside `oc/`, and `.github/prompts/` files not starting `oc.` | **Yours.** Compiled commands are typed as `/oc:bug-fix`; a command you write beside them keeps its name and is never touched. |
 
 **Commit all of it.** Generated config is committed like a lockfile: a teammate
 who clones the repo gets working rules without running anything, and
 `sync --check` has something to check. Only `.env` and run artefacts under
 `.opencastle/` are gitignored.
+
+## Upgrading to 1.0
+
+Commands are namespaced: `/bug-fix` is now `/oc:bug-fix`, `/implement-feature`
+is `/oc:implement-feature`, and so on, in Claude Code and in Copilot Chat. A
+team's own prompts compile under the same prefix. Run `opencastle sync` once: it
+moves the commands into the namespace and removes the un-namespaced copies an
+earlier release wrote, recognising them by their names and the banner they
+carry. A command you wrote yourself stays.
 
 ## Upgrading from 0.35 or earlier
 
