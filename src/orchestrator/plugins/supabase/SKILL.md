@@ -7,7 +7,7 @@ description: "Generates Supabase database migrations, writes RLS policies with a
 
 # Supabase Database
 
-Project schema, roles, migration history, auth flow, and key files: [supabase-config.md](../../.opencastle/stack/supabase-config.md). Docs: https://supabase.com/docs
+Project schema, roles, migration history, auth flow, and key files: `.opencastle/stack/supabase-config.md`. Docs: https://supabase.com/docs
 
 ## RLS gotchas
 

@@ -7,7 +7,7 @@ description: "Creates and names Linear issues, assigns labels and priorities, ma
 
 # Task Management with Linear
 
-Team, workflow states and labels: [tracker-config.md](../../.opencastle/project/tracker-config.md). Docs: https://linear.app/docs/mcp
+Team, workflow states and labels: `.opencastle/project/linear-config.md`. Docs: https://linear.app/docs/mcp
 
 ## The MCP server
 
@@ -15,7 +15,7 @@ Linear's own remote server (`https://mcp.linear.app/mcp`), signed in with OAuth 
 
 ## Gotchas
 
-- **Look up, don't guess.** Read the team's statuses and labels from the server before setting them, and record the ones the team uses in `tracker-config.md`.
+- **Look up, don't guess.** Read the team's statuses and labels from the server before setting them, and record the ones the team uses in `linear-config.md`.
 - **Blockers go in a comment** on the issue, not in the description — the description is the spec.
 - Treat a create as successful only if it returns an issue ID (`TAS-42`) — verify before delegating.
 - GitHub integration auto-transitions on PR events (push → In Progress, review → In Review, merge → Done), configured in *Settings → Team → Pull request automation*. Link by putting `TAS-123` in the branch or PR title.

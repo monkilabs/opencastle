@@ -7,7 +7,7 @@ description: "Builds Strapi content types, extends controllers and services, imp
 
 # Strapi CMS
 
-Project config, content types, and deployment details: [cms-config.md](../../.opencastle/stack/cms-config.md). Docs: https://docs.strapi.io/
+Project config, content types, and deployment details: `.opencastle/stack/cms-config.md`. Docs: https://docs.strapi.io/
 
 ## File placement is load-bearing
 

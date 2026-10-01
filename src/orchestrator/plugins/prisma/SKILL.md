@@ -7,7 +7,7 @@ description: "Prisma ORM schema design, migrations, client generation, and query
 
 # Prisma Database
 
-Project schema and connection details: [database-config.md](../../.opencastle/stack/database-config.md). Docs: https://www.prisma.io/docs
+Project schema and connection details: `.opencastle/stack/database-config.md`. Docs: https://www.prisma.io/docs
 
 ## Migration rules
 

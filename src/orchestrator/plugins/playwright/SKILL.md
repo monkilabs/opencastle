@@ -7,7 +7,7 @@ description: "Playwright E2E testing patterns, cross-browser configuration, page
 
 # Playwright Testing
 
-Project test config and breakpoints: [testing-config.md](../../.opencastle/stack/testing-config.md). Docs: https://playwright.dev/docs/intro
+Project test config and breakpoints: `.opencastle/stack/testing-config.md`. Docs: https://playwright.dev/docs/intro
 
 Layout: specs `tests/e2e/{feature}/`, page objects `tests/pages/`, fixtures `tests/fixtures/`.
 

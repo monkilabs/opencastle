@@ -5,7 +5,7 @@ description: "Creates Contentful content types, queries entries via GraphQL/REST
 
 # Contentful CMS
 
-Project config, content types, and API keys: [cms-config.md](../../.opencastle/stack/cms-config.md). Docs: https://www.contentful.com/developers/docs/
+Project config, content types, and API keys: `.opencastle/stack/cms-config.md`. Docs: https://www.contentful.com/developers/docs/
 
 ## Gotchas
 

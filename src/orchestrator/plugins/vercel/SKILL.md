@@ -5,7 +5,7 @@ description: "Vercel deployment workflows, environment management, domain config
 
 # Vercel Deployment
 
-Vercel-specific deployment patterns and MCP tool usage. For project-specific deployment architecture, environment variables, and key files, see [deployment-config.md](../../.opencastle/stack/deployment-config.md).
+Vercel-specific deployment patterns and MCP tool usage. For project-specific deployment architecture, environment variables, and key files, see `.opencastle/stack/deployment-config.md`.
 
 ## Deployment Model
 

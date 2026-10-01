@@ -5,7 +5,7 @@ description: "Deploy sites, configure serverless and edge functions, and verify 
 
 # Netlify Deployment
 
-Project deployment architecture, env vars, and key files: [deployment-config.md](../../.opencastle/stack/deployment-config.md). Docs: https://docs.netlify.com
+Project deployment architecture, env vars, and key files: `.opencastle/stack/deployment-config.md`. Docs: https://docs.netlify.com
 
 `main` → production (auto). `feature/*`, `fix/*` → deploy preview at a unique URL (auto).
 
