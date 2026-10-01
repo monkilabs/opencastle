@@ -100,7 +100,7 @@ const explainOutput = `$ npx opencastle explain
 
   What the AI assistants in this repository are given
 
-  Layers  OpenCastle 0.35.3 → @acme/opencastle-baseline 1.5.0 → this project  (later layers add to and override earlier ones)
+  Layers  OpenCastle 1.0.0 → @acme/opencastle-baseline 1.5.0 → this project  (later layers add to and override earlier ones)
   Targets VS Code, Claude Code, Cursor, OpenCode
 
   Always loaded — ~5518 tokens before every task: instructions ~1864, the skill and agent index ~3655
@@ -154,7 +154,7 @@ const doctorOutput = `$ npx opencastle doctor
   ✓ Team sources  extends @acme/opencastle-baseline@1.5.0; team content: 2 skills, 2 instructions; 3 team MCP server(s); MCP allowlist in force
   ✓ Always-loaded context  ~5.5k tokens (instructions ~1.9k, skill and agent index ~3.7k); budget 12.0k (@acme/opencastle-baseline)
   ! Team instructions match this repository  skills/deploy-runbook runs "npm run deploy:prod", which package.json does not define; skills/deploy-runbook names \`src/deploy/config.ts\`, which does not exist
-  ✓ OpenCastle version  0.35.3, the version that compiled this project
+  ✓ OpenCastle version  1.0.0, the version that compiled this project
   …
 
 $ npx opencastle sync --check
@@ -207,10 +207,10 @@ const fleetOutput = `$ npx opencastle fleet shop admin
 
   Fleet — 2 repositories
 
-  • shop        opencastle 0.35.3  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~5518 tokens up front
-  • admin       opencastle 0.35.3  @acme/opencastle-baseline@1.4.0  4 target(s), 5 MCP server(s), ~5501 tokens up front
+  • shop        opencastle 1.0.0  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~5518 tokens up front
+  • admin       opencastle 1.0.0  @acme/opencastle-baseline@1.4.0  4 target(s), 5 MCP server(s), ~5501 tokens up front
 
-  opencastle: 0.35.3 (2) — all on one version
+  opencastle: 1.0.0 (2) — all on one version
   @acme/opencastle-baseline: 1.4.0 (1), 1.5.0 (1) — 1 behind 1.5.0: admin
 
   MCP servers running differently across repositories
@@ -221,7 +221,7 @@ const fleetOutput = `$ npx opencastle fleet shop admin
 const fullConfig = `// .opencastle/config.json — every field
 {
   "$schema": "https://www.opencastle.dev/schema/config.json",
-  "opencastle": "^0.35.0",
+  "opencastle": "^1.0.0",
   // A package, then a directory in this monorepo. The first is the lowest layer.
   "extends": ["@acme/opencastle-baseline", "../packages/opencastle-web"],
   "exclude": ["skills/seo-patterns", "agents/researcher"],
@@ -251,11 +251,11 @@ const fullConfig = `// .opencastle/config.json — every field
 const lockExcerpt = `{
   "$comment": "Written by opencastle sync — do not edit. Change .opencastle/ (or a baseline) and run sync; opencastle review explains a change.",
   "lockfileVersion": 1,
-  "opencastle": "0.35.3",
+  "opencastle": "1.0.0",
   "targets": ["claude-code", "cursor", "opencode", "vscode"],
   "integrations": ["chrome-devtools", "linear", "nextjs", "slack", "vitest"],
   "layers": [
-    { "id": "opencastle", "kind": "core", "version": "0.35.3" },
+    { "id": "opencastle", "kind": "core", "version": "1.0.0" },
     { "id": "@acme/opencastle-baseline", "kind": "baseline", "version": "1.5.0",
       "integrity": "sha256-sr5W5wAoB1BqPaAzA1az1Tc/GSHapmYSUEd9eCW8jtM=" },
     { "id": "project", "kind": "project" }
@@ -318,10 +318,10 @@ jobs:
           node-version: 22
       - run: npm install
       - name: Generated config matches its sources and policy
-        run: npx -y opencastle@0.35.3 sync --check
+        run: npx -y opencastle@1.0.0 sync --check
       - name: What this pull request changes
         if: github.event_name == 'pull_request'
-        run: npx -y opencastle@0.35.3 review --base origin/\${{ github.base_ref }}`;
+        run: npx -y opencastle@1.0.0 review --base origin/\${{ github.base_ref }}`;
 
 const baselineCheckOutput = `$ npx opencastle baseline init --name @acme/opencastle-baseline
 
@@ -697,7 +697,7 @@ $ npx opencastle baseline check opencastle-baseline
                 </tr>
                 <tr>
                   <td><code>opencastle</code></td><td>string</td>
-                  <td>The OpenCastle versions this layer works with, as a semver range: exact, <code>^</code>, <code>~</code>, <code>0.35.x</code>, comparators such as <code>{'>=0.35.0 <0.37.0'}</code>, and <code>||</code>. Every layer's range must hold, or nothing compiles.</td>
+                  <td>The OpenCastle versions this layer works with, as a semver range: exact, <code>^</code>, <code>~</code>, <code>1.0.x</code>, comparators such as <code>{'>=1.0.0 <1.3.0'}</code>, and <code>||</code>. Every layer's range must hold, or nothing compiles.</td>
                 </tr>
                 <tr>
                   <td><code>$schema</code></td><td>string</td>
