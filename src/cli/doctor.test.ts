@@ -205,8 +205,8 @@ describe('claude-code adapter getDoctorChecks', () => {
     expect(checks.find((c) => c.path === 'CLAUDE.md')?.type).toBe('file')
     expect(checks.find((c) => c.path === '.claude/agents/')).toBeDefined()
     expect(checks.find((c) => c.path === '.claude/skills/')).toBeDefined()
-    // claude-code: prompts and workflows share 'commands' dir
-    expect(checks.find((c) => c.path === '.claude/commands/')).toBeDefined()
+    // claude-code: prompts and workflows share the namespaced commands dir
+    expect(checks.find((c) => c.path === '.claude/commands/oc/')).toBeDefined()
     expect(checks.find((c) => c.label === 'Commands directory')).toBeDefined()
   })
 })

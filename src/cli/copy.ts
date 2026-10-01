@@ -66,7 +66,7 @@ async function sameText(
 export async function copyDir(
   src: string,
   dest: string,
-  { overwrite = false, filter, transform }: CopyDirOptions = {}
+  { overwrite = false, filter, transform, rename }: CopyDirOptions = {}
 ): Promise<CopyResults> {
   const entries = await readdir(src, { withFileTypes: true });
   await mkdir(dest, { recursive: true });
@@ -75,7 +75,10 @@ export async function copyDir(
 
   for (const entry of entries) {
     const srcPath = resolve(src, entry.name);
-    const destPath = resolve(dest, entry.name);
+    const destPath = resolve(
+      dest,
+      rename && !entry.isDirectory() ? rename(entry.name) : entry.name,
+    );
 
     if (filter && !filter(entry.name, srcPath)) continue;
 
@@ -84,6 +87,7 @@ export async function copyDir(
         overwrite,
         filter,
         transform,
+        rename,
       });
       mergeCopyResults(results, sub);
     } else {

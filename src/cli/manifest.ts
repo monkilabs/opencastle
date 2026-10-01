@@ -3,6 +3,7 @@ import { resolve, dirname, relative } from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import type { Manifest } from './types.js';
 import { UnreadableConfigError } from './types.js';
+import { COMMAND_NAMESPACE } from './command-namespace.js';
 
 const MANIFEST_FILE = '.opencastle/manifest.json';
 
@@ -91,5 +92,6 @@ export function createManifest(version: string, ide: string, ides?: string[]): M
     ides: ides ?? [ide],
     installedAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    commandNamespace: COMMAND_NAMESPACE,
   };
 }

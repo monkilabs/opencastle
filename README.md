@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Write your AI assistant config once. Use it in every assistant.</strong>
+  <strong>Write your AI config once. Every assistant. Every teammate.</strong>
 </p>
 
 <p align="center">
@@ -202,8 +202,8 @@ still open: **[docs/teams.md](docs/teams.md)**.
 
 | Assistant | Compiles to |
 |-----------|-------------|
-| **Claude Code** | `CLAUDE.md` + `.claude/` |
-| **GitHub Copilot** | `.github/` — agents, skills, prompts |
+| **Claude Code** | `CLAUDE.md` + `.claude/` — commands as `/oc:<name>` |
+| **GitHub Copilot** | `.github/` — agents, skills, prompts as `/oc:<name>` |
 | **Cursor** | `.cursorrules` + `.cursor/rules/*.mdc` |
 | **Windsurf** | `.windsurfrules` + `.windsurf/rules/*.md` |
 | **OpenCode** | `AGENTS.md` + `.opencode/` + `opencode.json` |
@@ -213,6 +213,11 @@ still open: **[docs/teams.md](docs/teams.md)**.
 Each target gets that assistant's native format, including its own frontmatter
 dialect for how a rule is scoped. MCP servers are configured per assistant too,
 in whichever shape it expects.
+
+Compiled commands share one namespace — `/oc:bug-fix`, `/oc:implement-feature`,
+and a team's own prompts as `/oc:<name>` — so a command of yours with the same
+name keeps working beside them. In `.claude/commands/` and `.github/prompts/`,
+OpenCastle writes only its `oc` files and leaves everything else alone.
 
 <br>
 

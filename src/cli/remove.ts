@@ -6,7 +6,7 @@ import { removeDirIfExists } from './copy.js'
 import { removeGitignoreBlock, predictGitignoreStrip, LOCAL_DIRS } from './gitignore.js'
 import { confirm, select, closePrompts, c } from './prompt.js'
 import { stripManagedBlockFromFile, predictStripFile } from './managed-block.js'
-import { resolveManagedPaths } from './managed-paths.js'
+import { resolveManagedPaths, ownerOf, removeOwnedFiles } from './managed-paths.js'
 import { stripManagedMcpServers, getMcpConfigRelPath, willKeepSomethingAfterStrip } from './mcp.js'
 import { priorTeam } from './lock.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
@@ -216,7 +216,18 @@ export default async function remove({ args }: CliContext): Promise<void> {
   // An install from before this field existed records nothing, and absence means
   // "unknown" — which is treated as "not ours to delete".
   const createdConfigs = new Set(manifest.createdConfigs ?? [])
-  const frameworkPaths = managed.framework.filter((p) => !mcpPaths.has(p))
+  // Commands a release before the namespace left at the top of `.claude/commands/`,
+  // outside today's framework directories — found by the banner they carry, so
+  // a command the user wrote there is not among them.
+  const legacyOutputs: string[] = []
+  const adapters = await Promise.all(ides.map((ide) => IDE_ADAPTERS[ide]()))
+  for (const adapter of adapters) {
+    legacyOutputs.push(...(adapter.getLegacyOutputs?.(projectRoot) ?? []))
+  }
+  const frameworkPaths = [
+    ...managed.framework.filter((p) => !mcpPaths.has(p)),
+    ...legacyOutputs.filter((p) => !managed.framework.includes(p)),
+  ]
   // `.opencastle/` is handled explicitly below, so drop it here — listing it in
   // both places printed it twice and counted it twice in "Removed N path(s)".
   const customizablePaths = managed.customizable.filter(
@@ -236,7 +247,9 @@ export default async function remove({ args }: CliContext): Promise<void> {
   } else {
     console.log(`  ${c.bold('Deleted')}\n`)
     for (const p of [...frameworkPaths, ...customizablePaths]) {
-      console.log(`    ${c.red('-')} ${c.dim(p)}`)
+      // A directory shared with the user — `.github/prompts/` — loses only ours.
+      const shared = ownerOf(adapters, p, projectRoot) ? c.dim(' — only the files OpenCastle wrote') : ''
+      console.log(`    ${c.red('-')} ${c.dim(p)}${shared}`)
     }
     // Named plainly: this is the one path in the list that holds writing of the
     // user's own, and the command spends the rest of its effort preserving
@@ -317,7 +330,10 @@ export default async function remove({ args }: CliContext): Promise<void> {
       // Only if it was there. The manifest still lists paths for a target that
       // has since been dropped, so the count claimed to have removed
       // directories that had not existed for releases.
-      if (existsSync(resolve(projectRoot, p))) {
+      const owns = ownerOf(adapters, p, projectRoot)
+      if (owns) {
+        if (removeOwnedFiles(projectRoot, p, owns) > 0) removed++
+      } else if (existsSync(resolve(projectRoot, p))) {
         await removeDirIfExists(resolve(projectRoot, p))
         removed++
       }

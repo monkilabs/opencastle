@@ -110,6 +110,8 @@ export interface CopyResults {
 export interface CopyDirOptions {
   overwrite?: boolean;
   filter?: (_name: string, _srcPath: string) => boolean;
+  /** The name a file is installed under, given its source name. Directories keep theirs. */
+  rename?: (_name: string) => string;
   transform?: (
     _content: string,
     _srcPath: string
@@ -157,6 +159,13 @@ export interface Manifest {
    * "unknown", which is treated as "not ours to delete".
    */
   createdConfigs?: string[];
+  /**
+   * The namespace this install's commands are compiled under — `oc`. Absent on
+   * a project a release before the namespace compiled, which is how `sync`
+   * knows to look for the un-namespaced commands it left (`/bug-fix` beside
+   * `/oc:bug-fix`), and how it knows to stop looking afterwards.
+   */
+  commandNamespace?: string;
   stack?: StackConfig;
   repoInfo?: RepoInfo;
 }
@@ -212,6 +221,29 @@ export interface IdeAdapter {
   ): Promise<CopyResults>;
   getManagedPaths(): ManagedPaths;
   getDoctorChecks(): DoctorCheck[];
+  /**
+   * Files an earlier release wrote under a name this one no longer uses —
+   * `/bug-fix` before it became `/oc:bug-fix` — present on disk now, relative to
+   * the project root with forward slashes. `sync` removes them, `sync --check`
+   * reports them, `remove` takes them with the rest, and `init` reads them as a
+   * previous installation. Absent when a target has never renamed its output.
+   */
+  getLegacyOutputs?(_projectRoot: string): string[];
+  /**
+   * Framework directories this target shares with the user — `.github/prompts/`,
+   * which VS Code reads only at its top, so OpenCastle's `oc.` files and a
+   * person's own sit side by side. `remove` and a dropped target's cleanup take
+   * only what `ownsFile` claims there; every other framework directory is
+   * removed whole.
+   */
+  getSharedDirs?(): string[];
+  /**
+   * Whether a file under one of this target's framework directories is one it
+   * wrote. Sweeps and drift leave a file that answers no alone. Absent means
+   * every file there is the target's. `_rel` is relative to the project root,
+   * with forward slashes.
+   */
+  ownsFile?(_rel: string, _projectRoot: string): boolean;
 }
 
 /** Select prompt option. */

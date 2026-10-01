@@ -31,6 +31,7 @@ import {
 } from './layers.js'
 import { buildLock, writeLock, LOCK_REL, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
+import { COMMAND_NAMESPACE } from './command-namespace.js'
 
 /** Print what is wrong with the team's sources, and that nothing was written. */
 function reportTeamIssues(resolved: ResolvedSources): void {
@@ -458,6 +459,14 @@ export default async function update({
     for (const p of preview.framework) {
       console.log(`    ${c.yellow('↻')} ${p}`)
     }
+    // Named here because they are deleted, not updated: commands an earlier
+    // release wrote before the `oc:` namespace.
+    const legacy: string[] = []
+    for (const ide of ides) legacy.push(...((await IDE_ADAPTERS[ide]()).getLegacyOutputs?.(projectRoot) ?? []))
+    if (legacy.length > 0) {
+      console.log(`\n  ${c.dim('[dry-run]')} Files from before the oc: namespace that would be removed:\n`)
+      for (const p of legacy) console.log(`    ${c.red('-')} ${p}`)
+    }
     if (preview.merged.length > 0) {
       console.log(`\n  ${c.dim('[dry-run]')} Files where only the managed block changes:\n`)
       for (const p of preview.merged) {
@@ -651,6 +660,9 @@ export default async function update({
   manifest.version = pkg.version
   manifest.ides = ides
   manifest.managedPaths = allManagedPaths
+  // After the compile above, which has removed any un-namespaced commands an
+  // earlier release left: from here on the old names are free again.
+  manifest.commandNamespace = COMMAND_NAMESPACE
   manifest.stack = newStack
   manifest.repoInfo = mergeStackIntoRepoInfo(repoInfo, newStack)
   if (manifestMeaning(manifest as unknown as Record<string, unknown>) !== before) {

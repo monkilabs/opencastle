@@ -54,7 +54,7 @@ function explain(d: Drift): string {
     case 'missing':
       return `${where} should exist but does not. Run \`opencastle sync\` and commit the result; generated config is committed like a lockfile.`
     case 'extra':
-      return `${where} sits in generated output but no source produces it, so the next \`opencastle sync\` deletes it.`
+      return `${where} ${d.detail ? `was ${d.detail}` : 'sits in generated output but no source produces it'}, so the next \`opencastle sync\` deletes it.`
     case 'outdated':
       return `${where}: ${d.detail ?? 'an MCP server entry sync would change'}. Run \`opencastle sync\` and commit — it touches only entries OpenCastle wrote and nobody edited.`
     case 'unreducible':

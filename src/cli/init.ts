@@ -12,14 +12,15 @@ import type { PluginConfig } from '../orchestrator/plugins/types.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde, detectAssistantConfigs } from './detect.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { IDE_LABELS } from './types.js'
-import type { CliContext, CopyResults, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
+import type { CliContext, CopyResults, IdeAdapter, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { bootstrapCustomizations } from './bootstrap.js'
 import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
-import { resolveManagedPaths, declaredManagedPaths } from './managed-paths.js'
+import { resolveManagedPaths, declaredManagedPaths, ownerOf, removeOwnedFiles } from './managed-paths.js'
 import { noteUnreadable } from './unreadable-report.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
 import { buildLock, writeLock, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
+import { COMMAND_NAMESPACE } from './command-namespace.js'
 
 const INIT_HELP = `
   opencastle init [options]
@@ -381,10 +382,21 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       const previous = await resolveManagedPaths({ ...existing, ide: dropped[0], ides: dropped })
       const keeping = await declaredManagedPaths(ides as string[])
       const kept = new Set([...keeping.framework, ...(keeping.merged ?? [])])
-      for (const p of previous.framework) {
+      // And what a release before the `oc:` namespace left outside them.
+      const droppedAdapters: IdeAdapter[] = []
+      for (const id of dropped) {
+        const load = IDE_ADAPTERS[id]
+        if (load) droppedAdapters.push(await load())
+      }
+      const legacy = droppedAdapters.flatMap((a) => a.getLegacyOutputs?.(projectRoot) ?? [])
+      for (const p of [...previous.framework, ...legacy]) {
         if (kept.has(p)) continue
         const fullPath = resolve(projectRoot, p)
-        if (p.endsWith('/')) {
+        // A directory the target shares with the user loses only its own files.
+        const owns = ownerOf(droppedAdapters, p, projectRoot)
+        if (owns) {
+          removeOwnedFiles(projectRoot, p, owns)
+        } else if (p.endsWith('/')) {
           await removeDirIfExists(fullPath)
         } else if (existsSync(fullPath)) {
           await unlink(fullPath)
@@ -480,9 +492,22 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       }
     }
 
-    // If all files were skipped (orphaned install — no manifest but files exist)
-    if (totalCreated === 0 && totalSkipped > 0 && !isReinit) {
-      console.log(`  ${c.yellow('⚠')}  Found ${totalSkipped} existing files from a previous installation.`)
+    // If all files were skipped (orphaned install — no manifest but files exist).
+    //
+    // Or if a release before the `oc:` namespace left its commands here. The
+    // namespaced files are new, so they count as created and "all skipped" no
+    // longer holds for any install that old — its stale `/bug-fix` stayed beside
+    // `/oc:bug-fix` and its agent bodies were never refreshed.
+    const previousOutput: string[] = []
+    if (!isReinit) {
+      for (const ide of ides) {
+        previousOutput.push(...((await IDE_ADAPTERS[ide]()).getLegacyOutputs?.(projectRoot) ?? []))
+      }
+    }
+    if (((totalCreated === 0 && totalSkipped > 0) || previousOutput.length > 0) && !isReinit) {
+      console.log(
+        `  ${c.yellow('⚠')}  Found ${totalSkipped + previousOutput.length} existing files from a previous installation.`,
+      )
       // `--yes` is documented as "accept the detected setup without asking", and
       // this was the one question it did not cover. On a TTY it still asked.
       // `refuse`, because the default here overwrites. A piped run that ran out of
@@ -826,6 +851,17 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     step++
     console.log(
       `  ${step}. Set the environment variable${envVars.length > 1 ? 's' : ''} listed above (in .env or your shell)`
+    )
+  }
+  // The commands are namespaced, and a name nobody tells you is a name nobody
+  // types. Only where `/oc:` is a slash command.
+  const withCommands = ides.filter((id) => id === 'claude-code' || id === 'vscode')
+  if (withCommands.length > 0) {
+    step++
+    const where = withCommands.map((id) => (id === 'vscode' ? 'Copilot Chat' : 'Claude Code')).join(' or ')
+    console.log(
+      `  ${step}. Type ${c.cyan(`/${COMMAND_NAMESPACE}:`)} in ${where} for OpenCastle's commands — ` +
+        `${c.cyan(`/${COMMAND_NAMESPACE}:bootstrap-customizations`)} first on an existing codebase`,
     )
   }
   step++
