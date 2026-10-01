@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Write your AI assistant config once. Use it in every assistant.</strong>
+  <strong>Write your AI config once. Every assistant. Every teammate.</strong>
 </p>
 
 <p align="center">

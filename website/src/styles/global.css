@@ -369,6 +369,8 @@ img {
   line-height: 1.05;
   letter-spacing: -0.035em;
   margin-bottom: 24px;
+  /* Even lines rather than a lone "once." or "teammate." on the last one. */
+  text-wrap: balance;
 }
 
 .hero__title-gradient {
