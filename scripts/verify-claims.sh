@@ -889,7 +889,7 @@ for fault in unreadable-dir file-where-dir-belongs unreadable-root unreadable-ma
     unreadable-gitignore) chmod 000 .gitignore; faulted=".gitignore" ;;
     mcp-is-a-dir)         rm -f .mcp.json; mkdir .mcp.json; faulted=".mcp.json" ;;
     dir-wearing-unfiltered-name)
-                          f=$(ls .claude/commands/*.md 2>/dev/null | head -1)
+                          f=$(ls .claude/commands/oc/*.md 2>/dev/null | head -1)
                           [ -n "$f" ] && { rm -f "$f"; mkdir "$f"; faulted="$f"; } ;;
     unreadable-nested-skill)
                           d=$(ls -d .claude/skills/*/ 2>/dev/null | head -1)
@@ -1169,7 +1169,7 @@ elif state == 'gi-mixed-endings':
     gi.write_text(''.join(out))
 elif state == 'dir-wearing-unfiltered-name':
     import glob
-    for pat in ('.claude/commands/*.md', '.github/prompts/*.prompt.md'):
+    for pat in ('.claude/commands/oc/*.md', '.github/prompts/*.prompt.md'):
         hit = sorted(glob.glob(pat))
         if hit:
             q = pathlib.Path(hit[0]); q.unlink(); q.mkdir()

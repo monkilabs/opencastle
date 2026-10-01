@@ -8,6 +8,7 @@ import { IDE_ADAPTERS } from './adapters/index.js'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { c } from './prompt.js'
 import { IDE_LABELS, type CliContext, type IdeChoice } from './types.js'
+import { COMMAND_NAMESPACE } from './command-namespace.js'
 
 /**
  * `opencastle explain`: what a new teammate's assistant is given here, and
@@ -122,13 +123,24 @@ function render(report: ExplainReport, all: boolean): void {
   if (lock.policy?.contextBudget) out(`    ${c.dim(`budget: ${lock.policy.contextBudget} tokens`)}`)
   out('')
 
+  // Where a prompt is a command someone types, and under which name.
+  const hasClaude = report.targets.some((t) => t.id === 'claude-code')
+  const typedIn = [
+    ...(hasClaude ? ['Claude Code'] : []),
+    ...(report.targets.some((t) => t.id === 'vscode') ? ['Copilot'] : []),
+  ]
   for (const kind of ['skills', 'agents', 'prompts', 'workflows'] as const) {
     const items = ofKind(kind)
     if (items.length === 0) continue
     const team = items.filter(([, i]) => i.from !== 'opencastle' && !i.from.startsWith('plugin:'))
     const integrations = items.filter(([, i]) => i.from.startsWith('plugin:'))
     const core = items.filter(([, i]) => i.from === 'opencastle')
-    const title = { skills: 'Skills — loaded when a task matches the description', agents: 'Agents — personas to delegate to', prompts: 'Prompts', workflows: 'Workflows' }[kind]
+    const title = {
+      skills: 'Skills — loaded when a task matches the description',
+      agents: 'Agents — personas to delegate to',
+      prompts: typedIn.length > 0 ? `Commands — /${COMMAND_NAMESPACE}:<name> in ${typedIn.join(' and ')}` : 'Prompts',
+      workflows: hasClaude ? `Workflows — /${COMMAND_NAMESPACE}:workflow-<name> in Claude Code` : 'Workflows',
+    }[kind]
     out(`  ${c.bold(title)} ${c.dim(`(${items.length})`)}`)
     for (const [ref, item] of [...team, ...integrations, ...(all ? core : [])]) {
       const name = ref.slice(kind.length + 1)

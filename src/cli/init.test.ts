@@ -834,24 +834,28 @@ describe('Claude Code adapter install', () => {
     expect(mcpConfig).not.toHaveProperty('servers')
   })
 
-  it('creates prompts in .claude/commands/', async () => {
+  it('creates prompts in .claude/commands/oc/, the oc: namespace', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
 
-    const commandsDir = join(tempDir, '.claude', 'commands')
+    const commandsDir = join(tempDir, '.claude', 'commands', 'oc')
     expect(existsSync(commandsDir)).toBe(true)
     const commands = await readdir(commandsDir)
     // Should have prompt files
     expect(commands.length).toBeGreaterThan(0)
+    expect(commands).toContain('bug-fix.md')
     // All should be .md files
     expect(commands.every((f) => f.endsWith('.md'))).toBe(true)
+    // Nothing outside the namespace: the rest of the directory is the user's.
+    const top = await readdir(join(tempDir, '.claude', 'commands'))
+    expect(top).toEqual(['oc'])
   })
 
   it('creates workflows as commands with workflow- prefix', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
 
-    const commandsDir = join(tempDir, '.claude', 'commands')
+    const commandsDir = join(tempDir, '.claude', 'commands', 'oc')
     const commands = await readdir(commandsDir)
     // Workflow files should have the "workflow-" prefix
     const workflows = commands.filter((f) => f.startsWith('workflow-'))
@@ -866,7 +870,8 @@ describe('Claude Code adapter install', () => {
     expect(paths.framework).not.toContain('CLAUDE.md')
     expect(paths.framework).toContain('.claude/agents/')
     expect(paths.framework).toContain('.claude/skills/')
-    expect(paths.framework).toContain('.claude/commands/')
+    expect(paths.framework).toContain('.claude/commands/oc/')
+    expect(paths.framework).not.toContain('.claude/commands/')
 
     expect(paths.customizable).toContain('.opencastle/')
     expect(paths.customizable).toContain('.mcp.json')

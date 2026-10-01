@@ -164,6 +164,7 @@ function comparePath(
   projectRoot: string,
   ide: string,
   drift: Drift[],
+  owns?: (_rel: string) => boolean,
 ): number {
   const fresh = resolve(freshRoot, managedPath)
   const actual = resolve(projectRoot, managedPath)
@@ -208,7 +209,11 @@ function comparePath(
     const expected = new Set(generated)
     for (const rel of filesUnder(actual)) {
       if (expected.has(rel)) continue
-      drift.push({ ide, path: `${managedPath.replace(/\/$/, '')}/${rel}`, kind: 'extra' })
+      const shown = `${managedPath.replace(/\/$/, '')}/${rel}`
+      // A file the target shares the directory with someone over — their own
+      // prompt beside ours in `.github/prompts/` — is not drift.
+      if (owns && !owns(shown)) continue
+      drift.push({ ide, path: shown, kind: 'extra' })
     }
     return checked
   }
@@ -347,7 +352,18 @@ async function compareProject(
       // most likely to be edited by hand, would be the only thing never checked.
       const managed = adapter.getManagedPaths()
       for (const managedPath of [...managed.framework, ...(managed.merged ?? [])]) {
-        checked += comparePath(managedPath, scratch, projectRoot, ide, drift)
+        checked += comparePath(managedPath, scratch, projectRoot, ide, drift, adapter.ownsFile
+          ? (rel) => adapter.ownsFile!(rel, projectRoot)
+          : undefined)
+      }
+      // Output an earlier release left where this one no longer writes — a
+      // stale `/bug-fix` beside `/oc:bug-fix`. The next sync removes it.
+      for (const rel of adapter.getLegacyOutputs?.(projectRoot) ?? []) {
+        const detail = 'written by a release before the oc: namespace'
+        // A legacy prompt inside a compared directory is already reported.
+        const seen = drift.find((d) => d.ide === ide && d.path === rel)
+        if (seen) seen.detail = detail
+        else drift.push({ ide, path: rel, kind: 'extra', detail })
       }
     } finally {
       rmSync(scratch, { recursive: true, force: true })
@@ -712,7 +728,7 @@ function render(report: CheckReport): void {
   }
   if (extra.length > 0) {
     console.log(`  ${c.bold('Not produced by any source')} ${c.dim('(removed on the next sync)')}`)
-    for (const d of extra) console.log(`    ${c.red('+')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+    for (const d of extra) console.log(`    ${c.red('+')} ${d.path} ${c.dim(`(${d.ide}${d.detail ? ` — ${d.detail}` : ''})`)}`)
     console.log('')
   }
 

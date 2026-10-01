@@ -201,21 +201,23 @@ const prompts = [
 
       <main class="docs-main">
         <p class="docs-subtitle">
-          Prompt templates are <code>.prompt.md</code> files that can be invoked directly in VS Code Copilot Chat
-          or any compatible IDE. Each template is pre-wired to the Team Lead agent with the full OpenCastle skill set.
+          Prompt templates compile into slash commands under one namespace — <code>/oc:bug-fix</code> in Claude Code
+          and in VS Code Copilot Chat — so they never collide with a command of your own. Each template is pre-wired
+          to the Team Lead agent with the full OpenCastle skill set.
         </p>
 
         <!-- How to use block -->
         <div class="usage-block">
-          <pre><code>{`# How to use a prompt template in VS Code
-# 1. Open Copilot Chat  (⌃⌘I / Ctrl+Alt+I)
-# 2. Type / to open the prompt picker
-# 3. Select the prompt by name
-# 4. Fill in the required variables
+          <pre><code>{`# How to use a prompt template
+# 1. Open the chat — Copilot Chat (⌃⌘I / Ctrl+Alt+I) or Claude Code
+# 2. Type /oc: to list OpenCastle's commands
+# 3. Pick one — /oc:bug-fix, /oc:implement-feature, …
+# 4. Describe the task
 # 5. Press Enter — the Team Lead takes it from there
 
-# Prompts live in: .github/prompts/
-# All prompts target the Team Lead agent (OpenCastle mode)`}</code></pre>
+# Claude Code:  .claude/commands/oc/<name>.md
+# VS Code:      .github/prompts/oc.<name>.prompt.md
+# Other assistants: ask for the prompt by name — "run the bug-fix prompt"`}</code></pre>
         </div>
 
         <!-- Planning -->
@@ -248,7 +250,7 @@ const prompts = [
               ))}
               <div class="prompt-filename">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>.github/prompts/{prompt.id}.prompt.md</code>
+                <code>/oc:{prompt.id}</code>
               </div>
             </div>
           ))}
@@ -284,7 +286,7 @@ const prompts = [
               ))}
               <div class="prompt-filename">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>.github/prompts/{prompt.id}.prompt.md</code>
+                <code>/oc:{prompt.id}</code>
               </div>
             </div>
           ))}
@@ -320,7 +322,7 @@ const prompts = [
               ))}
               <div class="prompt-filename">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>.github/prompts/{prompt.id}.prompt.md</code>
+                <code>/oc:{prompt.id}</code>
               </div>
             </div>
           ))}
@@ -356,7 +358,7 @@ const prompts = [
               ))}
               <div class="prompt-filename">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>.github/prompts/{prompt.id}.prompt.md</code>
+                <code>/oc:{prompt.id}</code>
               </div>
             </div>
           ))}

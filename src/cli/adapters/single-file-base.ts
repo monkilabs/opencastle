@@ -1,4 +1,4 @@
-import { resolve, basename, relative } from 'node:path'
+import { resolve, basename, relative, sep } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, rm, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
@@ -31,6 +31,11 @@ export interface SingleFileAdapterConfig {
   workflowPrefix: string
   /** Framework subdirectories (under dotDir) to remove during update */
   frameworkDirs: string[]
+  /**
+   * Output an earlier release wrote outside today's framework directories,
+   * present on disk now, relative to the project root. Removed on update.
+   */
+  legacyOutputs?: (_projectRoot: string) => string[]
 }
 
 /**
@@ -109,7 +114,9 @@ async function reconcileCase(onDisk: string, visited: Set<string>): Promise<bool
   return false
 }
 
-export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAdapter {
+export function createSingleFileAdapter(
+  config: SingleFileAdapterConfig,
+): IdeAdapter & { getLegacyOutputs(_projectRoot: string): string[] } {
   /**
    * Write one generated file and report what actually happened to it.
    *
@@ -424,7 +431,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
       for (const rel of filesUnderDir(dirPath)) {
         before.set(
           resolve(dirPath, rel),
-          `${config.dotDir}/${relative(dotDirPath, dirPath)}/${rel}`,
+          `${config.dotDir}/${relative(dotDirPath, dirPath).split(sep).join('/')}/${rel}`,
         )
       }
     }
@@ -459,6 +466,13 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
         await rm(abs, { force: true })
       }
     }
+    // What an earlier release put where this one no longer writes — the
+    // un-namespaced commands at the top of `.claude/commands/`. Asked after the
+    // recompile, so a failure there leaves the old commands working.
+    for (const rel of getLegacyOutputs(projectRoot)) {
+      await rm(resolve(projectRoot, rel), { force: true })
+      ;(results.deleted ??= []).push(rel)
+    }
     // Pass the three categories through as they came back. Folding `created`
     // into `copied` was how "Updated N framework files" stayed plausible while
     // nothing was being rewritten — the count was of files visited, not changed.
@@ -487,6 +501,10 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     return results
   }
 
+  function getLegacyOutputs(projectRoot: string): string[] {
+    return config.legacyOutputs?.(projectRoot) ?? []
+  }
+
   function getManagedPaths(): ManagedPaths {
     // Deduplicate dirs (e.g. promptsDir === workflowsDir for claude-code's 'commands')
     const dirs = new Set(['agents', 'skills', ...config.frameworkDirs])
@@ -512,7 +530,7 @@ export function createSingleFileAdapter(config: SingleFileAdapterConfig): IdeAda
     return checks
   }
 
-  return { install, update, getManagedPaths, getDoctorChecks }
+  return { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs }
 }
 
 /** Every file under a directory, relative to it. */

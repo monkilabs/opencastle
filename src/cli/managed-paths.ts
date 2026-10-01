@@ -1,7 +1,8 @@
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, rmdirSync, rmSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { IDE_ADAPTERS } from './adapters/index.js'
-import type { ManagedPaths, Manifest } from './types.js'
+import type { IdeAdapter, ManagedPaths, Manifest } from './types.js'
+import { CLAUDE_COMMANDS_DIR } from './command-namespace.js'
 
 /**
  * What the manifest *should* say, given what the adapters declare today.
@@ -35,6 +36,20 @@ export const ROOT_INSTRUCTION_FILES = [
   '.windsurfrules',
   '.github/copilot-instructions.md',
 ] as const
+
+/**
+ * Framework paths a release recorded that today's compiler has narrowed.
+ *
+ * Before the `oc:` namespace the whole of `.claude/commands/` was generated, and manifests
+ * recorded it. Commands now live under `.claude/commands/oc/`, and the rest of
+ * the directory is the user's — so a stored `.claude/commands/` must not stay
+ * in `framework`, where `remove` and a dropped target's cleanup would delete
+ * every command a person wrote there. What those releases left at the top is
+ * found by its banner instead (`getLegacyOutputs`).
+ */
+const SUPERSEDED_FRAMEWORK: Record<string, string> = {
+  '.claude/commands/': `.claude/${CLAUDE_COMMANDS_DIR}/`,
+}
 
 function unique(values: string[]): string[] {
   return [...new Set(values)]
@@ -78,7 +93,7 @@ export async function resolveManagedPaths(manifest: Manifest): Promise<Required<
 
   return {
     framework: unique([
-      ...(stored?.framework ?? []),
+      ...(stored?.framework ?? []).map((p) => SUPERSEDED_FRAMEWORK[p] ?? p),
       ...declared.framework,
     ]).filter((p) => !isMerged(p)),
     customizable: unique([
@@ -93,6 +108,61 @@ export async function resolveManagedPaths(manifest: Manifest): Promise<Required<
       ...(stored?.customizable ?? []).filter(isMerged),
     ]),
   }
+}
+
+/**
+ * Which files in a framework directory the given targets wrote, when one of
+ * them shares that directory with the user — `undefined` when the directory is
+ * wholly generated and can be removed whole.
+ */
+export function ownerOf(
+  adapters: IdeAdapter[],
+  dir: string,
+  projectRoot: string,
+): ((_rel: string) => boolean) | undefined {
+  const sharing = adapters.filter((a) => a.ownsFile && a.getSharedDirs?.().includes(dir))
+  if (sharing.length === 0) return undefined
+  return (rel) => sharing.every((a) => a.ownsFile!(rel, projectRoot))
+}
+
+/**
+ * Delete the files at the top of a shared directory that `owns` claims, and the
+ * directory itself if that empties it — never anything of the user's.
+ *
+ * Only the top level: the one shared directory, `.github/prompts/`, is read
+ * there and nowhere deeper, so nothing below it is ours, and walking into a
+ * person's subfolders could only delete their empty ones or stop at one it
+ * cannot read. A path that is not a readable directory is left for a person.
+ * Returns how many files went.
+ */
+export function removeOwnedFiles(projectRoot: string, dir: string, owns: (_rel: string) => boolean): number {
+  const root = resolve(projectRoot, dir)
+  const prefix = dir.endsWith('/') ? dir : `${dir}/`
+  let entries
+  try {
+    if (!statSync(root).isDirectory()) return 0
+    entries = readdirSync(root, { withFileTypes: true })
+  } catch {
+    return 0
+  }
+  let removed = 0
+  for (const entry of entries) {
+    if (entry.isDirectory() || !owns(`${prefix}${entry.name}`)) continue
+    try {
+      // `rmSync` rather than `unlinkSync`: on Windows it gets past a read-only
+      // file, which `unlink` fails on with EPERM.
+      rmSync(resolve(root, entry.name), { force: true })
+      removed++
+    } catch {
+      // Left for a person; one stubborn file must not stop the uninstall.
+    }
+  }
+  try {
+    if (readdirSync(root).length === 0) rmdirSync(root)
+  } catch {
+    // As above.
+  }
+  return removed
 }
 
 /**
