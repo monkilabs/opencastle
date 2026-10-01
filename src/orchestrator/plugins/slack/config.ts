@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@kazuph/mcp-slack'],
+    args: ['-y', '@kazuph/mcp-slack@1.3.2'],
     envFile: '${workspaceFolder}/.env',
     env: {
       SLACK_MCP_ADD_MESSAGE_TOOL: 'true',
@@ -32,4 +32,23 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#slack',
   officialDocs: 'https://api.slack.com/docs',
   mcpPackage: '@kazuph/mcp-slack',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@kazuph/mcp-slack'],
+        envFile: '${workspaceFolder}/.env',
+        env: {
+          SLACK_MCP_ADD_MESSAGE_TOOL: 'true',
+        },
+      },
+      envVars: [
+        {
+          name: 'SLACK_MCP_XOXB_TOKEN',
+          hint: 'Create a Slack App at api.slack.com/apps → Bot User OAuth Token',
+        },
+      ],
+    },
+  ],
 };

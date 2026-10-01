@@ -16,10 +16,18 @@ const pages = [
   {
     href: '/docs/cli',
     title: 'CLI Reference',
-    description: 'Complete reference for every opencastle command — init, sync, add, doctor, remove, and the experimental convoy namespace.',
+    description: 'Complete reference for every opencastle command — init, sync, add, doctor, remove, the team commands explain, review, ci, baseline and fleet, and the experimental convoy namespace.',
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
     sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
-    badge: '6 commands',
+    badge: '11 commands',
+  },
+  {
+    href: '/docs/teams',
+    title: 'OpenCastle for Teams',
+    description: 'Share one standard across every repository: baselines your repositories extend, a policy for the MCP servers agents may start, a lock file that records what every assistant is given, and a review of what each change does.',
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+    badge: 'guide',
   },
   {
     href: '/docs/prompts',
@@ -329,6 +337,13 @@ const pages = [
               <div>
                 <p class="quickstart__label">Adopt a new tool</p>
                 <p class="quickstart__desc"><code class="quickstart__code">opencastle add supabase</code> updates the stored stack and recompiles, so the integration's skills and MCP config reach every target. <code class="quickstart__code">opencastle add --list</code> shows what is available.</p>
+              </div>
+            </div>
+            <div class="quickstart__step">
+              <span class="quickstart__num">&bull;</span>
+              <div>
+                <p class="quickstart__label">Share it across a team</p>
+                <p class="quickstart__desc"><code class="quickstart__code">opencastle ci</code> writes the CI workflow, <code class="quickstart__code">opencastle baseline init</code> starts a standard every repository can extend, and <code class="quickstart__code">opencastle explain</code> shows a new teammate what their assistant is given and what they still need to set up. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
               </div>
             </div>
           </div>

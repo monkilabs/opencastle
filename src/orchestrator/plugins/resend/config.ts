@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', 'resend-mcp'],
+    args: ['-y', 'resend-mcp@2.24.0'],
     envFile: '${workspaceFolder}/.env',
   },
   authType: 'env-token',
@@ -44,4 +44,20 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#resend',
   officialDocs: 'https://resend.com/docs',
   mcpPackage: 'resend-mcp',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'resend-mcp'],
+        envFile: '${workspaceFolder}/.env',
+      },
+      envVars: [
+        {
+          name: 'RESEND_API_KEY',
+          hint: 'Generate at resend.com → API Keys',
+        },
+      ],
+    },
+  ],
 };

@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@delorenj/mcp-server-trello'],
+    args: ['-y', '@delorenj/mcp-server-trello@1.8.1'],
     envFile: '${workspaceFolder}/.env',
   },
   authType: 'env-token',
@@ -41,4 +41,24 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#trello',
   officialDocs: 'https://developer.atlassian.com/cloud/trello/',
   mcpPackage: '@delorenj/mcp-server-trello',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@delorenj/mcp-server-trello'],
+        envFile: '${workspaceFolder}/.env',
+      },
+      envVars: [
+        {
+          name: 'TRELLO_API_KEY',
+          hint: 'Create at trello.com/app-key -> API Key',
+        },
+        {
+          name: 'TRELLO_TOKEN',
+          hint: 'Generate at trello.com/app-key -> Token (click "Generate a Token")',
+        },
+      ],
+    },
+  ],
 };

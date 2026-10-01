@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', 'next-devtools-mcp@latest'],
+    args: ['-y', 'next-devtools-mcp@0.4.0'],
   },
   authType: 'none',
   envVars: [],
@@ -33,4 +33,14 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#nextjs',
   officialDocs: 'https://nextjs.org/docs',
   mcpPackage: 'next-devtools-mcp',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', 'next-devtools-mcp@latest'],
+      },
+      envVars: [],
+    },
+  ],
 };

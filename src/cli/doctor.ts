@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readManifest } from './manifest.js';
-import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied } from './stack-config.js';
+import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied, getIncludedMcpServers } from './stack-config.js';
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import {
@@ -15,6 +15,17 @@ import {
   type FileDiagnosis,
 } from './managed-block.js';
 import { UnreadableConfigError } from './types.js';
+import { checkMcpSupplyChain } from './mcp-audit.js';
+import {
+  teamStateFor,
+  teamAuditContext,
+  checkTeamSources,
+  checkContextBudget,
+  checkReferences,
+  checkVersionSkew,
+  type TeamState,
+} from './team-health.js';
+import { cliVersionOf, requiredEnvVars } from './layers.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
 
@@ -234,6 +245,7 @@ async function checkLogs(projectRoot: string): Promise<CheckResult> {
 async function checkMcpEnvVars(
   projectRoot: string,
   manifest: Manifest | null,
+  team?: TeamState,
 ): Promise<CheckResult> {
   if (!manifest?.stack) {
     return { ok: true, label: 'MCP environment variables', detail: 'No stack config (skipped)' };
@@ -241,7 +253,9 @@ async function checkMcpEnvVars(
   // Through the resolver: a v1 manifest stores `{ cms, db }` with no
   // `techTools`, and handing that straight on threw "stack.techTools is not
   // iterable" — a crash where a diagnosis was the whole point of the command.
-  const required = getRequiredMcpEnvVars(resolveStack(manifest), manifest.repoInfo);
+  // The servers actually written: less the ones the team's policy refused,
+  // plus every variable the team's own servers refer to.
+  const required = requiredEnvVars(team?.resolved, resolveStack(manifest), manifest.repoInfo);
   if (required.length === 0) {
     return { ok: true, label: 'MCP environment variables', detail: 'No env vars required' };
   }
@@ -473,13 +487,53 @@ export function checkMcpFromPaths(projectRoot: string, mcpPaths: string[]): Chec
   return { ok: true, label: 'MCP configuration', detail: `${found.length} MCP config(s)` };
 }
 
+/**
+ * The plugin servers this project's stack includes — the set a rebuild keeps.
+ * The MCP audit needs it to say truthfully what `sync` will do to an entry.
+ */
+function includedServers(manifest: Manifest): Set<string> {
+  return getIncludedMcpServers(resolveStack(manifest), manifest.repoInfo);
+}
+
+/**
+ * The team's resolved sources, or the failure to resolve them as a check.
+ * Resolution reports problems as issues rather than throwing, so a throw here
+ * is a fault in reading the project itself.
+ */
+function teamStateOrFailure(
+  pkgRoot: string | undefined,
+  projectRoot: string,
+  manifest: Manifest | null,
+): { state?: TeamState; failure?: CheckResult } {
+  if (!pkgRoot || !manifest) return {};
+  try {
+    return { state: teamStateFor(pkgRoot, projectRoot, manifest) };
+  } catch (err) {
+    return {
+      failure: {
+        ok: false,
+        label: 'Team sources',
+        detail: `could not be read — ${(err as Error).message}`,
+        fix: 'fix the path named above; this one needs a person',
+      },
+    };
+  }
+}
+
 // ── Main doctor command ───────────────────────────────────────
 
 const DOCTOR_HELP = `
   opencastle doctor [options]
 
   Validate your OpenCastle setup — checks manifest, customizations, skills,
-  logs, MCP configuration, and IDE-specific rules.
+  logs, MCP configuration, and IDE-specific rules. MCP servers are audited too:
+  a package run without an exact version, one that no longer exists on npm, a
+  remote server Claude Code cannot load, a credential written into the file, or
+  a server the team's policy does not allow.
+
+  Team sources are checked as well: .opencastle/config.json and the baselines
+  it extends resolve, how much context every assistant loads up front, and
+  whether the team's instructions still name scripts and paths that exist.
 
   Options:
     --help, -h      Show this help
@@ -833,8 +887,10 @@ function checkRootFileClassification(manifest: Manifest | null): CheckResult {
 export async function runAdapterChecks(
   projectRoot: string,
   manifest: Manifest | null,
+  pkgRoot?: string,
 ): Promise<CheckResult[]> {
   if (!manifest) return [];
+  const { state } = teamStateOrFailure(pkgRoot, projectRoot, manifest);
   const ides = manifest.ides?.length ? manifest.ides : manifest.ide ? [manifest.ide] : [];
   const out: CheckResult[] = [];
   for (const ide of ides) {
@@ -854,6 +910,14 @@ export async function runAdapterChecks(
     }
     const mcpPaths = adapter.getManagedPaths().customizable.filter((p) => !p.endsWith('/'));
     out.push(checkMcpFromPaths(projectRoot, mcpPaths));
+    out.push(
+      checkMcpSupplyChain(
+        projectRoot,
+        ide as IdeChoice,
+        includedServers(manifest),
+        state ? teamAuditContext(state, ide as IdeChoice) : undefined,
+      ),
+    );
   }
   return out;
 }
@@ -861,18 +925,31 @@ export async function runAdapterChecks(
 export async function runSharedChecks(
   projectRoot: string,
   manifest: Manifest | null,
+  pkgRoot?: string,
 ): Promise<CheckResult[]> {
+  const { state, failure } = teamStateOrFailure(pkgRoot, projectRoot, manifest);
+  const team: CheckResult[] = failure
+    ? [failure]
+    : state && manifest && pkgRoot
+      ? [
+          checkTeamSources(state),
+          checkContextBudget(pkgRoot, state),
+          checkReferences(state, projectRoot),
+          checkVersionSkew(cliVersionOf(pkgRoot), manifest),
+        ]
+      : [];
   const results = [
     checkManifest(manifest),
     await checkCustomizations(projectRoot),
     await checkSkillMatrix(projectRoot),
     await checkLogs(projectRoot),
-    await checkMcpEnvVars(projectRoot, manifest),
+    await checkMcpEnvVars(projectRoot, manifest, state),
     await checkDotEnv(projectRoot, manifest),
     await checkGitignoredOutput(projectRoot, manifest),
     await checkGitignoreBlock(projectRoot),
     await checkTornBlocks(projectRoot, manifest),
     checkRootFileClassification(manifest),
+    ...team,
   ];
 
   // With no manifest there is nothing for `sync` to sync.
@@ -896,7 +973,7 @@ export async function runSharedChecks(
   return results;
 }
 
-export default async function doctor({ args }: CliContext): Promise<void> {
+export default async function doctor({ pkgRoot, args }: CliContext): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(DOCTOR_HELP)
     return
@@ -942,13 +1019,14 @@ export default async function doctor({ args }: CliContext): Promise<void> {
               : 'fix the JSON by hand — a merge conflict, most likely',
         },
       ]
-    : await runSharedChecks(projectRoot, manifest);
+    : await runSharedChecks(projectRoot, manifest, pkgRoot);
 
   // IDE-specific checks derived from each adapter
   type IdeGroup = { label: string; results: CheckResult[] };
   const ideGroups: IdeGroup[] = [];
 
   if (manifest) {
+    const { state } = teamStateOrFailure(pkgRoot, projectRoot, manifest);
     const ides = manifest.ides ?? (manifest.ide ? [manifest.ide] : []);
     for (const ide of ides) {
       const loader = IDE_ADAPTERS[ide];
@@ -964,6 +1042,14 @@ export default async function doctor({ args }: CliContext): Promise<void> {
       // MCP config check — non-directory entries in the adapter's customizable paths
       const mcpPaths = managedPaths.customizable.filter((p) => !p.endsWith('/'));
       checkResults.push(checkMcpFromPaths(projectRoot, mcpPaths));
+      checkResults.push(
+        checkMcpSupplyChain(
+          projectRoot,
+          ide as IdeChoice,
+          includedServers(manifest),
+          state ? teamAuditContext(state, ide as IdeChoice) : undefined,
+        ),
+      );
 
       ideGroups.push({
         label: IDE_LABELS[ide as IdeChoice] ?? ide,

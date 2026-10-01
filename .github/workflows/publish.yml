@@ -88,15 +88,18 @@ jobs:
           fi
           echo "Authenticated to npm as ${WHOAMI}"
 
-      # The released version is derived, not stored.
+      # The released version is derived, not stored — unless a PR wrote it.
       #
       # `main` is protected by a ruleset with an empty bypass list — every change
       # goes through a pull request — so this workflow cannot commit a bump, and
-      # the tag is the only durable record it can write. package.json on main is
-      # therefore a floor rather than the truth: the higher of it and the last
-      # tag is what the next version is computed from, so a hand-written bump in
-      # a PR is still honoured, and a release can never go backwards into a
-      # version npm would then serve as `latest`.
+      # the tag is the only durable record it can write. package.json on main
+      # usually trails the tags, and the next version is the last tag bumped by
+      # the commits since it.
+      #
+      # A package.json ahead of the last tag was written by hand in a PR — a
+      # 1.0.0, say — and ships exactly as written. Bumping it as well would turn
+      # the 1.0.0 a PR asked for into a 1.1.0 nobody did. Either way a release
+      # never goes backwards into a version npm would then serve as `latest`.
       - name: Determine next version
         if: steps.bump.outputs.type != 'none'
         id: version
@@ -104,23 +107,31 @@ jobs:
           PKG=$(node -p "require('./package.json').version")
           TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           TAG=${TAG#v}
-          BASE=$(node -e '
+          # "ahead" when package.json is higher than the last tag.
+          AHEAD=$(node -e '
             const [a, b] = process.argv.slice(1).filter(Boolean)
-            if (!b) { console.log(a); process.exit(0) }
+            if (!b) { console.log("no-tag"); process.exit(0) }
             const part = (s) => s.split(".").map(Number)
             const [x, y] = [part(a), part(b)]
             for (let i = 0; i < 3; i++) {
-              if ((x[i] || 0) !== (y[i] || 0)) { console.log((x[i] || 0) > (y[i] || 0) ? a : b); process.exit(0) }
+              if ((x[i] || 0) !== (y[i] || 0)) { console.log((x[i] || 0) > (y[i] || 0) ? "ahead" : "behind"); process.exit(0) }
             }
-            console.log(a)
+            console.log("same")
           ' "$PKG" "$TAG")
-          echo "package.json=$PKG, last tag=${TAG:-none}, base=$BASE"
+          echo "package.json=$PKG, last tag=${TAG:-none} ($AHEAD)"
 
-          # In the runner only — nothing commits this file.
-          npm version "$BASE" --no-git-tag-version --allow-same-version >/dev/null
-          NEW_VERSION=$(npm version ${{ steps.bump.outputs.type }} --no-git-tag-version)
-          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "Releasing $NEW_VERSION (${{ steps.bump.outputs.type }})"
+          if [ "$AHEAD" = "ahead" ]; then
+            NEW_VERSION="v$PKG"
+            echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+            echo "Releasing $NEW_VERSION as written in package.json"
+          else
+            BASE=${TAG:-$PKG}
+            # In the runner only — nothing commits this file.
+            npm version "$BASE" --no-git-tag-version --allow-same-version >/dev/null
+            NEW_VERSION=$(npm version ${{ steps.bump.outputs.type }} --no-git-tag-version)
+            echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+            echo "Releasing $NEW_VERSION (${{ steps.bump.outputs.type }} from $BASE)"
+          fi
 
       - name: Install dependencies
         if: steps.bump.outputs.type != 'none'

@@ -1,10 +1,11 @@
 import { resolve } from 'node:path'
-import { mkdir, readFile, writeFile, copyFile, unlink, rename } from 'node:fs/promises'
+import { mkdir, readFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
-import { mergeCopyResults, copyDir, getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { mergeCopyResults, copyDir } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
-import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getAgentTransform } from '../stack-config.js'
+import { getAgentTransform } from '../stack-config.js'
+import { withSource, type CompileSource } from '../layers.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 
 /**
@@ -42,16 +43,10 @@ const FRAMEWORK_DIRS = [
  */
 function copyRulesFor(
   dir: string,
-  excludedSkills: Set<string>,
-  excludedAgents: Set<string>,
   stack?: StackConfig,
 ): { filter?: (_name: string, _srcPath: string) => boolean; transform?: CopyDirOptions['transform'] } {
-  if (dir === 'skills') return { filter: (name) => !excludedSkills.has(name) }
   if (dir === 'agents') {
-    return {
-      filter: (name) => !excludedAgents.has(name),
-      transform: stack ? getAgentTransform(stack) : undefined,
-    }
+    return { transform: stack ? getAgentTransform(stack) : undefined }
   }
   if (dir === 'agent-workflows') {
     // The directory's own README documents the templates for contributors; it is
@@ -97,17 +92,24 @@ export async function install(
   pkgRoot: string,
   projectRoot: string,
   stack?: StackConfig,
-  repoInfo?: RepoInfo
+  repoInfo?: RepoInfo,
+  source?: CompileSource,
 ): Promise<CopyResults> {
-  const srcRoot = getOrchestratorRoot(pkgRoot)
+  return withSource(pkgRoot, stack, source, (src) => installFrom(src, projectRoot, stack, repoInfo))
+}
+
+async function installFrom(
+  src: CompileSource,
+  projectRoot: string,
+  stack: StackConfig | undefined,
+  repoInfo: RepoInfo | undefined,
+): Promise<CopyResults> {
+  const srcRoot = src.root
   const destRoot = resolve(projectRoot, '.github')
 
   await mkdir(destRoot, { recursive: true })
 
   const results: CopyResults = { copied: [], skipped: [], created: [] }
-
-  const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
-  const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
   // copilot-instructions.md — merged, not replaced. A project that already has
   // one keeps it; the generated content goes into a managed block below it.
@@ -124,26 +126,10 @@ export async function install(
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
+    const { filter, transform } = copyRulesFor(dir, stack)
 
     const sub = await copyDir(srcDir, destDir, { filter, transform })
     mergeCopyResults(results, sub)
-  }
-
-  // Plugin skills → .github/skills/<plugin-id>/
-  const pluginsRoot = getPluginsRoot(pkgRoot)
-  const includedPlugins = stack ? getIncludedPluginIds(stack) : undefined
-  const pluginSkills = await getPluginSkillEntries(pluginsRoot, includedPlugins)
-  for (const { id, skillPath } of pluginSkills) {
-    const pluginDestDir = resolve(destRoot, 'skills', id)
-    await mkdir(pluginDestDir, { recursive: true })
-    const destPath = resolve(pluginDestDir, 'SKILL.md')
-    if (existsSync(destPath)) {
-      results.skipped.push(destPath)
-    } else {
-      await copyFile(skillPath, destPath)
-      results.created.push(destPath)
-    }
   }
 
   // MCP server config → .vscode/mcp.json (scaffold once)
@@ -153,7 +139,8 @@ export async function install(
     '.vscode/mcp.json',
     stack,
     repoInfo,
-    'vscode'
+    'vscode',
+    src.mcp,
   )
 
   return results
@@ -163,15 +150,17 @@ export async function update(
   pkgRoot: string,
   projectRoot: string,
   stack?: StackConfig,
-  _repoInfo?: RepoInfo
+  _repoInfo?: RepoInfo,
+  source?: CompileSource,
 ): Promise<CopyResults> {
-  const srcRoot = getOrchestratorRoot(pkgRoot)
+  return withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot, stack))
+}
+
+async function updateFrom(src: CompileSource, projectRoot: string, stack: StackConfig | undefined): Promise<CopyResults> {
+  const srcRoot = src.root
   const destRoot = resolve(projectRoot, '.github')
 
   const results: CopyResults = { copied: [], skipped: [], created: [] }
-
-  const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
-  const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
 
   // `.github/` may not exist: a teammate clones a repo whose generated config was
   // never committed, and `update` used to die with ENOENT before writing anything.
@@ -207,43 +196,11 @@ export async function update(
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    const { filter, transform } = copyRulesFor(dir, excludedSkills, excludedAgents, stack)
+    const { filter, transform } = copyRulesFor(dir, stack)
 
     const sub = await copyDir(srcDir, destDir, { overwrite: true, filter, transform })
     mergeCopyResults(results, sub)
     for (const abs of sub.visited ?? []) visited.add(abs)
-  }
-
-  // Plugin skills → .github/skills/<plugin-id>/ (overwrite)
-  const pluginsRoot = getPluginsRoot(pkgRoot)
-  const includedPlugins = stack ? getIncludedPluginIds(stack) : undefined
-  const pluginSkills = await getPluginSkillEntries(pluginsRoot, includedPlugins)
-  for (const { id, skillPath } of pluginSkills) {
-    const pluginDestDir = resolve(destRoot, 'skills', id)
-    await mkdir(pluginDestDir, { recursive: true })
-    const destPath = resolve(pluginDestDir, 'SKILL.md')
-    visited.add(destPath)
-    const content = await readFile(skillPath, 'utf8')
-    const existed = existsSync(destPath)
-    // The same guard the other three write paths got. Unguarded, a directory
-    // wearing `SKILL.md`'s name took `sync` down with a bare `EISDIR` that named
-    // nothing to act on.
-    let onDisk: string | null = null
-    if (existed) {
-      try {
-        onDisk = await readFile(destPath, 'utf8')
-      } catch {
-        ;(results.unreadable ??= []).push(`${destPath}\u0000unreadable`)
-        results.skipped.push(destPath)
-        continue
-      }
-    }
-    if (onDisk === content) {
-      results.skipped.push(destPath)
-    } else {
-      await writeFile(destPath, content)
-      results[existed ? 'copied' : 'created'].push(destPath)
-    }
   }
 
   // Now drop output with no source left.

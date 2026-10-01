@@ -57,12 +57,17 @@ const args = expandEqualsForm(rawArgs)
  */
 const GLOBAL_FLAGS = ['--help', '-h', '--version', '-v', '--debug']
 const COMMAND_FLAGS = {
-  init: ['--customize', '--dry-run', '--dryRun', '--reconfigure', '--yes', '-y'],
-  sync: ['--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
-  update: ['--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
+  init: ['--allow-downgrade', '--customize', '--dry-run', '--dryRun', '--reconfigure', '--yes', '-y'],
+  sync: ['--allow-downgrade', '--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
+  update: ['--allow-downgrade', '--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
   doctor: [],
   remove: ['--all', '--dry-run', '--keep-files', '--yes'],
   add: ['--dry-run', '--list'],
+  review: ['--base', '--markdown', '--json'],
+  explain: ['--all', '--json'],
+  ci: ['--owners', '--force', '--dry-run'],
+  baseline: ['--name', '--json'],
+  fleet: ['--json'],
 }
 
 /** The first flag in `argv` this command does not read, or null. */
@@ -104,6 +109,13 @@ const HELP = `
     doctor      Diagnose setup problems
     remove      Remove OpenCastle from this project
 
+  Teams:
+    explain     What every assistant here is given, and what you need to set up
+    review      What a change does to the assistants (for pull requests)
+    ci          Add the drift and policy check to GitHub Actions
+    baseline    Create or check a baseline many repositories extend
+    fleet       Versions and drift across many repositories
+
   Experimental:
     convoy      Run multi-step work through the convoy engine
 
@@ -127,6 +139,11 @@ const VISIBLE = {
   doctor: () => import('../dist/cli/doctor.js'),
   remove: () => import('../dist/cli/remove.js'),
   convoy: () => import('../dist/cli/convoy-cmd.js'),
+  explain: () => import('../dist/cli/explain.js'),
+  review: () => import('../dist/cli/review.js'),
+  ci: () => import('../dist/cli/ci.js'),
+  baseline: () => import('../dist/cli/baseline.js'),
+  fleet: () => import('../dist/cli/fleet.js'),
 }
 
 /**

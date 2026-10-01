@@ -32,7 +32,7 @@ async function installManifest(projectRoot: string, over: Partial<Manifest> = {}
     writeFileSync(join(projectRoot, '.opencastle', ...f.split('/')), '{}\n')
   }
   await writeManifest(projectRoot, {
-    version: '9.9.9',
+    version: '0.0.0',
     ide: 'vscode',
     ides: ['vscode'],
     installedAt: new Date().toISOString(),
@@ -120,7 +120,7 @@ describe('status report', () => {
     const report = await buildStatusReport(pkgRoot, projectRoot)
 
     expect(report.installed).toBe(true)
-    expect(report.version).toBe('9.9.9')
+    expect(report.version).toBe('0.0.0')
     expect(report.ides).toEqual(['vscode'])
     expect(report.targets[0].present).toBe(false)
     expect(report.targets[0].missing.length).toBeGreaterThan(0)
@@ -198,6 +198,7 @@ describe('status and sync --check give the same answer', () => {
   async function installVscode(): Promise<void> {
     const { IDE_ADAPTERS } = await import('./adapters/index.js')
     const { writeManifest } = await import('./manifest.js')
+    const { recordLockFor } = await import('./lock.js')
     const stack = { ides: ['vscode'] as const, techTools: [], teamTools: [] }
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(pkgRoot, projectRoot, stack as never, undefined)
@@ -206,13 +207,14 @@ describe('status and sync --check give the same answer', () => {
       writeFileSync(join(projectRoot, '.opencastle', ...f.split('/')), '{}\n')
     }
     await writeManifest(projectRoot, {
-      version: '9.9.9',
+      version: '0.0.1',
       ide: 'vscode',
       ides: ['vscode'],
       installedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       stack: stack as never,
     })
+    await recordLockFor(pkgRoot, projectRoot, { ides: ['vscode'], stack: stack as never })
   }
 
   it('agrees that a freshly compiled project is clean', async () => {

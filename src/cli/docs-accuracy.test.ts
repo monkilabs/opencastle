@@ -556,6 +556,11 @@ describe('declared flags are flags the parser reads', () => {
     convoy: ['convoy-cmd.ts'],
     log: ['log.ts'],
     lesson: ['lesson.ts'],
+    review: ['review.ts'],
+    explain: ['explain.ts'],
+    ci: ['ci.ts'],
+    baseline: ['baseline.ts'],
+    fleet: ['fleet.ts'],
   }
   // Read by the entrypoint for every command, not by the modules.
   const HANDLED_BY_BIN = new Set(['--help', '--version', '--debug'])

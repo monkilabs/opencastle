@@ -12,7 +12,15 @@ import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { buildCheckReport } from './sync-check.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
-import { writeManifest } from './manifest.js'
+import { writeManifest as writeManifestOnly } from './manifest.js'
+import { recordLockFor } from './lock.js'
+import type { Manifest } from './types.js'
+
+/** A compile writes the manifest and the lock; tests that compile by hand do both. */
+async function writeManifest(root: string, manifest: Manifest): Promise<void> {
+  await writeManifestOnly(root, manifest)
+  await recordLockFor(resolve(import.meta.dirname, '..', '..'), root, manifest)
+}
 import type { StackConfig } from './types.js'
 
 const pkgRoot = resolve(import.meta.dirname, '..', '..')
@@ -26,7 +34,7 @@ describe('drift detection', () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(pkgRoot, projectRoot, stack, undefined)
     await writeManifest(projectRoot, {
-      version: '9.9.9',
+      version: '0.0.1',
       ide: 'vscode',
       ides: ['vscode'],
       installedAt: new Date().toISOString(),
@@ -149,7 +157,7 @@ describe('drift detection', () => {
   it('skips ide ids the manifest names but the tool does not know', async () => {
     await install()
     await writeManifest(projectRoot, {
-      version: '9.9.9',
+      version: '0.0.1',
       ide: 'vscode',
       ides: ['vscode', 'not-a-real-ide'],
       installedAt: new Date().toISOString(),
@@ -185,7 +193,7 @@ describe('two targets that share a root file', () => {
       await adapter.install(pkgRoot, projectRoot, bothStack, undefined)
     }
     await writeManifest(projectRoot, {
-      version: '9.9.9',
+      version: '0.0.1',
       ide: 'opencode',
       ides: ['opencode', 'codex'],
       installedAt: new Date().toISOString(),
@@ -246,7 +254,7 @@ describe('every reported extra is one that sync actually removes', () => {
       const ideStack = { ides: [ide], techTools: [], teamTools: [] } as unknown as StackConfig
       await adapter.install(pkgRoot, projectRoot, ideStack, undefined)
       await writeManifest(projectRoot, {
-        version: '9.9.9',
+        version: '0.0.1',
         ide,
         ides: [ide],
         installedAt: new Date().toISOString(),
@@ -286,7 +294,7 @@ describe('every reported extra is one that sync actually removes', () => {
       const ideStack = { ides: [ide], techTools: [], teamTools: [] } as unknown as StackConfig
       await adapter.install(pkgRoot, projectRoot, ideStack, undefined)
       await writeManifest(projectRoot, {
-        version: '9.9.9',
+        version: '0.0.1',
         ide,
         ides: [ide],
         installedAt: new Date().toISOString(),
@@ -359,7 +367,7 @@ describe('line endings are git\'s business, not the checker\'s', () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(pkgRoot, projectRoot, stack, undefined)
     await writeManifest(projectRoot, {
-      version: '9.9.9',
+      version: '0.0.1',
       ide: 'vscode',
       ides: ['vscode'],
       installedAt: new Date().toISOString(),
@@ -412,7 +420,7 @@ describe('install then check is clean, whatever the root file looks like', () =>
 
       await adapter.install(pkgRoot, projectRoot, stack, undefined)
       await writeManifest(projectRoot, {
-        version: '9.9.9',
+        version: '0.0.1',
         ide: 'vscode',
         ides: ['vscode'],
         installedAt: new Date().toISOString(),

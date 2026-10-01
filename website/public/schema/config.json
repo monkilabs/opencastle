@@ -1,0 +1,95 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://www.opencastle.dev/schema/config.json",
+  "title": "OpenCastle team config",
+  "description": "A layer's config: .opencastle/config.json in a project, or config.json at the root of a baseline's layer. Later layers add to and override earlier ones; policy can only be tightened.",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "itemRef": {
+      "type": "string",
+      "pattern": "^(instructions|agents|skills|prompts|workflows)/[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "A kind and a name, e.g. \"skills/seo-patterns\" or \"agents/content-engineer\"."
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "opencastle": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The OpenCastle versions this project or baseline works with, as a semver range (e.g. \"^1.0.0\"). Commands refuse to compile with any other."
+    },
+    "extends": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Baselines to build on: package names (installed as devDependencies; the lockfile pins the version) or paths starting with ./ or ../, relative to this file."
+    },
+    "exclude": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(instructions|agents|skills|prompts|workflows|mcpServers)/[A-Za-z0-9][A-Za-z0-9._-]*$"
+      },
+      "description": "Items from the layers below to leave out, e.g. \"skills/seo-patterns\", or an MCP server they define or an integration brings, e.g. \"mcpServers/Slack\"."
+    },
+    "mcpServers": {
+      "type": "object",
+      "description": "MCP servers every assistant gets. Write variables as ${NAME}; each assistant receives its own spelling. Sync writes these exactly as defined.",
+      "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": { "enum": ["stdio", "http"], "description": "Inferred from command or url when omitted." },
+          "command": { "type": "string", "minLength": 1, "description": "A local server's executable, e.g. \"npx\"." },
+          "args": { "type": "array", "items": { "type": "string" } },
+          "url": { "type": "string", "pattern": "^https?://\\S+$", "description": "A remote server's URL." },
+          "env": { "$ref": "#/definitions/stringMap", "description": "Environment for a local server, e.g. { \"API_URL\": \"${API_URL}\" }." },
+          "headers": { "$ref": "#/definitions/stringMap", "description": "Headers for a remote server, e.g. { \"Authorization\": \"Bearer ${TOKEN}\" }." },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Rules every repository extending this layer is held to, by sync, doctor and sync --check. A layer above can tighten them, never relax them.",
+      "properties": {
+        "mcp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "allow": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "MCP server names an assistant may start; * matches any run of characters. Integration servers not on it are left out; any other server in a config fails the check."
+            },
+            "remoteHosts": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "description": "Hosts remote servers may connect to; *.example.com matches its subdomains."
+            },
+            "requirePinned": {
+              "type": "boolean",
+              "description": "Every server launched through a package runner must name an exact version, or run the project's own copy (npx --no)."
+            }
+          }
+        },
+        "require": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/itemRef" },
+          "description": "Items no layer above may exclude or replace."
+        },
+        "contextBudget": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Tokens every assistant may load before it reads the task: always-loaded instructions plus the skill and agent index. doctor warns above it."
+        }
+      }
+    }
+  }
+}

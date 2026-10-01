@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { parse as yamlParse } from 'yaml'
@@ -82,5 +84,62 @@ describe('the publish workflow', () => {
     expect(pushes.length, 'nothing pushes at all — has the tag step gone?').toBeGreaterThan(0)
     const toBranch = pushes.filter(ref => !/tag|TAG|v?\$\{/.test(ref))
     expect(toBranch, `pushes a branch the ruleset will reject: ${toBranch.join(', ')}`).toEqual([])
+  })
+})
+
+/**
+ * The version a merge releases, from the step that decides it, run for real in
+ * a scratch repository: a package.json and, optionally, the last release tag.
+ */
+describe('the version a release takes', () => {
+  const step = steps.find(s => s.name === 'Determine next version')
+  const script = step?.run ?? ''
+
+  function release(pkgVersion: string, lastTag: string | null, bump: 'major' | 'minor' | 'patch'): string {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-release-'))
+    try {
+      const git = (...args: string[]): void => {
+        execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: dir, stdio: 'ignore' })
+      }
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'scratch', version: pkgVersion }, null, 2) + '\n')
+      git('init', '-q')
+      git('add', '.')
+      git('commit', '-q', '-m', 'release')
+      if (lastTag) git('tag', lastTag)
+      const output = join(dir, 'github-output')
+      writeFileSync(output, '')
+      execFileSync('bash', ['-e', '-c', script.replaceAll('${{ steps.bump.outputs.type }}', bump)], {
+        cwd: dir,
+        env: { ...process.env, GITHUB_OUTPUT: output },
+        stdio: 'ignore',
+      })
+      return /^new=(.*)$/m.exec(readFileSync(output, 'utf8'))?.[1] ?? ''
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  it('exists', () => {
+    expect(script).toMatch(/npm version/)
+  })
+
+  it('ships a version a PR wrote by hand exactly as written', () => {
+    // A minor bump on top of it would turn the 1.0.0 the PR asked for into 1.1.0.
+    expect(release('1.0.0', 'v0.38.2', 'minor')).toBe('v1.0.0')
+    expect(release('1.0.0', 'v0.38.2', 'major')).toBe('v1.0.0')
+  })
+
+  it('bumps the last tag when package.json trails it', () => {
+    expect(release('0.35.3', 'v0.38.2', 'minor')).toBe('v0.39.0')
+    expect(release('0.35.3', 'v0.38.2', 'patch')).toBe('v0.38.3')
+  })
+
+  it('bumps the last tag once package.json has caught up with it', () => {
+    expect(release('1.0.0', 'v1.0.0', 'patch')).toBe('v1.0.1')
+    expect(release('1.0.0', 'v1.0.0', 'major')).toBe('v2.0.0')
+  })
+
+  it('bumps package.json when nothing has been tagged yet', () => {
+    expect(release('0.1.0', null, 'patch')).toBe('v0.1.1')
   })
 })

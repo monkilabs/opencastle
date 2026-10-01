@@ -1,9 +1,8 @@
 import { resolve, join, basename } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
-import { getOrchestratorRoot, getPluginsRoot, getPluginSkillEntries } from '../copy.js'
+import { withSource, type CompileSource } from '../layers.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
-import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds } from '../stack-config.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { splitFrontmatter, parseFrontmatterString } from './frontmatter.js'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
@@ -56,8 +55,8 @@ export interface RulesDirConfig {
 export interface RulesDirAdapter {
   IDE_ID: IdeChoice
   IDE_LABEL: string
-  install(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo): Promise<CopyResults>
-  update(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo): Promise<CopyResults>
+  install(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo, source?: CompileSource): Promise<CopyResults>
+  update(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo, source?: CompileSource): Promise<CopyResults>
   getManagedPaths(): ManagedPaths
   getDoctorChecks(): DoctorCheck[]
 }
@@ -302,42 +301,24 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     }
   }
 
-  /** Plugin skills land as a single rule file per plugin id. */
-  async function convertPluginSkills(
-    pkgRoot: string,
-    rulesRoot: string,
-    results: CopyResults,
-    stack: StackConfig | undefined,
-    overwrite: boolean,
-  ): Promise<void> {
-    const pluginEntries = await getPluginSkillEntries(
-      getPluginsRoot(pkgRoot),
-      stack ? getIncludedPluginIds(stack) : undefined,
-    )
-    const skillsDest = resolve(rulesRoot, 'skills')
-    await mkdir(skillsDest, { recursive: true })
-    for (const { id, skillPath } of pluginEntries) {
-      await writeConverted(
-        skillPath,
-        resolve(skillsDest, `${id}${ruleExt}`),
-        { descriptionFallback: `Skill: ${id}` },
-        results,
-        overwrite,
-      )
-    }
-  }
-
   async function install(
     pkgRoot: string,
     projectRoot: string,
     stack?: StackConfig,
     repoInfo?: RepoInfo,
+    source?: CompileSource,
   ): Promise<CopyResults> {
-    const srcRoot = getOrchestratorRoot(pkgRoot)
-    const results: CopyResults = { copied: [], skipped: [], created: [] }
+    return withSource(pkgRoot, stack, source, (src) => installFrom(src, projectRoot, stack, repoInfo))
+  }
 
-    const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
-    const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
+  async function installFrom(
+    src: CompileSource,
+    projectRoot: string,
+    stack: StackConfig | undefined,
+    repoInfo: RepoInfo | undefined,
+  ): Promise<CopyResults> {
+    const srcRoot = src.root
+    const results: CopyResults = { copied: [], skipped: [], created: [] }
 
     // Merged, not skipped: a project that already has a rules file keeps it and
     // gains the generated pointer in a managed block below.
@@ -354,10 +335,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     await convertDir(srcRoot, 'agents', resolve(rulesRoot, 'agents'), results, {
       descriptionPrefix: 'Agent: ',
       removeExt: '.agent.md',
-      excludeFiles: excludedAgents,
     })
-    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, false, excludedSkills)
-    await convertPluginSkills(pkgRoot, rulesRoot, results, stack, false)
+    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, false)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
       descriptionPrefix: 'Workflow: ',
       excludeFiles: new Set(['README.md']),
@@ -367,7 +346,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       removeExt: '.prompt.md',
     })
 
-    await scaffoldMcpConfigInto(results, projectRoot, mcpPath, stack, repoInfo, ideId)
+    await scaffoldMcpConfigInto(results, projectRoot, mcpPath, stack, repoInfo, ideId, src.mcp)
 
     return results
   }
@@ -377,12 +356,14 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     projectRoot: string,
     stack?: StackConfig,
     _repoInfo?: RepoInfo,
+    source?: CompileSource,
   ): Promise<CopyResults> {
-    const srcRoot = getOrchestratorRoot(pkgRoot)
-    const results: CopyResults = { copied: [], skipped: [], created: [] }
+    return withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot))
+  }
 
-    const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
-    const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
+  async function updateFrom(src: CompileSource, projectRoot: string): Promise<CopyResults> {
+    const srcRoot = src.root
+    const results: CopyResults = { copied: [], skipped: [], created: [] }
 
     const rootPath = resolve(projectRoot, rootRulesFile)
     const rootMerge = await writeManagedBlock(rootPath, rootIntro)
@@ -413,10 +394,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       descriptionPrefix: 'Agent: ',
       removeExt: '.agent.md',
       overwrite: true,
-      excludeFiles: excludedAgents,
     })
-    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, true, excludedSkills)
-    await convertPluginSkills(pkgRoot, rulesRoot, results, stack, true)
+    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, true)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
       descriptionPrefix: 'Workflow: ',
       overwrite: true,

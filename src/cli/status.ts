@@ -51,6 +51,8 @@ export interface StatusReport {
   unmanaged: string[]
   nextCommand?: string
   nextReason?: string
+  /** The baselines the committed lock records, as `name version`. */
+  baselines?: string[]
 }
 
 /** Newest mtime under a directory tree, or 0 when absent. */
@@ -198,8 +200,15 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   try {
     const { buildCheckReport } = await import('./sync-check.js')
     const report = await buildCheckReport(pkgRoot, projectRoot)
-    stale = report.drift.length > 0
-    for (const d of report.drift) drifted.add(d.ide)
+    // A broken MCP server only a person can fix is not stale output: `doctor`'s
+    // failing check reports it, with its remedy, in the next line of this screen.
+    // Nor is a problem in the team's own sources, which stops the comparison
+    // before it starts; `doctor`'s team check names it, with the fix.
+    const outdatedOutput = report.drift.filter(
+      (d) => !(d.origin === 'mcp' && d.kind === 'unreducible') && d.origin !== 'team' && d.origin !== 'version',
+    )
+    stale = outdatedOutput.length > 0
+    for (const d of outdatedOutput) drifted.add(d.ide)
   } catch (err) {
     // The comparison could not run — but that alone does not say whose fault it
     // is. A package without its sources is our problem and no reason to call
@@ -267,8 +276,8 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     // the "one fact, two interpreters" split this surface was restructured to
     // remove, still standing in the surface it was restructured for.
     const results = [
-      ...(await runSharedChecks(projectRoot, manifest)),
-      ...(await runAdapterChecks(projectRoot, manifest)),
+      ...(await runSharedChecks(projectRoot, manifest, pkgRoot)),
+      ...(await runAdapterChecks(projectRoot, manifest, pkgRoot)),
     ]
     failing = results.filter((r) => !r.ok).map((r) => r.label)
   } catch (err) {
@@ -312,9 +321,23 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     nextReason = `${unmanaged.join(', ')} config exists but is not being compiled`
   }
 
+  // From the sources as they are now, not the committed lock: after an edit
+  // to `extends` the lock still names the old baseline until the next sync.
+  let baselines: string[] = []
+  try {
+    const { resolveSources } = await import('./layers.js')
+    const { resolveStack } = await import('./stack-config.js')
+    baselines = resolveSources({ pkgRoot, projectRoot, stack: resolveStack(manifest), repoInfo: manifest.repoInfo })
+      .layers.filter((l) => l.kind === 'baseline')
+      .map((l) => `${l.id}${l.version ? ` ${l.version}` : ''}`)
+  } catch {
+    baselines = []
+  }
+
   return {
     installed: true,
     missingRequired,
+    ...(baselines.length > 0 && { baselines }),
     version: manifest.version,
     ides: adapters.map((a) => a.ide),
     targets,
@@ -358,6 +381,8 @@ function render(report: StatusReport): void {
       : `  ${c.yellow('!')} ${inSync}/${total} target${total === 1 ? '' : 's'} installed` +
           (report.stale ? c.yellow(' — generated files no longer match their sources') : ''),
   )
+
+  if (report.baselines?.length) console.log(`  ${c.dim('Extends')} ${report.baselines.join(', ')}`)
 
   for (const t of report.targets) {
     // Per target. Folding `nextCommand` back in marked all seven targets

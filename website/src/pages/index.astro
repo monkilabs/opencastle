@@ -61,6 +61,45 @@ const features = [
   },
 ];
 
+const teamPoints = [
+  {
+    icon: 'layers',
+    title: 'One standard, every repository',
+    description:
+      'Put your instructions, skills, agents, MCP servers and policy in a baseline package. Each repository installs it as a devDependency and extends it; your lockfile pins it and your upgrade bot rolls it out.',
+  },
+  {
+    icon: 'policy',
+    title: 'Policy that only tightens',
+    description:
+      'Which MCP servers may run, which hosts remote ones may reach, exact versions, items no repository may drop, a context budget. A repository can tighten it, never relax it, and servers added by hand are held to it too.',
+  },
+  {
+    icon: 'pin',
+    title: 'A lock you can review',
+    description:
+      '.opencastle/lock.json records which layers ran at which versions, where every skill and instruction came from, and every MCP server. With CODEOWNERS on it, every change to what the assistants get goes to its owners.',
+  },
+  {
+    icon: 'review',
+    title: 'Review the meaning, not the diff',
+    description:
+      'opencastle review turns dozens of regenerated files into sentences on the pull request, and marks with ⚠️ what deserves a careful look: a new MCP server, a widened allowlist, a new always-loaded instruction.',
+  },
+  {
+    icon: 'pr',
+    title: 'Drift shows up on the pull request',
+    description:
+      'Someone hand-edits a generated rule, or upgrades without recompiling. On GitHub Actions, sync --check annotates each drifted file with its own fix and writes a summary to the run page.',
+  },
+  {
+    icon: 'audit',
+    title: 'MCP servers pinned and audited',
+    description:
+      'Every server OpenCastle adds is the vendor’s remote server, the project’s own copy, or an exact version. Doctor audits every config, including servers you added: unpinned or missing packages, credentials written inline, servers the policy does not allow.',
+  },
+];
+
 const workflows = [
   { name: 'feature-implementation', description: 'Brainstorm → Research → Foundation → Integration → Validation → QA Gate' },
   { name: 'bug-fix', description: 'Triage & Reproduce → Root Cause Analysis → Fix → Verification' },
@@ -76,6 +115,12 @@ const workflows = [
 ];
 
 const featureIcons: Record<string, string> = {
+  layers: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  policy: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  review: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  pr: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>`,
+  pin: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  audit: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
   orchestrator: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>`,
   agents: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
   skills: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
@@ -182,6 +227,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <a href="/docs/">Docs</a>
             </li>
             <li>
+              <a href="#teams">Teams</a>
+            </li>
+            <li>
               <a href="#features">Features</a>
             </li>
             <li>
@@ -236,7 +284,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           drifting apart. OpenCastle compiles one source into all of them for
           <b>Claude Code</b>, <b>Copilot</b>, <b>Cursor</b>, <b>Windsurf</b>,
           <b>OpenCode</b>, <b>Codex</b>, and <b>Antigravity</b>, and tells you when
-          they fall out of sync.
+          they fall out of sync — on the pull request, where the team will see it.
         </p>
         <div class="hero__actions">
           <a
@@ -261,17 +309,66 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
       </div>
     </section>
 
+    <!-- ==================== Teams ==================== -->
+    <section class="section section--border-top" id="teams">
+      <div class="container">
+        <span class="section__label">Built for teams</span>
+        <h2 class="section__title">
+          Everyone keeps their assistant. The team keeps one source.
+        </h2>
+        <p class="section__subtitle">
+          Assistant config is part of your engineering standard, so it gets what
+          the rest of the standard gets: one reviewed source shared across your
+          repositories, a policy, a CI check, and a record of every change.
+        </p>
+        <div class="features-grid">
+          {teamPoints.map((f) => (
+            <div class="feature-card">
+              <div class="feature-card__icon" set:html={featureIcons[f.icon]} />
+              <h3 class="feature-card__title">{f.title}</h3>
+              <p class="feature-card__description">{f.description}</p>
+            </div>
+          ))}
+        </div>
+        <div class="code-block">
+          <div class="code-block__header">
+            <span class="code-block__dot" />
+            <span class="code-block__dot" />
+            <span class="code-block__dot" />
+          </div>
+          <div class="code-block__body">
+            <pre><span class="code-comment"># .opencastle/config.json — extend your organisation's baseline</span>
+<span class="code-folder">{'{'}</span>
+<span class="code-key">  "extends"</span>: [<span class="code-string">"@acme/opencastle-baseline"</span>],
+<span class="code-key">  "exclude"</span>: [<span class="code-string">"skills/seo-patterns"</span>]
+<span class="code-folder">{'}'}</span>
+
+<span class="code-comment"># Compile it into every assistant and write .opencastle/lock.json</span>
+<span class="code-folder">$ npx opencastle sync</span>
+<span class="code-comment"># Drift, policy and a review of what changed, on every pull request</span>
+<span class="code-folder">$ npx opencastle ci --owners @acme/platform</span></pre>
+          </div>
+        </div>
+        <p class="tier-intro">
+          Open formats where they exist: Codex and OpenCode read <code>AGENTS.md</code>,
+          Claude Code skills are <code>SKILL.md</code> folders in the Agent Skills
+          format, and every assistant gets MCP. How the layers, policy and lock fit
+          together, with a worked example: <a href="/docs/teams">OpenCastle for Teams</a>.
+        </p>
+      </div>
+    </section>
+
     <!-- ==================== Features ==================== -->
     <section class="section section--border-top" id="features">
       <div class="container">
-        <span class="section__label">Capabilities</span>
+        <span class="section__label">What gets compiled</span>
         <h2 class="section__title">
-          Everything you need to orchestrate AI agents at scale.
+          What every assistant on the team gets.
         </h2>
         <p class="section__subtitle">
-          A hybrid framework for interactive IDE chat and automated batch
-          execution — with instructions, skills, agent definitions, workflow
-          templates, and quality gates battle-tested on a production codebase.
+          One source compiles into instructions, specialist agents, on-demand
+          skills, workflow templates, and quality gates — in each assistant's
+          native format, battle-tested on a production codebase.
         </p>
         <div class="features-grid">
           {features.map((f) => (
@@ -367,6 +464,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 
 <span class="code-comment"># Key commands</span>
 <span class="code-folder">$ npx opencastle sync     </span><span class="code-comment"># Update framework, preserve customizations</span>
+<span class="code-folder">$ npx opencastle sync --check  </span><span class="code-comment"># In CI: fail on drift, annotate the PR</span>
 <span class="code-folder">$ npx opencastle add stripe  </span><span class="code-comment"># Adopt a tool and recompile</span>
 <span class="code-folder">$ npx opencastle convoy dashboard  </span><span class="code-comment"># View observability dashboard</span>
 <span class="code-folder">$ npx opencastle doctor     </span><span class="code-comment"># Check system health and configuration</span>

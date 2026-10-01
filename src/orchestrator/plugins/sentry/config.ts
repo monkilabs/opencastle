@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['@sentry/mcp-server@latest'],
+    args: ['@sentry/mcp-server@0.42.0'],
   },
   authType: 'env-token',
   envVars: [
@@ -26,4 +26,16 @@ export const config: PluginConfig = {
   docsUrl: null,
   officialDocs: 'https://docs.sentry.io/',
   mcpPackage: '@sentry/mcp-server',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['@sentry/mcp-server@latest'],
+      },
+      envVars: [
+        { name: 'SENTRY_ACCESS_TOKEN', hint: 'Create at Settings \u2192 Auth Tokens in sentry.io' },
+      ],
+    },
+  ],
 };

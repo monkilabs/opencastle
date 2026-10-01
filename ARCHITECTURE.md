@@ -138,6 +138,89 @@ Convoys can mix adapters in a single run — each task is assigned to an adapter
 
 ---
 
+## Team Sources
+
+The adapters compile one directory. It is the merge of three kinds of layer,
+resolved in [`layers.ts`](src/cli/layers.ts):
+
+```
+OpenCastle's own content   src/orchestrator/ and the skills of included plugins
+  → baselines              npm packages or relative paths named in "extends"
+    → the project          .opencastle/
+```
+
+A layer is a directory laid out like `.opencastle/`: `config.json` (schema at
+[`website/public/schema/config.json`](website/public/schema/config.json)),
+`instructions/*.md` (always loaded), `agents/*.agent.md`,
+`skills/<name>/SKILL.md`, `prompts/*.md` and `workflows/*.md`. Items are keyed
+`kind/name`. A later layer's item replaces an earlier one with the same key,
+and `exclude` drops one from below — content, or an MCP server as
+`mcpServers/<name>`. A baseline's own `extends` load beneath
+it; a baseline reached twice loads once, at the lowest place it appears; a
+cycle is an error.
+
+- **Resolution.** A package in `extends` is found the way Node finds one —
+  `node_modules` from the declaring layer upwards — so npm, pnpm, Yarn and
+  workspaces all work, and the version is whatever the project's lockfile
+  pinned. OpenCastle fetches nothing itself. A package is a baseline when its
+  `package.json` declares `"opencastle": { "baseline": "<dir>" }`. A version
+  in `extends` (`pkg@1.2.3`) and an absolute path are refused.
+- **Materialized source.** `materialize()` writes the merged items to a scratch
+  directory shaped like `src/orchestrator/`, normalising team files on the way:
+  LF line endings (so a digest is the same on every checkout), `applyTo: '**'`
+  on any instruction that does not set one (so Copilot loads it too), a `name`
+  on an agent without frontmatter. OS files (`.DS_Store`, `Thumbs.db`) are
+  skipped; a link to somewhere outside both the layer and the project is not
+  followed, with a warning. Every adapter
+  compiles from that directory, so all seven targets receive team content with
+  no per-target code, and `sync`, `sync --check`, `review` and `explain` read
+  one resolution.
+- **Policy** ([`policy.ts`](src/cli/policy.ts)) only tightens on the way up. A
+  server must be on every layer's `mcp.allow`, and a remote one must connect to
+  a host on every `mcp.remoteHosts`; `requirePinned`, once on, stays on;
+  `require` accumulates; the smallest `contextBudget` wins; every `opencastle`
+  version range must hold.
+  A team server refused by its own layer's policy or one below it, an unpinned
+  server under `requirePinned`, a credential written inline, a required item
+  excluded — or replaced above the layer that requires it — an unsatisfied
+  version range or a baseline that is not installed is an error: `sync` writes
+  nothing and `sync --check` fails. A server a *higher* layer's policy refuses
+  is left out instead, as is an integration server the policy refuses: that is
+  how a repository opts out of a baseline's server. The lock records why.
+- **Team MCP servers** are written in each target's variable syntax
+  ([`mcp.ts`](src/cli/mcp.ts)): `${NAME}` for Claude Code, `${env:NAME}` for
+  Cursor and Windsurf, `{env:NAME}` for OpenCode. VS Code forwards a plain
+  `env` variable through `envFile` and turns any other reference into a
+  password input. Codex and Antigravity keep `${NAME}` until their syntax is
+  confirmed. Editor variables are not environment variables: VS Code and
+  Cursor get `${workspaceFolder}` as written, the others `.` (they start a
+  project's servers in the project directory) and `HOME` for `${userHome}`. A
+  server an earlier sync wrote that no layer defines any more is removed, with
+  any VS Code input OpenCastle wrote for it that no remaining server uses; the
+  committed lock names which those are, so `sync` holds the lock back while an
+  MCP config cannot be read.
+- **The lock** ([`lock.ts`](src/cli/lock.ts)). `.opencastle/lock.json` records
+  the layers with their versions and a digest of each baseline's content; every
+  item with the layer it came from, a content hash and, for instructions, a
+  token estimate; every MCP server with how it launches, which variables it
+  reads and, for a team server, a digest of its whole definition (so a literal
+  environment value or header moves the lock); what was excluded or blocked;
+  each layer's policy; and the
+  always-loaded context. No timestamps, no absolute paths, keys in a fixed
+  order, so it changes only when what the assistants get changes. `sync` writes
+  it, `sync --check` compares it like any generated file, `review` diffs it
+  between two commits, and `fleet` reads it across repositories.
+- **Health** ([`team-health.ts`](src/cli/team-health.ts)). `doctor` reports
+  whether the team sources resolve; the always-loaded context — instructions
+  plus the skill and agent index, estimated at four characters per token —
+  against the budget, naming the largest contributors when it is over; `npm run`
+  scripts named in team content, and backticked paths named in the project's
+  own content, that no longer exist; and a CLI older than the release that
+  compiled the project, which `sync` refuses to downgrade without
+  `--allow-downgrade` and `sync --check` reports instead of comparing.
+
+---
+
 ## Workflow Templates
 
 | Template | Flow |
@@ -303,6 +386,43 @@ Tasks can write artifacts to `.opencastle/artifacts/{convoy-id}/{task-id}/`:
 
 ---
 
+## MCP Servers
+
+Each plugin that brings an MCP server declares it once
+([`src/orchestrator/plugins/*/config.ts`](src/orchestrator/plugins/)), and every
+adapter writes it in that target's dialect — `servers` for VS Code,
+`mcpServers` for most others, OpenCode's `mcp` with `local`/`remote` entries.
+
+An MCP server is code an agent runs with the developer's credentials, so the
+defaults are held to the rules a supply-chain review would apply:
+
+- **Pinned or owned.** A server launched through a package runner is pinned to
+  an exact version, or runs the project's own dependency with `npx --no` (Prisma,
+  Convex, Nx — the version the project's lockfile pins), or is the vendor's own
+  remote server. [`pins.test.ts`](src/orchestrator/plugins/pins.test.ts) enforces
+  it. `npm run mcp:check` confirms every pin still exists on the registry and runs
+  weekly in CI; `npm run mcp:bump` moves pins to the latest release.
+- **Moved forward, never overwritten.** A rebuild leaves existing entries alone,
+  because people tune them. Plugins record the defaults earlier releases wrote
+  (`previousMcpConfigs`); an entry still byte for byte one of those is replaced on
+  `sync` and named in its output. An edited entry stays the user's.
+- **Audited.** `doctor` and the status command read every target's MCP config,
+  including servers the user added ([`mcp-audit.ts`](src/cli/mcp-audit.ts)): an
+  unpinned package warns (fails, when the team's policy sets `requirePinned`); a
+  package missing from npm, a remote server Claude Code would read as stdio, a
+  credential written into the file, or a server the team's policy does not
+  allow, fails. Each finding carries the remedy that works for
+  it — `sync` only for entries it still owns. What it cannot read (a container
+  image, a runner option it does not know) it reports as not audited rather than
+  passing.
+- **Checked in CI.** `sync --check` runs the same audit, so it cannot pass what
+  `doctor` fails: whatever `sync` would change in an MCP config — an entry it
+  moves forward, a plugin server the stack dropped — is `outdated` drift, and a
+  failure only a person can clear is `unreducible`. The latter fails CI but does
+  not make `sync` recompile or the status line call the output stale.
+
+---
+
 ## Observability
 
 All execution is logged to `.opencastle/logs/events.ndjson` using the `opencastle log` CLI:
@@ -329,7 +449,17 @@ The [dashboard](src/dashboard/) provides a web UI for exploring convoy runs, tas
 | `add <pack>` | Adopt an integration and recompile |
 | `doctor` | Diagnose configuration problems |
 | `remove` | Remove OpenCastle, keeping or deleting generated files |
+| `explain` | What every assistant here is given, where each piece comes from, and what you still need to set up |
+| `review` | What a change does to the assistants, compared with the lock at a base ref |
+| `ci` | Write a GitHub Actions workflow running `sync --check` and `review`, and optionally CODEOWNERS lines |
+| `baseline` | Scaffold (`init`) or validate (`check`) a baseline package |
+| `fleet` | OpenCastle and baseline versions, and MCP server spread, across many repositories' locks |
 | `convoy` | Experimental: plan and run multi-step work |
+
+On GitHub Actions, `sync --check` also writes an `::error` annotation on each
+drifted file and a table to `$GITHUB_STEP_SUMMARY`
+([`github-report.ts`](src/cli/github-report.ts)), and `review` appends its
+Markdown to the same summary; elsewhere their output is unchanged.
 
 `log` and `lesson` also exist but are invoked by agents from generated
 instructions rather than by people, so they are not listed in help.

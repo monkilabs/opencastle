@@ -74,7 +74,7 @@ opencastle              # what's installed, what drifted, what to run next
 opencastle sync         # recompile every target from source
 opencastle sync --check # fail if anything drifted (for CI)
 opencastle add stripe   # adopt a new tool, recompile
-opencastle doctor       # diagnose setup problems
+opencastle doctor       # diagnose setup problems, audit MCP servers
 ```
 
 Running `opencastle` with no arguments is the one command worth remembering. It
@@ -107,6 +107,10 @@ upgraded without recompiling.
 - run: npx opencastle sync --check
 ```
 
+`opencastle ci` writes the whole workflow for you: it installs dependencies so
+baselines resolve, runs the project's own OpenCastle version, and adds `review`
+on pull requests.
+
 Commit the generated config, like a lockfile. That is what gives the check
 something to compare and what lets a teammate clone the repo and have working
 rules without running anything. Only `.env` and run artefacts are gitignored.
@@ -115,6 +119,82 @@ Upgrading from 0.35 or earlier? Run `opencastle sync` once — it rewrites the
 `.gitignore` block, repairs the manifest, and adopts root files an older release
 generated, keeping a `.opencastle-backup` of each. See
 [the quickstart](docs/quickstart.md#upgrading-from-035-or-earlier).
+
+<br>
+
+## Built for teams
+
+Everyone keeps the assistant they like. The team keeps one reviewed source, and
+can share it across every repository it owns.
+
+```jsonc
+// .opencastle/config.json
+{
+  "$schema": "https://www.opencastle.dev/schema/config.json",
+  "extends": ["@acme/opencastle-baseline"],  // a devDependency; your lockfile pins it
+  "exclude": ["skills/seo-patterns"],
+  "mcpServers": {
+    "acme-db": {
+      "command": "npx",
+      "args": ["-y", "@acme/db-mcp@2.2.0"],
+      "env": { "ACME_DB_URL": "${ACME_DB_URL}" }  // each assistant gets its own spelling
+    }
+  }
+}
+```
+
+- **One standard, many repositories.** A baseline is an ordinary npm package
+  carrying the organisation's instructions, skills, agents, MCP servers and
+  policy. Each repository installs it as a devDependency and names it in
+  `extends`; the lockfile pins the version, and an upgrade bot opens one pull
+  request per repository when it moves. What a repository adds under
+  `.opencastle/` — `instructions/`, `skills/<name>/SKILL.md`, `agents/` —
+  compiles into all seven assistants the same way.
+- **Policy only tightens.** A baseline can say which MCP servers may run, which
+  hosts remote ones may reach, that every server is pinned to an exact version,
+  which items no repository may drop, and how much context may load before a
+  task. A repository can tighten it, never relax it, and can opt out of a
+  baseline's server. A server that breaks its own layer's policy, or a
+  credential written inline, is a compile error, and `doctor` and
+  `sync --check` hold servers someone added to an MCP config by hand to the same
+  policy.
+- **A lock you can review.** `sync` writes `.opencastle/lock.json`: which layers
+  at which versions, where every skill and instruction came from, which MCP
+  servers every assistant can start, and how many tokens load up front.
+  `opencastle review` puts the change to it into sentences on the pull request,
+  and marks with ⚠️ what deserves a careful look — a new MCP server, a widened
+  allowlist, a new always-loaded instruction.
+- **Drift shows up on the pull request.** On GitHub Actions, `sync --check`
+  annotates each drifted file with that file's own fix and writes a table to the
+  run's summary page. Nothing to configure: it reads `GITHUB_ACTIONS`.
+- **MCP servers are pinned like dependencies.** Every server OpenCastle adds is
+  the vendor's own remote server, the project's own copy of a tool it already
+  uses (`npx --no`), or a package at an exact version — never `@latest`. Every
+  laptop and every CI run starts the same server version. (A pin fixes the
+  server's own version, not the versions of its dependencies, which npx resolves
+  per machine.) Upgrading OpenCastle moves them forward in one reviewable diff,
+  and an entry you edited is left alone.
+- **`doctor` audits what your agents launch**, including servers you added
+  yourself: a package with no exact version, one that no longer exists on npm,
+  a remote server your assistant cannot load, a credential written into the
+  file, or a server the policy does not allow. It also checks the team's own
+  sources: that they resolve, how much context every assistant loads against
+  the budget, and whether instructions still name scripts and paths that exist.
+  Each finding names the fix that works for it.
+- **Open formats where they exist.** Codex and OpenCode read `AGENTS.md`, Claude
+  Code skills are `SKILL.md` folders in the Agent Skills format, and every
+  assistant gets MCP.
+
+```bash
+opencastle explain                     # what a new teammate's assistant gets, and what to set up
+opencastle ci --owners @acme/platform  # CI check and review on every PR; owners for the lock
+opencastle baseline init               # start the organisation's baseline package
+opencastle fleet ~/src/*               # which repositories run which baseline version
+```
+
+The guide — layers, every config field, policy, the lock, a rollout recipe:
+**[opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/)**. What is
+still open: **[docs/teams.md](docs/teams.md)**.
 
 <br>
 

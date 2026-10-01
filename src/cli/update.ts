@@ -8,7 +8,6 @@ import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js'
 import { getOrchestratorRoot } from './copy.js'
 import {
-  getRequiredMcpEnvVars,
   updateSkillMatrixFile,
   resolveStack,
   getCustomizationsTransform,
@@ -21,6 +20,40 @@ import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from '.
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { UnreadableConfigError } from './types.js'
 import { noteUnreadable } from './unreadable-report.js'
+import {
+  resolveSources,
+  materialize,
+  hasErrors,
+  usesTeamSources,
+  formatIssues,
+  requiredEnvVars,
+  type ResolvedSources,
+} from './layers.js'
+import { buildLock, writeLock, LOCK_REL, priorTeam } from './lock.js'
+import { parseVersion, compareVersions } from './version-range.js'
+
+/** Print what is wrong with the team's sources, and that nothing was written. */
+function reportTeamIssues(resolved: ResolvedSources): void {
+  const errors = resolved.issues.filter((i) => i.level === 'error')
+  console.error(
+    `\n  ${c.red('✗')} The team's sources have ${errors.length} problem(s); nothing was compiled.\n`,
+  )
+  for (const line of formatIssues(errors)) console.error(`    ${line.startsWith('  ') ? c.dim(line) : line}`)
+  console.error('')
+}
+
+/**
+ * The manifest without the field that changes on every write.
+ *
+ * `updatedAt` changed on every sync, so two branches that both synced always
+ * conflicted on the manifest — in the one file every command reads first,
+ * where a conflict makes every command stop. Written only when something it
+ * records has actually changed.
+ */
+function manifestMeaning(m: Record<string, unknown>): string {
+  const { updatedAt: _u, installedAt: _i, ...rest } = m
+  return JSON.stringify(rest)
+}
 
 const UPDATE_HELP = `
   opencastle update [options]
@@ -31,6 +64,8 @@ const UPDATE_HELP = `
   Options:
     --dry-run         Preview what would be changed without writing files
     --force           Force update even if versions match
+    --allow-downgrade Recompile with this OpenCastle even though a newer one
+                      compiled the project
     --reconfigure     Re-run IDE and stack selection
     --help, -h        Show this help
 `
@@ -136,6 +171,44 @@ export default async function update({
     await readFile(resolve(pkgRoot, 'package.json'), 'utf8')
   ) as { version: string }
 
+  // An older OpenCastle than the one that compiled the project would replace
+  // newer output with older, and the next teammate's sync would put it back —
+  // a pull request war nobody chose. Refused unless asked for by name: not by
+  // `--force`, which the tool's own remedies prescribe for other reasons, and
+  // which a teammate on an old CLI would otherwise run into a downgrade.
+  {
+    const mine = parseVersion(pkg.version)
+    const theirs = parseVersion(manifest.version)
+    if (mine && theirs && compareVersions(mine, theirs) < 0) {
+      if (!args.includes('--allow-downgrade')) {
+        console.error(
+          `\n  ${c.red('✗')} This project was compiled by OpenCastle ${manifest.version}; this is ${pkg.version}.`,
+        )
+        console.error(`    ${c.dim('Syncing would replace newer generated files with older ones. Run the project\'s version —')}`)
+        console.error(`    ${c.dim(`npx opencastle@${manifest.version} sync, or add it to devDependencies so everyone runs one —`)}`)
+        console.error(`    ${c.dim('or pass --allow-downgrade to go back to this version on purpose.')}\n`)
+        process.exit(1)
+      }
+      console.log(`  ${c.yellow('!')} Downgrading this project from OpenCastle ${manifest.version} to ${pkg.version}, as asked.`)
+    }
+  }
+
+  // The team's sources, checked before anything is written. A baseline that is
+  // not installed or a server the policy forbids is a compile error: better no
+  // output than output that quietly leaves the team's standard out.
+  {
+    const early = resolveSources({
+      pkgRoot,
+      projectRoot,
+      stack: resolveStack({ ...manifest, ides }),
+      repoInfo: manifest.repoInfo,
+    })
+    if (hasErrors(early)) {
+      reportTeamIssues(early)
+      process.exit(1)
+    }
+  }
+
   // ── Recreate the local-only directories ─────────────────────────
   // Deliberately gitignored, so a fresh clone has none of them, and only `init`
   // used to create them: `doctor` failed on every clone and told the user to run
@@ -197,10 +270,16 @@ export default async function update({
     } catch {
       return true
     }
+    // The drift report also counts an MCP server entry still exactly as an
+    // earlier release wrote it, whose default has since changed. `doctor`
+    // prescribes this command for those — a package missing from npm, a remote
+    // server Claude Code cannot load — so the short-circuit must see them.
     try {
       const { buildCheckReport } = await import('./sync-check.js')
       const report = await buildCheckReport(pkgRoot, projectRoot)
-      return report.drift.length > 0
+      // Not a broken MCP server only a person can fix: recompiling cannot clear
+      // it, and doing so on every run rewrote the committed manifest for nothing.
+      return report.drift.some((d) => !(d.origin === 'mcp' && d.kind === 'unreducible'))
     } catch {
       // If the comparison itself fails, err towards doing the work.
       return true
@@ -454,54 +533,93 @@ export default async function update({
   const staleRoots: string[] = []
   const tornRoots: string[] = []
   const sweptFiles: string[] = []
-  for (const ide of ides) {
-    const adapter = await IDE_ADAPTERS[ide]()
-    // `repoInfo` matters here: `scaffoldMcpConfigInto` uses it to decide which
-    // servers belong in the config. The parameter was threaded through all
-    // three adapters and then not passed from the one place `sync` calls them,
-    // so every sync scaffolded MCP as though the repository had been detected
-    // as nothing at all — a property enforced everywhere except at the call.
-    const results = await adapter.update(pkgRoot, projectRoot, newStack, repoInfo)
-    totalCopied += results.copied.length
-    totalCreated += results.created.length
-    adoptedRoots.push(...(results.adopted ?? []))
-    repairedRoots.push(...(results.repaired ?? []))
-    damagedRoots.push(...(results.damagedRoots ?? []))
-    severedRoots.push(...(results.severedRoots ?? []))
-    staleRoots.push(...(results.staleRoots ?? []))
-    tornRoots.push(...(results.tornRoots ?? []))
-    sweptFiles.push(...(results.deleted ?? []))
-    // The adapters skip a config they cannot parse instead of throwing; the
-    // report below is the only place the user learns which file to fix.
-    for (const file of results.unreadable ?? []) {
-      noteUnreadable(unreadable, file)
-    }
+  // The merged sources — OpenCastle's content, the baselines, the project's
+  // own — resolved once more with the final stack, so a reconfigure is honoured.
+  const resolved = resolveSources({ pkgRoot, projectRoot, stack: newStack, repoInfo })
+  if (hasErrors(resolved)) {
+    reportTeamIssues(resolved)
+    closePrompts()
+    process.exit(1)
   }
-
   // Deduplicated, and re-sorted by what the adapters declare today — two targets
   // that share AGENTS.md used to record it twice, and a manifest from before
   // root files were co-owned still files them under `framework`.
   const allManagedPaths = await resolveManagedPaths({ ...manifest, ides })
-
-  // The skill matrix and the MCP config are compiled output like everything else,
-  // so they are regenerated whenever we recompile. Gating them on `stackChanged`
-  // — a flag only ever set inside the interactive reconfigure branch — meant
-  // `opencastle add supabase` edited the manifest, recompiled, and left the skill
-  // matrix and MCP config describing the stack from before the pack was added.
-  if (newStack) {
+  const teamWritten = new Set<string>()
+  const teamRemoved = new Set<string>()
+  const upgradedServers = new Set<string>()
+  const removedServers = new Set<string>()
+  let lockWritten = false
+  let lockHeld = false
+  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
+  try {
     for (const ide of ides) {
-      for (const step of [
-        () => updateSkillMatrixFile(projectRoot, ide, newStack),
-        () => rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo),
-      ]) {
-        try {
-          await step()
-        } catch (err) {
-          if (!(err instanceof UnreadableConfigError)) throw err
-          noteUnreadable(unreadable, err.file)
+      const adapter = await IDE_ADAPTERS[ide]()
+      // `repoInfo` matters here: `scaffoldMcpConfigInto` uses it to decide which
+      // servers belong in the config. The parameter was threaded through all
+      // three adapters and then not passed from the one place `sync` calls them,
+      // so every sync scaffolded MCP as though the repository had been detected
+      // as nothing at all — a property enforced everywhere except at the call.
+      const results = await adapter.update(pkgRoot, projectRoot, newStack, repoInfo, source)
+      totalCopied += results.copied.length
+      totalCreated += results.created.length
+      adoptedRoots.push(...(results.adopted ?? []))
+      repairedRoots.push(...(results.repaired ?? []))
+      damagedRoots.push(...(results.damagedRoots ?? []))
+      severedRoots.push(...(results.severedRoots ?? []))
+      staleRoots.push(...(results.staleRoots ?? []))
+      tornRoots.push(...(results.tornRoots ?? []))
+      sweptFiles.push(...(results.deleted ?? []))
+      for (const key of results.mcpTeamWritten ?? []) teamWritten.add(key)
+      for (const key of results.mcpTeamRemoved ?? []) teamRemoved.add(key)
+      // The adapters skip a config they cannot parse instead of throwing; the
+      // report below is the only place the user learns which file to fix.
+      for (const file of results.unreadable ?? []) {
+        noteUnreadable(unreadable, file)
+      }
+    }
+
+    // The skill matrix and the MCP config are compiled output like everything else,
+    // so they are regenerated whenever we recompile. Gating them on `stackChanged`
+    // — a flag only ever set inside the interactive reconfigure branch — meant
+    // `opencastle add supabase` edited the manifest, recompiled, and left the skill
+    // matrix and MCP config describing the stack from before the pack was added.
+    if (newStack) {
+      for (const ide of ides) {
+        for (const step of [
+          () => updateSkillMatrixFile(projectRoot, ide, newStack),
+          async () => {
+            const outcome = await rebuildMcpConfig(projectRoot, ide as IdeChoice, newStack, repoInfo, source.mcp)
+            for (const key of outcome.upgraded) upgradedServers.add(key)
+            for (const key of outcome.removed) removedServers.add(key)
+            for (const key of outcome.teamWritten) teamWritten.add(key)
+            for (const key of outcome.teamRemoved) teamRemoved.add(key)
+          },
+        ]) {
+          try {
+            await step()
+          } catch (err) {
+            if (!(err instanceof UnreadableConfigError)) throw err
+            noteUnreadable(unreadable, err.file)
+          }
         }
       }
     }
+
+    // What every assistant is now given, for review. Written last, from the
+    // same source the targets were compiled from — and not at all while an MCP
+    // config could not be read. The lock is how the next sync knows which team
+    // servers to take back out; recording a retirement before every config has
+    // had the server removed would leave it in the unreadable one for good,
+    // with every check green.
+    const mcpPaths = new Set(ides.map((i) => getMcpConfigRelPath(i as IdeChoice)))
+    lockHeld = unreadable.some((u) => {
+      const name = u.split('\u0000')[0]
+      return mcpPaths.has((isAbsolute(name) ? relative(projectRoot, name) : name).replace(/\\/g, '/'))
+    })
+    if (!lockHeld) lockWritten = await writeLock(projectRoot, buildLock(source, { ides, stack: newStack, repoInfo }))
+  } finally {
+    source.dispose()
   }
 
   // ── Restore any missing .opencastle/ scaffolding ────────────────
@@ -529,13 +647,16 @@ export default async function update({
   await migrateLegacyLogs(projectRoot)
 
   // ── Update manifest ─────────────────────────────────────────────
+  const before = manifestMeaning(manifest as unknown as Record<string, unknown>)
   manifest.version = pkg.version
   manifest.ides = ides
-  manifest.updatedAt = new Date().toISOString()
   manifest.managedPaths = allManagedPaths
   manifest.stack = newStack
   manifest.repoInfo = mergeStackIntoRepoInfo(repoInfo, newStack)
-  await writeManifest(projectRoot, manifest)
+  if (manifestMeaning(manifest as unknown as Record<string, unknown>) !== before) {
+    manifest.updatedAt = new Date().toISOString()
+    await writeManifest(projectRoot, manifest)
+  }
 
   // ── Results ─────────────────────────────────────────────────────
   console.log(
@@ -549,6 +670,58 @@ export default async function update({
   if (newStack && unreadable.length === 0) {
     console.log(`  ${c.green('✓')} Updated skill matrix`)
     console.log(`  ${c.green('✓')} Rebuilt MCP config`)
+  }
+  // Said, because it changes a file the user commits: an entry we generated has
+  // moved to a new default (a pinned version, a server that exists, a shape the
+  // assistant can load), and the diff should not come as a surprise in review.
+  if (upgradedServers.size > 0) {
+    console.log(
+      `  ${c.green('✓')} Moved ${upgradedServers.size} MCP server(s) to the current default: ` +
+        [...upgradedServers].sort().join(', '),
+    )
+  }
+  if (removedServers.size > 0) {
+    console.log(
+      `  ${c.yellow('-')} Removed ${removedServers.size} MCP server(s) this project's stack no longer includes: ` +
+        [...removedServers].sort().join(', ') +
+        c.dim(' (opencastle add <pack> brings one back)'),
+    )
+  }
+  if (teamWritten.size > 0) {
+    console.log(`  ${c.green('✓')} Wrote the team's MCP server(s) as defined: ${[...teamWritten].sort().join(', ')}`)
+  }
+  if (teamRemoved.size > 0) {
+    console.log(
+      `  ${c.yellow('-')} Removed ${teamRemoved.size} MCP server(s) the team's layers retired or its policy does not allow: ` +
+        [...teamRemoved].sort().join(', '),
+    )
+  }
+  if (usesTeamSources(resolved)) {
+    const baselines = resolved.layers.filter((l) => l.kind === 'baseline')
+    const own = [...resolved.items.values()].filter((i) => i.layer !== 'opencastle').length
+    console.log(
+      `  ${c.green('✓')} Compiled ${baselines.length > 0 ? `${baselines.map((b) => `${b.id}${b.version ? ` ${b.version}` : ''}`).join(', ')} and ` : ''}` +
+        `this project's own sources${own > 0 ? ` (${own} item${own === 1 ? '' : 's'})` : ''}`,
+    )
+  }
+  if (lockWritten) {
+    console.log(`  ${c.green('✓')} Updated ${LOCK_REL} ${c.dim('(opencastle review explains the change)')}`)
+  }
+  if (lockHeld) {
+    console.log(`  ${c.yellow('!')} Left ${LOCK_REL} as it was until every MCP config can be read — fix the file named below and sync again.`)
+  }
+  // An integration the stack includes but the policy refuses is left out on
+  // purpose; saying nothing made `add stripe` look like it had worked.
+  if (resolved.blocked.size > 0) {
+    console.log(`  ${c.yellow('-')} Left out ${resolved.blocked.size} MCP server(s):`)
+    for (const [key, why] of [...resolved.blocked].sort(([a], [b]) => (a < b ? -1 : 1))) {
+      console.log(`     ${key} ${c.dim(`— ${why}`)}`)
+    }
+  }
+  const teamWarnings = resolved.issues.filter((i) => i.level === 'warning')
+  if (teamWarnings.length > 0) {
+    console.log(`\n  ${c.yellow('!')} ${teamWarnings.length} note(s) about the team's sources:`)
+    for (const line of formatIssues(teamWarnings)) console.log(`    ${c.dim(line)}`)
   }
   for (const file of unreadable) {
     const [abs, why] = file.split('\u0000')
@@ -662,7 +835,7 @@ export default async function update({
   // The old diff-against-previous-stack version was inside the `stackChanged`
   // gate, so `opencastle add sentry` never mentioned the token it now needs.
   if (newStack) {
-    const envVars = getRequiredMcpEnvVars(newStack, repoInfo)
+    const envVars = requiredEnvVars(resolved, newStack, repoInfo)
     const envFile = await readFile(resolve(projectRoot, '.env'), 'utf8').catch(() => '')
     const missing = envVars.filter(({ envVar }) => !isEnvVarSatisfied(envVar, envFile))
     if (missing.length > 0) {

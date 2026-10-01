@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['-y', '@contentful/mcp-server'],
+    args: ['-y', '@contentful/mcp-server@1.23.2'],
   },
   authType: 'none',
   envVars: [],
@@ -46,4 +46,14 @@ export const config: PluginConfig = {
   docsUrl: 'https://www.opencastle.dev/docs/plugins#contentful',
   officialDocs: 'https://www.contentful.com/developers/docs/',
   mcpPackage: '@contentful/mcp-server',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@contentful/mcp-server'],
+      },
+      envVars: [],
+    },
+  ],
 };

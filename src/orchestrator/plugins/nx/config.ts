@@ -12,7 +12,7 @@ export const config: PluginConfig = {
   mcpConfig: {
     type: 'stdio',
     command: 'npx',
-    args: ['nx', 'mcp'],
+    args: ['--no', 'nx', 'mcp'],
   },
   authType: 'none',
   envVars: [],
@@ -24,4 +24,14 @@ export const config: PluginConfig = {
   },
   docsUrl: 'https://www.opencastle.dev/docs/plugins#nx',
   officialDocs: 'https://nx.dev/getting-started/intro',
+  previousMcpConfigs: [
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['nx', 'mcp'],
+      },
+      envVars: [],
+    },
+  ],
 };
