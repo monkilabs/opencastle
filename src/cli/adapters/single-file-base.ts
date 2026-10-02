@@ -32,6 +32,13 @@ export interface SingleFileAdapterConfig {
   /** Framework subdirectories (under dotDir) to remove during update */
   frameworkDirs: string[]
   /**
+   * Where skills go, relative to the project root, when the assistant does not
+   * read them from `<dotDir>/skills/`. Codex CLI reads a repository's skills
+   * only from `.agents/skills/`, the cross-assistant location; the
+   * `.codex/skills/` this wrote was never loaded.
+   */
+  skillsDir?: string
+  /**
    * Output an earlier release wrote outside today's framework directories,
    * present on disk now, relative to the project root. Removed on update.
    */
@@ -63,23 +70,34 @@ export interface SingleFileAdapterConfig {
  * first selected owner's directory. Both trees are still installed; the index
  * names one of them, and says so.
  */
-const SHARED_ROOT_OWNERS: Record<string, Array<{ ide: string; dotDir: string }>> = {
+const SHARED_ROOT_OWNERS: Record<string, Array<{ ide: string; dotDir: string; skillsDir: string }>> = {
   'AGENTS.md': [
-    { ide: 'opencode', dotDir: '.opencode' },
-    { ide: 'codex', dotDir: '.codex' },
+    { ide: 'opencode', dotDir: '.opencode', skillsDir: '.opencode/skills' },
+    { ide: 'codex', dotDir: '.codex', skillsDir: '.agents/skills' },
   ],
 }
 
-/** The directory the shared root file should point at, given what is selected. */
+/** Where an adapter writes skills, relative to the project root. */
+function skillsDirOf(config: SingleFileAdapterConfig): string {
+  return config.skillsDir ?? `${config.dotDir}/skills`
+}
+
+/**
+ * The directories the shared root file should point at, given what is
+ * selected, and the other places the same content is installed.
+ */
 function referenceDir(config: SingleFileAdapterConfig, stack?: StackConfig): {
   dir: string
+  skills: string
   sharedWith: string[]
 } {
   const owners = SHARED_ROOT_OWNERS[config.rootFile] ?? []
   const selected = new Set<string>(stack?.ides ?? [])
   const present = owners.filter((o) => selected.has(o.ide))
-  if (present.length < 2) return { dir: config.dotDir, sharedWith: [] }
-  return { dir: present[0].dotDir, sharedWith: present.map((o) => o.dotDir) }
+  if (present.length < 2) return { dir: config.dotDir, skills: skillsDirOf(config), sharedWith: [] }
+  const [first, ...rest] = present
+  const elsewhere = rest.flatMap((o) => (o.skillsDir.startsWith(`${o.dotDir}/`) ? [o.dotDir] : [o.dotDir, o.skillsDir]))
+  return { dir: first.dotDir, skills: first.skillsDir, sharedWith: elsewhere }
 }
 
 /**
@@ -201,18 +219,17 @@ export function createSingleFileAdapter(
     // Always built: the content goes into a managed block, so a file the user
     // already owns keeps its content and gains the generated section.
     const rootPath = resolve(projectRoot, config.rootFile)
-    const { dir: refDir, sharedWith } = referenceDir(config, stack)
+    const { dir: refDir, skills: refSkills, sharedWith } = referenceDir(config, stack)
     {
       const sections: string[] = []
 
       sections.push(
         '# Project Instructions\n\n' +
         'All conventions, architecture, and project context are embedded below. ' +
-        `Skills are in \`${refDir}/skills/\` — read them when a task matches. ` +
+        `Skills are in \`${refSkills}/\` — read them when a task matches. ` +
         `Agent definitions are in \`${refDir}/agents/\` — read the relevant file when adopting a persona.` +
-        (sharedWith.length > 1
+        (sharedWith.length > 0
           ? `\n\nThis file is shared by more than one assistant. The same content is also installed under ${sharedWith
-              .filter((d) => d !== refDir)
               .map((d) => `\`${d}/\``)
               .join(', ')}.`
           : '')
@@ -277,7 +294,7 @@ export function createSingleFileAdapter(
           await readdir(skillsDir, { withFileTypes: true })
         ).filter((e) => e.isDirectory())
         const skillRef = (name: string): string =>
-          `${refDir}/skills/${name}/SKILL.md`
+          `${refSkills}/${name}/SKILL.md`
         // Integration skills are listed after the rest, as they always were:
         // reordering the index would change every root file on upgrade for
         // no reason anyone could see in the diff.
@@ -324,12 +341,12 @@ export function createSingleFileAdapter(
       }
     }
 
-    // 3. Skills → dotDir/skills/<name>/SKILL.md (+ sibling resources, frontmatter preserved).
+    // 3. Skills → <skillsDir>/<name>/SKILL.md (+ sibling resources, frontmatter preserved).
     //    Matches the SKILL.md-per-folder format used by Claude Code, OpenCode, Codex,
     //    and Antigravity — agents discover skills via the description: frontmatter field.
     const skillsDir = resolve(srcRoot, 'skills')
     if (existsSync(skillsDir)) {
-      const destSkills = resolve(dotDirPath, 'skills')
+      const destSkills = resolve(projectRoot, skillsDirOf(config))
       await mkdir(destSkills, { recursive: true })
       const subdirs = (
         await readdir(skillsDir, { withFileTypes: true })
@@ -416,23 +433,19 @@ export function createSingleFileAdapter(
     source?: CompileSource,
   ): Promise<CopyResults> {
     const results: CopyResults = { copied: [], skipped: [], created: [] }
-    const dotDirPath = resolve(projectRoot, config.dotDir)
 
     // 1. Leave the root file in place. install() rewrites only the managed
     // block inside it, so deleting it here would destroy whatever the user
     // wrote around that block.
 
     // 2. Note what is there now, so step 4 can say what it removed.
-    const sweptDirs = config.frameworkDirs
-      .map((dir) => resolve(dotDirPath, dir))
+    const sweptDirs = frameworkRoots()
+      .map((dir) => resolve(projectRoot, dir))
       .filter((dirPath) => existsSync(dirPath))
     const before = new Map<string, string>()
     for (const dirPath of sweptDirs) {
       for (const rel of filesUnderDir(dirPath)) {
-        before.set(
-          resolve(dirPath, rel),
-          `${config.dotDir}/${relative(dotDirPath, dirPath).split(sep).join('/')}/${rel}`,
-        )
+        before.set(resolve(dirPath, rel), `${relative(projectRoot, dirPath).split(sep).join('/')}/${rel}`)
       }
     }
 
@@ -470,7 +483,7 @@ export function createSingleFileAdapter(
     // un-namespaced commands at the top of `.claude/commands/`. Asked after the
     // recompile, so a failure there leaves the old commands working.
     for (const rel of getLegacyOutputs(projectRoot)) {
-      await rm(resolve(projectRoot, rel), { force: true })
+      await rm(resolve(projectRoot, rel), { force: true, recursive: rel.endsWith('/') })
       ;(results.deleted ??= []).push(rel)
     }
     // Pass the three categories through as they came back. Folding `created`
@@ -505,11 +518,20 @@ export function createSingleFileAdapter(
     return config.legacyOutputs?.(projectRoot) ?? []
   }
 
-  function getManagedPaths(): ManagedPaths {
+  /**
+   * Every directory this adapter generates whole, relative to the project
+   * root and without a trailing slash: its framework directories under
+   * `dotDir`, with skills wherever `skillsDir` puts them.
+   */
+  function frameworkRoots(): string[] {
     // Deduplicate dirs (e.g. promptsDir === workflowsDir for claude-code's 'commands')
     const dirs = new Set(['agents', 'skills', ...config.frameworkDirs])
+    return Array.from(dirs).map((d) => (d === 'skills' ? skillsDirOf(config) : `${config.dotDir}/${d}`))
+  }
+
+  function getManagedPaths(): ManagedPaths {
     return {
-      framework: Array.from(dirs).map((d) => `${config.dotDir}/${d}/`),
+      framework: frameworkRoots().map((d) => `${d}/`),
       merged: [config.rootFile],
       customizable: ['.opencastle/', config.mcpConfigPath],
     }
@@ -519,7 +541,7 @@ export function createSingleFileAdapter(
     const checks: DoctorCheck[] = [
       { label: 'Root instructions file', path: config.rootFile, type: 'file' },
       { label: 'Agent definitions', path: `${config.dotDir}/agents/`, type: 'dir', countContents: true, countFilter: '.md' },
-      { label: 'Skills directory', path: `${config.dotDir}/skills/`, type: 'dir', countContents: true },
+      { label: 'Skills directory', path: `${skillsDirOf(config)}/`, type: 'dir', countContents: true },
     ]
     if (config.promptsDir === config.workflowsDir) {
       checks.push({ label: 'Commands directory', path: `${config.dotDir}/${config.promptsDir}/`, type: 'dir', countContents: true })

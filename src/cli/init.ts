@@ -6,7 +6,7 @@ import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
 import { getCustomizationsTransform } from './stack-config.js'
-import { getMcpConfigRelPath, stripManagedMcpServers } from './mcp.js'
+import { getMcpConfigRelPath, stripManagedMcpServers, retireLegacyMcpConfig } from './mcp.js'
 import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
 import type { PluginConfig } from '../orchestrator/plugins/types.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde, detectAssistantConfigs } from './detect.js'
@@ -16,7 +16,7 @@ import type { CliContext, CopyResults, IdeAdapter, IdeChoice, TechTool, TeamTool
 import { bootstrapCustomizations } from './bootstrap.js'
 import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js'
 import { resolveManagedPaths, declaredManagedPaths, ownerOf, removeOwnedFiles } from './managed-paths.js'
-import { noteUnreadable } from './unreadable-report.js'
+import { noteUnreadable, whyLeftAlone } from './unreadable-report.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
 import { buildLock, writeLock, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
@@ -409,6 +409,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       for (const id of dropped) {
         if ((ides as string[]).includes(id)) continue
         await stripManagedMcpServers(projectRoot, id as IdeChoice)
+        await retireLegacyMcpConfig(projectRoot, id as IdeChoice)
       }
 
       // Co-owned files are not ours to delete — take back only the block, and
@@ -659,7 +660,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     const name = isAbsolute(abs) ? relative(projectRoot, abs) : abs
     console.log(
       `  ${c.yellow('!')} Left ${name} alone — ` +
-        (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),
+        whyLeftAlone(name, why),
     )
     // `--force` is not decoration. A plain `sync` short-circuits when nothing
     // has drifted, and the MCP config is a customizable path the drift checker
@@ -670,7 +671,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     // servers" for every entry, and the list now also carries generated rule and
     // skill files, so a skipped `.cursor/rules/x.mdc` was explained in terms of a
     // feature that has nothing to do with it.
-    const isMcp = /(^|[/\\])(\.mcp\.json|mcp\.json|opencode\.json)$/.test(name)
+    const isMcp = /(^|[/\\])(\.mcp\.json|mcp\.json|mcp_config\.json|opencode\.json|config\.toml)$/.test(name)
     console.log(
       `     ${c.dim(
         isMcp

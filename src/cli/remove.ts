@@ -7,10 +7,12 @@ import { removeGitignoreBlock, predictGitignoreStrip, LOCAL_DIRS } from './gitig
 import { confirm, select, closePrompts, c } from './prompt.js'
 import { stripManagedBlockFromFile, predictStripFile } from './managed-block.js'
 import { resolveManagedPaths, ownerOf, removeOwnedFiles } from './managed-paths.js'
-import { stripManagedMcpServers, getMcpConfigRelPath, willKeepSomethingAfterStrip } from './mcp.js'
+import { stripManagedMcpServers, getMcpConfigRelPath, willKeepSomethingAfterStrip, retireLegacyMcpConfig, LEGACY_MCP_CONFIGS } from './mcp.js'
 import { priorTeam } from './lock.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import type { CliContext, IdeChoice } from './types.js'
+import { whyLeftAlone } from './unreadable-report.js'
+import { parseMcpConfigText } from './mcp-file.js'
 
 /**
  * Removal, with the destructive choice made explicit rather than encoded in the
@@ -104,7 +106,7 @@ async function previewCoOwned(
     let keepsSomething = true
     let tookAnything = false
     try {
-      const parsed = JSON.parse(await readFile(abs, 'utf8')) as Record<string, unknown>
+      const parsed = parseMcpConfigText(await readFile(abs, 'utf8'), p)
       // Captured before the predicate runs — it edits `parsed` in place.
       const untouched = JSON.stringify(parsed)
       keepsSomething = willKeepSomethingAfterStrip(parsed, ideFor.get(p), ...priorTeam(projectRoot))
@@ -212,7 +214,14 @@ export default async function remove({ args }: CliContext): Promise<void> {
     (id): id is IdeChoice => Boolean(id) && id in IDE_ADAPTERS,
   )
   const mcpOwner = new Map(ides.map((ide) => [getMcpConfigRelPath(ide), ide]))
-  const mcpPaths = new Set(mcpOwner.keys())
+  // A config an earlier release wrote where its assistant never looked is ours
+  // to take back too. It has no owner in `mcpOwner` on purpose: it is in the
+  // shape it was written in, so the preview reads it as any config.
+  const legacyMcp = ides.flatMap((ide) => {
+    const rel = LEGACY_MCP_CONFIGS[ide]
+    return rel && existsSync(resolve(projectRoot, rel)) ? [rel] : []
+  })
+  const mcpPaths = new Set([...mcpOwner.keys(), ...legacyMcp])
   // An install from before this field existed records nothing, and absence means
   // "unknown" — which is treated as "not ours to delete".
   const createdConfigs = new Set(manifest.createdConfigs ?? [])
@@ -379,6 +388,13 @@ export default async function remove({ args }: CliContext): Promise<void> {
     else if (outcome === 'unreadable') unreadable.push(getMcpConfigRelPath(ide))
     const mcpParent = dirname(resolve(projectRoot, getMcpConfigRelPath(ide)))
     if (mcpParent !== projectRoot) parents.add(mcpParent)
+    const legacyRel = LEGACY_MCP_CONFIGS[ide]
+    if (legacyRel) {
+      const legacy = await retireLegacyMcpConfig(projectRoot, ide, createdConfigs.has(legacyRel), ...priorTeam(projectRoot))
+      if (legacy === 'deleted') removed++
+      else if (legacy === 'stripped') stripped++
+      else if (legacy === 'unreadable') unreadable.push(legacyRel)
+    }
   }
 
   // The containers our own directories lived in. `.claude/agents/`, `skills/`
@@ -457,7 +473,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
     const [name, why] = entry.split('\u0000')
     console.log(
       `  ${c.yellow('!')} Left ${name} alone — ` +
-        (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),
+        whyLeftAlone(name, why),
     )
   }
   if (keptDir) {

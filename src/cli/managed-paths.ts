@@ -49,6 +49,8 @@ export const ROOT_INSTRUCTION_FILES = [
  */
 const SUPERSEDED_FRAMEWORK: Record<string, string> = {
   '.claude/commands/': `.claude/${CLAUDE_COMMANDS_DIR}/`,
+  // Codex never read `.codex/skills/`; its skills moved to the shared location.
+  '.codex/skills/': '.agents/skills/',
 }
 
 function unique(values: string[]): string[] {

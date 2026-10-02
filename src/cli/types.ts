@@ -291,12 +291,15 @@ export class UnreadableConfigError extends Error {
    * "It is not valid JSON" was printed for a path that was a *directory* — the
    * remedy offered ("fix the file") did not match the fault, and the user had
    * nothing to act on.
+   *
+   * `uneditable` is a TOML config that parses but holds its MCP servers in a
+   * form that cannot be changed without rewriting the user's text.
    */
-  readonly reason: 'unparseable' | 'unreadable';
+  readonly reason: 'unparseable' | 'unreadable' | 'uneditable';
 
   constructor(
     public readonly file: string,
-    reason: 'unparseable' | 'unreadable' = 'unparseable',
+    reason: 'unparseable' | 'unreadable' | 'uneditable' = 'unparseable',
   ) {
     super(`Cannot read ${file}`);
     this.name = 'UnreadableConfigError';
