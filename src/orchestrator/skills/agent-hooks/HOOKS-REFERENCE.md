@@ -43,4 +43,4 @@ Log delegation: `opencastle log --type=delegation --issue=TAS-123 --status=start
 | 1 | `opencastle doctor` | Team Lead |
 | 2 | `opencastle log --type session ...` | All |
 | 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if incomplete | Team Lead |
-| 4 | `rg -c "^Lesson:" .opencastle/LESSONS-LEARNED.md` — flag merge if ≥5 | All |
+| 4 | `ls .opencastle/lessons/ \| wc -l` — flag a memory-merger pass if more than 50 | All |

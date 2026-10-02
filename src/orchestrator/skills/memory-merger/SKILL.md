@@ -1,6 +1,6 @@
 ---
 name: memory-merger
-description: "Reviews mature LESSONS-LEARNED.md entries, rewrites them as permanent rules in skill/instruction files, archives graduated lessons. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded LESSONS-LEARNED.md."
+description: "Reviews mature lessons in .opencastle/lessons/, rewrites them as permanent rules in skill/instruction files, archives graduated lessons with opencastle lesson archive. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded lessons index."
 ---
 
 # Memory Merger
@@ -12,8 +12,8 @@ Combined signals to identify merge candidates.
 
 | Criterion | Signal / Threshold |
 |-----------|--------------------|
-| File size | LESSONS-LEARNED.md > 50 entries |
-| Citation count | Cited 3+ times across sessions |
+| Volume | More than 50 lessons in `.opencastle/lessons/` |
+| Reference count | Referenced 3+ times across sessions |
 | Age | >60 days and still relevant |
 | Category cluster | 5+ lessons in same category |
 | Severity | Marked `high` or blocking |
@@ -21,19 +21,19 @@ Combined signals to identify merge candidates.
 
 ## Workflow (numbered)
 
-1. Scan LESSONS-LEARNED.md for candidate entries (frequency, severity, age).
+1. Scan `.opencastle/lessons/` for candidate lessons (frequency, severity, age — `added:` in each file).
 2. Map each candidate to target file, section.
 3. Draft exact edit (concise rule or example).
 4. Apply edit with attribution comment.
-5. Archive migrated lesson in LESSONS-LEARNED.md with merge note.
-6. Update index; run validation checks.
+5. Archive the lesson with `opencastle lesson archive`.
+6. Run validation checks.
 
 ## Merge Protocol
 
 ### 3 — Draft Edit
 
 ```
-Lesson: LES-XXX — [title]
+Lesson: <id> — [title]
 Target: [file path]
 Section: [section name]
 Edit: [exact text]
@@ -42,30 +42,26 @@ Strategies: add rule, add anti-pattern, add code example, expand existing rule, 
 
 ### 4 — Apply & Attribute
 
-Edit target file; add `<!-- Merged from LES-XXX -->` attribution inline.
+Edit target file; add `<!-- Merged from <id> -->` attribution inline.
 
 ### 5 — Archive
 
-Move merged lessons to `## Archived (Merged)` at the bottom of `LESSONS-LEARNED.md`:
-
-```markdown
-### LES-XXX: [title] → Merged to `[target]` on YYYY-MM-DD
+```sh
+opencastle lesson archive <id> --into <target file>
 ```
 
+The lesson keeps its file, is marked archived with where it went, and moves to the index's **Archived** section — out of the list agents read before work. Never edit `LESSONS-LEARNED.md` by hand: it is rewritten from the lesson files.
+
 **Never delete lessons** — archive for traceability.
-
-### 6 — Update Index
-
-Update `## Index by Category` in `LESSONS-LEARNED.md` to mark archived lessons.
 
 ### Automating the scan
 
 ```sh
-# Find lessons cited 3+ times across sessions
-rg -c "LES-[0-9]+" .opencastle/logs/events.ndjson | awk -F: '$2 >= 3 {print $1}'
+# Lessons referenced 3+ times across sessions (ids are LES-NNN or YYYY-MM-DD-title)
+rg -o '"lessons_added":\[[^]]*\]' .opencastle/logs/events.ndjson | rg -o '"[A-Za-z0-9-]+"' | sort | uniq -c | awk '$1 >= 3'
 
-# Find lessons referenced in recent retries
-rg "retry.*LES-[0-9]+" .opencastle/logs/events.ndjson | rg -o "LES-[0-9]+" | sort | uniq -c | sort -rn | head -20
+# Oldest lessons first — candidates once past 60 days
+rg -H '^added:' .opencastle/lessons/ | sort -t'"' -k2 | head -20
 ```
 
 ## Quality Gates (validation checkpoints)
@@ -77,7 +73,7 @@ rg "retry.*LES-[0-9]+" .opencastle/logs/events.ndjson | rg -o "LES-[0-9]+" | sor
 
 ## Anti-Patterns
 
-- Merge too eagerly — must meet 3+ citations or 60+ day threshold
+- Merge too eagerly — must meet 3+ references or 60+ day threshold
 - Copy verbatim — rewrite as rules/guidelines, not incident reports
 - Merge conflicting lessons — resolve conflict first
 - Create new files for merged content — merge INTO existing files only

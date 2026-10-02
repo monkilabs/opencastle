@@ -6,6 +6,7 @@ import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { getMcpConfigRelPath, expectedTeamEntries, containerKeyFor } from './mcp.js'
 import { parseMcpConfigText } from './mcp-file.js'
+import { lessonsIndexDrift, LESSONS_INDEX } from './lessons.js'
 import { resolveStack, getIncludedMcpServers } from './stack-config.js'
 import { auditMcpConfig, describeFindingUnder, remedyFor, isFailure, type TeamAuditContext } from './mcp-audit.js'
 import { resolveSources, materialize, hasErrors, cliVersionOf, type CompileSource } from './layers.js'
@@ -650,6 +651,14 @@ async function compareProject(
         })
       }
     }
+  }
+
+  // The lessons index, compiled from `.opencastle/lessons/` by `sync`. Two
+  // branches that each add a lesson merge cleanly; the index they both touched
+  // is what this catches, and `sync` rebuilds it.
+  {
+    const why = lessonsIndexDrift(resolve(projectRoot, '.opencastle'))
+    if (why) drift.push({ ide: 'all', path: `.opencastle/${LESSONS_INDEX}`, kind: 'outdated', detail: why, fix: 'opencastle sync' })
   }
 
   // A manifest that parses but names no target this release knows is not a

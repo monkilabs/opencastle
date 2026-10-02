@@ -33,6 +33,7 @@ import { buildLock, writeLock, LOCK_REL, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
 import { parseMcpConfigText } from './mcp-file.js'
+import { syncLessons, LESSONS_DIR, LESSONS_INDEX } from './lessons.js'
 
 /** The config that replaced a legacy one, for the sentence that reports it. */
 function configBesideLegacy(rel: string, ides: string[]): string {
@@ -698,6 +699,11 @@ export default async function update({
   // ── Migrate legacy log files ────────────────────────────────────
   await migrateLegacyLogs(projectRoot)
 
+  // ── Lessons: one file each, and the index agents read compiled from them ──
+  // Not compiled output of any target — agents read `.opencastle/` directly —
+  // but compiled all the same, and `sync --check` holds it to its sources.
+  const lessons = syncLessons(resolve(projectRoot, '.opencastle'))
+
   // ── Update manifest ─────────────────────────────────────────────
   const before = manifestMeaning(manifest as unknown as Record<string, unknown>)
   manifest.version = pkg.version
@@ -748,6 +754,20 @@ export default async function update({
   }
   if (teamWritten.size > 0) {
     console.log(`  ${c.green('✓')} Wrote the team's MCP server(s) as defined: ${[...teamWritten].sort().join(', ')}`)
+  }
+  if (lessons.migrated > 0) {
+    console.log(
+      `  ${c.green('✓')} Moved ${lessons.migrated} lesson(s) from .opencastle/${LESSONS_INDEX} into .opencastle/${LESSONS_DIR}/, one file each` +
+        (lessons.backup ? c.dim(` (the old file is kept as ${lessons.backup})`) : ''),
+    )
+  } else if (lessons.backup) {
+    console.log(`  ${c.green('✓')} Replaced .opencastle/${LESSONS_INDEX} with an index of .opencastle/${LESSONS_DIR}/ ${c.dim(`(the old file is kept as ${lessons.backup})`)}`)
+  }
+  if (lessons.index === 'updated' && lessons.migrated === 0 && !lessons.backup) {
+    console.log(`  ${c.green('✓')} Updated .opencastle/${LESSONS_INDEX} from .opencastle/${LESSONS_DIR}/`)
+  }
+  for (const problem of lessons.problems) {
+    console.log(`  ${c.yellow('!')} Left .opencastle/${problem.split(' ')[0]} out of the lessons index — ${problem.slice(problem.indexOf(' ') + 1)}`)
   }
   for (const rel of legacyDeleted) {
     console.log(`  ${c.yellow('-')} Removed ${rel}, which its assistant never read ${c.dim(`(its servers are now in ${configBesideLegacy(rel, ides)})`)}`)
