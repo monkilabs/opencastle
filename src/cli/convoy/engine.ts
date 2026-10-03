@@ -1487,7 +1487,9 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
           timeoutMs: Math.min(rec.timeout_ms, 900_000),
           defaultModel: taskAdapter.tierModels?.economy,
         }
-        events.emit('review_started', { level, task_id: rec.id, model: reviewerModel }, { convoy_id: convoyId, task_id: rec.id })
+        // The model the reviewer is asked for, not the spec's 'default' placeholder.
+        const askedModel = reviewerModel !== 'default' ? reviewerModel : (reviewContext.defaultModel ?? 'runtime default')
+        events.emit('review_started', { level, task_id: rec.id, model: askedModel }, { convoy_id: convoyId, task_id: rec.id })
         const reviews: ReviewResult[] = level === 'panel'
           ? await Promise.all([0, 1, 2].map(() => reviewSemaphore.use(() => reviewRunner(rec, 'panel', reviewerModel, reviewContext))))
           : [await reviewSemaphore.use(() => reviewRunner(rec, 'fast', reviewerModel, reviewContext))]
