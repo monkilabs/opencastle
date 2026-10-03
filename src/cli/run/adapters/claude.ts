@@ -120,11 +120,25 @@ export function parseClaudeOutput(stdout: string): ParsedClaude {
   return parsed
 }
 
+/**
+ * How a permission mode is spelled for `claude -p`.
+ *
+ * Read-only (`plan`) is not passed as Claude Code's plan mode: plan mode
+ * replaces a small model with a larger one, so a review asked to run on
+ * `haiku` ran on `sonnet` at four times the cost. Default mode with the edit
+ * tools taken away is just as read-only — a headless session refuses whatever
+ * it would have asked about — and keeps the model it was given.
+ */
+export function claudePermissionArgs(mode: ExecuteOptions['permissionMode']): string[] {
+  if (mode === 'plan') return ['--permission-mode', 'default', '--disallowedTools', 'Edit,Write,NotebookEdit']
+  return ['--permission-mode', mode ?? 'acceptEdits']
+}
+
 export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
   // A worker has no terminal, so a permission prompt is a refusal it cannot
   // answer: without a mode it tries to write, is denied, and exits 0 having
   // written nothing. `acceptEdits` is the least that lets it do the work.
-  const args = ['-p', '--output-format', 'json', '--permission-mode', options.permissionMode ?? 'acceptEdits']
+  const args = ['-p', '--output-format', 'json', ...claudePermissionArgs(options.permissionMode)]
   if (options.model) args.push('--model', options.model)
   // No --max-turns: the task's timeout bounds a session, and a turn cap only
   // cut long tasks short with a result that looked like an ordinary failure.

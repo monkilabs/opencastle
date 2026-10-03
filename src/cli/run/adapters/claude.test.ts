@@ -167,10 +167,19 @@ describe.skipIf(!posix)('claude adapter — against a stub `claude`', () => {
     const modeOf = () => { const a = stub.argv(); return a[a.indexOf('--permission-mode') + 1] }
     await execute(makeTask(), { cwd: stub.work })
     expect(modeOf()).toBe('acceptEdits')
-    await execute(makeTask(), { cwd: stub.work, permissionMode: 'plan' })
-    expect(modeOf()).toBe('plan')
     await execute(makeTask(), { cwd: stub.work, permissionMode: 'bypassPermissions' })
     expect(modeOf()).toBe('bypassPermissions')
+  })
+
+  it('runs read-only as default mode with the edit tools denied, keeping the model it was given', async () => {
+    // Plan mode swaps a small model for a larger one: a review asked to run on
+    // haiku ran on sonnet, at four times the cost.
+    await execute(makeTask(), { cwd: stub.work, permissionMode: 'plan', model: 'haiku' })
+    const argv = stub.argv()
+    expect(argv[argv.indexOf('--permission-mode') + 1]).toBe('default')
+    expect(argv[argv.indexOf('--disallowedTools') + 1]).toBe('Edit,Write,NotebookEdit')
+    expect(argv[argv.indexOf('--model') + 1]).toBe('haiku')
+    expect(argv).not.toContain('plan')
   })
 
   it('does not cap turns: the timeout bounds a session', async () => {

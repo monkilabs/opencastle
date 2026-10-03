@@ -41,11 +41,11 @@ export function meaningOf(mode: PermissionMode | undefined): Meaning {
 }
 
 export const ADAPTER_PERMISSION_MODES: Record<string, readonly PermissionMode[]> = {
-  // Passed straight through as `claude -p --permission-mode <mode>`. A headless
-  // run refuses whatever it would have asked about. `plan` blocks every edit;
-  // it still runs read-only commands, and commands Claude Code's own auto-mode
-  // classifier approves as exploration. `acceptEdits` allows edits and simple
-  // filesystem commands (mkdir, mv, cp …) in the working directory.
+  // Passed through as `claude -p --permission-mode <mode>`, except read-only
+  // (`plan`), which is default mode with Edit, Write and NotebookEdit denied —
+  // see `claudePermissionArgs`. A headless run refuses whatever it would have
+  // asked about. `acceptEdits` allows edits and simple filesystem commands
+  // (mkdir, mv, cp …) in the working directory.
   claude: ALL,
   // `codex exec` never asks for approval; the sandbox is the whole policy.
   // See `codexSandboxFor`. Edits mode can run commands, inside the sandbox.
