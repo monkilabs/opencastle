@@ -67,6 +67,8 @@ const COMMAND_FLAGS = {
   explain: ['--all', '--json'],
   ci: ['--owners', '--force', '--dry-run'],
   baseline: ['--name', '--json'],
+  plugin: ['--check', '--name', '--owner', '--json'],
+  promote: ['--to', '--from', '--force', '--dry-run'],
   fleet: ['--json'],
 }
 
@@ -114,6 +116,8 @@ const HELP = `
     review      What a change does to the assistants (for pull requests)
     ci          Add the drift and policy check to GitHub Actions
     baseline    Create or check a baseline many repositories extend
+    plugin      Check an Agent Plugin, build Claude Code's files, index a marketplace
+    promote     Make a skill or memory from your own assistant the team's
     fleet       Versions and drift across many repositories
 
   Experimental:
@@ -143,6 +147,8 @@ const VISIBLE = {
   review: () => import('../dist/cli/review.js'),
   ci: () => import('../dist/cli/ci.js'),
   baseline: () => import('../dist/cli/baseline.js'),
+  plugin: () => import('../dist/cli/plugin.js'),
+  promote: () => import('../dist/cli/promote.js'),
   fleet: () => import('../dist/cli/fleet.js'),
 }
 

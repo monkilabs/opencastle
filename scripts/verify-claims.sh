@@ -340,8 +340,11 @@ done
 say "CLAIM 4 — sync does not touch what it did not create"
 new c4; echo '{"name":"p","dependencies":{"@supabase/supabase-js":"^2"}}' > package.json
 node $CLI init --yes >/dev/null 2>&1
-find .opencastle -name '*.md' -type f -exec sh -c 'printf "\nSENTINEL\n" >> "$1"' _ {} \;
-before=$(grep -rl SENTINEL .opencastle | wc -l | tr -d ' ')
+# The lessons index is compiled from .opencastle/lessons/ and says so on its first
+# line; sync rewrites it, as it rewrites the lock. Everything else is the user's.
+find .opencastle -name '*.md' ! -name LESSONS-LEARNED.md -type f -exec sh -c 'printf "\nSENTINEL\n" >> "$1"' _ {} \;
+printf '\nSENTINEL\n' >> .opencastle/LESSONS-LEARNED.md
+before=$(grep -rl --exclude=LESSONS-LEARNED.md SENTINEL .opencastle | wc -l | tr -d ' ')
 python3 -c "
 import json,pathlib
 p=pathlib.Path('.opencastle/agents/skill-matrix.json');d=json.load(open(p))
@@ -349,8 +352,9 @@ d['bindings']['framework']['entries']=[{'name':'Mine','skill':'my-skill'}]
 json.dump(d,open(p,'w'),indent=2)"
 node $CLI sync --yes --force >/dev/null 2>&1
 node $CLI sync --yes --force >/dev/null 2>&1
-after=$(grep -rl SENTINEL .opencastle | wc -l | tr -d ' ')
+after=$(grep -rl --exclude=LESSONS-LEARNED.md SENTINEL .opencastle | wc -l | tr -d ' ')
 [ "$before" = "$after" ] && ok "all $after hand edits survived" || bad "lost $((before-after)) of $before"
+grep -q SENTINEL .opencastle/LESSONS-LEARNED.md && bad "the compiled lessons index kept a hand edit" || ok "the compiled lessons index was rebuilt from lessons/"
 grep -q my-skill .opencastle/agents/skill-matrix.json && ok "hand-set matrix entry survived" || bad "matrix entry erased"
 
 say "CLAIM 5 — an unparseable generated MCP config is named, not fatal, on every target"

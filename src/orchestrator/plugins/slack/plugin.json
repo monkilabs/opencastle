@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "slack",
+  "description": "Slack skill and MCP server for AI coding assistants: Agent notifications and communication.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#slack",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "team",
+    "notifications"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Slack",
+      "category": "team",
+      "subCategory": "notifications",
+      "authType": "env-token",
+      "env": [
+        "SLACK_MCP_XOXB_TOKEN"
+      ],
+      "officialDocs": "https://api.slack.com/docs"
+    }
+  }
+}

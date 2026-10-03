@@ -20,6 +20,7 @@ import { packageLaunch, isPinned } from './mcp-audit.js'
 import { disallowedBy, hostDisallowedBy, findInlineSecret, emptyPolicy, globMatch, hostOfUrl, hostAllowedBy, type EffectivePolicy } from './policy.js'
 import { LOCAL_DIRS } from './gitignore.js'
 import { satisfies, parseVersion, compareVersions } from './version-range.js'
+import { EXTENSION_NAMESPACE, isAgentPlugin, readAgentPlugin, teamServerFor } from './agent-plugin.js'
 import {
   CONTENT_KINDS,
   TEAM_CONFIG_REL,
@@ -61,6 +62,14 @@ export interface Layer {
   configFile?: string
   /** A digest of the layer's content, so a baseline that changed without a version bump still shows. */
   integrity?: string
+  /**
+   * For a baseline that is an Agent Plugin: the `dev.opencastle/` directory
+   * holding everything but skills — instructions, agents, prompts, workflows
+   * and `config.json`. Skills stay in the plugin's own `skills/`.
+   */
+  extensionRoot?: string
+  /** Servers that came from a plugin's `mcp.json`, and the file to name for each. */
+  serverWhere?: Record<string, string>
 }
 
 export interface ContentItem {
@@ -259,7 +268,7 @@ function scanLayer(layer: Layer, projectRoot: string | null): { items: ContentIt
     })
   }
   for (const kind of CONTENT_KINDS) {
-    const dir = join(layer.root, dirs[kind])
+    const dir = join(kind !== 'skills' && layer.extensionRoot ? layer.extensionRoot : layer.root, dirs[kind])
     for (const entry of listDir(dir, within, skipped)) {
       if (kind === 'skills') {
         if (!entry.isDir) continue
@@ -351,6 +360,18 @@ function findPackageDir(name: string, fromDir: string): string | null {
   }
 }
 
+/** Where a package is found under `node_modules`, before any link is followed. */
+function packageLink(name: string, fromDir: string): string | null {
+  let dir = fromDir
+  for (;;) {
+    const candidate = join(dir, 'node_modules', ...name.split('/'))
+    if (existsSync(join(candidate, 'package.json'))) return candidate
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}
+
 function readLayerConfig(root: string, where: string): { config: TeamConfig; issues: TeamIssue[] } {
   const file = join(root, LAYER_CONFIG_FILE)
   if (!existsSync(file)) return { config: {}, issues: [] }
@@ -396,9 +417,13 @@ function loadExtends(
   let id: string
   let version: string | undefined
   let configWhere: string
+  // Where the layer is as the project sees it — `node_modules/@acme/x`, not
+  // the store path a link resolves to — for paths written into its configs.
+  let seenAt: string
 
   if (spec.startsWith('./') || spec.startsWith('../')) {
     root = resolve(fromDir, spec)
+    seenAt = root
     if (!existsSync(root) || !statSync(root).isDirectory()) {
       fail(`extends "${spec}", which is not a directory (looked in ${display(ctx.projectRoot, root)})`)
       return
@@ -456,14 +481,19 @@ function loadExtends(
       return
     }
     const decl = pkg.opencastle as { baseline?: unknown } | undefined
-    if (!decl || typeof decl !== 'object' || !('baseline' in decl) || typeof decl.baseline !== 'string') {
+    const declared = decl && typeof decl === 'object' && 'baseline' in decl && typeof decl.baseline === 'string'
+    // Any Agent Plugin published to npm can be extended as it is: its skills
+    // and portable servers are what a baseline's are.
+    if (!declared && !isAgentPlugin(pkgDir)) {
       fail(
-        `extends "${spec}", which is not an OpenCastle baseline`,
-        `a baseline declares itself in its package.json: "opencastle": { "baseline": "." } (opencastle baseline init creates one)`,
+        `extends "${spec}", which is neither an OpenCastle baseline nor an Agent Plugin`,
+        `a baseline declares itself in its package.json: "opencastle": { "baseline": "." } (opencastle baseline init creates one); an Agent Plugin has a plugin.json at its root`,
       )
       return
     }
-    root = resolve(pkgDir, decl.baseline)
+    root = declared ? resolve(pkgDir, (decl as { baseline: string }).baseline) : pkgDir
+    const linked = packageLink(spec, fromDir)
+    seenAt = linked ? resolve(linked, relative(pkgDir, root)) : root
     if (relative(pkgDir, root).startsWith('..') || !existsSync(root)) {
       fail(`extends "${spec}", whose "opencastle.baseline" points outside the package or at nothing`)
       return
@@ -489,12 +519,87 @@ function loadExtends(
   if (ctx.seen.has(real)) return
   ctx.seen.add(real)
 
+  if (isAgentPlugin(root)) {
+    const plugin = loadPluginLayer(root, seenAt, id, declaredIn, ctx)
+    if (!plugin) return
+    for (const inner of plugin.config.extends ?? []) {
+      loadExtends(inner, plugin.extensionRoot, plugin.configFile, [...chain, real], ctx)
+    }
+    ctx.layers.push({ id, kind: 'baseline', root, version: version ?? plugin.version, integrity: layerIntegrity(root), ...plugin })
+    return
+  }
+
   const { config, issues } = readLayerConfig(root, configWhere)
   ctx.issues.push(...issues)
   for (const inner of config.extends ?? []) {
     loadExtends(inner, root, configWhere, [...chain, real], ctx)
   }
   ctx.layers.push({ id, kind: 'baseline', root, version, config, configFile: configWhere, integrity: layerIntegrity(root) })
+}
+
+/**
+ * A baseline that is an Agent Plugin: its skills in `skills/`, its portable
+ * servers in `mcp.json`, and OpenCastle's own content and config in
+ * `dev.opencastle/`. Returns null, having said why, for one a conformant
+ * client would refuse.
+ *
+ * A server or skill a client would skip is reported, not fatal, as the
+ * standard has it: one bad component does not stop the rest from loading.
+ */
+function loadPluginLayer(
+  root: string,
+  seenAt: string,
+  id: string,
+  declaredIn: string,
+  ctx: ExtendsContext,
+): { config: TeamConfig; configFile: string; extensionRoot: string; serverWhere: Record<string, string>; version?: string } | null {
+  const report = readAgentPlugin(root)
+  if (!report.manifest) {
+    ctx.issues.push({
+      level: 'error',
+      where: declaredIn,
+      message: `extends ${id}, which is not a valid Agent Plugin: ${report.errors[0] ?? 'its plugin.json cannot be read'}`,
+      fix: `run opencastle plugin check on it`,
+    })
+    return null
+  }
+  // `skills/x/SKILL.md: name … must match` — the file, then what is wrong with it.
+  for (const e of report.errors) {
+    const at = e.indexOf(': ')
+    ctx.issues.push({ level: 'warning', where: `${id}/${e.slice(0, at)}`, message: e.slice(at + 2) })
+  }
+  const extensionRoot = join(root, EXTENSION_NAMESPACE)
+  const configFile = `${id}/${EXTENSION_NAMESPACE}/${LAYER_CONFIG_FILE}`
+  const { config, issues } = readLayerConfig(extensionRoot, configFile)
+  ctx.issues.push(...issues)
+  const servers: Record<string, TeamMcpServer> = { ...(config.mcpServers ?? {}) }
+  const serverWhere: Record<string, string> = {}
+  const pluginPath = posix(relative(ctx.projectRoot, seenAt))
+  for (const [key, portable] of Object.entries(report.servers)) {
+    if (key in servers) {
+      ctx.issues.push({
+        level: 'error',
+        where: `${id}/mcp.json`,
+        message: `defines MCP server "${key}", which ${configFile} defines too`,
+        fix: 'keep one: mcp.json for a server every assistant can start as it is, config.json for one that needs ${NAME} variables',
+      })
+      continue
+    }
+    const { server, skipped } = teamServerFor(portable, pluginPath)
+    if (!server) {
+      ctx.issues.push({ level: 'warning', where: `${id}/mcp.json`, message: `MCP server "${key}" ${skipped}` })
+      continue
+    }
+    servers[key] = server
+    serverWhere[key] = `${id}/mcp.json`
+  }
+  return {
+    config: { ...config, ...(Object.keys(servers).length > 0 && { mcpServers: servers }) },
+    configFile,
+    extensionRoot,
+    serverWhere,
+    version: report.manifest.version,
+  }
 }
 
 /** `${VAR}`, `${env:VAR}` and `{env:VAR}` all mean the same variable. */
@@ -563,31 +668,55 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
     items.set(key(item), item)
     remember(key(item), item)
   }
-  // Integration skills: one SKILL.md per included plugin.
+  // Integration skills: each integration is an Agent Plugin, and its skill sits
+  // where the standard puts one — `skills/<name>/SKILL.md`, named as its
+  // directory is. They used to be compiled under the integration's id
+  // (`skills/supabase/`) while their frontmatter said `supabase-database`, and
+  // an assistant that follows the Agent Skills spec skips a skill whose name
+  // does not match its directory.
   const pluginsRoot = getPluginsRoot(pkgRoot)
   const includedPlugins = stack ? getIncludedPluginIds(stack) : null
   for (const entry of listDir(pluginsRoot)) {
     if (!entry.isDir) continue
-    const skill = join(pluginsRoot, entry.name, 'SKILL.md')
+    const name = PLUGINS[entry.name]?.skillName
+    if (!name) continue
+    const skill = join(pluginsRoot, entry.name, 'skills', name, 'SKILL.md')
     if (!existsSync(skill)) continue
     if (includedPlugins && !includedPlugins.has(entry.name)) {
-      stackOut.add(`skills/${entry.name}`)
+      stackOut.add(`skills/${name}`)
       continue
     }
-    const k = `skills/${entry.name}`
+    const k = `skills/${name}`
     const prev = items.get(k)
-    const item: ContentItem = { kind: 'skills', name: entry.name, layer: 'opencastle', path: skill, plugin: entry.name, ...(prev && { overrides: prev.layer }) }
+    const item: ContentItem = { kind: 'skills', name, layer: 'opencastle', path: skill, plugin: entry.name, ...(prev && { overrides: prev.layer }) }
     items.set(k, item)
     remember(k, item)
+  }
+  // `skills/supabase`, as a layer wrote it before integration skills took their
+  // own names, still means the integration's skill.
+  const integrationSkill = (ref: string): string | null => {
+    const m = /^skills\/(.+)$/.exec(ref)
+    const name = m ? PLUGINS[m[1]]?.skillName : undefined
+    return name && name !== m![1] ? `skills/${name}` : null
   }
 
   const excluded: ResolvedSources['excluded'] = []
   for (const layer of layers) {
     if (layer.kind === 'core') continue
     const where = layer.configFile ?? layer.id
-    for (const ref of layer.config.exclude ?? []) {
+    for (const written of layer.config.exclude ?? []) {
       // Servers are excluded where servers are merged, below.
-      if (ref.startsWith('mcpServers/')) continue
+      if (written.startsWith('mcpServers/')) continue
+      const renamed = items.has(written) ? null : integrationSkill(written)
+      if (renamed) {
+        issues.push({
+          level: 'warning',
+          where,
+          message: `excludes ${written}; integration skills are named for what they teach now — this means ${renamed}`,
+          fix: `write "${renamed}"`,
+        })
+      }
+      const ref = renamed ?? written
       const prev = items.get(ref)
       if (prev) {
         items.delete(ref)
@@ -735,7 +864,8 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
       excluded.push({ ref, by: layer.id, from: 'mcp' })
     }
     for (const [k, raw] of Object.entries(layer.config.mcpServers ?? {})) {
-      const shape = checkServerShape(k, raw, where)
+      const serverWhere = layer.serverWhere?.[k] ?? where
+      const shape = checkServerShape(k, raw, serverWhere)
       if (shape.length > 0) {
         issues.push(...shape)
         continue
@@ -749,7 +879,7 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
           headers: Object.fromEntries(Object.entries(raw.headers).map(([n, val]) => [n, normaliseRefs(val)])),
         }),
       }
-      servers.set(k, { key: k, from: layer.id, server, where })
+      servers.set(k, { key: k, from: layer.id, server, where: serverWhere })
       excludedServers.delete(k)
     }
   }

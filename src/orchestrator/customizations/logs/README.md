@@ -85,7 +85,7 @@ Run `opencastle log --help` for full options.
 | `duration_min` | `number` | No | Estimated session duration in minutes |
 | `files_changed` | `number` | No | Number of files created/modified |
 | `retries` | `number` | No | Number of retried operations |
-| `lessons_added` | `string[]` | No | Lesson IDs added (e.g., `["LES-015"]`) |
+| `lessons_added` | `string[]` | No | Lesson ids added (e.g., `["2026-10-02-quote-shell-variables"]`) |
 | `discoveries` | `string[]` | No | Issues discovered (issue IDs or KNOWN-ISSUES IDs) |
 
 ## Delegation Record (`type: "delegation"`)

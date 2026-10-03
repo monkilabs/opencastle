@@ -17,6 +17,7 @@ import {
 import { UnreadableConfigError } from './types.js';
 import { checkMcpSupplyChain } from './mcp-audit.js';
 import { parseMcpConfigText } from './mcp-file.js';
+import { checkLessons } from './lessons.js';
 import {
   teamStateFor,
   teamAuditContext,
@@ -950,6 +951,7 @@ export async function runSharedChecks(
     await checkGitignoreBlock(projectRoot),
     await checkTornBlocks(projectRoot, manifest),
     checkRootFileClassification(manifest),
+    checkLessons(projectRoot),
     ...team,
   ];
 

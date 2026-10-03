@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "turborepo",
+  "description": "Turborepo skill for AI coding assistants: Monorepo build system with remote caching.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#turborepo",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "codebase-tool"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Turborepo",
+      "category": "tech",
+      "subCategory": "codebase-tool",
+      "authType": "none",
+      "officialDocs": "https://turbo.build/repo/docs"
+    }
+  }
+}

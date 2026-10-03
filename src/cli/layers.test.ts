@@ -192,7 +192,7 @@ describe('resolving layers', () => {
     expect(messages).toContain('"@acme/missing", which is not installed')
     expect(messages).toContain('version belongs in package.json')
     expect(messages).toContain('an absolute path')
-    expect(messages).toContain('"plain", which is not an OpenCastle baseline')
+    expect(messages).toContain('"plain", which is neither an OpenCastle baseline nor an Agent Plugin')
     expect(hasErrors(r)).toBe(true)
   })
 
@@ -340,7 +340,7 @@ describe('the merged source and the lock', () => {
     const stack: StackConfig = { ides: ['claude-code'], techTools: ['sentry'], teamTools: [] }
     const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot)
     try {
-      expect(readdirSync(join(src.root, 'skills', 'sentry'))).toEqual(['SKILL.md'])
+      expect(readdirSync(join(src.root, 'skills', 'sentry-monitoring'))).toEqual(['SKILL.md'])
     } finally {
       src.dispose()
     }

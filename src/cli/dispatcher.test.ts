@@ -39,9 +39,9 @@ const HIDDEN = extractKeys('HIDDEN')
 const REPLACED = extractKeys('REPLACED')
 
 describe('visible command surface', () => {
-  it('exposes the six product commands, the five team commands, and the convoy namespace', () => {
+  it('exposes the six product commands, the seven team commands, and the convoy namespace', () => {
     expect(new Set(VISIBLE)).toEqual(
-      new Set(['init', 'sync', 'add', 'doctor', 'remove', 'explain', 'review', 'ci', 'baseline', 'fleet', 'convoy']),
+      new Set(['init', 'sync', 'add', 'doctor', 'remove', 'explain', 'review', 'ci', 'baseline', 'plugin', 'promote', 'fleet', 'convoy']),
     )
   })
 

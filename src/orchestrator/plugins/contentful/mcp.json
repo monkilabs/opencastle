@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "Contentful": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@contentful/mcp-server@1.23.2"
+      ]
+    }
+  }
+}

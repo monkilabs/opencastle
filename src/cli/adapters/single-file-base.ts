@@ -1,6 +1,6 @@
-import { resolve, basename, relative, sep } from 'node:path'
+import { resolve, basename, dirname, relative, sep } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, rm, rename } from 'node:fs/promises'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, rmdirSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
 import { TIERS, TIER_IDS, isTier, tierForAgent, type Tier } from '../tiers.js'
 import { mergeCopyResults, copyDir } from '../copy.js'
@@ -472,12 +472,19 @@ export function createSingleFileAdapter(
     // deletion was silent and the categories looked right.
     const written = new Set<string>(installResult.visited ?? [])
     for (const dirPath of sweptDirs) {
+      const emptied = new Set<string>()
       for (const rel of filesUnderDir(dirPath)) {
         const abs = resolve(dirPath, rel)
         if (await reconcileCase(abs, written)) continue
         ;(results.deleted ??= []).push(before.get(abs) ?? rel)
         await rm(abs, { force: true })
+        emptied.add(dirname(abs))
       }
+      // A skill whose last file went leaves its folder, and an assistant that
+      // scans the directory sees a skill with no SKILL.md. Only folders this
+      // sweep emptied: an empty directory standing where a generated file
+      // belongs is a fault for a person, and every check names it as one.
+      pruneEmptied(dirPath, emptied)
     }
     // What an earlier release put where this one no longer writes — the
     // un-namespaced commands at the top of `.claude/commands/`. Asked after the
@@ -553,6 +560,20 @@ export function createSingleFileAdapter(
   }
 
   return { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs }
+}
+
+/** Remove each of `dirs` that is now empty, and its parents up to `root`, which stays. */
+function pruneEmptied(root: string, dirs: Set<string>): void {
+  for (const start of [...dirs].sort((a, b) => b.length - a.length)) {
+    for (let dir = start; dir !== root && dir.startsWith(root); dir = dirname(dir)) {
+      try {
+        if (readdirSync(dir).length > 0) break
+        rmdirSync(dir)
+      } catch {
+        break
+      }
+    }
+  }
 }
 
 /** Every file under a directory, relative to it. */

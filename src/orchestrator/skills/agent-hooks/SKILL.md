@@ -20,7 +20,7 @@ on-session-start → [work loop] → on-session-end
 
 | # | Action |
 |---|--------|
-| 1 | `rg -n "keyword" .opencastle/LESSONS-LEARNED.md` |
+| 1 | Read `.opencastle/LESSONS-LEARNED.md`, then `rg -n "keyword" .opencastle/lessons/` |
 | 2 | `cat .opencastle/SESSION-CHECKPOINT.md` (resume if exists) |
 | 3 | `rg -n "ERROR\|FAIL" .opencastle/AGENT-FAILURES.md \|\| true` |
 | 4 | `cat .opencastle/agents/skill-matrix.json \| jq '.bindings'` — load domain skills |

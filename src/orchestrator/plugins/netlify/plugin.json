@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "netlify",
+  "description": "Netlify skill and MCP server for AI coding assistants: Deployment, serverless functions, edge config.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#netlify",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "deployment"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Netlify",
+      "category": "tech",
+      "subCategory": "deployment",
+      "authType": "oauth",
+      "officialDocs": "https://docs.netlify.com"
+    }
+  }
+}

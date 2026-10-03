@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "nx",
+  "description": "NX skill and MCP server for AI coding assistants: Monorepo build system.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#nx",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "codebase-tool"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "NX",
+      "category": "tech",
+      "subCategory": "codebase-tool",
+      "authType": "none",
+      "officialDocs": "https://nx.dev/getting-started/intro"
+    }
+  }
+}

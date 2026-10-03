@@ -64,7 +64,7 @@ Writing or editing code · running tests and builds · creating tracker issues �
 - [Question]: Searched [X, Y, Z] — could not determine
 
 ### Relevant Lessons
-- [LES-XXX]: [summary]
+- [lesson id]: [summary]
 
 ### Recommendations
 - [Recommendation with rationale]

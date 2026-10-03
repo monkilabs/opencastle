@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "resend",
+  "description": "Resend skill and MCP server for AI coding assistants: Transactional email API with React templates.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#resend",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "email"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Resend",
+      "category": "tech",
+      "subCategory": "email",
+      "authType": "env-token",
+      "env": [
+        "RESEND_API_KEY"
+      ],
+      "officialDocs": "https://resend.com/docs"
+    }
+  }
+}

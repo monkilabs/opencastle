@@ -11,7 +11,7 @@
  */
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 vi.mock('./prompt.js', async () => {
@@ -265,6 +265,13 @@ describe('sync never edits what the user wrote in .opencastle/', () => {
         const init = (await import('./init.js')).default
         await init({ pkgRoot, args: ['--yes'] })
 
+        // A lesson an agent recorded is the team's writing too.
+        mkdirSync(join(dir, '.opencastle', 'lessons'), { recursive: true })
+        writeFileSync(
+          join(dir, '.opencastle', 'lessons', 'LES-001-quote-variables.md'),
+          '---\nid: "LES-001"\ntitle: "Quote variables"\ncategory: "terminal"\nseverity: "low"\nadded: "2026-01-01"\n---\n\n**Problem:** spaces.\n',
+        )
+
         // Sentinel every file, and remember the exact bytes.
         const before = new Map<string, string>()
         const walk = (d: string): string[] =>
@@ -273,6 +280,9 @@ describe('sync never edits what the user wrote in .opencastle/', () => {
           )
         for (const f of walk(join(dir, '.opencastle'))) {
           if (!f.endsWith('.md')) continue
+          // The lessons index is compiled from `lessons/` — it says so on its
+          // first line, and `sync` rewrites it, as it rewrites the lock.
+          if (basename(f) === 'LESSONS-LEARNED.md') continue
           const text = `${readFileSync(f, 'utf8')}\n<!-- SENTINEL -->\n`
           writeFileSync(f, text)
           before.set(f, text)

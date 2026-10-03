@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "vitest",
+  "description": "Vitest skill for AI coding assistants: Vite-native unit and integration testing.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#vitest",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "testing"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Vitest",
+      "category": "tech",
+      "subCategory": "testing",
+      "authType": "none",
+      "officialDocs": "https://vitest.dev"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "hetzner",
+  "description": "Hetzner Cloud skill for AI coding assistants: IaaS — servers, volumes, private networks, firewalls via hcloud CLI / Pulumi.",
+  "homepage": "https://www.opencastle.dev/docs/plugins",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "deployment"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Hetzner Cloud",
+      "category": "tech",
+      "subCategory": "deployment",
+      "authType": "env-token",
+      "env": [
+        "HCLOUD_TOKEN"
+      ],
+      "officialDocs": "https://docs.hetzner.com/cloud/"
+    }
+  }
+}

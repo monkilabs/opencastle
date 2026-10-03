@@ -5,6 +5,8 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { resolveSources, materialize, cliVersionOf, formatIssues, hasErrors } from './layers.js'
 import { contentReport, tokensOf } from './lock.js'
 import { CONFIG_SCHEMA_URL } from './team-config.js'
+import { EXTENSION_NAMESPACE, claudeManifestFor, isAgentPlugin, mcpSchemaUrl, pluginNameFrom, pluginSchemaUrl, readAgentPlugin, type PluginManifest } from './agent-plugin.js'
+import { staleClaudeFiles } from './plugin.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
 
@@ -16,16 +18,24 @@ import type { CliContext } from './types.js'
  * package manager does the fetching, the lockfile does the pinning, and an
  * upgrade bot does the rollout — one pull request per repository, each with
  * `opencastle review` explaining what it changes.
+ *
+ * A baseline `init` creates is also an Agent Plugin: `plugin.json`, skills in
+ * `skills/`, portable servers in `mcp.json`, and the rest of OpenCastle's layer
+ * — instructions, agents, prompts, workflows, policy — in `dev.opencastle/`.
+ * Assistants that read Agent Plugins can install it as it is; OpenCastle
+ * compiles all of it into every assistant for every repository that extends it.
  */
 
 const HELP = `
   opencastle baseline <init|check> [dir] [options]
 
-  init [dir]    Scaffold a baseline package (default: ./opencastle-baseline):
-                a layer with example instructions, a skill and a policy,
-                a README on publishing and adopting it, and a CI check.
+  init [dir]    Scaffold a baseline package (default: ./opencastle-baseline)
+                that is also an Agent Plugin: example instructions, a skill
+                and a policy, a README on publishing and adopting it, and a
+                CI check.
   check [dir]   Validate a baseline the way every repository extending it
-                will: its config, its content, its policy and its packaging.
+                will — its config, its content, its policy and its packaging —
+                and, when it is an Agent Plugin, the way assistants load it.
 
   Options:
     --name <pkg>  Package name for init (default: @your-org/opencastle-baseline)
@@ -34,24 +44,35 @@ const HELP = `
 `
 
 function files(name: string, cliVersion: string): Record<string, string> {
+  const description = 'Our AI assistant standard: compiled by OpenCastle into every assistant in every repository that extends it, and an Agent Plugin any assistant that reads them can install.'
+  const manifest: PluginManifest = {
+    $schema: pluginSchemaUrl(),
+    name: pluginNameFrom(name),
+    version: '0.1.0',
+    description,
+    license: 'UNLICENSED',
+  }
   return {
     'package.json':
       JSON.stringify(
         {
           name,
           version: '0.1.0',
-          description: "Our AI assistant standard, compiled by OpenCastle into every assistant in every repository that extends it.",
+          description,
           license: 'UNLICENSED',
-          files: ['layer/'],
-          opencastle: { baseline: 'layer' },
-          scripts: { check: 'opencastle baseline check' },
+          files: ['plugin.json', 'mcp.json', 'skills/', `${EXTENSION_NAMESPACE}/`, '.claude-plugin/', '.mcp.json'],
+          opencastle: { baseline: '.' },
+          scripts: { check: 'opencastle baseline check', build: 'opencastle plugin build' },
           devDependencies: { opencastle: `^${cliVersion}` },
           publishConfig: { access: 'restricted' },
         },
         null,
         2,
       ) + '\n',
-    'layer/config.json': `{
+    'plugin.json': JSON.stringify(manifest, null, 2) + '\n',
+    'mcp.json': JSON.stringify({ $schema: mcpSchemaUrl(), mcpServers: {} }, null, 2) + '\n',
+    '.claude-plugin/plugin.json': JSON.stringify(claudeManifestFor(manifest), null, 2) + '\n',
+    [`${EXTENSION_NAMESPACE}/config.json`]: `{
   "$schema": "${CONFIG_SCHEMA_URL}",
   // Every repository that extends this baseline is held to this policy.
   // A repository can tighten it in its own .opencastle/config.json, never relax it.
@@ -70,12 +91,14 @@ function files(name: string, cliVersion: string): Record<string, string> {
     // Tokens every assistant may load before it reads the task.
     "contextBudget": 8000
   },
-  // Servers every repository gets. Write variables as \${NAME}; OpenCastle
-  // spells them the way each assistant expects.
+  // Servers that need a variable — a token, a tenant — go here: write it as
+  // \${NAME} and OpenCastle spells it the way each assistant expects. A server
+  // every assistant can start as it is goes in ../mcp.json, where assistants
+  // that install this as an Agent Plugin find it too.
   "mcpServers": {}
 }
 `,
-    'layer/instructions/engineering-standards.md': `# Engineering standards
+    [`${EXTENSION_NAMESPACE}/instructions/engineering-standards.md`]: `# Engineering standards
 
 These apply to every repository in the organisation, and every assistant reads
 them before every task. Keep this file short: detail belongs in a skill, which
@@ -85,7 +108,7 @@ loads only when a task needs it.
 - Never write credentials into files; read them from the environment.
 - Keep changes small and focused; one pull request, one purpose.
 `,
-    'layer/skills/code-review/SKILL.md': `---
+    'skills/code-review/SKILL.md': `---
 name: code-review
 description: "How we review code: what to check, what to block on, and how to word feedback. Use when reviewing a pull request or preparing one for review."
 ---
@@ -100,18 +123,27 @@ Word feedback as a question or a suggestion with the reason attached.
 `,
     'README.md': `# ${name}
 
-Our AI assistant standard, as an [OpenCastle](https://www.opencastle.dev) baseline.
-Every repository that extends it gets the same instructions, skills and MCP
-servers in every assistant its developers use — Claude Code, Cursor, Copilot,
-OpenCode, Windsurf, Codex CLI and Antigravity — and is held to the same policy.
+Our AI assistant standard. It is two things at once:
+
+- an [OpenCastle](https://www.opencastle.dev) baseline — every repository that
+  extends it gets the same instructions, skills and MCP servers in every
+  assistant its developers use (Claude Code, Cursor, Copilot, OpenCode,
+  Windsurf, Codex CLI, Antigravity) and is held to the same policy;
+- an [Agent Plugin](https://agent-plugins.org) — GitHub Copilot, VS Code,
+  Cursor, Codex and Kiro can install its skills and MCP servers as they are,
+  and Claude Code through \`.claude-plugin/\`.
 
 ## What is in it
 
-- \`layer/instructions/\` — loaded by every assistant before every task
-- \`layer/skills/<name>/SKILL.md\` — loaded when a task matches its description
-- \`layer/agents/*.agent.md\`, \`layer/prompts/\`, \`layer/workflows/\` — optional
-- \`layer/config.json\` — MCP servers every repository gets, and the policy
-  (allowed servers and hosts, pinning, required items, context budget)
+| Path | What it is | Read by |
+| --- | --- | --- |
+| \`plugin.json\` | The Agent Plugins manifest | Every assistant that reads Agent Plugins |
+| \`skills/<name>/SKILL.md\` | Agent Skills, loaded when a task matches | Every assistant |
+| \`mcp.json\` | MCP servers every assistant can start as they are | Every assistant |
+| \`${EXTENSION_NAMESPACE}/instructions/\` | Loaded by every assistant before every task | OpenCastle |
+| \`${EXTENSION_NAMESPACE}/agents/\`, \`prompts/\`, \`workflows/\` | Optional | OpenCastle |
+| \`${EXTENSION_NAMESPACE}/config.json\` | Servers that need variables, and the policy | OpenCastle |
+| \`.claude-plugin/plugin.json\`, \`.mcp.json\` | Claude Code's copies — \`npm run build\` writes them | Claude Code |
 
 ## Adopting it in a repository
 
@@ -133,9 +165,10 @@ The version comes from package.json and the lockfile, like any dependency.
 
 ## Changing it
 
-1. Edit \`layer/\`, then run \`npm run check\` — it validates the baseline the way
-   every repository extending it will.
-2. Bump the version and publish.
+1. Edit it, then run \`npm run build\` (Claude Code's copies) and
+   \`npm run check\` — it validates the baseline the way every repository
+   extending it will, and the plugin the way assistants load it.
+2. Bump the version in package.json and plugin.json, and publish.
 3. Let your upgrade bot (Renovate, Dependabot) open the pull requests. In each,
    CI runs \`opencastle sync --check\` and adds \`opencastle review\`'s summary of
    what the new version changes for that repository's assistants.
@@ -170,7 +203,8 @@ async function init(pkgRoot: string, dir: string, name: string): Promise<void> {
     await writeFile(abs, text)
   }
   console.log(`\n  ${c.green('✓')} Created the baseline ${c.bold(name)} in ${dir}/`)
-  console.log(`  ${c.dim('Next: edit layer/, run')} ${c.cyan(`npx opencastle baseline check ${dir}`)}${c.dim(', then publish it.')}`)
+  console.log(`  ${c.dim('It is an Agent Plugin too: skills/ and mcp.json are portable; the rest of the layer is in')} ${EXTENSION_NAMESPACE}/`)
+  console.log(`  ${c.dim('Next: edit it, run')} ${c.cyan(`npx opencastle baseline check ${dir}`)}${c.dim(', then publish it.')}`)
   console.log(`  ${c.dim('Repositories adopt it with')} ${c.cyan(`npm i -D ${name}`)} ${c.dim('and')} ${c.cyan(`"extends": ["${name}"]`)}\n`)
 }
 
@@ -190,6 +224,7 @@ function check(pkgRoot: string, dir: string): CheckReport {
   let layerRoot = root
   let name = dir
   let version: string | undefined
+  let published: string[] | undefined
   const pkgFile = join(root, 'package.json')
   if (existsSync(pkgFile)) {
     let pkg: { name?: string; version?: string; files?: string[]; opencastle?: { baseline?: string } } = {}
@@ -200,6 +235,7 @@ function check(pkgRoot: string, dir: string): CheckReport {
     }
     name = pkg.name ?? name
     version = pkg.version
+    published = pkg.files
     if (typeof pkg.opencastle?.baseline !== 'string') {
       errors.push('package.json: has no "opencastle": { "baseline": "<dir>" }, so no repository can extend it')
     } else {
@@ -219,6 +255,43 @@ function check(pkgRoot: string, dir: string): CheckReport {
     }
   }
   if (!existsSync(layerRoot)) errors.push(`${relative(process.cwd(), layerRoot) || '.'}: the layer directory does not exist`)
+
+  // The plugin side: what an assistant that installs it as an Agent Plugin sees.
+  if (errors.length === 0 && isAgentPlugin(layerRoot)) {
+    const report = readAgentPlugin(layerRoot)
+    errors.push(...report.errors)
+    warnings.push(...report.warnings)
+    if (report.manifest) {
+      for (const f of staleClaudeFiles(layerRoot, report)) {
+        errors.push(`${f}: does not match plugin.json and mcp.json — run opencastle plugin build`)
+      }
+      if (!existsSync(join(layerRoot, '.claude-plugin', 'plugin.json'))) {
+        warnings.push('.claude-plugin/plugin.json: missing — Claude Code reads only its own manifest; run opencastle plugin build')
+      }
+      if (version && report.manifest.version && version !== report.manifest.version) {
+        warnings.push(`plugin.json: version ${report.manifest.version}, while package.json says ${version} — assistants offer updates by plugin.json's`)
+      }
+      // `files` decides what npm publishes; a plugin missing its manifest or
+      // its skills installs as nothing.
+      if (published) {
+        const at = relative(root, layerRoot).split('\\').join('/')
+        for (const part of ['plugin.json', 'skills', 'mcp.json', EXTENSION_NAMESPACE, '.claude-plugin', '.mcp.json']) {
+          if (!existsSync(join(layerRoot, part))) continue
+          const path = at ? `${at}/${part}` : part
+          const shipped = published.some((f) => {
+            const entry = f.replace(/\/$/, '')
+            return entry === path || path.startsWith(`${entry}/`)
+          })
+          if (!shipped) errors.push(`package.json: "files" does not include ${path}, so npm publish would leave it out`)
+        }
+      }
+    }
+  } else if (errors.length === 0) {
+    warnings.push(
+      'is not an Agent Plugin, so only OpenCastle can use it — assistants that read Agent Plugins cannot install it. ' +
+        '`opencastle baseline init` shows the layout: skills/ and mcp.json at the root, the rest in dev.opencastle/',
+    )
+  }
 
   const contributes = { skills: 0, agents: 0, instructions: 0, prompts: 0, workflows: 0, mcpServers: 0 }
   let contextTokens = 0

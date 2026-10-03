@@ -4,7 +4,11 @@ import { readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 const ROOT = new URL('../', import.meta.url).pathname.replace(/\/$/, '')
-const DIRS = ['src/orchestrator/skills', 'src/orchestrator/plugins']
+// Integrations are Agent Plugins, so their skills are one level further down:
+// src/orchestrator/plugins/<id>/skills/<name>/SKILL.md.
+const DIRS = ['src/orchestrator/skills', ...readdirSync(new URL('../src/orchestrator/plugins', import.meta.url).pathname)
+  .filter((id) => !id.endsWith('.ts'))
+  .map((id) => `src/orchestrator/plugins/${id}/skills`)]
 const OUTPUT = process.argv[2] ?? 'skill-review-report.md'
 
 interface ReviewResult {

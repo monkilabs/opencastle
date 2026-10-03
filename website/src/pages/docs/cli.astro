@@ -295,7 +295,7 @@ const commands = [
     category: 'teams',
     name: 'baseline',
     summary: 'Create or check a baseline many repositories extend',
-    description: 'A baseline is an npm package that carries an organisation\'s instructions, skills, agents, MCP servers and policy. Repositories install it as a devDependency and name it in <code>extends</code>. <code>init</code> scaffolds one; <code>check</code> validates it the way every repository extending it will.',
+    description: 'A baseline is an npm package that carries an organisation\'s instructions, skills, agents, MCP servers and policy. Repositories install it as a devDependency and name it in <code>extends</code>. One <code>init</code> creates is also an <a href="/docs/agent-plugins">Agent Plugin</a>, so assistants that read Agent Plugins can install it as it is. <code>init</code> scaffolds one; <code>check</code> validates it the way every repository extending it will, and the way assistants load it.',
     usage: 'npx opencastle baseline <init|check> [dir] [options]',
     options: [
       { flag: '--name <pkg>', desc: 'Package name for init (default: @your-org/opencastle-baseline)' },
@@ -303,12 +303,61 @@ const commands = [
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'init', content: `<p>Creates <code>./opencastle-baseline</code>, or the directory you name: a <code>package.json</code> that declares <code>"opencastle": { "baseline": "layer" }</code> and ships <code>layer/</code> in <code>"files"</code>; a <code>layer/</code> with an example instruction, skill and policy; a README on publishing and adopting it; and a workflow that runs <code>check</code>. It refuses a directory that already has a <code>package.json</code>.</p>` },
-      { heading: 'check', content: `<p>Resolves the baseline in a scratch project that extends it, and reports what it contributes and how many tokens a repository extending it loads up front. It exits 1 when <code>package.json</code> does not declare the layer, when <code>"files"</code> would leave the layer out of <code>npm publish</code>, when the layer directory is missing, or when its config, content or policy has an error.</p>` },
+      { heading: 'init', content: `<p>Creates <code>./opencastle-baseline</code>, or the directory you name, laid out as an Agent Plugin: <code>plugin.json</code>, an example skill in <code>skills/code-review/</code>, <code>mcp.json</code> for servers any assistant can start as they are, and in <code>dev.opencastle/</code> what the standard does not cover — an example instruction and the policy, in <code>config.json</code>. Also Claude Code's <code>.claude-plugin/plugin.json</code>, a <code>package.json</code> declaring <code>"opencastle": { "baseline": "." }</code>, a README on publishing and adopting it, and a workflow that runs <code>check</code>. It refuses a directory that already has a <code>package.json</code>.</p>` },
+      { heading: 'check', content: `<p>Resolves the baseline in a scratch project that extends it, and reports what it contributes and how many tokens a repository extending it loads up front. For an Agent Plugin it also checks the manifest, every skill against the Agent Skills spec and every portable server, as <code>plugin check</code> does. It exits 1 when <code>package.json</code> does not declare the layer, when <code>"files"</code> would leave part of it out of <code>npm publish</code>, when the layer directory is missing, when Claude Code's files are out of date, or when its config, content or policy has an error.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle baseline init --name @acme/opencastle-baseline', desc: 'Scaffold the package' },
       { cmd: 'npx opencastle baseline check', desc: 'Validate the baseline in this directory before publishing' },
+    ],
+  },
+  {
+    id: 'plugin',
+    category: 'teams',
+    name: 'plugin',
+    summary: 'Check an Agent Plugin, build Claude Code\'s files, index a marketplace',
+    description: '<a href="/docs/agent-plugins">Agent Plugins 1.0</a> is the open package format for skills and MCP servers: <code>plugin.json</code>, <code>skills/&lt;name&gt;/SKILL.md</code> and <code>mcp.json</code>. GitHub Copilot, VS Code, Cursor, Codex and Kiro install one as it is. <code>plugin</code> checks one, writes the files Claude Code reads instead, and writes the marketplace file each assistant indexes plugins with.',
+    usage: 'npx opencastle plugin <check|build|index> [dir] [options]',
+    options: [
+      { flag: '--check', desc: 'build and index: change nothing; exit 1 if a file is out of date' },
+      { flag: '--name <name>', desc: 'index: the marketplace name (default: from package.json or the directory)' },
+      { flag: '--owner <name>', desc: 'index: who maintains it (default: from package.json)' },
+      { flag: '--json', desc: 'check: machine-readable output' },
+      { flag: '--help, -h', desc: 'Show help' },
+    ],
+    details: [
+      { heading: 'check', content: `<p>Loads the plugin the way a conformant client does and reports what such a client would refuse, skip or ignore: a manifest outside the closed schema, a skill whose name does not match its directory or whose description is missing or too long, an MCP server with a shell string for a command, a plain-http remote, a header given twice. It also fails when <code>.claude-plugin/plugin.json</code> or <code>.mcp.json</code> no longer matches the portable files.</p>` },
+      { heading: 'build', content: `<p>Claude Code reads <code>.claude-plugin/plugin.json</code> and <code>.mcp.json</code>, not the standard's files. <code>build</code> writes both from <code>plugin.json</code> and <code>mcp.json</code> — <code>./</code> commands become <code>\${CLAUDE_PLUGIN_ROOT}/…</code>, <code>streamable-http</code> becomes <code>http</code>. Anything only Claude Code reads that you put in its manifest — <code>userConfig</code>, <code>hooks</code>, <code>agents</code> — is kept.</p>` },
+      { heading: 'index', content: `<p>For a repository of plugins under <code>plugins/&lt;name&gt;/</code>, writes <code>.claude-plugin/marketplace.json</code> (read by Claude Code and Copilot CLI), <code>.cursor-plugin/marketplace.json</code> (Cursor team marketplaces) and <code>.agents/plugins/marketplace.json</code> (Codex). Teammates then add the repository once in each assistant.</p>` },
+    ],
+    examples: [
+      { cmd: 'npx opencastle plugin check', desc: 'Check the plugin in this directory' },
+      { cmd: 'npx opencastle plugin build --check', desc: 'In CI: fail when Claude Code\'s files are stale' },
+      { cmd: 'npx opencastle plugin index --owner "Acme Platform"', desc: 'List every plugin under plugins/ for each assistant' },
+    ],
+  },
+  {
+    id: 'promote',
+    category: 'teams',
+    name: 'promote',
+    summary: 'Make a skill or memory from your own assistant the team\'s',
+    description: 'Knowledge starts personal: a skill one developer wrote for their own assistant, a correction Claude Code remembered on one laptop. <code>promote</code> moves it into the team\'s sources — this repository\'s <code>.opencastle/</code>, or a baseline every repository extends — where the next <code>sync</code> compiles it into every assistant. It lands as a change in your working tree; the pull request that commits it is where the team agrees.',
+    usage: 'npx opencastle promote <skill|memory> [name|path] [options]',
+    options: [
+      { flag: '--to <dir>', desc: 'skill: a baseline or Agent Plugin directory to put it in' },
+      { flag: '--from <dir>', desc: 'memory: read memory files from this directory instead' },
+      { flag: '--force', desc: 'skill: replace a team skill with the same name' },
+      { flag: '--dry-run', desc: 'Say what would be written, and write nothing' },
+      { flag: '--help, -h', desc: 'Show help' },
+    ],
+    details: [
+      { heading: 'skill', content: `<p>Finds the skill by name in <code>~/.claude/skills</code>, <code>~/.agents/skills</code>, <code>~/.codex/skills</code>, <code>~/.cursor/skills</code> or <code>~/.copilot/skills</code>, or takes a path. It is checked against the Agent Skills spec — a name that does not match its directory is refused, as assistants that follow the spec skip it — and every file is scanned for credentials. Then it is copied, with its scripts and references, to <code>.opencastle/skills/&lt;name&gt;/</code>, or with <code>--to</code> into a baseline's <code>skills/</code>.</p>` },
+      { heading: 'memory', content: `<p>Reads Claude Code's auto memory for this repository — <code>~/.claude/projects/&lt;repository&gt;/memory/</code>, or wherever <code>autoMemoryDirectory</code> points — and writes each correction (<code>feedback</code>) and project note as a lesson in <code>.opencastle/lessons/</code>. Memories about you, ones that hold a credential, and ones already promoted are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new.</p>` },
+    ],
+    examples: [
+      { cmd: 'npx opencastle promote skill deploy-runbook', desc: 'Your skill, in every teammate\'s assistant after the next sync' },
+      { cmd: 'npx opencastle promote skill deploy-runbook --to ../ai-standard', desc: 'Into the baseline every repository extends' },
+      { cmd: 'npx opencastle promote memory --dry-run', desc: 'See which of your assistant\'s memories would become lessons' },
     ],
   },
   {

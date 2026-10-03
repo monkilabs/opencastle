@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "figma",
+  "description": "Figma skill and MCP server for AI coding assistants: Design tokens, component specs, asset export.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#figma",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "design"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Figma",
+      "category": "tech",
+      "subCategory": "design",
+      "authType": "oauth",
+      "officialDocs": "https://help.figma.com/hc/en-us/articles/32132100833559-Guide-to-the-Figma-MCP-server"
+    }
+  }
+}

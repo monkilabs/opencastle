@@ -1,71 +1,74 @@
-import { readFile, writeFile, stat } from 'node:fs/promises'
+import { stat, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import type { CliContext } from './types.js'
-
-const CATEGORIES = [
-  'task-management',
-  'jira',
-  'mcp-tools',
-  'codebase-tool',
-  'terminal',
-  'framework',
-  'cms',
-  'database',
-  'git',
-  'deployment',
-  'browser-testing',
-  'general',
-] as const
-
-type Category = (typeof CATEGORIES)[number]
-
-const SEVERITIES = ['high', 'medium', 'low'] as const
-type Severity = (typeof SEVERITIES)[number]
+import { scanForSecrets } from './secret-scan.js'
+import {
+  LESSON_CATEGORIES,
+  LESSON_SEVERITIES,
+  LESSONS_DIR,
+  LESSONS_INDEX,
+  citationProblem,
+  findLesson,
+  fingerprintsOf,
+  isLessonCategory,
+  isLessonSeverity,
+  lessonBody,
+  newLessonId,
+  readLessons,
+  renderLesson,
+  syncLessons,
+  today,
+  type Lesson,
+} from './lessons.js'
 
 const HELP = `
-  opencastle lesson [options]
+  opencastle lesson [add] --title <text> --category <cat> --severity <level> --problem <text> [options]
+  opencastle lesson verify <id> [--cite <path[:line]>]...
+  opencastle lesson archive <id> --into <file>
 
-  Append a structured lesson to .opencastle/LESSONS-LEARNED.md
+  Record what an agent learned the hard way, as a file in .opencastle/lessons/,
+  and rewrite the index agents read before they start (.opencastle/${LESSONS_INDEX}).
 
-  Required flags:
+  add (the default)   Write a new lesson. --title, --category, --severity and
+                      --problem are required.
+  verify <id>         Say a lesson still holds: stamps today's date and what
+                      the cited files hold now, so doctor stops reporting them
+                      as changed. --cite replaces its citations.
+  archive <id>        Mark a lesson merged into a skill or instruction file,
+                      named with --into. It stays on record and leaves the
+                      list agents read.
+
+  Options:
     --title <text>           Short descriptive title
-    --category <cat>         One of: ${CATEGORIES.join(', ')}
-    --severity <level>       One of: high, medium, low
+    --category <cat>         One of: ${LESSON_CATEGORIES.join(', ')}
+    --severity <level>       One of: ${LESSON_SEVERITIES.join(', ')}
     --problem <text>         What went wrong
-
-  Optional flags:
-    --wrong <text>           The wrong approach that was tried
-    --correct <text>         The correct approach that works
-    --why <text>             Root cause explanation
-    --customizations-dir <p> Override the customizations directory path
-    --dry-run                Preview what would be appended without writing
+    --wrong <text>           The approach that was tried and failed
+    --correct <text>         The approach that works
+    --why <text>             Root cause
+    --cite <path[:line]>     Code the lesson is about, relative to the project
+                             root; repeat for more than one. doctor reports a
+                             lesson whose cited code changes after it was verified
+    --into <file>            archive: where the lesson now lives
+    --customizations-dir <p> Use this .opencastle directory instead of finding one
+    --dry-run                Print what would be written, and write nothing
     --help, -h               Show this help
 
   Examples:
-    opencastle lesson \\
-      --title "Never call foo without bar" \\
-      --category general \\
-      --severity high \\
-      --problem "foo throws on Node 18 without bar"
-
     opencastle lesson \\
       --title "Always quote shell variables" \\
       --category terminal \\
       --severity medium \\
       --problem "Unquoted variables break on paths with spaces" \\
-      --wrong 'rm -rf \$DIR/old' \\
-      --correct 'rm -rf "\$DIR/old"' \\
-      --why "Word splitting expands spaces into separate arguments"
+      --wrong 'rm -rf \\$DIR/old' \\
+      --correct 'rm -rf "\\$DIR/old"' \\
+      --cite scripts/clean.sh:12
+
+    opencastle lesson verify 2026-10-02-always-quote-shell-variables
+    opencastle lesson archive LES-004 --into .opencastle/skills/git-workflow/SKILL.md
 `
 
-function isCategory(s: string): s is Category {
-  return (CATEGORIES as ReadonlyArray<string>).includes(s)
-}
-
-function isSeverity(s: string): s is Severity {
-  return (SEVERITIES as ReadonlyArray<string>).includes(s)
-}
-
+/** The `.opencastle/` this lesson belongs to: the override, or the nearest one up from here. */
 async function resolveCustomizationsDir(override: string | null): Promise<string> {
   if (override) return override
   let dir = process.cwd()
@@ -83,146 +86,172 @@ async function resolveCustomizationsDir(override: string | null): Promise<string
   return join(process.cwd(), '.opencastle')
 }
 
-function nextLessonId(content: string): string {
-  const matches = [...content.matchAll(/^### LES-(\d+)/gm)]
-  if (matches.length === 0) return 'LES-001'
-  const last = Math.max(...matches.map((m) => parseInt(m[1], 10)))
-  return `LES-${String(last + 1).padStart(3, '0')}`
+function fail(message: string): never {
+  console.error(`  \u2717 ${message}`)
+  process.exit(1)
 }
 
-function escapeMarkdown(s: string): string {
-  return s.replace(/\|/g, '\\|').replace(/[\n\r]/g, ' ')
+interface Parsed {
+  positional: string[]
+  values: Map<string, string>
+  cites: string[]
+  dryRun: boolean
 }
 
-function formatLesson(opts: {
-  id: string
-  title: string
-  category: Category
-  severity: Severity
-  date: string
-  problem: string
-  wrong?: string
-  correct?: string
-  why?: string
-}): string {
-  const title = opts.title.replace(/[\n\r]/g, ' ')
-  const lines: string[] = [
-    `### ${opts.id}: ${title}`,
-    '',
-    '| Field | Value |',
-    '|-------|-------|',
-    `| **Category** | \`${opts.category}\` |`,
-    `| **Added** | ${opts.date} |`,
-    `| **Severity** | \`${opts.severity}\` |`,
-    '',
-    `**Problem:** ${escapeMarkdown(opts.problem)}`,
-  ]
-  if (opts.wrong !== undefined) lines.push('', `**Wrong approach:** ${escapeMarkdown(opts.wrong)}`)
-  if (opts.correct !== undefined) lines.push('', `**Correct approach:** ${escapeMarkdown(opts.correct)}`)
-  if (opts.why !== undefined) lines.push('', `**Why:** ${escapeMarkdown(opts.why)}`)
-  return lines.join('\n')
-}
+const VALUE_FLAGS = new Set([
+  '--title',
+  '--category',
+  '--severity',
+  '--problem',
+  '--wrong',
+  '--correct',
+  '--why',
+  '--into',
+  '--customizations-dir',
+])
 
-function insertLesson(content: string, block: string): string {
-  const marker = '\n## Index by Category'
-  const idx = content.indexOf(marker)
-  if (idx === -1) {
-    return content.trimEnd() + '\n\n' + block + '\n'
-  }
-  // Insert block right before the \n## Index sequence
-  return content.slice(0, idx) + '\n' + block + '\n' + content.slice(idx)
-}
-
-function updateIndex(content: string, category: string, lessonId: string): string {
-  const lines = content.split('\n')
-  let found = false
-
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^\| `([^`]+)` \| (.+) \|$/)
-    if (m && m[1] === category) {
-      const current = m[2].trim()
-      const updated = current === '\u2014' ? lessonId : `${current}, ${lessonId}`
-      lines[i] = `| \`${category}\` | ${updated} |`
-      found = true
-      break
+function parse(args: string[]): Parsed {
+  const out: Parsed = { positional: [], values: new Map(), cites: [], dryRun: false }
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
+    if (a === '--dry-run' || a === '--dryRun') {
+      out.dryRun = true
+    } else if (a === '--cite' || VALUE_FLAGS.has(a)) {
+      if (i + 1 >= args.length) fail(`${a} requires a value`)
+      const value = args[++i]
+      if (!value.trim()) fail(`${a} cannot be empty`)
+      if (a === '--cite') out.cites.push(value.trim())
+      else out.values.set(a, value)
+    } else if (a.startsWith('-')) {
+      fail(`unknown option ${a} — run "opencastle lesson --help"`)
+    } else {
+      out.positional.push(a)
     }
   }
-
-  if (!found) {
-    // Row doesn't exist — append after the last table row in the Index section
-    const indexHeading = lines.findIndex((l) => l.trim() === '## Index by Category')
-    if (indexHeading !== -1) {
-      let lastTableRow = -1
-      for (let i = indexHeading; i < lines.length; i++) {
-        if (lines[i].startsWith('|')) lastTableRow = i
-        else if (lastTableRow > indexHeading && lines[i].trim() !== '') break
-      }
-      if (lastTableRow !== -1) {
-        lines.splice(lastTableRow + 1, 0, `| \`${category}\` | ${lessonId} |`)
-      }
-    }
-  }
-
-  return lines.join('\n')
-}
-
-export interface LessonInput {
-  title: string
-  category: string
-  severity: string
-  problem: string
-  wrong?: string
-  correct?: string
-  why?: string
+  return out
 }
 
 /**
- * Append a structured lesson to LESSONS-LEARNED.md programmatically.
- * Returns the generated lesson ID (e.g., "LES-005").
+ * A credential written into a lesson is committed with it. Refused, naming the
+ * line, the way a convoy refuses one in its own output.
  */
-async function appendLesson(
-  input: LessonInput,
-  customizationsDir?: string | null,
-): Promise<string> {
-  if (!isCategory(input.category)) {
-    throw new Error(`Invalid category "${input.category}". Must be one of: ${CATEGORIES.join(', ')}`)
+function refuseSecrets(text: string, where: string): void {
+  const scan = scanForSecrets(text, where)
+  if (scan.clean) return
+  const first = scan.findings[0]
+  fail(`${where} would hold what looks like a ${first.pattern} (line ${first.line}) — a lesson is committed, so describe the credential instead of pasting it`)
+}
+
+function checkCitations(projectRoot: string, cites: string[]): void {
+  for (const cite of cites) {
+    const problem = citationProblem(projectRoot, cite)
+    if (problem) fail(`--cite: ${problem}`)
   }
-  if (!isSeverity(input.severity)) {
-    throw new Error(`Invalid severity "${input.severity}". Must be one of: ${SEVERITIES.join(', ')}`)
+}
+
+async function writeLessonFile(dir: string, lesson: Omit<Lesson, 'file'>, file: string, dryRun: boolean): Promise<void> {
+  const text = renderLesson(lesson)
+  const rel = `${LESSONS_DIR}/${file}`
+  refuseSecrets(text, rel)
+  if (dryRun) {
+    console.log(`  [dry-run] Would write .opencastle/${rel}:\n`)
+    console.log(text)
+    return
   }
-  const category = input.category
-  const severity = input.severity
+  await mkdir(join(dir, LESSONS_DIR), { recursive: true })
+  await writeFile(join(dir, LESSONS_DIR, file), text)
+}
 
-  const resolvedDir = await resolveCustomizationsDir(customizationsDir ?? null)
-  const lessonsFile = join(resolvedDir, 'LESSONS-LEARNED.md')
-
-  let content: string
-  try {
-    content = await readFile(lessonsFile, 'utf8')
-  } catch {
-    throw new Error(`LESSONS-LEARNED.md not found at: ${lessonsFile}`)
+/** Rewrite the index, after moving anything still in the old single file. */
+function reindex(dir: string): void {
+  const outcome = syncLessons(dir)
+  if (outcome.migrated > 0) {
+    console.log(
+      `  Moved ${outcome.migrated} lesson(s) from ${LESSONS_INDEX} into .opencastle/${LESSONS_DIR}/` +
+        (outcome.backup ? ` (the old file is kept as ${outcome.backup})` : ''),
+    )
   }
+}
 
-  const id = nextLessonId(content)
-  const date = new Date().toISOString().slice(0, 10)
+async function add(dir: string, projectRoot: string, p: Parsed): Promise<void> {
+  const title = p.values.get('--title')
+  const category = p.values.get('--category')
+  const severity = p.values.get('--severity')
+  const problem = p.values.get('--problem')
+  const missing = [
+    !title && '--title',
+    !category && '--category',
+    !severity && '--severity',
+    !problem && '--problem',
+  ].filter(Boolean)
+  if (missing.length > 0) fail(`Missing required flags: ${missing.join(', ')}\n  Run "opencastle lesson --help" for usage.`)
+  if (!isLessonCategory(category!)) fail(`Invalid --category "${category}". Must be one of: ${LESSON_CATEGORIES.join(', ')}`)
+  if (!isLessonSeverity(severity!)) fail(`Invalid --severity "${severity}". Must be one of: ${LESSON_SEVERITIES.join(', ')}`)
+  checkCitations(projectRoot, p.cites)
 
-  const block = formatLesson({
+  // Lessons still in the old file keep their numbers, so they are counted
+  // among the taken ids before this one is named.
+  if (!p.dryRun) reindex(dir)
+  const { lessons } = readLessons(dir)
+  const date = today()
+  const id = newLessonId(title!, date, new Set(lessons.map((l) => l.id)))
+  const lesson: Omit<Lesson, 'file'> = {
     id,
-    title: input.title,
-    category,
-    severity,
-    date,
-    problem: input.problem,
-    wrong: input.wrong,
-    correct: input.correct,
-    why: input.why,
-  })
+    title: title!.replace(/[\r\n]+/g, ' ').trim(),
+    category: category!,
+    severity: severity!,
+    added: date,
+    citations: p.cites,
+    ...(p.cites.length > 0 && { verified: date, fingerprints: fingerprintsOf(projectRoot, p.cites) }),
+    status: 'active',
+    body: lessonBody({
+      problem: problem!,
+      wrong: p.values.get('--wrong'),
+      correct: p.values.get('--correct'),
+      why: p.values.get('--why'),
+    }),
+  }
+  await writeLessonFile(dir, lesson, `${id}.md`, p.dryRun)
+  if (p.dryRun) return
+  reindex(dir)
+  console.log(`${id}: ${lesson.title}`)
+}
 
-  let updated = insertLesson(content, block)
-  updated = updateIndex(updated, category, id)
+async function verify(dir: string, projectRoot: string, p: Parsed): Promise<void> {
+  const [ref] = p.positional
+  if (!ref) fail('verify needs the id of a lesson, e.g. opencastle lesson verify LES-004')
+  checkCitations(projectRoot, p.cites)
+  if (!p.dryRun) reindex(dir)
+  const { lessons } = readLessons(dir)
+  const lesson = findLesson(lessons, ref)
+  if (!lesson) fail(`no lesson ${ref} in .opencastle/${LESSONS_DIR}/`)
+  const citations = p.cites.length > 0 ? p.cites : lesson.citations
+  for (const cite of citations) {
+    const problem = citationProblem(projectRoot, cite)
+    if (problem) fail(`${lesson.id} cites ${cite}: ${problem} — pass --cite with where it is now`)
+  }
+  const updated: Lesson = { ...lesson, citations, verified: today(), fingerprints: fingerprintsOf(projectRoot, citations) }
+  await writeLessonFile(dir, updated, lesson.file, p.dryRun)
+  if (p.dryRun) return
+  reindex(dir)
+  console.log(`${lesson.id}: verified ${updated.verified}`)
+}
 
-  await writeFile(lessonsFile, updated, 'utf8')
-  return id
+async function archive(dir: string, projectRoot: string, p: Parsed): Promise<void> {
+  const [ref] = p.positional
+  const into = p.values.get('--into')
+  if (!ref) fail('archive needs the id of a lesson, e.g. opencastle lesson archive LES-004 --into <file>')
+  if (!into) fail('archive needs --into <file>: the skill or instruction file the lesson was merged into')
+  const problem = citationProblem(projectRoot, into)
+  if (problem) fail(`--into: ${problem}`)
+  if (!p.dryRun) reindex(dir)
+  const { lessons } = readLessons(dir)
+  const lesson = findLesson(lessons, ref)
+  if (!lesson) fail(`no lesson ${ref} in .opencastle/${LESSONS_DIR}/`)
+  await writeLessonFile(dir, { ...lesson, status: 'archived', mergedInto: into.replace(/^\.\//, '') }, lesson.file, p.dryRun)
+  if (p.dryRun) return
+  reindex(dir)
+  console.log(`${lesson.id}: archived, merged into ${into}`)
 }
 
 export default async function lesson({ args }: CliContext): Promise<void> {
@@ -230,99 +259,19 @@ export default async function lesson({ args }: CliContext): Promise<void> {
     console.log(HELP)
     return
   }
-
-  const dryRun = args.includes('--dry-run') || args.includes('--dryRun')
-  let title: string | null = null
-  let category: string | null = null
-  let severity: string | null = null
-  let problem: string | null = null
-  let wrong: string | undefined
-  let correct: string | undefined
-  let why: string | undefined
-  let customizationsDir: string | null = null
-
-  for (let i = 0; i < args.length; i++) {
-    const a = args[i]
-    switch (a) {
-      case '--title':
-        if (i + 1 >= args.length) { console.error('  \u2717 --title requires a value'); process.exit(1) }
-        title = args[++i]
-        if (!title.trim()) { console.error('  \u2717 --title cannot be empty'); process.exit(1) }
-        break
-      case '--category':
-        if (i + 1 >= args.length) { console.error('  \u2717 --category requires a value'); process.exit(1) }
-        category = args[++i]
-        if (!category.trim()) { console.error('  \u2717 --category cannot be empty'); process.exit(1) }
-        break
-      case '--severity':
-        if (i + 1 >= args.length) { console.error('  \u2717 --severity requires a value'); process.exit(1) }
-        severity = args[++i]
-        if (!severity.trim()) { console.error('  \u2717 --severity cannot be empty'); process.exit(1) }
-        break
-      case '--problem':
-        if (i + 1 >= args.length) { console.error('  \u2717 --problem requires a value'); process.exit(1) }
-        problem = args[++i]
-        if (!problem.trim()) { console.error('  \u2717 --problem cannot be empty'); process.exit(1) }
-        break
-      case '--wrong':
-        if (i + 1 >= args.length) { console.error('  \u2717 --wrong requires a value'); process.exit(1) }
-        wrong = args[++i]
-        if (!wrong.trim()) { console.error('  \u2717 --wrong cannot be empty'); process.exit(1) }
-        break
-      case '--correct':
-        if (i + 1 >= args.length) { console.error('  \u2717 --correct requires a value'); process.exit(1) }
-        correct = args[++i]
-        if (!correct.trim()) { console.error('  \u2717 --correct cannot be empty'); process.exit(1) }
-        break
-      case '--why':
-        if (i + 1 >= args.length) { console.error('  \u2717 --why requires a value'); process.exit(1) }
-        why = args[++i]
-        if (!why.trim()) { console.error('  \u2717 --why cannot be empty'); process.exit(1) }
-        break
-      case '--customizations-dir':
-        if (i + 1 >= args.length) { console.error('  \u2717 --customizations-dir requires a path'); process.exit(1) }
-        customizationsDir = args[++i]
-        if (!customizationsDir.trim()) { console.error('  \u2717 --customizations-dir cannot be empty'); process.exit(1) }
-        break
-    }
-  }
-
-  const missing: string[] = []
-  if (!title) missing.push('--title')
-  if (!category) missing.push('--category')
-  if (!severity) missing.push('--severity')
-  if (!problem) missing.push('--problem')
-
-  if (missing.length > 0) {
-    console.error(`  \u2717 Missing required flags: ${missing.join(', ')}`)
-    console.error('  Run "opencastle lesson --help" for usage.')
-    process.exit(1)
-  }
-
-  if (!isCategory(category!)) {
-    console.error(`  \u2717 Invalid --category "${category}". Must be one of: ${CATEGORIES.join(', ')}`)
-    process.exit(1)
-  }
-
-  if (!isSeverity(severity!)) {
-    console.error(`  \u2717 Invalid --severity "${severity}". Must be one of: ${SEVERITIES.join(', ')}`)
-    process.exit(1)
-  }
-
-  if (dryRun) {
-    console.log(`  [dry-run] Would append lesson to LESSONS-LEARNED.md:`)
-    console.log(`  Title: ${title}`)
-    return
-  }
-
+  const sub = args[0] === 'add' || args[0] === 'verify' || args[0] === 'archive' ? args[0] : 'add'
+  const p = parse(args[0] === sub ? args.slice(1) : args)
+  const dir = await resolveCustomizationsDir(p.values.get('--customizations-dir') ?? null)
+  const projectRoot = dirname(dir)
   try {
-    const id = await appendLesson(
-      { title: title!, category: category!, severity: severity!, problem: problem!, wrong, correct, why },
-      customizationsDir,
-    )
-    console.log(`${id}: ${title}`)
-  } catch (err: unknown) {
-    console.error(`  \u2717 ${(err as Error).message}`)
-    process.exit(1)
+    await stat(dir)
+  } catch {
+    fail(`no .opencastle/ directory at ${dir} — run opencastle init first`)
   }
+  if (sub === 'add' && p.positional.length > 0) {
+    fail(`unexpected argument "${p.positional[0]}" — did you mean opencastle lesson verify or archive?`)
+  }
+  if (sub === 'add') return add(dir, projectRoot, p)
+  if (sub === 'verify') return verify(dir, projectRoot, p)
+  return archive(dir, projectRoot, p)
 }

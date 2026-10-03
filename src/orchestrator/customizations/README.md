@@ -13,7 +13,8 @@ Skills reference these files by root-relative path, like `.opencastle/stack/api-
 | File | Purpose |
 |------|---------|
 | `project.instructions.md` | High-level project context — apps, libraries, tech stack, ports, URLs |
-| `LESSONS-LEARNED.md` | Knowledge base of retries, workarounds, and gotchas — read before every session |
+| `LESSONS-LEARNED.md` | Index of the lessons in `lessons/` — read before every session. Rewritten by `opencastle sync`; never edited by hand |
+| `lessons/` | One file per lesson: retries, workarounds and gotchas, written by `opencastle lesson` |
 | `KNOWN-ISSUES.md` | Tracked issues, limitations, and accepted risks discovered during sessions |
 | `AGENT-FAILURES.md` | Dead letter queue for failed agent delegations |
 | `AGENT-PERFORMANCE.md` | Agent success tracking, log query recipes, performance metrics |

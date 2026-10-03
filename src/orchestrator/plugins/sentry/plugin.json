@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sentry",
+  "description": "Sentry skill and MCP server for AI coding assistants: Error monitoring, performance tracing, and observability.",
+  "homepage": "https://www.opencastle.dev/docs/plugins",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "observability"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Sentry",
+      "category": "tech",
+      "subCategory": "observability",
+      "authType": "env-token",
+      "env": [
+        "SENTRY_ACCESS_TOKEN"
+      ],
+      "officialDocs": "https://docs.sentry.io/"
+    }
+  }
+}

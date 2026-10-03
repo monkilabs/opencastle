@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "coolify",
+  "description": "Coolify skill and MCP server for AI coding assistants: Self-hosted PaaS — deploy apps, databases, and services.",
+  "homepage": "https://www.opencastle.dev/docs/plugins",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "deployment"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Coolify",
+      "category": "tech",
+      "subCategory": "deployment",
+      "authType": "env-token",
+      "env": [
+        "COOLIFY_ACCESS_TOKEN",
+        "COOLIFY_BASE_URL"
+      ],
+      "officialDocs": "https://coolify.io/docs"
+    }
+  }
+}

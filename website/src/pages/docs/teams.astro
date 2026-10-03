@@ -15,6 +15,7 @@ const referenceSections = [
   { id: 'config', label: 'Config Reference' },
   { id: 'policy', label: 'Policy' },
   { id: 'lock', label: 'The Lock File' },
+  { id: 'memory', label: 'Team Memory' },
   { id: 'commands', label: 'Team Commands' },
 ];
 const adoptionSections = [
@@ -29,6 +30,7 @@ const sectionIcons: Record<string, string> = {
   config: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
   policy: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
   lock: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  memory: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>`,
   commands: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`,
   rollout: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`,
   limits: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
@@ -38,18 +40,45 @@ const sectionIcons: Record<string, string> = {
 /* The output below is real: it comes from a project that extends a baseline,
    run with the release this page documents. Long lists are trimmed with "…". */
 
-const baselineTree = `@acme/opencastle-baseline/
-├── package.json      "opencastle": { "baseline": "layer" }, "files": ["layer/"]
-└── layer/
-    ├── config.json
-    ├── instructions/
-    │   ├── api-style.md
-    │   └── security.md
-    └── skills/
-        └── secure-coding/
-            └── SKILL.md`;
+/* From a run of this release; the memory directory's path is shortened. */
+const promoteOutput = `$ npx opencastle promote memory
 
-const baselineConfig = `// layer/config.json
+  🏰 Promote memory from ~/.claude/projects/-Users-ana-src-shop/memory
+
+  ✓ Wrote .opencastle/lessons/2026-10-03-every-migration-ships-with-its-rollback.md
+  - user-role.md: about you, not the project
+
+  Each is category general, severity medium: set them, add --cite where a lesson is about code,
+  and delete any that are yours alone. The pull request that commits them is where the team agrees.`;
+
+const lessonFile = `---
+id: "2026-10-03-every-migration-ships-with-its-rollback"
+title: "Every migration ships with its rollback"
+category: "database"
+severity: "high"
+added: "2026-10-03"
+citations:
+  - "db/migrations/"
+source: "claude-code-memory:migrations.md#d552ad03f7a3"
+---
+
+Every migration in db/migrations/ ships with a down file.
+
+**Why:** the March outage could not be rolled back.`;
+
+const baselineTree = `@acme/opencastle-baseline/     an Agent Plugin, and a baseline
+├── package.json               "opencastle": { "baseline": "." }
+├── plugin.json                the Agent Plugins manifest
+├── skills/
+│   └── secure-coding/
+│       └── SKILL.md
+└── dev.opencastle/            what the standard does not cover yet
+    ├── config.json
+    └── instructions/
+        ├── api-style.md
+        └── security.md`;
+
+const baselineConfig = `// dev.opencastle/config.json
 {
   // Acme's standard for every repository
   "policy": {
@@ -91,7 +120,7 @@ const syncOutput = `  ✓ Rebuilt MCP config
   ⚠  Environment variables still needed:
 
      ACME_DOCS_TOKEN
-     └ used by the internal-docs MCP server (@acme/opencastle-baseline/layer/config.json)
+     └ used by the internal-docs MCP server (@acme/opencastle-baseline/dev.opencastle/config.json)
 
      ACME_DB_URL
      └ used by the acme-db MCP server (.opencastle/config.json)`;
@@ -145,7 +174,7 @@ const explainOutput = `$ npx opencastle explain
     • Required everywhere: instructions/security, skills/secure-coding
 
   Your setup
-    ✗ ACME_DOCS_TOKEN — used by the internal-docs MCP server (@acme/opencastle-baseline/layer/config.json); set it in .env or your shell
+    ✗ ACME_DOCS_TOKEN — used by the internal-docs MCP server (@acme/opencastle-baseline/dev.opencastle/config.json); set it in .env or your shell
     ✗ ACME_DB_URL — used by the acme-db MCP server (.opencastle/config.json); set it in .env or your shell
     → Linear: your assistant opens a browser to sign in the first time it starts the server`;
 
@@ -451,7 +480,7 @@ $ npx opencastle baseline check opencastle-baseline
             <li><strong>Baselines</strong> — your organisation's instructions, skills, agents, MCP servers and policy in an npm package that every repository extends. Your package manager fetches and pins it; your upgrade bot rolls it out.</li>
             <li><strong>Policy</strong> — which MCP servers may run, which hosts remote ones may reach, whether they must be pinned, which items no repository may drop, and how much context may load before a task. It only tightens.</li>
             <li><strong>The lock</strong> — <code>.opencastle/lock.json</code>, one reviewable record of what every assistant is given, checked in CI.</li>
-            <li><strong>Five commands</strong> — <code>explain</code> for onboarding, <code>review</code> for pull requests, <code>ci</code> to wire it up, <code>baseline</code> to publish a standard, <code>fleet</code> to see where it has landed.</li>
+            <li><strong>Seven commands</strong> — <code>explain</code> for onboarding, <code>review</code> for pull requests, <code>ci</code> to wire it up, <code>baseline</code> and <code>plugin</code> to publish a standard, <code>promote</code> to make what one person's assistant learned the team's, <code>fleet</code> to see where it has landed.</li>
           </ul>
         </section>
 
@@ -468,7 +497,7 @@ $ npx opencastle baseline check opencastle-baseline
             <div class="architecture-card__flow">
               <div class="architecture-card__node">OpenCastle — its own agents, skills, instructions, prompts and workflows, and the integrations your stack uses</div>
               <div class="architecture-card__arrow">then each baseline in <code>extends</code>, in order</div>
-              <div class="architecture-card__node">@acme/opencastle-baseline — the package's <code>layer/</code></div>
+              <div class="architecture-card__node">@acme/opencastle-baseline — an Agent Plugin: its <code>skills/</code>, <code>mcp.json</code> and <code>dev.opencastle/</code></div>
               <div class="architecture-card__arrow">then the repository itself</div>
               <div class="architecture-card__node architecture-card__node--lead">This repository — <code>.opencastle/</code></div>
               <div class="architecture-card__arrow">compiled into every target</div>
@@ -500,10 +529,19 @@ $ npx opencastle baseline check opencastle-baseline
           </div>
           <p>
             In a repository the layer is <code>.opencastle/</code>. In a baseline it is the
-            directory the package names in its <code>package.json</code>:
-            <code>{'"opencastle": { "baseline": "layer" }'}</code>. Only <code>config.json</code>
+            directory the package names in its <code>package.json</code>, such as
+            <code>{'"opencastle": { "baseline": "." }'}</code>. Only <code>config.json</code>
             and the five content directories are read as a layer; the rest of
             <code>.opencastle/</code> — stack notes, lessons, the manifest — is not part of it.
+          </p>
+          <p>
+            A baseline that is an <a href="/docs/agent-plugins">Agent Plugin</a> — one with a
+            <code>plugin.json</code> at its root, as <code>baseline init</code> creates — keeps its skills in
+            the plugin's <code>skills/</code>, servers any assistant can start as they are in
+            <code>mcp.json</code>, and everything else, <code>config.json</code> included, in
+            <code>dev.opencastle/</code>. Assistants that read Agent Plugins can then install it as it is. Any
+            Agent Plugin on npm can be extended the same way, with no OpenCastle declaration. A baseline laid out
+            the earlier way, with the layer's directories at its root, still works.
           </p>
           <p>
             Items are named by kind and name: <code>skills/deploy-runbook</code>,
@@ -806,11 +844,55 @@ $ npx opencastle baseline check opencastle-baseline
           <pre><code>{codeowners}</code></pre>
         </section>
 
+        <!-- ═══════════ Team memory ═══════════ -->
+        <section class="docs-section" id="memory">
+          <h3 class="section-title">Team Memory</h3>
+          <p>
+            What agents learn on a project — a command that fails, a convention written down nowhere else —
+            is worth more to the team than to the session that learned it. OpenCastle keeps it in three places,
+            from the narrowest to the widest, and moves it up on purpose, never on its own.
+          </p>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead><tr><th>Scope</th><th>Where it lives</th><th>Who it reaches</th><th>Moves up with</th></tr></thead>
+              <tbody>
+                <tr><td>Personal</td><td>Your assistant's own: Claude Code's auto memory, <code>~/.claude/skills</code>, <code>~/.agents/skills</code></td><td>You, on one machine</td><td><code>opencastle promote memory</code>, <code>promote skill</code></td></tr>
+                <tr><td>Team</td><td><code>.opencastle/lessons/</code> and <code>.opencastle/skills/</code>, committed</td><td>Every assistant of everyone in the repository</td><td><code>promote skill --to &lt;baseline&gt;</code>; the <strong>memory-merger</strong> skill turns mature lessons into skills and instructions</td></tr>
+                <tr><td>Organisation</td><td>A baseline — an <a href="/docs/agent-plugins">Agent Plugin</a> every repository extends</td><td>Every repository</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            <strong>Lessons</strong> are one file each, written by <code>opencastle lesson</code>, so two branches that
+            each add one merge cleanly; <code>.opencastle/LESSONS-LEARNED.md</code> is the index agents read first,
+            rebuilt by <code>sync</code> and checked by <code>sync --check</code>. A lesson can cite the code it is
+            about with <code>--cite</code>. <code>doctor</code> then names any lesson whose cited file has changed or gone
+            since it was verified, and the fix — <code>lesson verify</code> when it still holds, <code>lesson archive</code>
+            when it has been merged into a skill — so a stale lesson does not keep steering agents.
+          </p>
+          <p>
+            <strong>Promotion</strong> is how knowledge leaves one laptop. <code>promote skill</code> copies a skill you
+            wrote for your own assistant into the team's sources, after checking it against the Agent Skills spec and
+            for credentials. <code>promote memory</code> turns what Claude Code remembered in this repository into lessons:
+          </p>
+          <pre><code>{promoteOutput}</code></pre>
+          <p>
+            Corrections and project notes become lessons; memories about you, ones holding a credential, and ones
+            already promoted are left out, and your home directory is written as <code>~</code>. Before you commit,
+            set the category and severity and cite the code:
+          </p>
+          <pre><code>{lessonFile}</code></pre>
+          <p>
+            Nothing is shared until it is committed. The pull request that commits a promoted skill or lesson is where
+            the team agrees with it — and, with CODEOWNERS on <code>.opencastle/</code>, where its owners do.
+          </p>
+        </section>
+
         <!-- ═══════════ Team commands ═══════════ -->
         <section class="docs-section" id="commands">
           <h3 class="section-title">Team Commands</h3>
           <p>
-            Five commands, each described in full in the <a class="docs-link" href="/docs/cli#teams">CLI reference</a>.
+            Seven commands, each described in full in the <a class="docs-link" href="/docs/cli#teams">CLI reference</a>.
           </p>
 
           <h4 class="arch-subheading">explain</h4>
@@ -862,15 +944,32 @@ $ npx opencastle baseline check opencastle-baseline
           <pre><code>npx opencastle baseline &lt;init|check&gt; [dir] [--name &lt;pkg&gt;] [--json]</code></pre>
           <p>
             <code>init</code> scaffolds a baseline package in <code>./opencastle-baseline</code> or the directory you
-            name: a <code>package.json</code> that declares the layer and ships it in <code>"files"</code>, a
-            <code>layer/</code> with an example instruction, skill and policy, a README on publishing and adopting it,
-            and a CI workflow that runs <code>check</code>. It refuses a directory that already has a
+            name, laid out as an Agent Plugin: <code>plugin.json</code>, an example skill in <code>skills/</code>,
+            <code>mcp.json</code>, an example instruction and the policy in <code>dev.opencastle/</code>, Claude Code's
+            <code>.claude-plugin/plugin.json</code>, a <code>package.json</code> that declares the layer and ships all of it
+            in <code>"files"</code>, a README on publishing and adopting it, and a CI workflow that runs <code>check</code>. It refuses a directory that already has a
             <code>package.json</code>. <code>check</code> resolves the baseline exactly as a repository extending it
             would and reports what it contributes and how many tokens load up front. It fails — exit 1 — when the
             package does not declare <code>{'"opencastle": { "baseline": "<dir>" }'}</code>, when <code>"files"</code>
             would leave the layer out of <code>npm publish</code>, or when the config, content or policy has an error.
           </p>
           <pre><code>{baselineCheckOutput}</code></pre>
+
+          <h4 class="arch-subheading">plugin</h4>
+          <pre><code>npx opencastle plugin &lt;check|build|index&gt; [dir] [--check] [--name &lt;name&gt;] [--owner &lt;name&gt;] [--json]</code></pre>
+          <p>
+            <code>check</code> loads an Agent Plugin the way an assistant that follows the standard does and says what it
+            would refuse or skip; <code>build</code> writes the manifest and MCP file Claude Code reads instead of the
+            portable ones; <code>index</code> writes the marketplace files Claude Code, Copilot, Cursor and Codex read for a
+            repository of plugins. See <a href="/docs/agent-plugins">Agent Plugins</a>.
+          </p>
+
+          <h4 class="arch-subheading">promote</h4>
+          <pre><code>npx opencastle promote &lt;skill|memory&gt; [name|path] [--to &lt;dir&gt;] [--from &lt;dir&gt;] [--force] [--dry-run]</code></pre>
+          <p>
+            Copies a skill from your own skill directories into <code>.opencastle/skills/</code> or a baseline, or turns
+            Claude Code's auto memory for the repository into lessons. See <a href="#memory">Team Memory</a>.
+          </p>
 
           <h4 class="arch-subheading">fleet</h4>
           <pre><code>npx opencastle fleet &lt;dir...&gt; [--json]</code></pre>
@@ -908,9 +1007,9 @@ $ npx opencastle baseline check opencastle-baseline
           <ol class="steps">
             <li>
               <strong>Create the baseline.</strong> <code>npx opencastle baseline init --name @acme/opencastle-baseline</code>.
-              Move the rules every repository shares into <code>layer/instructions/</code> and keep them short — every
-              token there loads before every task in every repository. Put detail in <code>layer/skills/</code>, which
-              loads only when a task needs it. Set the policy in <code>layer/config.json</code>.
+              Move the rules every repository shares into <code>dev.opencastle/instructions/</code> and keep them short — every
+              token there loads before every task in every repository. Put detail in <code>skills/</code>, which
+              loads only when a task needs it. Set the policy in <code>dev.opencastle/config.json</code>.
             </li>
             <li>
               <strong>Check and publish.</strong> <code>npx opencastle baseline check</code> validates it the way every

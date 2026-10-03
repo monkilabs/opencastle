@@ -145,7 +145,7 @@ can share it across every repository it owns.
 
 - **One standard, many repositories.** A baseline is an ordinary npm package
   carrying the organisation's instructions, skills, agents, MCP servers and
-  policy. Each repository installs it as a devDependency and names it in
+  policy — and, as `baseline init` lays it out, an Agent Plugin. Each repository installs it as a devDependency and names it in
   `extends`; the lockfile pins the version, and an upgrade bot opens one pull
   request per repository when it moves. What a repository adds under
   `.opencastle/` — `instructions/`, `skills/<name>/SKILL.md`, `agents/` —
@@ -158,6 +158,13 @@ can share it across every repository it owns.
   credential written inline, is a compile error, and `doctor` and
   `sync --check` hold servers someone added to an MCP config by hand to the same
   policy.
+- **Team memory that merges and keeps current.** Agents record lessons with
+  `opencastle lesson`, one file each in `.opencastle/lessons/`, citing the code
+  a lesson is about; `doctor` names a lesson whose code has changed since.
+  `opencastle promote` makes what one person's assistant learned the team's: a
+  personal skill into the team's sources or a baseline, and Claude Code's auto
+  memory for the repository into lessons — in the working tree, for the pull
+  request to review.
 - **A lock you can review.** `sync` writes `.opencastle/lock.json`: which layers
   at which versions, where every skill and instruction came from, which MCP
   servers every assistant can start, and how many tokens load up front.
@@ -181,14 +188,24 @@ can share it across every repository it owns.
   sources: that they resolve, how much context every assistant loads against
   the budget, and whether instructions still name scripts and paths that exist.
   Each finding names the fix that works for it.
-- **Open formats where they exist.** Codex and OpenCode read `AGENTS.md`, Claude
-  Code skills are `SKILL.md` folders in the Agent Skills format, and every
-  assistant gets MCP.
+- **Built on the open standards.** Codex and OpenCode read `AGENTS.md`; every
+  skill is a `SKILL.md` folder named as the skill, in the Agent Skills format,
+  wherever each assistant reads skills; every assistant gets its MCP servers in
+  its own config. And [Agent Plugins 1.0](https://agent-plugins.org) packages
+  them: a baseline is one, so Copilot, VS Code, Cursor, Codex and Kiro can
+  install it as it is, while OpenCastle compiles it — and what the standard
+  does not cover yet — into all seven assistants. Any Agent Plugin on npm can be
+  extended the same way. `opencastle plugin` checks one against the spec,
+  writes the manifest Claude Code reads instead, and writes the marketplace file
+  for Claude Code, Copilot, Cursor and Codex. Each of the integrations ships as
+  an Agent Plugin too.
 
 ```bash
 opencastle explain                     # what a new teammate's assistant gets, and what to set up
 opencastle ci --owners @acme/platform  # CI check and review on every PR; owners for the lock
-opencastle baseline init               # start the organisation's baseline package
+opencastle baseline init               # start the organisation's baseline package (an Agent Plugin)
+opencastle plugin check                # check it the way every assistant loads it
+opencastle promote memory              # what your assistant learned here, as lessons for the team
 opencastle fleet ~/src/*               # which repositories run which baseline version
 ```
 

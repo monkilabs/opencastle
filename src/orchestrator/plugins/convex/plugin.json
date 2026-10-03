@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "convex",
+  "description": "Convex skill and MCP server for AI coding assistants: Reactive backend with real-time sync.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#convex",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "database"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Convex",
+      "category": "tech",
+      "subCategory": "database",
+      "authType": "none",
+      "officialDocs": "https://docs.convex.dev/"
+    }
+  }
+}
