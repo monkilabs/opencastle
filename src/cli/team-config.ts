@@ -1,4 +1,5 @@
 import * as v from 'valibot'
+import { nearest } from './nearest.js'
 
 /**
  * The team's own source: `.opencastle/config.json`, and the same file at the
@@ -95,28 +96,8 @@ const KNOWN_KEYS = [
   'mcp', 'allow', 'remoteHosts', 'requirePinned', 'require', 'contextBudget',
 ]
 
-function distance(a: string, b: string): number {
-  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)])
-  for (let j = 1; j <= b.length; j++) d[0][j] = j
-  for (let i = 1; i <= a.length; i++) {
-    for (let j = 1; j <= b.length; j++) {
-      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
-    }
-  }
-  return d[a.length][b.length]
-}
-
 function suggest(key: string): string | undefined {
-  let best: string | undefined
-  let bestScore = Infinity
-  for (const k of KNOWN_KEYS) {
-    const s = distance(key.toLowerCase(), k.toLowerCase())
-    if (s < bestScore) {
-      best = k
-      bestScore = s
-    }
-  }
-  return bestScore <= Math.max(2, Math.floor(key.length / 3)) ? best : undefined
+  return nearest(key, KNOWN_KEYS, { ignoreCase: true }) ?? undefined
 }
 
 /**

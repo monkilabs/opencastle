@@ -28,6 +28,7 @@ import {
   readSessions,
 } from './convoy/read-model.js'
 import { openUrl } from './run/platform.js'
+import { nearest } from './nearest.js'
 import type { CliContext } from './types.js'
 
 const DEFAULT_PORT = 4300
@@ -202,23 +203,6 @@ const HELP = `
 
 const FLAGS = ['--port', '--no-open', '--help', '-h']
 
-function nearest(flag: string): string {
-  const distance = (a: string, b: string): number => {
-    const row = Array.from({ length: b.length + 1 }, (_, i) => i)
-    for (let i = 1; i <= a.length; i++) {
-      let prev = row[0]
-      row[0] = i
-      for (let j = 1; j <= b.length; j++) {
-        const cur = row[j]
-        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1))
-        prev = cur
-      }
-    }
-    return row[b.length]
-  }
-  return FLAGS.reduce((best, f) => (distance(flag, f) < distance(flag, best) ? f : best))
-}
-
 export function parseDashboardArgs(args: string[]): { port: number; open: boolean; help: boolean } | { error: string } {
   let port = DEFAULT_PORT
   let open = true
@@ -233,7 +217,8 @@ export function parseDashboardArgs(args: string[]): { port: number; open: boolea
       port = Number(raw)
       if (!/^\d+$/.test(raw) || port > 65535) return { error: `--port must be a whole number from 0 to 65535, not "${raw}"` }
     } else if (arg.startsWith('-')) {
-      return { error: `Unknown option ${arg}. Did you mean ${nearest(arg)}?` }
+      const near = nearest(arg, FLAGS)
+      return { error: `Unknown option ${arg}. ${near ? `Did you mean ${near}?` : `It accepts ${FLAGS.join(', ')}.`}` }
     } else {
       return { error: `Unexpected argument "${arg}". The viewer shows every run; pick one on the page.` }
     }

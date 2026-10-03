@@ -226,3 +226,9 @@ describe('parseDashboardArgs', () => {
     expect((parseDashboardArgs(['--seed']) as { error: string }).error).toMatch(/Unknown option --seed/)
   })
 })
+
+describe('a flag nowhere near one the viewer takes', () => {
+  it('lists what it accepts instead of guessing', () => {
+    expect(parseDashboardArgs(['--json'])).toEqual({ error: 'Unknown option --json. It accepts --port, --no-open, --help, -h.' })
+  })
+})
