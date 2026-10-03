@@ -65,7 +65,9 @@ const args = expandEqualsForm(rawArgs)
  * `docs-accuracy.test.ts` asserts this table against each command's `--help`, so
  * the two cannot drift.
  */
-const GLOBAL_FLAGS = ['--help', '-h', '--version', '-v', '--debug']
+// `--version` is not here: it is read only as the first argument (below), so a
+// command given it is refused rather than run as if it had not been.
+const GLOBAL_FLAGS = ['--help', '-h', '--debug']
 const COMMAND_FLAGS = {
   init: ['--allow-downgrade', '--customize', '--dry-run', '--dryRun', '--reconfigure', '--yes', '-y'],
   sync: ['--allow-downgrade', '--check', '--dry-run', '--dryRun', '--force', '--json', '--reconfigure', '--yes'],
@@ -230,14 +232,10 @@ if (command === '--help' || command === '-h' || command === 'help') {
   process.exit(0)
 }
 
+// Only as the first argument. Anywhere else `-v` can be a value — `opencastle
+// log --task -v` used to print the version and record nothing — or a word of
+// a convoy task.
 if (command === '--version' || command === '-v') {
-  const pkg = JSON.parse(await readFile(resolve(pkgRoot, 'package.json'), 'utf8'))
-  console.log(pkg.version)
-  process.exit(0)
-}
-
-// Handle --version anywhere in args (e.g. "opencastle init --version")
-if (args.includes('--version') || args.includes('-v')) {
   const pkg = JSON.parse(await readFile(resolve(pkgRoot, 'package.json'), 'utf8'))
   console.log(pkg.version)
   process.exit(0)
@@ -266,6 +264,7 @@ const stray = unknownFlag(command, args)
 if (stray) {
   const known = [...COMMAND_FLAGS[command], ...GLOBAL_FLAGS].sort()
   console.error(`\n  ✗ Unknown option for "${command}": ${stray}`)
+  if (stray === '--version' || stray === '-v') console.error('  For the version, put it first: opencastle --version')
   console.error(`  Accepts: ${known.join(' ')}`)
   console.error(`  Run "opencastle ${command} --help" for what each one does.\n`)
   process.exit(1)

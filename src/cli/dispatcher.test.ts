@@ -6,8 +6,10 @@
  * commands explain themselves instead of saying "unknown", that agent-facing
  * commands stay reachable but hidden, and that every advertised command resolves.
  */
-import { readFileSync, existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
 const cliPath = resolve(import.meta.dirname, '..', '..', 'bin', 'cli.mjs')
@@ -138,5 +140,37 @@ describe('global behavior', () => {
     // were wanted. Whether a run reaches that write depends on timing, so the
     // handler is asserted here rather than raced in a test.
     expect(source).toMatch(/stream\.on\('error'[\s\S]{0,80}err\.code === 'EPIPE'\) process\.exit\(0\)/)
+  })
+})
+
+describe('--version', () => {
+  // Run from a scratch directory: if a command were ever run by mistake here,
+  // it must not touch this repository.
+  const run = (args: string[]): { code: number; stdout: string; stderr: string } => {
+    const cwd = mkdtempSync(join(tmpdir(), 'oc-version-'))
+    try {
+      const stdout = execFileSync('node', [cliPath, ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+      return { code: 0, stdout, stderr: '' }
+    } catch (err) {
+      const e = err as { status: number; stdout: string; stderr: string }
+      return { code: e.status, stdout: String(e.stdout), stderr: String(e.stderr) }
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
+    }
+  }
+
+  it('prints the version as the first argument', () => {
+    const { version } = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', '..', 'package.json'), 'utf8'))
+    expect(run(['--version']).stdout.trim()).toBe(version)
+    expect(run(['-v']).stdout.trim()).toBe(version)
+  })
+
+  it('is not read after a command, where -v can be a value or a word', () => {
+    // `opencastle log --task -v` printed the version and recorded nothing.
+    // A command with a closed flag set refuses it instead of running without it.
+    const r = run(['init', '--version'])
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain('Unknown option for "init": --version')
+    expect(r.stderr).toContain('put it first: opencastle --version')
   })
 })
