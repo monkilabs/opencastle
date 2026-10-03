@@ -92,7 +92,7 @@ Example prompt suffix:
 
 ### 2. Decompose into Tasks
 
-1. **Single responsibility** — each task does one thing, sized to fit one agent session.
+1. **As few tasks as the work needs** — a change one agent can make in one session is one task. Split only into tasks that can run at the same time on different files, or into work that genuinely must come after other work. A small change is usually one task; most features are two to five. Every extra task is another agent session, review and merge.
 2. **Self-contained prompt** — the `prompt` holds everything the agent needs: objective, file paths, constraints, acceptance criteria. The agent sees nothing else.
 3. **Explicit file scopes** — list every file or directory the task may change in `files`: exact files (`app/page.tsx`) or directories (`app/about/`). **No glob patterns (`*`, `?`, `**`).**
 4. **No partition conflicts** — two tasks that can run at the same time (neither depends on the other, directly or through other tasks) may not share a `files` entry, and a directory overlaps every file inside it. Resolve it by:
@@ -102,7 +102,7 @@ Example prompt suffix:
    > **Common mistake:** several tasks that depend only on one `setup` task run at the same time, and conflict if they all claim `components/`, `app/globals.css` or `app/layout.tsx`. Use specific paths, or sequence them.
 
 5. **Appropriate agent** — pick the agent whose speciality matches the task (see the roster).
-6. **Tests are tasks too** — writing tests is a task with its own test files. Running the full suite is not: the code runs it once at the end.
+6. **Code and its tests in the same task** — the agent that writes a change writes its tests and runs them, while it still has the context; list the test files in that task's `files`. Plan a separate testing task only for tests that cover several tasks' work together, after those tasks. Running the full suite is never a task: the code runs it once at the end.
 
 ### 3. Foundation Phase for Multi-Page Projects
 
@@ -216,19 +216,28 @@ Check every item before answering. A failure costs a fix round.
     {
       "id": "token-service",
       "agent": "developer",
-      "description": "Extract the token service",
-      "files": ["libs/auth/src/tokens.ts"],
+      "description": "Extract the token service, with its tests",
+      "files": ["libs/auth/src/tokens.ts", "libs/auth/src/__tests__/tokens.test.ts"],
       "depends_on": [],
       "complexity": 3,
       "prompt": "Full self-contained instruction..."
     },
     {
-      "id": "token-tests",
-      "agent": "testing-expert",
-      "description": "Test the token service",
-      "files": ["libs/auth/src/__tests__/tokens.test.ts"],
-      "depends_on": ["token-service"],
-      "complexity": 2,
+      "id": "session-store",
+      "agent": "developer",
+      "description": "Move sessions to the store, with its tests",
+      "files": ["libs/auth/src/sessions.ts", "libs/auth/src/__tests__/sessions.test.ts"],
+      "depends_on": [],
+      "complexity": 3,
+      "prompt": "Full self-contained instruction..."
+    },
+    {
+      "id": "auth-docs",
+      "agent": "writer",
+      "description": "Document the new auth flow",
+      "files": ["docs/auth.md"],
+      "depends_on": ["token-service", "session-store"],
+      "complexity": 1,
       "prompt": "Full self-contained instruction..."
     }
   ]
