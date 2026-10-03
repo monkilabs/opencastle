@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parse as yamlParse } from 'yaml'
 import { parseYaml, validateSpec } from '../run/schema.js'
-import {
+import { foldTestOnlyTasks,
   buildConvoyYaml,
   applyPatches,
   parseTaskPlan,
@@ -612,5 +612,57 @@ describe('parsePatches', () => {
     ['one bad patch among good', JSON.stringify([{ task_id: 'a', field: 'prompt', value: 'ok' }, { task_id: 'b', field: 'prompt' }])],
   ])('returns null for %s', (_label, text) => {
     expect(parsePatches(text)).toBeNull()
+  })
+})
+
+describe('foldTestOnlyTasks', () => {
+  const t = (id: string, files: string[], depends_on: string[] = [], agent = 'developer') =>
+    ({ id, agent, files, depends_on, prompt: `do ${id}` })
+
+  it('folds a test-only task into the task it tests, as three real plans split them', () => {
+    // The plan a real run produced for pagination and DELETE /notes.
+    const { plan, folded } = foldTestOnlyTasks({
+      name: 'x',
+      tasks: [
+        t('store', ['src/notes.js']),
+        t('routes', ['src/server.js'], ['store']),
+        t('unit-tests', ['test/notes.test.js'], ['store'], 'testing-expert'),
+        t('http-tests', ['test/server.test.js'], ['routes'], 'testing-expert'),
+      ],
+    })
+    expect(folded).toEqual([['unit-tests', 'store'], ['http-tests', 'routes']])
+    expect(plan.tasks.map((x) => x.id)).toEqual(['store', 'routes'])
+    expect(plan.tasks[0]).toMatchObject({ files: ['src/notes.js', 'test/notes.test.js'], agent: 'developer' })
+    expect(plan.tasks[0].prompt).toContain('do store')
+    expect(plan.tasks[0].prompt).toContain('do unit-tests')
+  })
+
+  it('points tasks that waited on the tests at the merged task', () => {
+    const { plan } = foldTestOnlyTasks({
+      name: 'x',
+      tasks: [t('api', ['src/api.ts']), t('api-tests', ['src/api.test.ts'], ['api']), t('docs', ['README.md'], ['api-tests'])],
+    })
+    expect(plan.tasks.find((x) => x.id === 'docs')?.depends_on).toEqual(['api'])
+  })
+
+  it('leaves alone tests that cover several tasks, or files another task claims', () => {
+    const several = foldTestOnlyTasks({
+      name: 'x',
+      tasks: [t('a', ['src/a.ts']), t('b', ['src/b.ts']), t('e2e', ['tests/e2e.test.ts'], ['a', 'b'])],
+    })
+    expect(several.folded).toEqual([])
+    const shared = foldTestOnlyTasks({
+      name: 'x',
+      tasks: [t('a', ['src/a.ts']), t('a-tests', ['test/shared.test.ts'], ['a']), t('b', ['test/shared.test.ts'])],
+    })
+    expect(shared.folded).toEqual([])
+  })
+
+  it('leaves a task with any non-test file alone', () => {
+    const { folded } = foldTestOnlyTasks({
+      name: 'x',
+      tasks: [t('a', ['src/a.ts']), t('fixtures', ['test/a.test.ts', 'src/fixtures.ts'], ['a'])],
+    })
+    expect(folded).toEqual([])
   })
 })

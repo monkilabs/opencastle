@@ -334,6 +334,44 @@ function conflicts(plan: TaskPlan): Conflict[] {
  * once the run has started: no globs, and no two concurrent tasks on the same
  * files. An empty list means the engine will accept the spec.
  */
+const TEST_PATH = /(^|\/)(tests?|__tests__|spec)\/|\.(test|spec)\.[cm]?[jt]sx?$|_test\.(go|py)$|(^|\/)test_[^/]+\.py$/
+
+/**
+ * Fold a task that only writes tests for one other task into that task.
+ *
+ * Planners split work into "write the code" and "test the code" even when told
+ * not to: three real runs did it every time. Each split is another session,
+ * review and merge, and the agent that wrote the code never runs a test against
+ * it. A task folds in when every file it owns is a test file, it depends on
+ * exactly one task, nothing else claims its files, and that task is not itself
+ * test-only. Tasks that waited on it wait on the merged task instead.
+ */
+export function foldTestOnlyTasks(plan: TaskPlan): { plan: TaskPlan; folded: Array<[string, string]> } {
+  const byId = new Map(plan.tasks.map((t) => [t.id, { ...t, files: [...(t.files ?? [])], depends_on: [...(t.depends_on ?? [])] }]))
+  const isTestOnly = (t: TaskPlanTask): boolean => (t.files ?? []).length > 0 && (t.files ?? []).every((f) => TEST_PATH.test(f))
+  const folded: Array<[string, string]> = []
+  for (const task of plan.tasks) {
+    const t = byId.get(task.id)
+    if (!t || !isTestOnly(t) || t.depends_on.length !== 1) continue
+    const target = byId.get(t.depends_on[0])
+    if (!target || isTestOnly(target)) continue
+    const claimedElsewhere = [...byId.values()].some(
+      (o) => o.id !== t.id && o.id !== target.id && (o.files ?? []).some((f) => t.files.includes(f)),
+    )
+    if (claimedElsewhere) continue
+    target.files = [...new Set([...(target.files ?? []), ...t.files])]
+    target.prompt = `${target.prompt.trimEnd()}\n\nIn the same session, write the tests for this change:\n${t.prompt.trim()}`
+    byId.delete(t.id)
+    for (const other of byId.values()) {
+      if (other.depends_on.includes(t.id)) {
+        other.depends_on = [...new Set(other.depends_on.map((d) => (d === t.id ? target.id : d)))].filter((d) => d !== other.id)
+      }
+    }
+    folded.push([t.id, target.id])
+  }
+  return { plan: { ...plan, tasks: plan.tasks.filter((t) => byId.has(t.id)).map((t) => byId.get(t.id)!) }, folded }
+}
+
 export function checkPlan(plan: TaskPlan, settings: SpecSettings): string[] {
   const problems: string[] = []
 

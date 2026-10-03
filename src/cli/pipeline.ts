@@ -9,7 +9,7 @@ import { resolveAdapter, cleanupAdapters, type ResolvedAdapter } from './run/ada
 import { findProjectRoot } from './convoy/read-model.js'
 import type { AgentAdapter } from './convoy/spec-types.js'
 import type { CliContext } from './types.js'
-import {
+import { foldTestOnlyTasks,
   applyPatches,
   buildConvoyYaml,
   checkPlan,
@@ -578,6 +578,9 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   const normalized = normalizePlanFiles(plan)
   plan = normalized.plan
   for (const note of normalized.notes) console.log(c.dim(`    files: ${note}`))
+  const tests = foldTestOnlyTasks(plan)
+  plan = tests.plan
+  for (const [from, into] of tests.folded) console.log(c.dim(`    ${from} folded into ${into}: the agent that writes the code writes its tests`))
 
   // ── The spec ──────────────────────────────────────────────────────────────
   await mkdir(convoyDir, { recursive: true })
