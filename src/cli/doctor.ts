@@ -16,6 +16,7 @@ import {
 } from './managed-block.js';
 import { UnreadableConfigError } from './types.js';
 import { checkMcpSupplyChain } from './mcp-audit.js';
+import { parseMcpConfigText } from './mcp-file.js';
 import {
   teamStateFor,
   teamAuditContext,
@@ -464,7 +465,7 @@ export function checkMcpFromPaths(projectRoot: string, mcpPaths: string[]): Chec
     const abs = resolve(projectRoot, p);
     if (!existsSync(abs)) continue;
     try {
-      JSON.parse(readFileSync(abs, 'utf8'));
+      parseMcpConfigText(readFileSync(abs, 'utf8'), p);
     } catch (err) {
       return {
         ok: false,
@@ -986,7 +987,7 @@ export default async function doctor({ pkgRoot, args }: CliContext): Promise<voi
 
   let manifest: Manifest | null = null;
   let manifestUnreadable: string | undefined;
-  let manifestReason: 'unparseable' | 'unreadable' = 'unparseable';
+  let manifestReason: UnreadableConfigError['reason'] = 'unparseable';
   try {
     manifest = await readManifest(projectRoot);
   } catch (err) {

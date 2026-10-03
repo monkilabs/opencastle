@@ -191,8 +191,11 @@ cycle is an error.
   ([`mcp.ts`](src/cli/mcp.ts)): `${NAME}` for Claude Code, `${env:NAME}` for
   Cursor and Windsurf, `{env:NAME}` for OpenCode. VS Code forwards a plain
   `env` variable through `envFile` and turns any other reference into a
-  password input. Codex and Antigravity keep `${NAME}` until their syntax is
-  confirmed. Editor variables are not environment variables: VS Code and
+  password input. Codex expands no variables, so `.codex/config.toml` gets the
+  field that reads one instead: a forwarded variable in `env_vars`, a
+  `Bearer ${NAME}` header as `bearer_token_env_var`, a header that is only
+  `${NAME}` in `env_http_headers`. Antigravity keeps `${NAME}` until its syntax
+  is confirmed. Editor variables are not environment variables: VS Code and
   Cursor get `${workspaceFolder}` as written, the others `.` (they start a
   project's servers in the project directory) and `HOME` for `${userHome}`. A
   server an earlier sync wrote that no layer defines any more is removed, with

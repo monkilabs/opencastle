@@ -213,10 +213,10 @@ describe('two targets that share a root file', () => {
     const text = readFileSync(join(projectRoot, 'AGENTS.md'), 'utf8')
     expect(text).toContain('shared by more than one assistant')
     expect(text).toContain('.opencode/skills/')
-    expect(text).not.toContain('.codex/skills/')
+    expect(text).toContain('`.codex/`, `.agents/skills/`')
     // Both assistants still get their own files.
     expect(existsSync(join(projectRoot, '.opencode', 'skills'))).toBe(true)
-    expect(existsSync(join(projectRoot, '.codex', 'skills'))).toBe(true)
+    expect(existsSync(join(projectRoot, '.agents', 'skills'))).toBe(true)
   })
 })
 

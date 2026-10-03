@@ -8,6 +8,7 @@ import type { McpInput, McpServerConfig, EnvVarRequirement } from '../orchestrat
 import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice, CopyResults } from './types.js';
 import type { TeamMcpPlan } from './layers.js';
 import { EDITOR_VARIABLES, type TeamMcpServer } from './team-config.js';
+import { parseMcpConfigText, serialiseMcpConfig, TomlEditError } from './mcp-file.js';
 
 // ── IDE-specific MCP format transformation ────────────────────
 
@@ -63,6 +64,12 @@ function editorVariableFor(ide: IdeChoice, name: string, original: string): stri
   return original;
 }
 
+/** The variable a value is wholly a reference to — `${NAME}` and nothing else — or null. */
+function wholeReference(value: string): string | null {
+  const m = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value);
+  return m && !EDITOR_VARIABLES.has(m[1]) ? m[1] : null;
+}
+
 /** Rewrite every `${NAME}` in a value into the target's own spelling. */
 function rewriteRefs(value: string, ide: IdeChoice): string {
   return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (m, name: string) =>
@@ -87,7 +94,6 @@ function transformMcpForIde(
     case 'cursor':
     case 'claude-code':
     case 'windsurf':
-    case 'codex':
     case 'antigravity': {
       // mcpServers format — no 'type' field
       const mcpServers: Record<string, unknown> = {};
@@ -113,6 +119,53 @@ function transformMcpForIde(
         }
       }
       return { mcpServers };
+    }
+
+    case 'codex': {
+      // Codex CLI reads `[mcp_servers.<name>]` tables in `.codex/config.toml`
+      // and expands no variables anywhere in them. What it offers instead is
+      // structural: `env_vars` forwards a variable from the environment Codex
+      // was started in, `bearer_token_env_var` sends `Authorization: Bearer`
+      // with one, and `env_http_headers` sets a header to one. A reference that
+      // is exactly one of those shapes is written as it; anything else is left
+      // as written, and `doctor` says so.
+      const mcp_servers: Record<string, unknown> = {};
+      for (const [name, server] of Object.entries(servers)) {
+        if (server.type === 'stdio') {
+          const env: Record<string, string> = {};
+          const envVars: string[] = [];
+          for (const [key, value] of Object.entries(server.env ?? {})) {
+            if (wholeReference(value) === key) envVars.push(key);
+            else env[key] = value;
+          }
+          mcp_servers[name] = {
+            command: server.command,
+            ...(server.args && { args: server.args }),
+            ...(Object.keys(env).length > 0 && { env }),
+            ...(envVars.length > 0 && { env_vars: envVars }),
+          };
+        } else if (server.type === 'http') {
+          const url = (server.url ?? '').replace(/\$\{input:\w+\}/g, 'REPLACE_ME');
+          const literal: Record<string, string> = {};
+          const fromEnv: Record<string, string> = {};
+          let bearer: string | undefined;
+          for (const [header, value] of Object.entries(server.headers ?? {})) {
+            const token = /^Bearer\s+(\$\{[A-Za-z_][A-Za-z0-9_]*\})$/.exec(value);
+            const bearerVar = header.toLowerCase() === 'authorization' && token ? wholeReference(token[1]) : null;
+            const whole = wholeReference(value);
+            if (bearerVar) bearer = bearerVar;
+            else if (whole) fromEnv[header] = whole;
+            else literal[header] = value;
+          }
+          mcp_servers[name] = {
+            url,
+            ...(bearer && { bearer_token_env_var: bearer }),
+            ...(Object.keys(literal).length > 0 && { http_headers: literal }),
+            ...(Object.keys(fromEnv).length > 0 && { env_http_headers: fromEnv }),
+          };
+        }
+      }
+      return { mcp_servers };
     }
 
     case 'opencode': {
@@ -150,41 +203,6 @@ function transformMcpForIde(
 }
 
 /**
- * The indentation a file already uses, so merging into it does not restyle it.
- *
- * `JSON.stringify(x, null, 2)` re-indented every co-owned config we touched. A
- * hand-written tab-indented `opencode.json` — OpenCode's entire project config —
- * came back two-space indented from a merge that added one key, and never came back
- * from the uninstall at all: 111 bytes in, 114 out, for a strip that took nothing
- * of theirs. Byte fidelity is a claim this tool makes about co-owned files, and a
- * JSON config is one of those.
- *
- * Read from the first indented line, which is what every formatter agrees on.
- * Falls back to two spaces for a file we are creating or one written on a single
- * line, which is what this always did.
- */
-function indentOf(text: string): string | number {
-  const m = /\n([ \t]+)\S/.exec(text);
-  if (m) return m[1].includes('\t') ? '\t' : m[1].length;
-  // A config written on one line has no indentation, and expanding it to three is
-  // as much a restyle as collapsing it would be. `0` is what `JSON.stringify` takes
-  // for "no whitespace".
-  return text.trim().includes('\n') ? 2 : 0;
-}
-
-/**
- * Re-serialise a config the way the file was already written.
- *
- * Indentation and line endings both, because `JSON.stringify` emits `\n` whatever
- * it was handed and a CRLF config came back LF from a merge that added one key.
- * The same rule `.gitignore` follows: a CRLF file stays CRLF.
- */
-function serialiseLike(original: string, value: unknown): string {
-  const text = JSON.stringify(value, null, indentOf(original)) + '\n';
-  return /\r\n/.test(original) ? text.replace(/\n/g, '\r\n') : text;
-}
-
-/**
  * One plugin's server as the VS Code–format config, with the env vars other
  * targets need spelled out — they have no `envFile`.
  */
@@ -206,7 +224,8 @@ function serverFor(
   return serverConfig;
 }
 
-function containerKeyFor(ide: IdeChoice): string {
+export function containerKeyFor(ide: IdeChoice): string {
+  if (ide === 'codex') return 'mcp_servers';
   return ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers';
 }
 
@@ -419,6 +438,20 @@ export function upgradeGeneratedServers(
 }
 
 /**
+ * The text to write, or the same refusal an unparseable config gets when a
+ * TOML config is laid out in a way that cannot be changed line by line —
+ * named and left alone, never rewritten wholesale.
+ */
+function serialiseOrRefuse(before: string | null, value: Record<string, unknown>, rel: string): string {
+  try {
+    return serialiseMcpConfig(before, value, rel);
+  } catch (err) {
+    if (err instanceof TomlEditError) throw new UnreadableConfigError(rel, 'uneditable');
+    throw err;
+  }
+}
+
+/**
  * Scaffold or merge the MCP server config into the target project.
  *
  * Builds the server list from plugin configs based on the user's
@@ -487,17 +520,12 @@ export async function scaffoldMcpConfig(
     }
     let existing: Record<string, unknown>;
     try {
-      existing = JSON.parse(existingContent) as Record<string, unknown>;
+      existing = parseMcpConfigText(existingContent, destRelPath);
     } catch {
       throw new UnreadableConfigError(destRelPath);
     }
 
-    // Determine the server container key for this IDE
-    const containerKey = resolvedIde === 'opencode'
-      ? 'mcp'
-      : resolvedIde === 'vscode'
-        ? 'servers'
-        : 'mcpServers';
+    const containerKey = containerKeyFor(resolvedIde);
 
     if (!existing[containerKey]) {
       existing[containerKey] = {};
@@ -539,13 +567,13 @@ export async function scaffoldMcpConfig(
       return { path: destPath, action: 'skipped', team: teamChanges };
     }
 
-    await writeFile(destPath, serialiseLike(existingContent, existing));
+    await writeFile(destPath, serialiseOrRefuse(existingContent, existing, destRelPath));
     return { path: destPath, action: 'created', team: teamChanges };
   }
 
   const teamChanges = applyTeamPlan(output, resolvedIde, team);
   await mkdir(dirname(destPath), { recursive: true });
-  await writeFile(destPath, JSON.stringify(output, null, 2) + '\n');
+  await writeFile(destPath, serialiseOrRefuse(null, output, destRelPath));
 
   return { path: destPath, action: 'created', team: teamChanges };
 }
@@ -568,7 +596,7 @@ export function getMcpConfigRelPath(ide: IdeChoice): string {
     case 'windsurf':
       return '.windsurf/mcp.json';
     case 'codex':
-      return '.codex/mcp.json';
+      return '.codex/config.toml';
     case 'antigravity':
       return '.agents/mcp_config.json';
   }
@@ -611,9 +639,7 @@ export async function scaffoldMcpConfigInto(
     if (result.team?.removed.length) (results.mcpTeamRemoved ??= []).push(...result.team.removed);
   } catch (err) {
     if (!(err instanceof UnreadableConfigError)) throw err;
-    (results.unreadable ??= []).push(
-      err.reason === 'unreadable' ? `${err.file}\u0000unreadable` : err.file,
-    );
+    (results.unreadable ??= []).push(err.reason === 'unparseable' ? err.file : `${err.file}\u0000${err.reason}`);
   }
 }
 
@@ -641,8 +667,8 @@ export function willKeepSomethingAfterStrip(
   teamInputs: string[] = [],
 ): boolean {
   const containerKeys = ide
-    ? [ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers']
-    : ['mcp', 'servers', 'mcpServers']
+    ? [containerKeyFor(ide)]
+    : ['mcp', 'servers', 'mcpServers', 'mcp_servers']
 
   const ourServerKeys = new Set([
     ...Object.values(PLUGINS)
@@ -680,7 +706,47 @@ export async function stripManagedMcpServers(
   teamKeys: string[] = [],
   teamInputs: string[] = [],
 ): Promise<'deleted' | 'stripped' | 'absent' | 'unreadable'> {
-  const destPath = resolve(projectRoot, getMcpConfigRelPath(ide));
+  return stripConfigAt(projectRoot, getMcpConfigRelPath(ide), ide, createdByUs, teamKeys, teamInputs);
+}
+
+/**
+ * MCP configs a release before this one wrote where the assistant never looks.
+ *
+ * Codex CLI reads project servers only from `.codex/config.toml`; the
+ * `.codex/mcp.json` OpenCastle wrote for it was never loaded, so every server
+ * in it was one Codex did not have.
+ */
+export const LEGACY_MCP_CONFIGS: Partial<Record<IdeChoice, string>> = {
+  codex: '.codex/mcp.json',
+};
+
+/**
+ * Take our servers back out of a target's legacy MCP config, and delete it if
+ * we created it and nothing of the user's is left. Anything they added stays —
+ * it never reached the assistant either, and `sync` says where it belongs.
+ */
+export async function retireLegacyMcpConfig(
+  projectRoot: string,
+  ide: IdeChoice,
+  createdByUs = false,
+  teamKeys: string[] = [],
+  teamInputs: string[] = [],
+): Promise<'deleted' | 'stripped' | 'absent' | 'unreadable'> {
+  const rel = LEGACY_MCP_CONFIGS[ide];
+  if (!rel) return 'absent';
+  // No `ide`: the legacy file is in the shape it was written in, not today's.
+  return stripConfigAt(projectRoot, rel, undefined, createdByUs, teamKeys, teamInputs);
+}
+
+async function stripConfigAt(
+  projectRoot: string,
+  rel: string,
+  ide: IdeChoice | undefined,
+  createdByUs: boolean,
+  teamKeys: string[],
+  teamInputs: string[],
+): Promise<'deleted' | 'stripped' | 'absent' | 'unreadable'> {
+  const destPath = resolve(projectRoot, rel);
   if (!existsSync(destPath)) return 'absent';
 
   let before: string;
@@ -691,7 +757,7 @@ export async function stripManagedMcpServers(
   }
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(before) as Record<string, unknown>;
+    parsed = parseMcpConfigText(before, rel);
   } catch {
     // Not ours to repair. Leaving it alone beats deleting something unreadable,
     // but 'stripped' would have removal report "kept your content in N file(s)"
@@ -734,7 +800,12 @@ export async function stripManagedMcpServers(
 
   // The file's own indentation, not ours. Taking our servers out of a
   // tab-indented config used to restyle every line of it.
-  await writeFile(destPath, serialiseLike(before, parsed));
+  try {
+    await writeFile(destPath, serialiseMcpConfig(before, parsed, rel));
+  } catch (err) {
+    if (err instanceof TomlEditError) return 'unreadable';
+    throw err;
+  }
   return 'stripped';
 }
 
@@ -778,12 +849,11 @@ export async function rebuildMcpConfig(
   }
   let existing: Record<string, unknown>;
   try {
-    existing = JSON.parse(before) as Record<string, unknown>;
+    existing = parseMcpConfigText(before, destRelPath);
   } catch {
     throw new UnreadableConfigError(destRelPath);
   }
-  const containerKey =
-    ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers';
+  const containerKey = containerKeyFor(ide);
 
   const existingServers = (existing[containerKey] ?? {}) as Record<string, unknown>;
 
@@ -868,11 +938,11 @@ export async function rebuildMcpConfig(
   // policies, and the user's formatting lost to the stricter of them.
   let unchanged = false;
   try {
-    unchanged = JSON.stringify(JSON.parse(before)) === JSON.stringify(existing);
+    unchanged = JSON.stringify(parseMcpConfigText(before, destRelPath)) === JSON.stringify(existing);
   } catch {
     unchanged = false;
   }
-  if (!unchanged) await writeFile(destPath, serialiseLike(before, existing));
+  if (!unchanged) await writeFile(destPath, serialiseOrRefuse(before, existing, destRelPath));
 
   // Re-scaffold: merges new plugin servers into the cleaned config, and writes
   // the team's servers exactly as its layers define them.

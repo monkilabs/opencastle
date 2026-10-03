@@ -60,16 +60,17 @@ shipped is on the website; this is the record of decisions and gaps.
 | `sync` refuses to downgrade a project a newer release compiled | Two teammates on different versions no longer rewrite each other's output |
 | **Namespaced commands**: `/oc:bug-fix` in Claude Code (`.claude/commands/oc/`) and Copilot (`.github/prompts/oc.*.prompt.md`), a team's own prompts included; `sync` removes the un-namespaced files an earlier release wrote | A teammate's own `/bug-fix` keeps working beside ours, and `sync`, `sync --check` and `remove` never touch a command OpenCastle did not write |
 | Integration servers' variables written as `${env:NAME}` for Cursor and Windsurf and `{env:NAME}` for OpenCode | Cursor and OpenCode passed the `${NAME}` written before to the server as literal text |
+| **Codex CLI** receives skills in `.agents/skills/` and MCP servers as `[mcp_servers.<name>]` tables in `.codex/config.toml`, changed table by table so the rest of the file stays the user's; variables as `env_vars`, `bearer_token_env_var` and `env_http_headers`. `sync` removes `.codex/skills/` and takes our servers out of `.codex/mcp.json` | Codex reads neither of the paths written before, so a Codex user got AGENTS.md and no skill, integration or team server at all |
 
 ## Next, in order of leverage
 
-### 1. Team servers that reach Codex and Windsurf
+### 1. Team servers that reach Windsurf
 
-OpenCastle writes `.codex/mcp.json` for Codex CLI, which configures MCP servers
-in TOML, and `.windsurf/mcp.json` for Windsurf, whose MCP config is documented
-as one global file in the user's home directory. Until each is compiled to
-where its assistant reads it — or, for Windsurf, `explain` says what to add to
-the global file — a team server may not reach those two assistants at all.
+OpenCastle writes `.windsurf/mcp.json` for Windsurf, whose MCP config is
+documented as one global file in the user's home directory. Until it is
+compiled to where Windsurf reads it — or `explain` says what to add to the
+global file — a team server may not reach Windsurf at all. (Codex, the other
+assistant this used to name, now gets `.codex/config.toml`.)
 
 ### 2. VS Code without a prompt per variable
 
@@ -125,8 +126,14 @@ assistant is given, so the reduction can be reviewed like any other change.
   `${env:NAME}` written into a team server's headers is honoured there — and
   whether a project-level `.windsurf/mcp.json` is read at all — needs checking
   against the current release.
-- Codex CLI and Antigravity receive `${NAME}` for team and integration servers
-  alike; neither assistant's variable syntax has been confirmed.
+- Antigravity receives `${NAME}` for team and integration servers alike; its
+  variable syntax has not been confirmed. Codex's has: it expands none, and
+  reads variables only through `env_vars`, `bearer_token_env_var` and
+  `env_http_headers`, which is what it now gets. A reference in any other shape
+  — part of an argument, or a header that is not wholly one variable — still
+  reaches a Codex server as text, and `doctor` says so.
+- Codex loads a project's `.codex/config.toml` only in a project the user has
+  marked as trusted. `explain` does not say so yet.
 - How each assistant treats an unset variable in its own syntax — an empty
   string, the literal text, or a server that fails to start — and whether Claude
   Code's `${VAR:-default}` is the safer spelling there.
@@ -153,9 +160,9 @@ assistant is given, so the reduction can be reviewed like any other change.
 - Figma's remote server lists the clients it supports; OpenCode, Windsurf and
   Antigravity are not on that list. Those targets may need Figma's desktop
   server (`http://127.0.0.1:3845/mcp`) instead, which needs a per-target config.
-- The Windsurf, Codex and Antigravity MCP outputs should be checked against each
-  vendor's current documentation, the way the Claude Code shape was: remote
-  servers may need a different key there.
+- The Windsurf and Antigravity MCP outputs should be checked against each
+  vendor's current documentation, the way the Claude Code and Codex shapes
+  were: remote servers may need a different key there.
 
 ## How we will know it works
 

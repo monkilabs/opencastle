@@ -13,13 +13,13 @@ import {
   getCustomizationsTransform,
   isEnvVarSatisfied,
 } from './stack-config.js'
-import { rebuildMcpConfig, getMcpConfigRelPath } from './mcp.js'
+import { rebuildMcpConfig, getMcpConfigRelPath, retireLegacyMcpConfig, LEGACY_MCP_CONFIGS } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, buildDetectedToolsSet } from './detect.js'
 import type { CliContext, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { UnreadableConfigError } from './types.js'
-import { noteUnreadable } from './unreadable-report.js'
+import { noteUnreadable, whyLeftAlone } from './unreadable-report.js'
 import {
   resolveSources,
   materialize,
@@ -32,6 +32,13 @@ import {
 import { buildLock, writeLock, LOCK_REL, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
+import { parseMcpConfigText } from './mcp-file.js'
+
+/** The config that replaced a legacy one, for the sentence that reports it. */
+function configBesideLegacy(rel: string, ides: string[]): string {
+  const ide = ides.find((i) => LEGACY_MCP_CONFIGS[i as IdeChoice] === rel)
+  return ide ? getMcpConfigRelPath(ide as IdeChoice) : 'the assistant\'s own config'
+}
 
 /** Print what is wrong with the team's sources, and that nothing was written. */
 function reportTeamIssues(resolved: ResolvedSources): void {
@@ -247,7 +254,7 @@ export default async function update({
       const abs = resolve(projectRoot, rel)
       if (!existsSync(abs)) continue
       try {
-        JSON.parse(await readFile(abs, 'utf8'))
+        parseMcpConfigText(await readFile(abs, 'utf8'), rel)
       } catch {
         return true
       }
@@ -557,6 +564,21 @@ export default async function update({
   const teamWritten = new Set<string>()
   const teamRemoved = new Set<string>()
   const upgradedServers = new Set<string>()
+  // Which MCP configs exist before this sync writes any, so one it creates is
+  // recorded as ours — as `init` records the ones it creates. A target whose
+  // config moved (Codex, to `.codex/config.toml`) gets its new file here, and
+  // without the record `remove` would strip it and leave an empty file behind.
+  const mcpConfigsBefore = new Map(
+    ides.map((ide) => {
+      const rel = getMcpConfigRelPath(ide as IdeChoice)
+      return [rel, existsSync(resolve(projectRoot, rel))] as const
+    }),
+  )
+  const createdConfigs = new Set(manifest.createdConfigs ?? [])
+  // Legacy MCP configs this sync took our servers out of: deleted, or kept for
+  // what the user added to them.
+  const legacyDeleted: string[] = []
+  const legacyKept: string[] = []
   const removedServers = new Set<string>()
   let lockWritten = false
   let lockHeld = false
@@ -609,10 +631,31 @@ export default async function update({
             await step()
           } catch (err) {
             if (!(err instanceof UnreadableConfigError)) throw err
-            noteUnreadable(unreadable, err.file)
+            noteUnreadable(unreadable, err.reason === 'unparseable' ? err.file : `${err.file}\u0000${err.reason}`)
           }
         }
       }
+    }
+
+    // Configs an earlier release wrote where the assistant never reads them.
+    // Taken back after the new config is written, so a failure there leaves
+    // the servers in at least one place.
+    const [priorKeys, priorInputs] = priorTeam(projectRoot)
+    for (const ide of ides) {
+      const rel = LEGACY_MCP_CONFIGS[ide as IdeChoice]
+      if (!rel) continue
+      const outcome = await retireLegacyMcpConfig(
+        projectRoot,
+        ide as IdeChoice,
+        createdConfigs.has(rel),
+        [...new Set([...Object.keys(source.mcp.servers), ...priorKeys])],
+        priorInputs,
+      )
+      if (outcome === 'deleted') {
+        legacyDeleted.push(rel)
+        createdConfigs.delete(rel)
+      } else if (outcome === 'stripped') legacyKept.push(rel)
+      else if (outcome === 'unreadable') noteUnreadable(unreadable, rel)
     }
 
     // What every assistant is now given, for review. Written last, from the
@@ -665,6 +708,10 @@ export default async function update({
   manifest.commandNamespace = COMMAND_NAMESPACE
   manifest.stack = newStack
   manifest.repoInfo = mergeStackIntoRepoInfo(repoInfo, newStack)
+  for (const [rel, existed] of mcpConfigsBefore) {
+    if (!existed && existsSync(resolve(projectRoot, rel))) createdConfigs.add(rel)
+  }
+  if (createdConfigs.size > 0 || manifest.createdConfigs) manifest.createdConfigs = [...createdConfigs]
   if (manifestMeaning(manifest as unknown as Record<string, unknown>) !== before) {
     manifest.updatedAt = new Date().toISOString()
     await writeManifest(projectRoot, manifest)
@@ -701,6 +748,15 @@ export default async function update({
   }
   if (teamWritten.size > 0) {
     console.log(`  ${c.green('✓')} Wrote the team's MCP server(s) as defined: ${[...teamWritten].sort().join(', ')}`)
+  }
+  for (const rel of legacyDeleted) {
+    console.log(`  ${c.yellow('-')} Removed ${rel}, which its assistant never read ${c.dim(`(its servers are now in ${configBesideLegacy(rel, ides)})`)}`)
+  }
+  for (const rel of legacyKept) {
+    console.log(
+      `  ${c.yellow('!')} Took OpenCastle's servers out of ${rel}, which its assistant never read. ` +
+        `What is left there is yours — move it to ${configBesideLegacy(rel, ides)}.`,
+    )
   }
   if (teamRemoved.size > 0) {
     console.log(
@@ -743,7 +799,7 @@ export default async function update({
     const name = isAbsolute(abs) ? relative(projectRoot, abs) : abs
     console.log(
       `  ${c.yellow('!')} Left ${name} alone — ` +
-        (why === 'unreadable' ? 'it could not be read.' : 'it is not valid JSON.'),
+        whyLeftAlone(name, why),
     )
     console.log(`     ${c.dim('Merge conflict? Fix the file and run sync again.')}`)
   }

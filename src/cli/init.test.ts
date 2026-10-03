@@ -19,6 +19,7 @@ import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promi
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
+import { parse as parseToml } from 'smol-toml'
 import type { StackConfig, RepoInfo } from './types.js'
 import { updateGitignore } from './gitignore.js'
 import {
@@ -1079,29 +1080,40 @@ describe('Codex adapter install', () => {
     expect(content).toContain('.codex/')
   })
 
-  it('creates files in .codex/ directory structure', async () => {
+  it('puts agents in .codex/ and skills where Codex reads them, .agents/skills/', async () => {
     const adapter = await IDE_ADAPTERS['codex']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
     expect(existsSync(join(tmpDir, '.codex', 'agents'))).toBe(true)
-    expect(existsSync(join(tmpDir, '.codex', 'skills'))).toBe(true)
+    expect(existsSync(join(tmpDir, '.agents', 'skills', 'testing-workflow', 'SKILL.md'))).toBe(true)
+    // Codex has never read this; nothing should be written there.
+    expect(existsSync(join(tmpDir, '.codex', 'skills'))).toBe(false)
+    const root = await readFile(join(tmpDir, 'AGENTS.md'), 'utf8')
+    expect(root).toContain('`.agents/skills/testing-workflow/SKILL.md`')
   })
 
-  it('generates Codex MCP config with mcpServers format', async () => {
+  it('writes MCP servers as [mcp_servers] tables in .codex/config.toml', async () => {
     const adapter = await IDE_ADAPTERS['codex']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
-    const mcpPath = join(tmpDir, '.codex', 'mcp.json')
-    expect(existsSync(mcpPath)).toBe(true)
-    const mcp = await readJson(mcpPath)
-    expect(mcp).toHaveProperty('mcpServers')
+    expect(existsSync(join(tmpDir, '.codex', 'mcp.json'))).toBe(false)
+    const text = await readFile(join(tmpDir, '.codex', 'config.toml'), 'utf8')
+    const config = parseToml(text) as { mcp_servers: Record<string, Record<string, unknown>> }
+    expect(Object.keys(config.mcp_servers).length).toBeGreaterThan(0)
+    for (const entry of Object.values(config.mcp_servers)) {
+      // Codex expands no variables, so none may be written as text.
+      expect(JSON.stringify(entry)).not.toMatch(/\$\{[A-Z_]+\}/)
+      expect('url' in entry || 'command' in entry).toBe(true)
+    }
   })
 
-  it('getManagedPaths includes AGENTS.md and .codex dirs', async () => {
+  it('getManagedPaths includes AGENTS.md, the .codex dirs and .agents/skills/', async () => {
     const adapter = await IDE_ADAPTERS['codex']()
     const paths = adapter.getManagedPaths()
     expect(paths.merged).toContain('AGENTS.md')
     expect(paths.framework).not.toContain('AGENTS.md')
-    expect(paths.framework.some(p => p.includes('.codex/'))).toBe(true)
-    expect(paths.customizable).toContain('.codex/mcp.json')
+    expect(paths.framework).toContain('.codex/agents/')
+    expect(paths.framework).toContain('.agents/skills/')
+    expect(paths.framework).not.toContain('.codex/skills/')
+    expect(paths.customizable).toContain('.codex/config.toml')
   })
 })
 

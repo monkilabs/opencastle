@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { readManifest } from './manifest.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
-import { getMcpConfigRelPath, expectedTeamEntries } from './mcp.js'
+import { getMcpConfigRelPath, expectedTeamEntries, containerKeyFor } from './mcp.js'
+import { parseMcpConfigText } from './mcp-file.js'
 import { resolveStack, getIncludedMcpServers } from './stack-config.js'
 import { auditMcpConfig, describeFindingUnder, remedyFor, isFailure, type TeamAuditContext } from './mcp-audit.js'
 import { resolveSources, materialize, hasErrors, cliVersionOf, type CompileSource } from './layers.js'
@@ -551,7 +552,7 @@ async function compareProject(
       }
       let parsed: unknown
       try {
-        parsed = JSON.parse(readFileSync(abs, 'utf8'))
+        parsed = parseMcpConfigText(readFileSync(abs, 'utf8'), rel)
       } catch (err) {
         drift.push({
           ide,
@@ -572,7 +573,7 @@ async function compareProject(
       // Leaving the second out let `doctor` say "sync removes it" while this
       // passed and `sync` short-circuited — a remedy that did nothing.
       const teamKeys = new Set(Object.keys(team.expected))
-      const container = (parsed as Record<string, unknown> | null)?.[ide === 'opencode' ? 'mcp' : ide === 'vscode' ? 'servers' : 'mcpServers']
+      const container = (parsed as Record<string, unknown> | null)?.[containerKeyFor(ide as IdeChoice)]
       const present = new Set(container && typeof container === 'object' ? Object.keys(container as object) : [])
       const pluginOutdated = audit.outdated.filter((k) => !teamKeys.has(k))
       const teamMissing = audit.outdated.filter((k) => teamKeys.has(k) && !present.has(k))

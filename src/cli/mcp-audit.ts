@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { getMcpConfigRelPath, upgradeGeneratedServers, canonicalJson } from './mcp.js'
+import { parseMcpConfigText } from './mcp-file.js'
 import type { IdeChoice } from './types.js'
 import { disallowedBy, hostDisallowedBy, findInlineSecret, hostOfUrl, type EffectivePolicy } from './policy.js'
 import { EDITOR_VARIABLES } from './team-config.js'
@@ -256,7 +257,7 @@ export function isPinned(launch: PackageLaunch): boolean {
 function serverEntries(config: unknown): Array<[string, Record<string, unknown>]> {
   if (!config || typeof config !== 'object') return []
   const out: Array<[string, Record<string, unknown>]> = []
-  for (const key of ['servers', 'mcpServers', 'mcp']) {
+  for (const key of ['servers', 'mcpServers', 'mcp', 'mcp_servers']) {
     const container = (config as Record<string, unknown>)[key]
     if (!container || typeof container !== 'object' || Array.isArray(container)) continue
     for (const [name, entry] of Object.entries(container as Record<string, unknown>)) {
@@ -437,6 +438,9 @@ const OWN_SPELLING: Partial<Record<IdeChoice, (name: string) => string>> = {
   cursor: (n) => `\${env:${n}}`,
   windsurf: (n) => `\${env:${n}}`,
   opencode: (n) => `{env:${n}}`,
+  // Codex expands nothing: a variable reaches a server only by being named in
+  // a field that reads one.
+  codex: (n) => `env_vars, bearer_token_env_var or env_http_headers naming ${n}`,
 }
 
 /** The first `${NAME}` this target would pass through literally, as `NAME → spelling`, or null. */
@@ -444,7 +448,7 @@ function unexpandedVariable(entry: Record<string, unknown>, ide: IdeChoice): str
   const spell = OWN_SPELLING[ide]
   if (!spell) return null
   const values: unknown[] = []
-  for (const field of ['env', 'environment', 'headers']) {
+  for (const field of ['env', 'environment', 'headers', 'http_headers']) {
     const block = entry[field]
     if (block && typeof block === 'object' && !Array.isArray(block)) values.push(...Object.values(block as Record<string, unknown>))
   }
@@ -572,7 +576,7 @@ export function checkMcpSupplyChain(
   if (!existsSync(abs)) return { ok: true, label: LABEL, detail: 'no MCP config' }
   let parsed: unknown
   try {
-    parsed = JSON.parse(readFileSync(abs, 'utf8'))
+    parsed = parseMcpConfigText(readFileSync(abs, 'utf8'), rel)
   } catch {
     return { ok: true, label: LABEL, detail: `${rel} could not be read (reported above)` }
   }

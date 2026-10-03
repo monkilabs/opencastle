@@ -353,7 +353,7 @@ after=$(grep -rl SENTINEL .opencastle | wc -l | tr -d ' ')
 [ "$before" = "$after" ] && ok "all $after hand edits survived" || bad "lost $((before-after)) of $before"
 grep -q my-skill .opencastle/agents/skill-matrix.json && ok "hand-set matrix entry survived" || bad "matrix entry erased"
 
-say "CLAIM 5 — unparseable generated JSON is named, not fatal, on every target"
+say "CLAIM 5 — an unparseable generated MCP config is named, not fatal, on every target"
 # Parameterised because the previous fixture (a bare package.json) always
 # resolved to vscode — the one adapter whose update() never re-runs the scaffold
 # — so the unguarded parse that broke the other six was unreachable from here.
@@ -373,7 +373,7 @@ c5_seed() {
 c5_mcp() {
   case $1 in
     claude-code) echo .mcp.json ;;
-    codex)       echo .codex/mcp.json ;;
+    codex)       echo .codex/config.toml ;;
     antigravity) echo .agents/mcp_config.json ;;
     cursor)      echo .cursor/mcp.json ;;
     windsurf)    echo .windsurf/mcp.json ;;

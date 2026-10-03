@@ -207,7 +207,7 @@ still open: **[docs/teams.md](docs/teams.md)**.
 | **Cursor** | `.cursorrules` + `.cursor/rules/*.mdc` |
 | **Windsurf** | `.windsurfrules` + `.windsurf/rules/*.md` |
 | **OpenCode** | `AGENTS.md` + `.opencode/` + `opencode.json` |
-| **Codex CLI** | `AGENTS.md` + `.codex/` |
+| **Codex CLI** | `AGENTS.md` + `.agents/skills/` + `.codex/` (MCP in `config.toml`) |
 | **Antigravity** | `GEMINI.md` + `.agents/` |
 
 Each target gets that assistant's native format, including its own frontmatter
