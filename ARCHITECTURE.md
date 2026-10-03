@@ -392,12 +392,17 @@ to stay under Windows' path limit ([`worktree.ts`](src/cli/convoy/worktree.ts)):
   of its own. When the agent finishes, its work is committed there
   (`--no-verify`) before any check or review reads the change.
 
+Commands that add, remove or list worktrees, and branch deletions, queue per
+repository: a `git worktree add` reads every other worktree's entry, and one
+still being written by a concurrent add fails it. A git refusal over a lock is
+retried with backoff.
+
 The merge queue ([`merge.ts`](src/cli/convoy/merge.ts)) merges one worker branch
 at a time into the integration worktree. A conflict re-runs the task once, from
 the current tip, told which files moved under it. A second conflict, or any
 other merge error, fails the task and keeps its worker branch, which the summary
-names. The integration
-worktree is removed when the run ends; the branch is the result.
+names. The integration worktree is removed when the run ends; the branch is the
+result.
 
 ### Gates
 
