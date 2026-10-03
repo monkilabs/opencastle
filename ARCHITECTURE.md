@@ -300,18 +300,27 @@ checking steps on the economy tier's ([`plan.ts`](src/cli/plan.ts)). The prompts
 are the seven pipeline templates in
 [`src/orchestrator/prompts/`](src/orchestrator/prompts/).
 
-1. **PRD.** `generate-prd` writes `.opencastle/prds/<name>.prd.md`. `--prd` skips it.
-2. **Review and sizing, side by side.** `validate-prd` and `assess-complexity`
-   run at once. The assessment is cached beside the PRD and reused only for the
-   same text. A PRD that fails review gets up to two `fix-prd` rounds.
+1. **Sizing.** `assess-complexity` sizes the request first, on the economy
+   model. A change sized `low`, with no split into groups, is planned straight
+   from the request: no PRD (two sessions, three with `--yes`).
+2. **PRD, for larger work.** `generate-prd` writes `.opencastle/prds/<name>.prd.md`,
+   and `validate-prd` reviews it; a PRD that fails review gets up to two
+   `fix-prd` rounds. The request's sizing is reused, unless it recommended
+   groups: then the PRD is sized again, beside its review, so the groups can
+   name its phases. `convoy plan --prd <file>` starts here, with a PRD you
+   edited, and sizes it beside its review; that sizing is cached beside the PRD
+   and reused only for the same text.
 3. **The plan.** `generate-convoy` answers with a JSON task plan. When the
-   assessment splits a large PRD into groups, each group is planned at the same
-   time and the plans are joined into one spec. An unreadable answer is asked
-   for once more.
+   sizing splits a large PRD into groups, each group is planned at the same time
+   and the plans are joined into one spec. An unreadable answer is asked for
+   once more.
 4. **Code checks** ([`spec-builder.ts`](src/cli/convoy/spec-builder.ts)). A glob
-   in `files` becomes the directory before its first wildcard. Then the spec is
-   validated (ids, dependencies, cycles), paths must be relative, and no two
-   tasks that can run at once may claim the same file.
+   in `files` becomes the directory before its first wildcard. A task whose
+   files are all tests, and which waits on exactly one other task (once
+   dependencies implied by others are dropped), is folded into that task, so
+   the agent that writes the code writes its tests. Then the spec is validated
+   (ids, dependencies, cycles), paths must be relative, and no two tasks that
+   can run at once may claim the same file.
 5. **Fixes only when a check fails.** Up to two `fix-convoy` rounds. Overlaps
    still left are sequenced: the later task waits for the earlier.
 
@@ -366,7 +375,8 @@ the runtime's model for the agent's capability tier. Claude Code maps premium,
 standard and economy to its `opus`, `sonnet` and `haiku` aliases; the other
 runtimes have no mapping and use their own default model. Every task's prompt
 starts with the same shared context — the whole plan and the rules every worker
-follows — and ends with the task's own part: its role, its files, what the tasks
+follows, among them to leave `.opencastle/` to the convoy even where the
+project's instructions ask for an edit there — and ends with the task's own part: its role, its files, what the tasks
 before it produced, and any note from a failed attempt. Runtimes with a prompt
 cache can reuse the shared part ([`isolation.ts`](src/cli/convoy/isolation.ts)).
 
@@ -522,7 +532,7 @@ worktrees, and copies events missing from the NDJSON log back from SQLite.
 
 A hand-written spec can also use these, all off by default:
 `defaults.circuit_breaker` (an agent that fails too often gets no new tasks for a
-cooldown), per-task `steps` (prompts run in order in one worktree, each with
+cooldown; its tasks run as the `fallback_agent` when one is named), per-task `steps` (prompts run in order in one worktree, each with
 `gates` and an `if`), `hooks` (`pre_task`, `post_task`, `post_convoy`), `outputs`
 and `inputs` (text one task produces for another), `persistent: true` (an agent
 remembers its last tasks), and per-task `adapter` and `model`.

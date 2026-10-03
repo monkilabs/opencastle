@@ -77,7 +77,7 @@ for them; the **When** column says which.
 | `task_started` | `worker_id: string; mechanism: 'worktree'; adapter: string; attempt: number` | An attempt starts in its worktree |
 | `task_done` | `exit_code: number; worker_id: string; tokens: number \| null; cost_usd: number \| null; estimated: boolean; model: string \| null` | The task finished and its work merged. `tokens` and `cost_usd` cover every attempt; `cost_usd` includes its review |
 | `task_failed` | `reason: string; message: string; gate?: string; hook?: string; exit_code?: number; worker_id?: string` | A task failed for good. `reason` is one of `error`, `timeout`, `gate-failed`, `no-op`, `review-blocked`, `merge-failed`, `worktree`, `commit`, `adapter`, `hook-failed`, `secret-in-prompt`, `missing-input`, `symlink-escape`, `symlink-escape-post`, `engine-error` |
-| `task_skipped` | `reason: string` | A dependency failed or never finished, the run stopped dispatching, or a circuit breaker is open |
+| `task_skipped` | `reason: string` | A dependency failed or never finished, the run stopped dispatching, or a circuit breaker is open with no fallback |
 | `task_retried` | `previous_status: string; reason?: string; attempt?: number` | A failed attempt goes back to pending with its reason (`reason`, `attempt`), or `convoy resume` resets the task (`previous_status` only) |
 | `task_merged` | `branch: string; files: number` | The task's commit merged into the convoy branch; `files` is how many it changed |
 
@@ -85,7 +85,7 @@ for them; the **When** column says which.
 
 | Event Type | Data Fields | When |
 |-----------|-------------|------|
-| `review_started` | `level: 'fast' \| 'panel'; task_id: string; model: string` | A reviewer starts; `model` is the spec's `reviewer_model`, or `default` (the runtime's economy model) |
+| `review_started` | `level: 'fast' \| 'panel'; task_id: string; model: string` | A reviewer starts. `model` is the model it is asked for: the spec's `reviewer_model`, else the runtime's economy-tier model (`haiku` on Claude Code), else `runtime default` for a runtime with no tier models |
 | `review_verdict` | `level: string; verdict: 'pass' \| 'block'; tokens: number; model: string \| null; feedback_length: number; passes?: number; blocks?: number` | A verdict. `level: 'auto-pass'` with 0 tokens means no reviewer ran; `passes` and `blocks` are set for a panel |
 | `review_skipped` | `level: string; reason: string` | A review was due and reached no verdict (the runtime cannot run read-only, the reviewer failed, timed out or gave no verdict, or the review budget is spent). Never recorded as a pass |
 | `dispute_opened` | `dispute_id: string; task_id: string; agent: string; panel_attempts: number; reason: string` | `review: panel` blocked the task three times; also written to `.opencastle/DISPUTES.md` |
@@ -98,8 +98,8 @@ Only when the spec sets `defaults.circuit_breaker`.
 | Event Type | Data Fields | When |
 |-----------|-------------|------|
 | `circuit_breaker_tripped` | `agent: string; failure_count: number` | An agent reached the failure threshold (default 3) |
-| `circuit_breaker_fallback` | `original_agent: string; fallback_agent: string; task_id: string` | A task's agent is in cooldown and a `fallback_agent` is named. The task is skipped all the same |
-| `circuit_breaker_blocked` | `agent: string; task_id: string` | A task's agent is in cooldown and no fallback is named; the task is skipped |
+| `circuit_breaker_fallback` | `original_agent: string; fallback_agent: string; task_id: string` | A task's agent is in cooldown and the named `fallback_agent` is not; the task runs as the fallback agent |
+| `circuit_breaker_blocked` | `agent: string; task_id: string` | A task's agent is in cooldown and no fallback can take it (none named, or the fallback is in cooldown too); the task is skipped |
 
 ### Merge
 
