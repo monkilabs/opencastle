@@ -95,6 +95,9 @@ export function spawnCommand(command: string, args: string[], options: SpawnOpti
  * SIGTERM first, SIGKILL five seconds later if anything is still there. The
  * escalation used to test `proc.killed`, which is already true once SIGTERM is
  * *sent*, so it never fired and an agent that ignored SIGTERM ran on.
+ *
+ * A `graceMs` of 0 sends SIGKILL at once: for a process that is itself about
+ * to exit, which cannot wait to escalate.
  */
 export function killTree(pid: number | undefined, graceMs = 5000): void {
   if (!pid) return
@@ -104,21 +107,26 @@ export function killTree(pid: number | undefined, graceMs = 5000): void {
     } catch { /* already gone */ }
     return
   }
-  const signal = (sig: NodeJS.Signals): boolean => {
+  // The whole group when the process leads one (spawnCommand makes it), the
+  // process alone otherwise. The escalation goes to the same target: falling
+  // back to the bare pid once the group is gone could reach an unrelated
+  // process that has since been given that pid.
+  let target: number
+  try {
+    process.kill(-pid, graceMs <= 0 ? 'SIGKILL' : 'SIGTERM')
+    target = -pid
+  } catch {
     try {
-      process.kill(-pid, sig) // the whole group, when the child leads one
-      return true
+      process.kill(pid, graceMs <= 0 ? 'SIGKILL' : 'SIGTERM')
+      target = pid
     } catch {
-      try {
-        process.kill(pid, sig)
-        return true
-      } catch {
-        return false
-      }
+      return // already gone
     }
   }
-  if (!signal('SIGTERM')) return
-  const timer = setTimeout(() => signal('SIGKILL'), graceMs)
+  if (graceMs <= 0) return
+  const timer = setTimeout(() => {
+    try { process.kill(target, 'SIGKILL') } catch { /* it went on SIGTERM */ }
+  }, graceMs)
   timer.unref()
 }
 
