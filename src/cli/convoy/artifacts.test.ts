@@ -108,12 +108,14 @@ describe('artifacts', () => {
       expect(refs).toHaveLength(2)
     })
 
-    it('logs warning to stderr for referenced but missing artifacts', () => {
+    it('drops a reference to a missing artifact without writing to stderr', () => {
+      // The engine owns the terminal while it runs; a stray stderr line breaks its status line.
       const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
       const output = '[ARTIFACT: missing.md] A report that does not exist on disk'
       const refs = extractArtifactRefs('task-1', 'convoy-1', output)
       expect(refs).toHaveLength(0)
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('[artifacts] Warning'))
+      expect(stderrSpy).not.toHaveBeenCalled()
+      stderrSpy.mockRestore()
     })
 
     it('returns empty array when no artifact patterns found', () => {

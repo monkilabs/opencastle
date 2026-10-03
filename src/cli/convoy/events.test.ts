@@ -6,7 +6,44 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createConvoyStore } from './store.js'
 import { createEventEmitter, ndjsonPathForConvoy, recoverNdjson, validateEventType } from './events.js'
 import { KNOWN_EVENT_TYPES } from './types.js'
+import { SCHEMA_EVENT_TYPES } from './event-schemas.js'
+import { _resetAllowlistCache, _setAllowlistConfigPath } from './gates.js'
 import type { ConvoyStore } from './store.js'
+
+const GH_TOKEN = 'ghp_' + 'abcdefghijklmnopqrstuvwxyz0123456789AB'
+
+describe('secrets never reach either copy of an event', () => {
+  beforeEach(() => {
+    _setAllowlistConfigPath('/nonexistent/secret-scan-config.yml')
+    _resetAllowlistCache()
+  })
+
+  it('masks a secret before the SQLite insert, and still writes the NDJSON line', () => {
+    const emitter = createEventEmitter(store, { ndjsonPath })
+    emitter.emit('task_failed', { reason: 'error', message: `token ${GH_TOKEN} rejected` }, { convoy_id: 'c1', task_id: 't1' })
+    emitter.close()
+
+    const rows = store.getEvents('c1')
+    expect(rows.map(r => r.type)).toEqual(['task_failed', 'secret_leak_prevented'])
+    expect(rows[0].data).not.toContain(GH_TOKEN)
+    expect(JSON.parse(rows[0].data!).reason).toBe('error')
+
+    const ndjson = readFileSync(ndjsonPath, 'utf8')
+    expect(ndjson).not.toContain(GH_TOKEN)
+    expect(ndjson).toContain('"type":"task_failed"')
+  })
+
+  it('masks a secret held in an old SQLite row when recovery replays it', () => {
+    store.insertEvent({
+      convoy_id: 'c1', task_id: 't1', worker_id: null, type: 'task_failed',
+      data: JSON.stringify({ reason: `token ${GH_TOKEN}` }), created_at: new Date().toISOString(),
+    })
+    recoverNdjson(store, 'c1', ndjsonPath)
+    const ndjson = readFileSync(ndjsonPath, 'utf8')
+    expect(ndjson).not.toContain(GH_TOKEN)
+    expect(ndjson).toContain('[REDACTED]')
+  })
+})
 
 let tmpDir: string
 let store: ConvoyStore
@@ -337,15 +374,14 @@ describe('crash resilience', () => {
 describe('KNOWN_EVENT_TYPES', () => {
   it('contains all canonical event types', () => {
     const canonical = [
-      'convoy_started', 'convoy_finished', 'convoy_failed', 'convoy_guard',
-      'task_started', 'task_done', 'task_failed', 'task_skipped', 'task_retried', 'task_waiting_input',
-      'review_started', 'review_verdict', 'dispute_opened', 'dlq_entry_created',
-      'drift_check_result', 'drift_detected',
+      'convoy_started', 'convoy_finished', 'convoy_failed', 'convoy_interrupted', 'convoy_guard', 'convoy_resumed',
+      'task_started', 'task_done', 'task_failed', 'task_skipped', 'task_retried', 'task_merged',
+      'review_started', 'review_verdict', 'review_skipped', 'dispute_opened', 'dlq_entry_created',
       'circuit_breaker_tripped', 'circuit_breaker_fallback', 'circuit_breaker_blocked',
-      'merge_conflict_detected', 'merge_conflict_failed',
-      'file_injection_received', 'artifact_limit_reached',
+      'merge_conflict_detected', 'merge_failed', 'gate_result',
+      'artifact_limit_reached',
       'agent_identity_captured', 'agent_identity_rejected',
-      'swarm_concurrency_update', 'post_convoy_hook_failed',
+      'post_convoy_hook_failed',
       'session', 'delegation',
       'secret_leak_prevented', 'ndjson_write_failed', 'built_in_gate_result',
       'watch_started', 'watch_cycle_start', 'watch_cycle_end', 'watch_stopped',
@@ -354,6 +390,19 @@ describe('KNOWN_EVENT_TYPES', () => {
     for (const type of canonical) {
       expect(KNOWN_EVENT_TYPES.has(type)).toBe(true)
     }
+  })
+
+  it('no longer declares the drift, injection and swarm events whose machinery is gone', () => {
+    for (const gone of [
+      'drift_check_result', 'drift_detected', 'file_injection_received',
+      'swarm_concurrency_update', 'merge_conflict_failed', 'review_stage_completed',
+    ]) {
+      expect(KNOWN_EVENT_TYPES.has(gone)).toBe(false)
+    }
+  })
+
+  it('declares a data shape for every known type, and none for an unknown one', () => {
+    expect([...SCHEMA_EVENT_TYPES].sort()).toEqual([...KNOWN_EVENT_TYPES].sort())
   })
 
   it('has no duplicates (Set size matches array)', () => {

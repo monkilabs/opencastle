@@ -2,48 +2,79 @@ import * as v from 'valibot'
 
 type AnySchema = v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>
 
+const optNum = v.optional(v.nullable(v.number()))
+const optStr = v.optional(v.nullable(v.string()))
+
 const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
-  convoy_started: v.looseObject({ name: v.optional(v.string()) }),
+  convoy_started: v.looseObject({
+    name: v.optional(v.string()),
+    branch: v.optional(v.string()),
+    base: optStr,
+    concurrency: v.optional(v.number()),
+  }),
   convoy_finished: v.looseObject({ status: v.string() }),
   convoy_failed: v.looseObject({ status: v.string(), reason: v.optional(v.string()) }),
-  convoy_guard: v.looseObject({ checks: v.optional(v.array(v.string())) }),
+  convoy_interrupted: v.looseObject({
+    signal: v.optional(v.string()),
+    requeued: v.optional(v.array(v.string())),
+  }),
+  convoy_guard: v.looseObject({
+    passed: v.optional(v.boolean()),
+    warnings: v.optional(v.array(v.string())),
+  }),
+  convoy_resumed: v.looseObject({
+    original_created_at: v.optional(v.string()),
+    reset: v.optional(v.array(v.string())),
+  }),
 
-  task_started: v.looseObject({ worker_id: v.optional(v.string()) }),
-  task_done: v.looseObject({
-    status: v.optional(v.string()),
-    retries: v.optional(v.number()),
+  task_started: v.looseObject({
     worker_id: v.optional(v.string()),
+    mechanism: v.optional(v.string()),
+    adapter: v.optional(v.string()),
+    attempt: v.optional(v.number()),
+  }),
+  task_done: v.looseObject({
+    exit_code: v.optional(v.number()),
+    worker_id: v.optional(v.string()),
+    tokens: optNum,
+    cost_usd: optNum,
+    estimated: v.optional(v.boolean()),
+    model: optStr,
   }),
   task_failed: v.looseObject({
     reason: v.string(),
+    message: v.optional(v.string()),
     worker_id: v.optional(v.string()),
     gate: v.optional(v.string()),
     hook: v.optional(v.string()),
+    exit_code: v.optional(v.number()),
   }),
   task_skipped: v.looseObject({ reason: v.string() }),
-  task_retried: v.looseObject({ previous_status: v.string() }),
-  task_waiting_input: v.looseObject({
-    task_id: v.optional(v.string()),
+  task_retried: v.looseObject({
+    previous_status: v.string(),
     reason: v.optional(v.string()),
+    attempt: v.optional(v.number()),
+  }),
+  task_merged: v.looseObject({
+    branch: v.optional(v.string()),
+    files: v.optional(v.number()),
   }),
 
   review_started: v.looseObject({
     level: v.string(),
     task_id: v.optional(v.string()),
-    model: v.optional(v.string()),
+    model: optStr,
   }),
   review_verdict: v.looseObject({
     level: v.string(),
     verdict: v.string(),
     tokens: v.number(),
-    model: v.optional(v.string()),
+    model: optStr,
     feedback_length: v.optional(v.number()),
-    budget_exceeded: v.optional(v.boolean()),
-    budget_downgrade: v.optional(v.boolean()),
-    budget_skip: v.optional(v.boolean()),
     passes: v.optional(v.number()),
     blocks: v.optional(v.number()),
   }),
+  review_skipped: v.looseObject({ level: v.string(), reason: v.string() }),
   dispute_opened: v.looseObject({
     dispute_id: v.string(),
     task_id: v.string(),
@@ -55,16 +86,6 @@ const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
     task_id: v.string(),
     agent: v.optional(v.string()),
     attempts: v.optional(v.number()),
-  }),
-
-  drift_check_result: v.looseObject({
-    score: v.optional(v.number()),
-    threshold: v.optional(v.number()),
-    passed: v.optional(v.boolean()),
-  }),
-  drift_detected: v.looseObject({
-    score: v.optional(v.number()),
-    files: v.optional(v.array(v.string())),
   }),
 
   circuit_breaker_tripped: v.looseObject({
@@ -83,19 +104,22 @@ const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
   }),
 
   merge_conflict_detected: v.looseObject({
-    task_id: v.optional(v.string()),
-    files: v.optional(v.array(v.string())),
+    attempt: v.optional(v.number()),
+    conflicting_files: v.optional(v.array(v.string())),
   }),
-  merge_conflict_failed: v.looseObject({
-    task_id: v.optional(v.string()),
-    error: v.optional(v.string()),
+  merge_failed: v.looseObject({
+    branch: v.string(),
+    error: v.string(),
+    conflicting_files: v.optional(v.array(v.string())),
+  }),
+  gate_result: v.looseObject({
+    command: v.string(),
+    passed: v.boolean(),
+    exit_code: v.optional(v.number()),
+    scope: v.optional(v.string()),
+    output: v.optional(v.string()),
   }),
 
-  file_injection_received: v.looseObject({
-    task_id: v.optional(v.string()),
-    from_task: v.optional(v.string()),
-    name: v.optional(v.string()),
-  }),
   artifact_limit_reached: v.looseObject({
     task_id: v.optional(v.string()),
     limit: v.optional(v.number()),
@@ -112,24 +136,20 @@ const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
     reason: v.optional(v.string()),
   }),
 
-  swarm_concurrency_update: v.looseObject({
-    new_concurrency: v.optional(v.number()),
-    reason: v.optional(v.string()),
-  }),
   post_convoy_hook_failed: v.looseObject({
     hook: v.optional(v.string()),
     error: v.optional(v.string()),
   }),
   session: v.looseObject({
     agent: v.optional(v.string()),
-    model: v.optional(v.string()),
+    model: optStr,
     task: v.optional(v.string()),
     outcome: v.optional(v.string()),
     duration_min: v.optional(v.number()),
   }),
   delegation: v.looseObject({
     agent: v.optional(v.string()),
-    model: v.optional(v.string()),
+    model: optStr,
     tier: v.optional(v.string()),
     mechanism: v.optional(v.string()),
     outcome: v.optional(v.string()),
@@ -193,13 +213,6 @@ const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
     reason: v.optional(v.string()),
     agent: v.optional(v.string()),
   }),
-  review_stage_completed: v.looseObject({
-    stage: v.string(),
-    verdict: v.string(),
-    tokens: v.number(),
-    task_id: v.optional(v.string()),
-    model: v.optional(v.string()),
-  }),
   artifacts_extracted: v.looseObject({
     task_id: v.optional(v.string()),
     count: v.optional(v.number()),
@@ -209,6 +222,10 @@ const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
     }))),
   }),
 }
+
+/** Every event type with a declared data shape — kept equal to KNOWN_EVENT_TYPES by a test. */
+export const SCHEMA_EVENT_TYPES: ReadonlySet<string> = new Set(Object.keys(EVENT_DATA_SCHEMAS))
+
 export function validateEventData(
   type: string,
   data: unknown,

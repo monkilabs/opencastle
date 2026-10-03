@@ -175,3 +175,74 @@ describe('removeAll', () => {
     await expect(manager.removeAll()).resolves.toBeUndefined()
   })
 })
+
+// ── keepBranch, commit and changes ─────────────────────────────────────────────
+
+describe('remove with keepBranch', () => {
+  it('removes the worktree but keeps the branch that holds unmerged work', async () => {
+    const path = await manager.create('worker1', 'HEAD')
+    await manager.remove(path, { keepBranch: true })
+    expect(await manager.list()).toHaveLength(0)
+    const { stdout } = await execFile('git', ['branch', '--list', 'convoy-worker1'], { cwd: tmpDir })
+    expect(stdout.trim()).toBe('convoy-worker1')
+  })
+})
+
+describe('removeAll with except', () => {
+  it('leaves the listed worktrees alone', async () => {
+    const keep = await manager.create('keep', 'HEAD')
+    await manager.create('drop', 'HEAD')
+    await manager.removeAll({ except: [keep] })
+    expect((await manager.list()).map(w => w.path)).toEqual([keep])
+  })
+})
+
+describe('commitAll and changes', () => {
+  it('commits what the agent left uncommitted and reports it against the start commit', async () => {
+    const { writeFileSync } = await import('node:fs')
+    const path = await manager.create('worker1', 'HEAD')
+    const start = await manager.head!(path)
+    writeFileSync(join(path, 'new.txt'), 'hello\n')
+    expect(await manager.commitAll!(path, 'convoy(t): add new.txt')).toBe(true)
+    // Nothing left to commit the second time.
+    expect(await manager.commitAll!(path, 'again')).toBe(false)
+    const changes = await manager.changes!(path, start!)
+    expect(changes!.files).toEqual(['new.txt'])
+    expect(changes!.diff).toContain('+hello')
+  })
+})
+
+describe('ensureRootWorktree', () => {
+  it('creates the branch from the base and checks it out in its own worktree', async () => {
+    const { ensureRootWorktree } = await import('./worktree.js')
+    const path = await ensureRootWorktree({ repoRoot: tmpDir, branch: 'convoy/x-1', base: 'HEAD', dirName: 'abc123' })
+    expect(path).toBe(join(tmpDir, '.opencastle', 'worktrees', 'abc123'))
+    const { stdout } = await execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: path })
+    expect(stdout.trim()).toBe('convoy/x-1')
+  })
+
+  it('reuses a worktree a killed run left holding the branch, cleaned', async () => {
+    const { ensureRootWorktree } = await import('./worktree.js')
+    const { writeFileSync, existsSync } = await import('node:fs')
+    const first = await ensureRootWorktree({ repoRoot: tmpDir, branch: 'convoy/x-2', base: 'HEAD', dirName: 'old' })
+    writeFileSync(join(first, 'half-done.txt'), 'x')
+    const again = await ensureRootWorktree({ repoRoot: tmpDir, branch: 'convoy/x-2', base: 'HEAD', dirName: 'new' })
+    expect(again).toBe(first)
+    expect(existsSync(join(again, 'half-done.txt'))).toBe(false)
+  })
+
+  it('prunes a registration whose directory was deleted, then checks the branch out again', async () => {
+    const { ensureRootWorktree } = await import('./worktree.js')
+    const first = await ensureRootWorktree({ repoRoot: tmpDir, branch: 'convoy/x-3', base: 'HEAD', dirName: 'gone' })
+    rmSync(first, { recursive: true, force: true })
+    const again = await ensureRootWorktree({ repoRoot: tmpDir, branch: 'convoy/x-3', base: 'HEAD', dirName: 'fresh' })
+    expect(again).toBe(join(tmpDir, '.opencastle', 'worktrees', 'fresh'))
+  })
+
+  it('refuses a branch the user has checked out elsewhere', async () => {
+    const { ensureRootWorktree, BranchInUseError } = await import('./worktree.js')
+    const { stdout } = await execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: tmpDir })
+    await expect(ensureRootWorktree({ repoRoot: tmpDir, branch: stdout.trim(), base: 'HEAD', dirName: 'x' }))
+      .rejects.toBeInstanceOf(BranchInUseError)
+  })
+})

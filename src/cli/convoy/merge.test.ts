@@ -181,3 +181,27 @@ describe('merge - error handling', () => {
     ).rejects.toThrow(/outside the managed worktrees directory/)
   })
 })
+
+// ── one merge at a time ───────────────────────────────────────────────────────
+
+describe('merge - concurrency', () => {
+  it('lands every one of eight merges started at once', async () => {
+    // Without the mutex, concurrent merges fought over index.lock and HEAD.
+    const paths: string[] = []
+    for (let i = 0; i < 8; i++) {
+      const p = await addWorktree(repoPath, `w${i}`, featureBranch)
+      writeFileSync(join(p, `f${i}.txt`), `${i}`)
+      paths.push(p)
+    }
+    const results = await Promise.all(paths.map((p, i) => queue.merge(p, `convoy-w${i}`, featureBranch)))
+    expect(results.every(r => r.success)).toBe(true)
+    const { stdout } = await execFile('git', ['-C', repoPath, 'ls-tree', '--name-only', featureBranch])
+    for (let i = 0; i < 8; i++) expect(stdout).toContain(`f${i}.txt`)
+  })
+
+  it('throws MergeError, not a success, when the merge fails for another reason', async () => {
+    const { MergeError } = await import('./merge.js')
+    const worktreePath = await addWorktree(repoPath, 'worker1', featureBranch)
+    await expect(queue.merge(worktreePath, 'no-such-branch', featureBranch)).rejects.toBeInstanceOf(MergeError)
+  })
+})

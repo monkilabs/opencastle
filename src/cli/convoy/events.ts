@@ -4,9 +4,9 @@ import type { ConvoyStore } from './store.js'
 import { KNOWN_EVENT_TYPES } from './types.js'
 import type { ConvoyEventType } from './types.js'
 import { validateEventData } from './event-schemas.js'
+import { redactValue } from './redact.js'
 
 const RESERVED_KEYS = new Set(['_event_id', 'convoy_id', 'task_id', 'worker_id', 'timestamp', 'type'])
-import { scanForSecrets } from './gates.js'
 
 export function validateEventType(type: string): boolean {
   return KNOWN_EVENT_TYPES.has(type)
@@ -28,6 +28,16 @@ export interface ConvoyEventEmitter {
   close(): void
 }
 
+function withoutReservedKeys(data: Record<string, unknown> | undefined): Record<string, unknown> {
+  const safe: Record<string, unknown> = {}
+  if (data) {
+    for (const [k, v] of Object.entries(data)) {
+      if (!RESERVED_KEYS.has(k)) safe[k] = v
+    }
+  }
+  return safe
+}
+
 export function createEventEmitter(
   store: ConvoyStore,
   options?: { ndjsonPath?: string },
@@ -42,58 +52,15 @@ export function createEventEmitter(
     fd = openSync(options.ndjsonPath, 'a')
   }
 
-  // NDJSON writes are supplementary — SQLite is the primary store. Use async
-  // retries to avoid blocking the Node.js event loop.
-  async function writeNdjson(
-    type: string,
-    data: Record<string, unknown> | undefined,
-    ids: { convoy_id?: string; task_id?: string; worker_id?: string } | undefined,
-    now: string,
-    eventId: number,
-    currentFd: number,
-  ): Promise<void> {
-    const safeData: Record<string, unknown> = {}
-    if (data) {
-      for (const [k, v] of Object.entries(data)) {
-        if (!RESERVED_KEYS.has(k)) safeData[k] = v
-      }
-    }
-    const record = {
-      _event_id: eventId,
-      timestamp: now,
-      type,
-      convoy_id: ids?.convoy_id ?? null,
-      task_id: ids?.task_id ?? null,
-      worker_id: ids?.worker_id ?? null,
-      ...safeData,
-    }
-    const jsonLine = JSON.stringify(record) + '\n'
-
-    const scanResult = scanForSecrets(jsonLine, 'ndjson')
-    if (!scanResult.clean) {
-      // Block the NDJSON write — record the blocked event in SQLite only
-      store.insertEvent({
-        convoy_id: ids?.convoy_id ?? null,
-        task_id: ids?.task_id ?? null,
-        worker_id: ids?.worker_id ?? null,
-        type: 'secret_leak_prevented',
-        data: JSON.stringify({ original_type: type, patterns: scanResult.findings.map(f => f.pattern) }),
-        created_at: now,
-      })
-      return
-    }
-
+  function writeNdjson(line: string, type: string, ids: ConvoyEmitIds | undefined): void {
+    if (fd === null) return
     try {
-      appendFileSync(currentFd, jsonLine)
-      fsyncSync(currentFd)
+      appendFileSync(fd, line)
+      fsyncSync(fd)
     } catch {
-      // Retry once after 100ms (non-blocking)
-      await new Promise<void>(resolve => setTimeout(resolve, 100))
+      // The SQLite row above is the record; the NDJSON file is a copy for
+      // tailing. Note the gap where it can be found, without recursing here.
       try {
-        appendFileSync(currentFd, jsonLine)
-        fsyncSync(currentFd)
-      } catch {
-        // Emit failure meta-event to SQLite only (do NOT recurse into NDJSON write)
         store.insertEvent({
           convoy_id: ids?.convoy_id ?? null,
           task_id: ids?.task_id ?? null,
@@ -102,15 +69,12 @@ export function createEventEmitter(
           data: JSON.stringify({ original_type: type }),
           created_at: new Date().toISOString(),
         })
-      }
+      } catch { /* store closed */ }
     }
   }
 
   return {
     emit(type, data, ids) {
-      // SQLite insert is not scanned; NDJSON write is scanned via writeNdjson().
-      // User-generated content (task output, DLQ entries) is scanned at its source
-      // before reaching the event emitter. See MF-4 in panel report.
       if (!validateEventType(type)) {
         console.warn(`[convoy] Unknown event type: "${type}"`)
       }
@@ -120,22 +84,41 @@ export function createEventEmitter(
       }
       const now = new Date().toISOString()
 
+      // Masked before *either* copy is written. The SQLite row used to keep the
+      // secret while only the NDJSON line was withheld, and the dashboard reads
+      // the SQLite row.
+      const { value: clean, patterns } = redactValue(data as Record<string, unknown> | undefined)
+
       const eventId = store.insertEvent({
         convoy_id: ids?.convoy_id ?? null,
         task_id: ids?.task_id ?? null,
         worker_id: ids?.worker_id ?? null,
         type,
-        data: data !== undefined ? JSON.stringify(data) : null,
+        data: clean !== undefined ? JSON.stringify(clean) : null,
         created_at: now,
       })
 
-      // Fire-and-forget: SQLite record (above) is the source of truth.
-      // NDJSON is supplementary — no need to await or block on it.
-      if (fd !== null) {
-        writeNdjson(type, data, ids, now, eventId, fd).catch(() => {
-          // Swallow unhandled rejection — failure already recorded in SQLite via writeNdjson
+      if (patterns.length > 0) {
+        store.insertEvent({
+          convoy_id: ids?.convoy_id ?? null,
+          task_id: ids?.task_id ?? null,
+          worker_id: ids?.worker_id ?? null,
+          type: 'secret_leak_prevented',
+          data: JSON.stringify({ original_type: type, patterns: [...new Set(patterns)], context: 'event_redacted' }),
+          created_at: now,
         })
       }
+
+      const record = {
+        _event_id: eventId,
+        timestamp: now,
+        type,
+        convoy_id: ids?.convoy_id ?? null,
+        task_id: ids?.task_id ?? null,
+        worker_id: ids?.worker_id ?? null,
+        ...withoutReservedKeys(clean),
+      }
+      writeNdjson(JSON.stringify(record) + '\n', type, ids)
     },
 
     close() {
@@ -158,10 +141,12 @@ function safeJsonParse(raw: string): Record<string, unknown> {
 /**
  * Truncate any trailing partial line in the NDJSON file, then replay any SQLite
  * events for the given convoy that are missing from the file.
- * Exported for unit testing.
+ *
+ * Replayed rows are masked on the way out: rows written before redaction moved
+ * ahead of the SQLite insert can still hold a secret, and this is the path that
+ * used to copy one into the log.
  */
 export function recoverNdjson(store: ConvoyStore, convoyId: string, ndjsonPath: string): void {
-  // 1. Read the NDJSON file (if it exists)
   let fileContent: string
   try {
     fileContent = readFileSync(ndjsonPath, 'utf8')
@@ -169,7 +154,6 @@ export function recoverNdjson(store: ConvoyStore, convoyId: string, ndjsonPath: 
     fileContent = ''
   }
 
-  // 2. Truncate any partial trailing line (no \n terminator)
   if (fileContent.length > 0 && !fileContent.endsWith('\n')) {
     const lastNewline = fileContent.lastIndexOf('\n')
     if (lastNewline === -1) {
@@ -181,7 +165,6 @@ export function recoverNdjson(store: ConvoyStore, convoyId: string, ndjsonPath: 
     }
   }
 
-  // 3. Count valid NDJSON event IDs for this convoy
   const ndjsonIds = new Set<number>()
   for (const line of fileContent.split('\n')) {
     if (!line.trim()) continue
@@ -195,36 +178,31 @@ export function recoverNdjson(store: ConvoyStore, convoyId: string, ndjsonPath: 
     }
   }
 
-  // 4. Get all SQLite events for this convoy
   const sqliteEvents = store.getEvents(convoyId)
-
-  // 5. Replay missing events (those in SQLite but not in NDJSON)
   const missing = sqliteEvents.filter(e => e.id != null && !ndjsonIds.has(e.id!))
-  if (missing.length > 0) {
-    const fd = openSync(ndjsonPath, 'a')
-    try {
-      for (const event of missing) {
-        const parsedData = event.data ? safeJsonParse(event.data) : {}
-        // Strip reserved keys from event.data to prevent attacker-controlled
-        // values from overriding canonical fields from the DB row.
-        const safeData: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(parsedData)) {
-          if (!RESERVED_KEYS.has(key)) safeData[key] = value
-        }
-        const record = {
-          ...safeData,
-          _event_id: event.id,
-          timestamp: event.created_at,
-          type: event.type,
-          convoy_id: event.convoy_id,
-          task_id: event.task_id,
-          worker_id: event.worker_id,
-        }
-        appendFileSync(fd, JSON.stringify(record) + '\n')
+  if (missing.length === 0) return
+
+  mkdirSync(dirname(ndjsonPath), { recursive: true })
+  const fd = openSync(ndjsonPath, 'a')
+  try {
+    for (const event of missing) {
+      const parsedData = event.data ? safeJsonParse(event.data) : {}
+      const { value: clean } = redactValue(parsedData)
+      // Reserved keys are stripped from the data so a stored value cannot
+      // override the canonical fields from the DB row.
+      const record = {
+        ...withoutReservedKeys(clean),
+        _event_id: event.id,
+        timestamp: event.created_at,
+        type: event.type,
+        convoy_id: event.convoy_id,
+        task_id: event.task_id,
+        worker_id: event.worker_id,
       }
-      fsyncSync(fd)
-    } finally {
-      closeSync(fd)
+      appendFileSync(fd, JSON.stringify(record) + '\n')
     }
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
   }
 }

@@ -97,6 +97,17 @@ function makeSpec(
   }
 }
 
+/** A non-terminal output stream that remembers what the engine printed. */
+function captureOutput(): { stream: { write(s: string): boolean; isTTY: boolean }; text(): string } {
+  const chunks: string[] = []
+  return {
+    stream: { isTTY: false, write: (s: string) => { chunks.push(s); return true } },
+    // Colour codes stripped, so assertions read like the terminal.
+    // eslint-disable-next-line no-control-regex
+    text: () => chunks.join('').replace(/\x1b\[[0-9;]*m/g, ''),
+  }
+}
+
 /** Wraps createConvoyEngine with a default no-op _ensureBranch mock so tests never
  * run real git branch operations. Callers can override _ensureBranch if needed. */
 function makeEngine(opts: ConvoyEngineOptions): ReturnType<typeof createConvoyEngine> {
@@ -105,6 +116,8 @@ function makeEngine(opts: ConvoyEngineOptions): ReturnType<typeof createConvoyEn
     basePath: tmpDir,               // ditto for the .opencastle/ ledgers
     _ensureBranch: vi.fn().mockResolvedValue(undefined),
     _convoyWorktreeDir: null,
+    handleSignals: false,
+    output: captureOutput().stream,
     ...opts,
   })
 }
@@ -194,7 +207,9 @@ describe('single task failure', () => {
     expect(result.summary.done).toBe(0)
   })
 
-  it('calls adapter.kill when the task fails', async () => {
+  it('leaves a session that already exited alone', async () => {
+    // kill() is for a session still running — a timeout or Ctrl+C. The old
+    // engine also called it after every failure, on a process already gone.
     const adapter = makeAdapter()
     adapter.execute.mockResolvedValue({ success: false, output: 'boom', exitCode: 1 })
 
@@ -209,7 +224,27 @@ describe('single task failure', () => {
 
     await engine.run()
 
-    expect(adapter.kill).toHaveBeenCalledOnce()
+    expect(adapter.kill).not.toHaveBeenCalled()
+  })
+
+  it('prints the first line of the reason on the ✗ line', async () => {
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: false, output: 'TypeError: x is undefined\n    at foo (a.ts:1)', exitCode: 1 })
+    const out = captureOutput()
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'task-1', max_retries: 0 }]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      output: out.stream,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+    await engine.run()
+    const line = out.text().split('\n').find(l => l.includes('✗') && l.includes('[task-1]'))!
+    expect(line).toContain('failed')
+    expect(line).toContain('TypeError: x is undefined')
+    expect(line).not.toContain('at foo')
   })
 })
 
@@ -389,7 +424,9 @@ describe('on_failure:stop', () => {
     expect(byId['task-c']).toBe('skipped')
   })
 
-  it('does not retry when on_failure is stop even if max_retries > 0', async () => {
+  it('still retries a task up to max_retries — stop is about what happens after it fails for good', async () => {
+    // The spec builder's default was `stop`, and it used to turn off every
+    // retry in every generated plan.
     const adapter = makeAdapter()
     adapter.execute.mockResolvedValue({ success: false, output: 'fail', exitCode: 1 })
 
@@ -405,8 +442,37 @@ describe('on_failure:stop', () => {
 
     await engine.run()
 
-    // No retries — stop mode skips them
-    expect(adapter.execute).toHaveBeenCalledOnce()
+    expect(adapter.execute).toHaveBeenCalledTimes(4)
+  })
+
+  it('lets running tasks finish and starts nothing new once a task has failed for good', async () => {
+    const started: string[] = []
+    const adapter = makeAdapter()
+    adapter.execute.mockImplementation(async (task: Task) => {
+      started.push(task.id)
+      if (task.id === 'a-fails') return { success: false, output: 'nope', exitCode: 1 }
+      await new Promise(r => setTimeout(r, 60))
+      return { success: true, output: 'ok', exitCode: 0 }
+    })
+    // Two slots: `fails` and `slow` start together; `later` is queued behind them.
+    const spec = makeSpec({ on_failure: 'stop', concurrency: 2 }, [
+      { id: 'a-fails' },
+      { id: 'b-slow' },
+      { id: 'c-later' },
+    ])
+    const engine = makeEngine({
+      spec, specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+
+    const result = await engine.run()
+
+    expect(started.sort()).toEqual(['a-fails', 'b-slow'])
+    const store = createConvoyStore(dbPath)
+    const byId = Object.fromEntries(store.getTasksByConvoy(result.convoyId).map(t => [t.id, t.status]))
+    store.close()
+    expect(byId).toEqual({ 'a-fails': 'failed', 'b-slow': 'done', 'c-later': 'skipped' })
+    expect(result.status).toBe('failed')
   })
 })
 
@@ -799,7 +865,8 @@ describe('worktree lifecycle (non-copilot)', () => {
     expect(wtManager.remove).toHaveBeenCalledOnce()
   })
 
-  it('continues task execution when worktree creation throws', async () => {
+  it('fails the task, never running it in the user checkout, when worktree creation throws', async () => {
+    // It used to fall back to running the agent in basePath — the user's own tree.
     const adapter = makeAdapter('developer')
     const wtManager = makeWorktreeManager()
     wtManager.create.mockRejectedValue(new Error('git worktree unavailable'))
@@ -814,38 +881,54 @@ describe('worktree lifecycle (non-copilot)', () => {
       _mergeQueue: mergeQueue,
     })
 
-    // Task should still succeed even without a worktree
     const result = await engine.run()
-    expect(result.status).toBe('done')
-    expect(adapter.execute).toHaveBeenCalledOnce()
+    expect(result.status).toBe('failed')
+    expect(adapter.execute).not.toHaveBeenCalled()
   })
 
-  it('task still succeeds when merge throws', async () => {
+  it('fails the task and keeps its branch when the merge throws', async () => {
+    // A merge error used to be logged under --verbose, set `merged = true`, and
+    // delete the branch: the task read "done" and its work was gone.
     const adapter = makeAdapter('developer')
     const wtManager = makeWorktreeManager()
     const mergeQueue = makeMergeQueue()
-    mergeQueue.merge.mockRejectedValue(new Error('merge conflict'))
+    mergeQueue.merge.mockRejectedValue(new Error('cannot lock ref HEAD'))
+    const out = captureOutput()
 
     const engine = makeEngine({
       spec: makeSpec(),
       specYaml: 'name: test',
       adapter,
       dbPath,
+      output: out.stream,
       _worktreeManager: wtManager,
       _mergeQueue: mergeQueue,
     })
 
     const result = await engine.run()
-    // task is still marked done despite the merge warning
-    expect(result.status).toBe('done')
-    expect(wtManager.remove).toHaveBeenCalledOnce()
+    expect(result.status).toBe('failed')
+    expect(wtManager.remove).toHaveBeenCalledWith('/tmp/worktree-mock', { keepBranch: true })
+
+    const store = createConvoyStore(dbPath)
+    const task = store.getTask('task-1', result.convoyId)!
+    const events = store.getEvents(result.convoyId)
+    store.close()
+    expect(task.status).toBe('failed')
+    expect(task.branch).toMatch(/^convoy-/)
+    expect(result.keptBranches).toEqual([{ taskId: 'task-1', branch: task.branch }])
+    const mergeFailed = events.find(e => e.type === 'merge_failed')!
+    expect(JSON.parse(mergeFailed.data!)).toMatchObject({ branch: task.branch, error: 'cannot lock ref HEAD' })
+    // Said where the person will see it, not only under --verbose.
+    expect(out.text()).toContain('cannot lock ref HEAD')
+    expect(out.text()).toContain(task.branch!)
   })
 })
 
-// ── 10. Copilot adapter skips worktree ────────────────────────────────────────
+// ── 10. Copilot gets a worktree like every runtime ────────────────────────────
 
 describe('copilot adapter', () => {
-  it('skips worktree create, merge, and remove for copilot adapter', async () => {
+  it('runs in a worktree and is merged like any other runtime', async () => {
+    // Copilot used to skip worktrees and work in the shared directory, never merged.
     const adapter = makeAdapter('copilot')
     const wtManager = makeWorktreeManager()
     const mergeQueue = makeMergeQueue()
@@ -862,9 +945,9 @@ describe('copilot adapter', () => {
     const result = await engine.run()
 
     expect(result.status).toBe('done')
-    expect(wtManager.create).not.toHaveBeenCalled()
-    expect(mergeQueue.merge).not.toHaveBeenCalled()
-    expect(wtManager.remove).not.toHaveBeenCalled()
+    expect(wtManager.create).toHaveBeenCalledOnce()
+    expect(mergeQueue.merge).toHaveBeenCalledOnce()
+    expect(adapter.execute.mock.calls[0][1]).toMatchObject({ cwd: '/tmp/worktree-mock' })
   })
 })
 
@@ -894,7 +977,6 @@ describe('timeout handling', () => {
 
     expect(result.status).toBe('failed')
     expect(result.summary.timedOut).toBe(1)
-    expect(adapter.kill).toHaveBeenCalledOnce()
   })
 
   it('retries a timed-out task when retries remain', async () => {
@@ -924,7 +1006,7 @@ describe('timeout handling', () => {
     expect(adapter.execute).toHaveBeenCalledTimes(2)
   })
 
-  it('does not retry a timed-out task when on_failure is stop', async () => {
+  it('retries a timed-out task under on_failure: stop too', async () => {
     const adapter = makeAdapter()
     adapter.execute.mockResolvedValue({
       _timedOut: true,
@@ -945,7 +1027,7 @@ describe('timeout handling', () => {
     const result = await engine.run()
 
     expect(result.summary.timedOut).toBe(1)
-    expect(adapter.execute).toHaveBeenCalledOnce()
+    expect(adapter.execute).toHaveBeenCalledTimes(3)
   })
 })
 
@@ -1177,44 +1259,6 @@ describe('verbose mode', () => {
     const result = await engine.run()
     expect(result.status).toBe('done')
   })
-
-  it('logs verbose warning when worktree creation fails', async () => {
-    const adapter = makeAdapter('developer')
-    const wtManager = makeWorktreeManager()
-    wtManager.create.mockRejectedValue(new Error('no worktrees'))
-
-    const engine = makeEngine({
-      spec: makeSpec({}, [{ id: 'task-1' }]),
-      specYaml: 'name: test',
-      adapter,
-      verbose: true,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: makeMergeQueue(),
-    })
-
-    const result = await engine.run()
-    expect(result.status).toBe('done')
-  })
-
-  it('logs verbose warning when merge fails', async () => {
-    const adapter = makeAdapter('developer')
-    const mergeQueue = makeMergeQueue()
-    mergeQueue.merge.mockRejectedValue(new Error('merge conflict'))
-
-    const engine = makeEngine({
-      spec: makeSpec({}, [{ id: 'task-1' }]),
-      specYaml: 'name: test',
-      adapter,
-      verbose: true,
-      dbPath,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: mergeQueue,
-    })
-
-    const result = await engine.run()
-    expect(result.status).toBe('done')
-  })
 })
 
 // ── 16. msToTimeout branch coverage ──────────────────────────────────────────
@@ -1317,11 +1361,10 @@ describe('per-task adapter resolution', () => {
     expect(getAdapter).not.toHaveBeenCalled()
   })
 
-  it('resolves adapter: auto to detected adapter', async () => {
+  it('treats adapter: auto as the run’s own runtime, without detecting again', async () => {
+    // `auto` used to re-run detection for every task and could land on a
+    // runtime the user never chose.
     const mainAdapter = makeAdapter('test')
-    const autoAdapter = makeAdapter('claude-code')
-    vi.mocked(detectAdapter).mockResolvedValue('claude-code')
-    vi.mocked(getAdapter).mockResolvedValue(autoAdapter)
 
     const spec = makeSpec({}, [{ adapter: 'auto' }])
     const engine = makeEngine({
@@ -1335,10 +1378,28 @@ describe('per-task adapter resolution', () => {
 
     await engine.run()
 
-    expect(detectAdapter).toHaveBeenCalled()
-    expect(getAdapter).toHaveBeenCalledWith('claude-code')
-    expect(autoAdapter.execute).toHaveBeenCalledOnce()
-    expect(mainAdapter.execute).not.toHaveBeenCalled()
+    expect(detectAdapter).not.toHaveBeenCalled()
+    expect(getAdapter).not.toHaveBeenCalled()
+    expect(mainAdapter.execute).toHaveBeenCalledOnce()
+  })
+
+  it('refuses an unknown per-task runtime before anything runs or is recorded', async () => {
+    vi.mocked(getAdapter).mockRejectedValue(new Error('Unknown adapter "claud"'))
+    const adapter = makeAdapter('test')
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'a' }, { id: 'b', adapter: 'claud' }]),
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: makeWorktreeManager(),
+      _mergeQueue: makeMergeQueue(),
+    })
+
+    await expect(engine.run()).rejects.toThrow('Unknown adapter "claud"')
+    expect(adapter.execute).not.toHaveBeenCalled()
+    const store = createConvoyStore(dbPath)
+    expect(store.getLatestConvoy()).toBeUndefined()
+    store.close()
   })
 
   it('stores per-task adapter name in worker record', async () => {
@@ -1595,7 +1656,102 @@ describe('cost tracking', () => {
 
     const result = await engine.run()
 
-    expect(result.cost).toEqual({ total_tokens: 75 })
+    // No cost reported and no model named: the tokens are real, the cost is
+    // unknown, and the total says it is incomplete.
+    expect(result.cost).toEqual({ total_tokens: 75, estimated: true })
+  })
+
+  it('records what the runtime reported: cost, model and cache tokens', async () => {
+    const adapter = makeAdapter('claude')
+    adapter.execute.mockResolvedValue({
+      success: true,
+      output: 'ok',
+      exitCode: 0,
+      usage: { prompt_tokens: 45_000, completion_tokens: 812, total_tokens: 45_812, cache_read_tokens: 40_000, cache_write_tokens: 4_000 },
+      costUsd: 0.1234,
+      model: 'claude-sonnet-4-6',
+    } satisfies ExecuteResult)
+
+    const engine = makeEngine({
+      spec: makeSpec(), specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+
+    const store = createConvoyStore(dbPath)
+    const task = store.getTasksByConvoy(result.convoyId)[0]
+    const convoy = store.getConvoy(result.convoyId)!
+    store.close()
+    expect(task).toMatchObject({
+      total_tokens: 45_812,
+      cache_read_tokens: 40_000,
+      cache_write_tokens: 4_000,
+      cost_usd: 0.1234,
+      cost_estimated: 0,
+      model: 'claude-sonnet-4-6',
+    })
+    expect(convoy.total_cost_usd).toBeCloseTo(0.1234)
+    expect(convoy.cost_estimated).toBe(0)
+    expect(convoy.adapter).toBe('claude')
+    expect(result.cost).toEqual({ total_tokens: 45_812, total_cost_usd: 0.1234, estimated: false })
+  })
+
+  it('never prices by the adapter’s name, and flags an estimate as one', async () => {
+    // "claude" is a runtime, not a model; pricing it as Sonnet produced figures
+    // that looked measured and were not.
+    const adapter = makeAdapter('claude')
+    const engine = makeEngine({
+      spec: makeSpec(), specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+
+    const store = createConvoyStore(dbPath)
+    const task = store.getTasksByConvoy(result.convoyId)[0]
+    const convoy = store.getConvoy(result.convoyId)!
+    store.close()
+    expect(task.model).toBeNull()
+    expect(task.cost_usd).toBeNull()
+    expect(task.cost_estimated).toBe(1)
+    expect(task.total_tokens).toBeGreaterThan(0)
+    expect(convoy.cost_estimated).toBe(1)
+  })
+
+  it('prices the model it was asked for when the runtime reports tokens but no cost — marked estimated', async () => {
+    const adapter = makeAdapter('codex')
+    adapter.execute.mockResolvedValue({
+      success: true, output: 'ok', exitCode: 0,
+      usage: { prompt_tokens: 1_000_000, completion_tokens: 0, total_tokens: 1_000_000 },
+    } satisfies ExecuteResult)
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'task-1', model: 'gpt-4o' }]), specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+    const store = createConvoyStore(dbPath)
+    const task = store.getTasksByConvoy(result.convoyId)[0]
+    store.close()
+    expect(task.cost_usd).toBeCloseTo(2.5)
+    expect(task.cost_estimated).toBe(1)
+    // The model is handed to the runtime as well.
+    expect(adapter.execute.mock.calls[0][1]).toMatchObject({ model: 'gpt-4o' })
+  })
+
+  it('adds up every attempt, not only the last', async () => {
+    const adapter = makeAdapter()
+    adapter.execute
+      .mockResolvedValueOnce({ success: false, output: 'no', exitCode: 1, usage: { total_tokens: 100 }, costUsd: 0.01 })
+      .mockResolvedValueOnce({ success: true, output: 'ok', exitCode: 0, usage: { total_tokens: 50 }, costUsd: 0.02 })
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'task-1', max_retries: 1 }]), specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+    const store = createConvoyStore(dbPath)
+    const task = store.getTasksByConvoy(result.convoyId)[0]
+    store.close()
+    expect(task.total_tokens).toBe(150)
+    expect(task.cost_usd).toBeCloseTo(0.03)
   })
 
   it('includes estimated cost in ConvoyResult when adapter returns no usage data', async () => {
@@ -1675,145 +1831,113 @@ describe('cost tracking', () => {
 // ── 22. Progress reporting (always-on output) ─────────────────────────────────
 
 describe('progress reporting', () => {
-  let stdoutSpy: ReturnType<typeof vi.spyOn>
-  let writtenChunks: string[]
-
-  beforeEach(() => {
-    writtenChunks = []
-    stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation((data) => {
-      writtenChunks.push(String(data))
-      return true
-    })
-  })
-
-  afterEach(() => {
-    stdoutSpy.mockRestore()
-  })
-
-  it('prints task start message without verbose flag', async () => {
-    const adapter = makeAdapter()
-    const engine = makeEngine({
-      spec: makeSpec(),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-
-    await engine.run()
-
-    const written = writtenChunks.join('')
-    expect(written).toContain('[task-1]')
-    expect(written).toMatch(/▶/)
-  })
-
-  it('prints task completion with counter', async () => {
-    const adapter = makeAdapter()
-    const engine = makeEngine({
-      spec: makeSpec(),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-
-    await engine.run()
-
-    const written = writtenChunks.join('')
-    expect(written).toContain('[1/1]')
-    expect(written).toMatch(/✓/)
-  })
-
-  it('prints task failure with counter', async () => {
-    const adapter = makeAdapter()
-    adapter.execute.mockResolvedValue({ success: false, output: 'boom', exitCode: 1 })
-
-    const engine = makeEngine({
-      spec: makeSpec({}, [{ id: 'task-1', max_retries: 0 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-
-    await engine.run()
-
-    const written = writtenChunks.join('')
-    expect(written).toContain('[1/1]')
-    expect(written).toMatch(/✗/)
-  })
-
-  it('prints phase headers when tasks span multiple phases', async () => {
-    const adapter = makeAdapter()
-    const spec = makeSpec({}, [
-      { id: 'task-a', depends_on: [] },
-      { id: 'task-b', depends_on: ['task-a'] },
-    ])
-    const engine = makeEngine({
+  function engineWith(out: ReturnType<typeof captureOutput>, spec: TaskSpec, adapter: MockAdapter) {
+    return makeEngine({
       spec,
       specYaml: 'name: test',
       adapter,
       dbPath,
+      output: out.stream,
       _worktreeManager: makeWorktreeManager(),
       _mergeQueue: makeMergeQueue(),
     })
+  }
 
-    await engine.run()
+  it('prints a start line and a finish line for each task', async () => {
+    const out = captureOutput()
+    await engineWith(out, makeSpec(), makeAdapter()).run()
+    const text = out.text()
+    expect(text).toMatch(/▶ \[task-1\] developer/)
+    expect(text).toMatch(/✓ \[task-1\] \(\d+ms\)/)
+  })
 
-    const written = writtenChunks.join('')
-    expect(written).toContain('Phase 1:')
-    expect(written).toContain('Phase 2:')
+  it('does not print phases as barriers', async () => {
+    const out = captureOutput()
+    const spec = makeSpec({}, [{ id: 'task-a' }, { id: 'task-b', depends_on: ['task-a'] }])
+    await engineWith(out, spec, makeAdapter()).run()
+    expect(out.text()).not.toContain('Phase 1:')
+  })
+
+  it('prints no internal noise about missing output contracts', async () => {
+    const out = captureOutput()
+    await engineWith(out, makeSpec(), makeAdapter()).run()
+    expect(out.text()).not.toContain('__contract_block')
+    expect(out.text()).not.toContain('contract violation')
+  })
+
+  it('ends with the convoy id, the branch, the totals and the log path', async () => {
+    const out = captureOutput()
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: true, output: 'ok', exitCode: 0, usage: { total_tokens: 1500 } })
+    const result = await engineWith(out, makeSpec({ branch: 'feat/x' }), adapter).run()
+    const text = out.text()
+    expect(text).toContain(`Convoy: ${result.convoyId}`)
+    expect(text).toContain('Branch: feat/x')
+    expect(text).toContain('Merge:  git merge feat/x')
+    expect(text).toMatch(/Spent: 1\.5K tokens \(est\.\)/)
+    expect(text).toContain(`${result.convoyId}.ndjson`)
+    expect(result.logPath).toBe(join(tmpDir, 'logs', 'convoys', `${result.convoyId}.ndjson`))
+  })
+
+  it('names every task that is not done, with its reason, and how to resume', async () => {
+    const out = captureOutput()
+    const adapter = makeAdapter()
+    adapter.execute.mockImplementation(async (task: Task) =>
+      task.id === 'task-a' ? { success: false, output: 'compile error in a.ts', exitCode: 2 } : { success: true, output: 'ok', exitCode: 0 })
+    const spec = makeSpec({}, [{ id: 'task-a' }, { id: 'task-b', depends_on: ['task-a'] }])
+    await engineWith(out, spec, adapter).run()
+    const text = out.text()
+    expect(text).toContain('• task-a (failed): compile error in a.ts')
+    expect(text).toContain('• task-b (skipped): dependency "task-a" failed')
+    expect(text).toContain('Resume with: opencastle convoy resume')
   })
 
   it('prints gate results with pass/fail indicators', async () => {
-    const adapter = makeAdapter()
+    const out = captureOutput()
     const spec = makeSpec({ gates: ['echo gate-ok', 'false'] }, [{ id: 'task-1' }])
-    const engine = makeEngine({
-      spec,
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-
-    await engine.run()
-
-    const written = writtenChunks.join('')
-    expect(written).toContain('Gates:')
-    expect(written).toContain('echo gate-ok')
-    expect(written).toContain('false')
+    await engineWith(out, spec, makeAdapter()).run()
+    const text = out.text()
+    expect(text).toContain('Gates:')
+    expect(text).toContain('✓ echo gate-ok')
+    expect(text).toContain('✗ false')
+    // The summary names the gate that failed.
+    expect(text).toContain('Gates: 1/2 passed')
+    expect(text).toMatch(/• false \(exit 1\)/)
   })
 
-  it('prints retry messages when a task fails and is retried', async () => {
+  it('prints retries with their reason', async () => {
+    const out = captureOutput()
     const adapter = makeAdapter()
     adapter.execute
-      .mockImplementationOnce(async () => {
-        await new Promise(r => setTimeout(r, 5))
-        return { success: false, output: 'fail', exitCode: 1 }
-      })
-      .mockImplementationOnce(async () => {
-        await new Promise(r => setTimeout(r, 5))
-        return { success: true, output: 'ok', exitCode: 0 }
-      })
+      .mockResolvedValueOnce({ success: false, output: 'flaky network', exitCode: 1 })
+      .mockResolvedValueOnce({ success: true, output: 'ok', exitCode: 0 })
+    await engineWith(out, makeSpec({}, [{ id: 'task-1', max_retries: 1 }]), adapter).run()
+    expect(out.text()).toContain('⟳ [task-1] failed, retry 1/1: flaky network')
+  })
 
-    const engine = makeEngine({
-      spec: makeSpec({}, [{ id: 'task-1', max_retries: 1 }]),
+  it('keeps one status line, redrawn in place, on a terminal', async () => {
+    const chunks: string[] = []
+    const tty = { isTTY: true, columns: 120, write: (s: string) => { chunks.push(s); return true } }
+    const adapter = makeAdapter()
+    adapter.execute.mockImplementation(async () => {
+      await new Promise(r => setTimeout(r, 20))
+      return { success: true, output: 'ok', exitCode: 0 }
+    })
+    await makeEngine({
+      spec: makeSpec({ concurrency: 2 }, [{ id: 'build-api' }, { id: 'write-tests' }, { id: 'docs' }]),
       specYaml: 'name: test',
       adapter,
       dbPath,
+      output: tty,
       _worktreeManager: makeWorktreeManager(),
       _mergeQueue: makeMergeQueue(),
-    })
-
-    await engine.run()
-
-    const written = writtenChunks.join('')
-    expect(written).toMatch(/⟳/)
-    expect(written).toContain('retry 1/1')
+    }).run()
+    // eslint-disable-next-line no-control-regex
+    const statuses = chunks.filter(ch => ch.startsWith('\r\x1b[2K') && ch.includes('▸')).map(ch => ch.replace(/\x1b\[[0-9;]*m/g, ''))
+    expect(statuses.length).toBeGreaterThan(0)
+    expect(statuses.some(s => /▸ build-api, write-tests · 1 queued · 0\/3 done/.test(s))).toBe(true)
+    // Nothing of the status line is left once the run has ended.
+    expect(chunks.join('')).not.toMatch(/▸[^\n]*$/)
   })
 })
 
@@ -1887,7 +2011,8 @@ describe('gate retry mechanism', () => {
     // The second call should be the fix task
     const fixCall = adapter.execute.mock.calls[1] as [Task]
     expect(fixCall[0].id).toBe('gate-fix-1')
-    expect(fixCall[0].prompt).toContain('validation gates failed')
+    expect(fixCall[0].prompt).toContain('These checks failed after every task was merged')
+    expect(fixCall[0].prompt).toContain('Command: false')
     // Gates still fail after fix, so final status is gate-failed
     expect(result.status).toBe('gate-failed')
   })
@@ -1968,52 +2093,16 @@ function makeDiffStats(overrides: Partial<DiffStats> = {}): DiffStats {
 }
 
 describe('evaluateReviewLevel', () => {
-  it('routes to panel when a changed file is under auth/', () => {
-    const level = evaluateReviewLevel(
-      makeTaskRecord(),
-      makeDiffStats({ filePaths: ['auth/session.ts'] }),
-    )
-    expect(level).toBe('panel')
+  it('never picks a panel on its own — sensitive paths get a fast review, even when small', () => {
+    // A panel is three reviewer sessions; only a spec that asks for one gets one.
+    for (const filePaths of [['auth/session.ts'], ['src/auth/session.ts'], ['security/policy.ts']]) {
+      expect(evaluateReviewLevel(makeTaskRecord(), makeDiffStats({ filePaths, linesChanged: 3, filesChanged: 1 }), undefined, true)).toBe('fast')
+    }
   })
 
-  it('routes to panel when a changed file path contains /auth/', () => {
-    const level = evaluateReviewLevel(
-      makeTaskRecord(),
-      makeDiffStats({ filePaths: ['src/auth/session.ts'] }),
-    )
-    expect(level).toBe('panel')
-  })
-
-  it('routes to panel for security/ path', () => {
-    const level = evaluateReviewLevel(
-      makeTaskRecord(),
-      makeDiffStats({ filePaths: ['security/policy.ts'] }),
-    )
-    expect(level).toBe('panel')
-  })
-
-  it('routes to panel for security-expert agent', () => {
-    const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'security-expert' }),
-      makeDiffStats(),
-    )
-    expect(level).toBe('panel')
-  })
-
-  it('routes to panel for data-engineer agent', () => {
-    const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'data-engineer' }),
-      makeDiffStats(),
-    )
-    expect(level).toBe('panel')
-  })
-
-  it('routes to auto-pass for writer agent', () => {
-    const level = evaluateReviewLevel(
-      makeTaskRecord({ agent: 'writer' }),
-      makeDiffStats(),
-    )
-    expect(level).toBe('auto-pass')
+  it('gives sensitive agents a fast review rather than waving them through', () => {
+    expect(evaluateReviewLevel(makeTaskRecord({ agent: 'security-expert' }), makeDiffStats())).toBe('fast')
+    expect(evaluateReviewLevel(makeTaskRecord({ agent: 'data-engineer' }), makeDiffStats())).toBe('fast')
   })
 
   it('routes to auto-pass for writer agent', () => {
@@ -2058,13 +2147,14 @@ describe('evaluateReviewLevel', () => {
     expect(level).toBe('fast')
   })
 
-  it('custom heuristics: overrides panel_paths', () => {
+  it('custom heuristics: panel_paths mark a path sensitive', () => {
     const level = evaluateReviewLevel(
       makeTaskRecord(),
-      makeDiffStats({ filePaths: ['billing/invoice.ts'] }),
+      makeDiffStats({ filePaths: ['billing/invoice.ts'], linesChanged: 2, filesChanged: 1 }),
       { panel_paths: ['billing/'] },
+      true,
     )
-    expect(level).toBe('panel')
+    expect(level).toBe('fast')
   })
 
   it('custom heuristics: overrides auto_pass_agents', () => {
@@ -2100,540 +2190,197 @@ describe('review pipeline', () => {
     mergeQueue = makeMergeQueue()
   })
 
+  function reviewEngine(spec: TaskSpec, runner?: ConvoyEngineOptions['_reviewRunner']) {
+    return makeEngine({
+      spec,
+      specYaml: 'name: test',
+      adapter,
+      dbPath,
+      _worktreeManager: wtManager,
+      _mergeQueue: mergeQueue,
+      ...(runner ? { _reviewRunner: runner } : {}),
+    })
+  }
+
+  function readTasks(convoyId: string) {
+    const store = createConvoyStore(dbPath)
+    const tasks = store.getTasksByConvoy(convoyId)
+    const events = store.getEvents(convoyId)
+    store.close()
+    return { tasks, events }
+  }
+
   it('task with review: none — reviewer not called, task succeeds', async () => {
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 100, model: 'test' })
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'none' } }, [{ review: 'none' }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+    const runner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 100, model: 'test' })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'none' } }, [{ review: 'none' }]), runner).run()
     expect(result.status).toBe('done')
-    expect(mockReviewRunner).not.toHaveBeenCalled()
+    expect(runner).not.toHaveBeenCalled()
   })
 
-  it('fast review PASS — task proceeds to merge (status done)', async () => {
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'fast' } }),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+  it('fast review is one reviewer session, and a pass lets the task merge', async () => {
+    const runner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'fast' } }), runner).run()
     expect(result.status).toBe('done')
-    // Two-stage review: stage 1 (spec compliance) + stage 2 (code quality) = 2 calls
-    expect(mockReviewRunner).toHaveBeenCalledTimes(2)
-    expect(mockReviewRunner).toHaveBeenCalledWith(expect.objectContaining({ agent: 'developer' }), 'fast', 'default')
+    expect(runner).toHaveBeenCalledTimes(1)
+    expect(runner).toHaveBeenCalledWith(
+      expect.objectContaining({ agent: 'developer' }),
+      'fast',
+      'default',
+      expect.objectContaining({ cwd: '/tmp/worktree-mock', prompt: 'Prompt for task 1', canRunReadOnly: true }),
+    )
+    expect(mergeQueue.merge).toHaveBeenCalledOnce()
   })
 
-  it('fast review BLOCK + retries remaining — task retried with feedback prepended', async () => {
-    let callCount = 0
-    adapter.execute.mockImplementation(() => {
-      callCount++
-      return Promise.resolve({ success: true, output: 'ok', exitCode: 0 })
-    })
-    const mockReviewRunner = vi.fn()
-      .mockResolvedValueOnce({ verdict: 'block', feedback: 'Missing tests', tokens: 50, model: 'reviewer' }) // round 1 stage 1 → block (short-circuits)
-      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })               // round 2 stage 1 → pass
-      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })               // round 2 stage 2 → pass
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'fast' } }, [{ max_retries: 1 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+  it('a block with retries left re-runs the task with the feedback and its original prompt', async () => {
+    const runner = vi.fn()
+      .mockResolvedValueOnce({ verdict: 'block', feedback: 'Missing tests', tokens: 50, model: 'reviewer' })
+      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 50, model: 'reviewer' })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'fast' } }, [{ max_retries: 1 }]), runner).run()
     expect(result.status).toBe('done')
     expect(adapter.execute).toHaveBeenCalledTimes(2)
-    // Round 1: stage 1 blocks (1 call). Round 2: stage 1 pass + stage 2 pass (2 calls). Total: 3
-    expect(mockReviewRunner).toHaveBeenCalledTimes(3)
-    // Prompt on second attempt should contain feedback
+    expect(runner).toHaveBeenCalledTimes(2)
     const secondPrompt = (adapter.execute.mock.calls[1] as [Task])[0].prompt
     expect(secondPrompt).toContain('Missing tests')
+    expect(secondPrompt).toContain('Prompt for task 1')
   })
 
-  it('fast review BLOCK + retries exhausted — status review-blocked', async () => {
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'block', feedback: 'Insecure code', tokens: 50, model: 'reviewer' })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'fast' } }, [{ max_retries: 0 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+  it('a block with no retries left ends review-blocked', async () => {
+    const runner = vi.fn().mockResolvedValue({ verdict: 'block', feedback: 'Insecure code', tokens: 50, model: 'reviewer' })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'fast' } }, [{ max_retries: 0 }]), runner).run()
     expect(result.status).toBe('failed')
-    expect(result.summary.failed).toBe(1)
-    // Verify the task itself is review-blocked
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-    expect(tasks[0].status).toBe('review-blocked')
+    expect(readTasks(result.convoyId).tasks[0].status).toBe('review-blocked')
+    expect(mergeQueue.merge).not.toHaveBeenCalled()
   })
 
-  it('panel review 2/3 PASS — task proceeds (status done)', async () => {
-    let callCount = 0
-    const mockReviewRunner = vi.fn().mockImplementation(() => {
-      callCount++
-      // Reviewer C blocks at stage 1 (call 3); reviewers A and B pass both stages (calls 1,2,4,5)
-      return Promise.resolve(callCount === 3
+  it('records a review that reached no verdict as skipped — never as a pass', async () => {
+    const runner = vi.fn().mockResolvedValue({ verdict: 'skipped', feedback: 'the reviewer gave no verdict', tokens: 30, model: null })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'fast' } }), runner).run()
+    expect(result.status).toBe('done')
+    const { tasks, events } = readTasks(result.convoyId)
+    expect(tasks[0].review_verdict).toBe('skipped')
+    expect(events.some(e => e.type === 'review_verdict')).toBe(false)
+    const skipped = events.find(e => e.type === 'review_skipped')!
+    expect(JSON.parse(skipped.data!)).toEqual({ level: 'fast', reason: 'the reviewer gave no verdict' })
+  })
+
+  it('uses the default reviewer when none is injected: the task’s runtime, read-only, in its worktree', async () => {
+    adapter.execute.mockImplementation(async (task: Task) =>
+      task.id.endsWith('-review')
+        ? { success: true, output: 'Looks fine.\n<!-- REVIEW_VERDICT { "verdict": "pass", "issues": [] } -->', exitCode: 0, usage: { total_tokens: 900 } }
+        : { success: true, output: 'ok', exitCode: 0 })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'fast' } })).run()
+    expect(result.status).toBe('done')
+    const reviewCall = adapter.execute.mock.calls.find(([t]) => (t as Task).id === 'task-1-review')!
+    expect(reviewCall[1]).toMatchObject({ cwd: '/tmp/worktree-mock', permissionMode: 'plan' })
+    expect((reviewCall[0] as Task).prompt).toContain('Prompt for task 1')
+    const task = readTasks(result.convoyId).tasks[0]
+    expect(task).toMatchObject({ review_level: 'fast', review_verdict: 'pass', review_tokens: 900 })
+  })
+
+  it('panel: three reviewers, majority wins', async () => {
+    let n = 0
+    const runner = vi.fn().mockImplementation(() => {
+      n++
+      return Promise.resolve(n === 3
         ? { verdict: 'block', feedback: 'Minor issue', tokens: 30, model: 'reviewer' }
         : { verdict: 'pass', feedback: '', tokens: 30, model: 'reviewer' })
     })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'panel' } }),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'panel' } }), runner).run()
     expect(result.status).toBe('done')
-    // Two-stage panel: 2 pass reviewers × 2 stages + 1 block reviewer × 1 stage = 5 calls
-    expect(mockReviewRunner).toHaveBeenCalledTimes(5)
+    expect(runner).toHaveBeenCalledTimes(3)
+    const task = readTasks(result.convoyId).tasks[0]
+    expect(task).toMatchObject({ review_level: 'panel', review_verdict: 'pass', review_tokens: 90, panel_attempts: 1 })
   })
 
-  it('panel review 2/3 BLOCK — task retried with MUST-FIX', async () => {
-    let reviewCallCount = 0
-    const mockReviewRunner = vi.fn().mockImplementation(() => {
-      reviewCallCount++
-      // First round: 2 block; second round: 3 pass
-      if (reviewCallCount <= 3) {
-        return Promise.resolve(reviewCallCount <= 2
-          ? { verdict: 'block', feedback: 'Critical bug', tokens: 30, model: 'reviewer' }
-          : { verdict: 'pass', feedback: '', tokens: 30, model: 'reviewer' })
-      }
-      return Promise.resolve({ verdict: 'pass', feedback: '', tokens: 30, model: 'reviewer' })
+  it('panel: 2/3 block → retried with the blocking feedback', async () => {
+    let n = 0
+    const runner = vi.fn().mockImplementation(() => {
+      n++
+      return Promise.resolve(n <= 2
+        ? { verdict: 'block', feedback: 'Critical bug', tokens: 30, model: 'reviewer' }
+        : { verdict: 'pass', feedback: '', tokens: 30, model: 'reviewer' })
     })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'panel' } }, [{ max_retries: 1 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'panel' } }, [{ max_retries: 1 }]), runner).run()
     expect(result.status).toBe('done')
     expect(adapter.execute).toHaveBeenCalledTimes(2)
-    // Prompt on second attempt contains MUST-FIX
+    expect(runner).toHaveBeenCalledTimes(6)
     const secondPrompt = (adapter.execute.mock.calls[1] as [Task])[0].prompt
-    expect(secondPrompt).toContain('MUST-FIX')
     expect(secondPrompt).toContain('Critical bug')
   })
 
-  it('review budget exceeded with skip — review skipped, task done', async () => {
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 200, model: 'reviewer' })
-
-    const engine = makeEngine({
-      spec: makeSpec({
-        defaults: { review: 'fast', review_budget: 100, on_review_budget_exceeded: 'skip', reviewer_model: 'r1' },
-        tasks: [
-          { id: 'task-1', prompt: 'Prompt 1', agent: 'developer', timeout: '30s', depends_on: [], files: [], description: '', max_retries: 0 },
-          { id: 'task-2', prompt: 'Prompt 2', agent: 'developer', timeout: '30s', depends_on: ['task-1'], files: [], description: '', max_retries: 0 },
-        ],
-      }),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+  it('auto route: developer agent with an empty diff → auto-pass, no reviewer', async () => {
+    const runner = vi.fn()
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'auto' } }), runner).run()
     expect(result.status).toBe('done')
-    // first task: budget not exceeded (0 < 100), two-stage review runs (2 calls, total 400 tokens)
-    // second task: budget exceeded (400 >= 100), review skipped
-    expect(mockReviewRunner).toHaveBeenCalledTimes(2)
+    expect(runner).not.toHaveBeenCalled()
+    expect(readTasks(result.convoyId).tasks[0]).toMatchObject({ review_level: 'auto-pass', review_verdict: 'pass', review_model: null })
   })
 
-  it('auto route: developer agent with empty diff → auto-pass (no reviewer call)', async () => {
-    // Given: 'auto' review setting, developer agent, empty diff (git will fail on mock path)
-    const mockReviewRunner = vi.fn()
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'auto' } }),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-    expect(result.status).toBe('done')
-    expect(mockReviewRunner).not.toHaveBeenCalled()
-  })
-
-  it('review tokens tracked on task record', async () => {
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 77, model: 'reviewer' })
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'fast' } }),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-    expect(tasks[0].review_tokens).toBe(154) // two-stage: 77 (stage 1) + 77 (stage 2)
-    expect(tasks[0].review_level).toBe('fast')
-    expect(tasks[0].review_verdict).toBe('pass')
+  it('review tokens are tracked on the task and the reviewer cost is added to it', async () => {
+    const runner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 77, model: 'reviewer', costUsd: 0.05 })
+    adapter.execute.mockResolvedValue({ success: true, output: 'ok', exitCode: 0, usage: { total_tokens: 10 }, costUsd: 0.1 })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'fast' } }), runner).run()
+    const task = readTasks(result.convoyId).tasks[0]
+    expect(task.review_tokens).toBe(77)
+    expect(task.cost_usd).toBeCloseTo(0.15)
+    expect(result.cost?.total_tokens).toBe(87)
   })
 
   it('review_started and review_verdict events emitted', async () => {
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 10, model: 'reviewer' })
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'fast' } }),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-    const store = createConvoyStore(dbPath)
-    const events = store.getEvents(result.convoyId)
-    store.close()
-    const startedEvent = events.find(e => e.type === 'review_started')
-    const verdictEvent = events.find(e => e.type === 'review_verdict')
-    expect(startedEvent).toBeDefined()
-    expect(verdictEvent).toBeDefined()
+    const runner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 10, model: 'reviewer' })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'fast' } }), runner).run()
+    const { events } = readTasks(result.convoyId)
+    expect(events.find(e => e.type === 'review_started')).toBeDefined()
+    expect(events.find(e => e.type === 'review_verdict')).toBeDefined()
   })
 
   it('review sessions do NOT count against concurrency limit', async () => {
-    // Concurrency=1, 2 tasks in parallel. Both should complete with review.
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 10, model: 'reviewer' })
-    const engine = makeEngine({
-      spec: makeSpec(
-        { concurrency: 1, defaults: { review: 'fast' } },
-        [{ id: 'task-1' }, { id: 'task-2' }],
-      ),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
+    const runner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 10, model: 'reviewer' })
+    const result = await reviewEngine(makeSpec({ concurrency: 1, defaults: { review: 'fast' } }, [{ id: 'task-1' }, { id: 'task-2' }]), runner).run()
     expect(result.status).toBe('done')
     expect(result.summary.done).toBe(2)
   })
 
-  it('full fast-review flow: BLOCK on first attempt → retry → PASS → done with complete events', async () => {
-    const mockReviewRunner = vi.fn()
-      .mockResolvedValueOnce({ verdict: 'block', feedback: 'Add more tests', tokens: 40, model: 'reviewer' }) // round 1 stage 1 → block
-      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 35, model: 'reviewer' })               // round 2 stage 1 → pass
-      .mockResolvedValueOnce({ verdict: 'pass', feedback: '', tokens: 35, model: 'reviewer' })               // round 2 stage 2 → pass
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'fast' } }, [{ id: 'task-1', max_retries: 1 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-
-    expect(result.status).toBe('done')
-    expect(adapter.execute).toHaveBeenCalledTimes(2)
-    // Round 1: 1 call (block short-circuits). Round 2: 2 calls (stage 1 + stage 2). Total: 3
-    expect(mockReviewRunner).toHaveBeenCalledTimes(3)
-
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    const events = store.getEvents(result.convoyId)
-    store.close()
-
-    const task = tasks[0]
-    expect(task.review_level).toBe('fast')
-    expect(task.review_verdict).toBe('pass')
-    expect(task.retries).toBe(1)
-
-    const reviewStartedEvents = events.filter(e => e.type === 'review_started')
-    const reviewVerdictEvents = events.filter(e => e.type === 'review_verdict')
-    expect(reviewStartedEvents.length).toBe(2)
-    expect(reviewVerdictEvents.length).toBe(2)
-
-    const firstVerdict = JSON.parse(reviewVerdictEvents[0].data!) as Record<string, unknown>
-    const secondVerdict = JSON.parse(reviewVerdictEvents[1].data!) as Record<string, unknown>
-    expect(firstVerdict['verdict']).toBe('block')
-    expect(secondVerdict['verdict']).toBe('pass')
-  })
-
-  it('panel flow: 2/3 BLOCK first round → retry → 3/3 PASS second round → done', async () => {
-    let reviewCallCount = 0
-    const mockReviewRunner = vi.fn().mockImplementation(() => {
-      reviewCallCount++
-      // Round 1 (calls 1-3): BLOCK, BLOCK, PASS → majority block → retry
-      if (reviewCallCount <= 3) {
-        return Promise.resolve(reviewCallCount <= 2
-          ? { verdict: 'block', feedback: 'Critical issue', tokens: 20, model: 'reviewer' }
-          : { verdict: 'pass', feedback: '', tokens: 20, model: 'reviewer' })
-      }
-      // Round 2 (calls 4-6): all PASS
-      return Promise.resolve({ verdict: 'pass', feedback: '', tokens: 20, model: 'reviewer' })
-    })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'panel' } }, [{ id: 'task-1', max_retries: 1 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-
-    expect(result.status).toBe('done')
-    expect(adapter.execute).toHaveBeenCalledTimes(2)
-    // Two-stage panel round 1: 2 blocks ×1 call + 1 pass ×2 calls = 4 calls
-    // Two-stage panel round 2: 3 pass ×2 calls = 6 calls. Total: 10
-    expect(mockReviewRunner).toHaveBeenCalledTimes(10)
-
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-
-    expect(tasks[0].review_verdict).toBe('pass')
-    expect(tasks[0].panel_attempts).toBeGreaterThanOrEqual(1)
-  })
-
-  it('dispute: task dispute_id matches the dispute_opened event and panel_attempts is 3', async () => {
-    const mockReviewRunner = vi.fn().mockResolvedValue({ verdict: 'block', feedback: 'broken', tokens: 5, model: 'r' })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { review: 'panel' } }, [{ id: 'task-1', max_retries: 3 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    const events = store.getEvents(result.convoyId)
-    store.close()
-
+  it('dispute: three blocked panels open a dispute whose id matches the task', async () => {
+    const runner = vi.fn().mockResolvedValue({ verdict: 'block', feedback: 'broken', tokens: 5, model: 'r' })
+    const result = await reviewEngine(makeSpec({ defaults: { review: 'panel' } }, [{ id: 'task-1', max_retries: 3 }]), runner).run()
+    const { tasks, events } = readTasks(result.convoyId)
     const task = tasks[0]
     expect(task.status).toBe('disputed')
     expect(task.dispute_id).not.toBeNull()
     expect(task.panel_attempts).toBe(3)
-
-    const disputeEvent = events.find(e => e.type === 'dispute_opened')
-    expect(disputeEvent).toBeDefined()
-    const eventData = JSON.parse(disputeEvent!.data!) as Record<string, unknown>
-    // Verify the dispute_id on the task record matches the one in the event
+    const eventData = JSON.parse(events.find(e => e.type === 'dispute_opened')!.data!) as Record<string, unknown>
     expect(eventData['dispute_id']).toBe(task.dispute_id)
     expect(eventData['panel_attempts']).toBe(3)
   })
 
-  it('review budget exceeded: stop marks task review-blocked and skips all pending tasks', async () => {
-    const mockReviewRunner = vi.fn()
+  it('review budget spent with skip — later reviews are recorded as skipped, not passed', async () => {
+    const runner = vi.fn().mockResolvedValue({ verdict: 'pass', feedback: '', tokens: 200, model: 'reviewer' })
+    const spec = makeSpec(
+      { defaults: { review: 'fast', review_budget: 100, on_review_budget_exceeded: 'skip' } },
+      [{ id: 'task-1' }, { id: 'task-2', depends_on: ['task-1'] }],
+    )
+    const result = await reviewEngine(spec, runner).run()
+    expect(result.status).toBe('done')
+    expect(runner).toHaveBeenCalledTimes(1)
+    const byId = Object.fromEntries(readTasks(result.convoyId).tasks.map(t => [t.id, t.review_verdict]))
+    expect(byId).toEqual({ 'task-1': 'pass', 'task-2': 'skipped' })
+  })
 
-    const engine = makeEngine({
-      spec: makeSpec(
-        { defaults: { review: 'fast', review_budget: 0, on_review_budget_exceeded: 'stop' } },
-        [
-          { id: 'task-1', depends_on: [] },
-          { id: 'task-2', depends_on: ['task-1'] },
-        ],
-      ),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-
-    const byId = Object.fromEntries(tasks.map(t => [t.id, t.status]))
+  it('review budget spent with stop: the task is review-blocked and nothing new starts', async () => {
+    const runner = vi.fn()
+    const spec = makeSpec(
+      { defaults: { review: 'fast', review_budget: 0, on_review_budget_exceeded: 'stop' } },
+      [{ id: 'task-1' }, { id: 'task-2', depends_on: ['task-1'] }],
+    )
+    const result = await reviewEngine(spec, runner).run()
+    const byId = Object.fromEntries(readTasks(result.convoyId).tasks.map(t => [t.id, t.status]))
     expect(byId['task-1']).toBe('review-blocked')
     expect(byId['task-2']).toBe('skipped')
-    expect(mockReviewRunner).not.toHaveBeenCalled()
-  })
-
-  it('review budget exceeded: downgrade auto-passes task without calling reviewer', async () => {
-    const mockReviewRunner = vi.fn()
-
-    const engine = makeEngine({
-      spec: makeSpec(
-        { defaults: { review: 'fast', review_budget: 0, on_review_budget_exceeded: 'downgrade' } },
-      ),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-      _reviewRunner: mockReviewRunner,
-    })
-    const result = await engine.run()
-
-    expect(result.status).toBe('done')
-    expect(mockReviewRunner).not.toHaveBeenCalled()
-
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-
-    expect(tasks[0].review_verdict).toBe('pass')
-    expect(tasks[0].review_level).toBe('fast')
+    expect(runner).not.toHaveBeenCalled()
   })
 })
 
-// ── Drift detection ───────────────────────────────────────────────────────────
-
-describe('drift detection', () => {
-  let adapter: ReturnType<typeof makeAdapter>
-  let wtManager: ReturnType<typeof makeWorktreeManager>
-  let mergeQueue: ReturnType<typeof makeMergeQueue>
-
-  beforeEach(() => {
-    adapter = makeAdapter('copilot')
-    wtManager = makeWorktreeManager()
-    mergeQueue = makeMergeQueue()
-  })
-
-  it('detect_drift=true triggers drift check and retries on low confidence', async () => {
-    // Call sequence: main task → drift check (low score) → main task retry
-    const driftRetryOutput = [
-      'done retry',
-      '<!-- OUTPUT_CONTRACT',
-      '{ "files_changed": ["src/foo.ts"], "tests_added": ["src/foo.test.ts"], "summary": "done" }',
-      '-->',
-    ].join('\n')
-    adapter.execute
-      .mockResolvedValueOnce({ success: true, output: 'done', exitCode: 0 })
-      .mockResolvedValueOnce({ success: true, output: '{"score": 0.3, "explanation": "uncertain"}', exitCode: 0 })
-      .mockResolvedValueOnce({ success: true, output: driftRetryOutput, exitCode: 0 })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { detect_drift: true } }, [{ id: 'task-1', max_retries: 1 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-    })
-    const result = await engine.run()
-
-    expect(result.status).toBe('done')
-    expect(result.summary.done).toBe(1)
-    expect(adapter.execute).toHaveBeenCalledTimes(3)
-
-    // Verify drift_score and drift_retried stored
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-    expect(tasks[0].drift_score).toBe(0.3)
-    expect(tasks[0].drift_retried).toBe(1)
-  })
-
-  it('detect_drift=true does NOT re-check on drift retry (drift_retried=1)', async () => {
-    // On second execution drift_retried=1 so no third call for drift check
-    adapter.execute
-      .mockResolvedValueOnce({ success: true, output: 'done', exitCode: 0 })
-      .mockResolvedValueOnce({ success: true, output: '{"score": 0.9, "explanation": "confident"}', exitCode: 0 })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { detect_drift: true } }),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-    })
-    const result = await engine.run()
-
-    expect(result.status).toBe('done')
-    expect(adapter.execute).toHaveBeenCalledTimes(2)
-  })
-
-  it('drift_check_result and drift_detected events emitted when drifted', async () => {
-    adapter.execute
-      .mockResolvedValueOnce({ success: true, output: 'done', exitCode: 0 })
-      .mockResolvedValueOnce({ success: true, output: '{"score": 0.2, "explanation": "very unsure"}', exitCode: 0 })
-      .mockResolvedValueOnce({ success: true, output: 'done', exitCode: 0 })
-
-    const engine = makeEngine({
-      spec: makeSpec({ defaults: { detect_drift: true } }, [{ id: 'task-1', max_retries: 1 }]),
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      _worktreeManager: wtManager,
-      _mergeQueue: mergeQueue,
-    })
-    const result = await engine.run()
-
-    const store = createConvoyStore(dbPath)
-    const events = store.getEvents(result.convoyId)
-    store.close()
-
-    expect(events.some(e => e.type === 'drift_check_result')).toBe(true)
-    expect(events.some(e => e.type === 'drift_detected')).toBe(true)
-  })
-
-  it('non-copilot adapter skips drift detection (returns done without extra call)', async () => {
-    // adapter name is 'test-adapter' — not a streaming adapter; drift check should be skipped
-    const nonStreamingAdapter = makeAdapter('test-adapter')
-    nonStreamingAdapter.execute.mockResolvedValue({ success: true, output: 'ok', exitCode: 0 })
-
-    // Suppress the stderr warning
-    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
-    try {
-      const engine = makeEngine({
-        spec: makeSpec({ defaults: { detect_drift: true } }),
-        specYaml: 'name: test',
-        adapter: nonStreamingAdapter,
-        dbPath,
-        _worktreeManager: wtManager,
-        _mergeQueue: mergeQueue,
-      })
-      const result = await engine.run()
-      expect(result.status).toBe('done')
-      // Only 1 call: main task (no drift check call) because non-streaming adapter
-      expect(nonStreamingAdapter.execute).toHaveBeenCalledTimes(1)
-    } finally {
-      stderrSpy.mockRestore()
-    }
-  })
-})
 
 // ── Dispute protocol ──────────────────────────────────────────────────────────
 
@@ -2766,49 +2513,6 @@ describe('dispute protocol', () => {
   })
 })
 
-// ── File-based injection ───────────────────────────────────────────────────
-
-describe('file-based injection', () => {
-  it('picks up tasks from inject file and ingests them', async () => {
-    const adapter = makeAdapter()
-    adapter.execute.mockResolvedValue({ success: true, output: 'ok', exitCode: 0 })
-
-    const spec = makeSpec({ concurrency: 1 }, [
-      { id: 'task-1', prompt: 'Original task', timeout: '5s' },
-    ])
-
-    const engine = makeEngine({
-      spec,
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      basePath: tmpDir,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-
-    const result = await engine.run()
-    expect(result.summary.done).toBeGreaterThanOrEqual(1)
-  })
-
-  it('respects convoy_id path traversal guard', async () => {
-    const adapter = makeAdapter()
-    const spec = makeSpec()
-
-    const engine = makeEngine({
-      spec,
-      specYaml: 'name: test',
-      adapter,
-      dbPath,
-      basePath: tmpDir,
-      _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
-    })
-
-    const result = await engine.run()
-    expect(result.status).toBe('done')
-  })
-})
 
 describe('NDJSON recovery', () => {
   it('truncates partial trailing line in NDJSON file', () => {
@@ -3169,8 +2873,17 @@ describe('swarm mode (concurrency: auto)', () => {
     expect(maxConcurrent).toBeLessThanOrEqual(2)
   })
 
-  it('defaults max_swarm_concurrency to 8', async () => {
+  it('runs at most four at once when the spec gives no number', async () => {
     const adapter = makeAdapter()
+    let maxConcurrent = 0
+    let current = 0
+    adapter.execute.mockImplementation(async () => {
+      current++
+      maxConcurrent = Math.max(maxConcurrent, current)
+      await new Promise(r => setTimeout(r, 20))
+      current--
+      return { success: true, output: 'ok', exitCode: 0 }
+    })
 
     const spec = makeSpec(
       { concurrency: 'auto' as unknown as number },
@@ -3192,6 +2905,7 @@ describe('swarm mode (concurrency: auto)', () => {
     const result = await engine.run()
     expect(result.status).toBe('done')
     expect(result.summary.done).toBe(10)
+    expect(maxConcurrent).toBe(4)
   })
 })
 
@@ -3230,9 +2944,12 @@ describe('step retry context prepending', () => {
 
     await engine.run()
 
-    // First call uses the original step prompt
-    expect(capturedPrompts[0]).toBe('step prompt text')
-    // Second call (retry) prepends failure context
+    // First call: the step, inside the shared context and the task's role
+    expect(capturedPrompts[0]).toContain('### Instructions\nstep prompt text')
+    expect(capturedPrompts[0]).toContain('# Convoy: Test Convoy')
+    expect(capturedPrompts[0]).toContain('You are the developer agent for this task.')
+    expect(capturedPrompts[0]).not.toContain('Previous attempt failed.')
+    // Second call (retry) adds the failure context
     expect(capturedPrompts[1]).toContain('Previous attempt failed.')
     expect(capturedPrompts[1]).toContain('Exit code: 2')
     expect(capturedPrompts[1]).toContain('step error detail')
@@ -3573,11 +3290,11 @@ describe('circuit breaker', () => {
       .mockResolvedValueOnce({ success: false, output: 'err', exitCode: 1 })
       .mockResolvedValue({ success: true, output: 'ok', exitCode: 0 })
 
-    // threshold=2: task-1 failure is recorded twice (failure path + handleExhaustion),
-    // reaching threshold=2 → circuit opens before task-2 and task-3 execute
+    // threshold=1: one failure opens the circuit before task-2 and task-3 start.
+    // (Each failure used to be counted twice, and this test was written around that.)
     const spec = makeSpec({
       on_failure: 'continue',
-      defaults: { circuit_breaker: { threshold: 2, cooldown_ms: 999_999_999 } },
+      defaults: { circuit_breaker: { threshold: 1, cooldown_ms: 999_999_999 } },
     }, [
       { id: 'task-1', agent: 'developer', max_retries: 0 },
       { id: 'task-2', agent: 'developer', max_retries: 0 },
@@ -3627,12 +3344,13 @@ describe('circuit breaker', () => {
     const adapter = makeAdapter()
     adapter.execute.mockResolvedValue({ success: false, output: 'err', exitCode: 1 })
 
-    // threshold=2: first failure double-records → count reaches 2 → circuit opens
+    // threshold=2, two failures: counted once each, the second opens it
     const spec = makeSpec({
       on_failure: 'continue',
       defaults: { circuit_breaker: { threshold: 2, cooldown_ms: 999_999_999 } },
     }, [
       { id: 'task-f1', agent: 'developer', max_retries: 0 },
+      { id: 'task-f2', agent: 'developer', max_retries: 0 },
     ])
     const engine = makeEngine({
       spec,
@@ -3775,19 +3493,13 @@ describe('createEventEmitter callsite safety', () => {
 
 // ── Contract retry ────────────────────────────────────────────────────────────
 
-describe('contract retry', () => {
-  it('retries when output is missing OUTPUT_CONTRACT and retries remain', async () => {
-    const validContractOutput = [
-      'Work done.',
-      '<!-- OUTPUT_CONTRACT',
-      '{ "files_changed": ["src/foo.ts"], "tests_added": ["src/foo.test.ts"], "summary": "implemented" }',
-      '-->',
-    ].join('\n')
-
+describe('output contract', () => {
+  it('only warns about a missing contract — the task is never run again', async () => {
+    // The re-run used to happen after the first attempt had already merged:
+    // two tasks produced four agent sessions and four commits.
     const adapter = makeAdapter()
-    adapter.execute
-      .mockResolvedValueOnce({ success: true, output: 'no contract here', exitCode: 0 })
-      .mockResolvedValueOnce({ success: true, output: validContractOutput, exitCode: 0 })
+    adapter.execute.mockResolvedValue({ success: true, output: 'no contract here', exitCode: 0 })
+    const mergeQueue = makeMergeQueue()
 
     const engine = makeEngine({
       spec: makeSpec({}, [{ agent: 'developer', max_retries: 1 }]),
@@ -3795,24 +3507,15 @@ describe('contract retry', () => {
       adapter,
       dbPath,
       _worktreeManager: makeWorktreeManager(),
-      _mergeQueue: makeMergeQueue(),
+      _mergeQueue: mergeQueue,
     })
     const result = await engine.run()
     expect(result.status).toBe('done')
-    expect(adapter.execute).toHaveBeenCalledTimes(2)
-
-    // Second prompt should contain the contract retry message
-    const secondPrompt = (adapter.execute.mock.calls[1] as [Task])[0].prompt
-    expect(secondPrompt).toContain('OUTPUT_CONTRACT')
-    expect(secondPrompt).toContain('Missing fields')
-
-    const store = createConvoyStore(dbPath)
-    const tasks = store.getTasksByConvoy(result.convoyId)
-    store.close()
-    expect(tasks[0].status).toBe('done')
+    expect(adapter.execute).toHaveBeenCalledTimes(1)
+    expect(mergeQueue.merge).toHaveBeenCalledTimes(1)
   })
 
-  it('emits contract_violation and marks done when retries exhausted', async () => {
+  it('emits contract_violation and marks done', async () => {
     const adapter = makeAdapter()
     adapter.execute.mockResolvedValue({ success: true, output: 'no contract here', exitCode: 0 })
 
@@ -4031,3 +3734,209 @@ describe('permission mode', () => {
 
 // ── Compaction continuation ───────────────────────────────────────────────────
 
+
+// ── Scheduler: a ready queue, not phase barriers ──────────────────────────────
+
+describe('ready-queue scheduler', () => {
+  it('runs the audit’s demo in about 6s, not 8.6s', async () => {
+    // slow 6s, fast1 1s, fast2 (after fast1) 1s, indep 1s, two slots. With
+    // phase barriers fast2 waited for slow: 6 + 1 + 1 ≈ 8.6s measured. With a
+    // ready queue it starts the moment fast1 is done, and the run takes as
+    // long as its slowest task.
+    vi.useFakeTimers()
+    try {
+      const durations: Record<string, number> = { slow: 6000, fast1: 1000, fast2: 1000, indep: 1000 }
+      const timeline: Record<string, { start: number; end: number }> = {}
+      const adapter = makeAdapter()
+      adapter.execute.mockImplementation(async (task: Task) => {
+        const start = Date.now()
+        await new Promise(r => setTimeout(r, durations[task.id]))
+        timeline[task.id] = { start, end: Date.now() }
+        return { success: true, output: 'ok', exitCode: 0 }
+      })
+      const spec = makeSpec({ concurrency: 2 }, [
+        { id: 'slow' },
+        { id: 'fast1' },
+        { id: 'fast2', depends_on: ['fast1'] },
+        { id: 'indep' },
+      ])
+      const t0 = Date.now()
+      let finished = false
+      const run = makeEngine({
+        spec, specYaml: 'name: test', adapter, dbPath,
+        _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+      }).run().finally(() => { finished = true })
+      while (!finished) await vi.advanceTimersByTimeAsync(50)
+      const result = await run
+      const total = Date.now() - t0
+
+      expect(result.status).toBe('done')
+      expect(total).toBeGreaterThanOrEqual(6000)
+      expect(total).toBeLessThan(6500)
+      // fast2 ran while slow was still running.
+      expect(timeline.fast2.start).toBeLessThan(timeline.slow.end)
+      expect(timeline.fast2.start - t0).toBeLessThan(1500)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('never runs a task next to a running task whose files overlap, though both are ready', async () => {
+    // `writer` becomes ready while `owner` still holds src/ — the dynamic form
+    // of the per-phase partition check, which only compared tasks in one phase.
+    const timeline: Record<string, { start: number; end: number }> = {}
+    const adapter = makeAdapter()
+    adapter.execute.mockImplementation(async (task: Task) => {
+      const start = Date.now()
+      await new Promise(r => setTimeout(r, task.id === 'owner' ? 120 : 10))
+      timeline[task.id] = { start, end: Date.now() }
+      return { success: true, output: 'ok', exitCode: 0 }
+    })
+    const spec = makeSpec({ concurrency: 3 }, [
+      { id: 'owner', files: ['src/'] },
+      { id: 'gate', files: [] },
+      { id: 'writer', files: ['src/api.ts'], depends_on: ['gate'] },
+    ])
+    // Real (empty) directories: tasks with files are symlink-scanned in their worktree.
+    const wt = makeWorktreeManager()
+    wt.create.mockImplementation(async (id: string) => {
+      const dir = join(tmpDir, 'wt', id)
+      mkdirSync(dir, { recursive: true })
+      return dir
+    })
+    const result = await makeEngine({
+      spec, specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: wt, _mergeQueue: makeMergeQueue(),
+    }).run()
+    expect(result.status).toBe('done')
+    expect(timeline.writer.start).toBeGreaterThanOrEqual(timeline.owner.end)
+  })
+
+  it('refuses a plan whose same-phase tasks overlap, before recording anything', async () => {
+    const adapter = makeAdapter()
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'a', files: ['src/'] }, { id: 'b', files: ['src/x.ts'] }]),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    await expect(engine.run()).rejects.toThrow('File partition conflicts detected')
+    const store = createConvoyStore(dbPath)
+    expect(store.getLatestConvoy()).toBeUndefined()
+    store.close()
+    expect(adapter.execute).not.toHaveBeenCalled()
+  })
+})
+
+// ── Resume resets everything retry did ────────────────────────────────────────
+
+describe('resume resets every unfinished task', () => {
+  it('reopens failed, timed-out, gate-failed, review-blocked, disputed, interrupted and skipped tasks', async () => {
+    const convoyId = 'convoy-mixed'
+    const statuses = ['done', 'failed', 'timed-out', 'gate-failed', 'review-blocked', 'disputed', 'running', 'assigned', 'skipped'] as const
+    const seeder = createConvoyStore(dbPath)
+    seeder.insertConvoy({ id: convoyId, name: 'Mixed', spec_hash: 'x', status: 'failed', branch: 'feat/mixed', created_at: new Date().toISOString(), spec_yaml: 'name: m' })
+    for (const status of statuses) {
+      seeder.insertTask({
+        id: `t-${status}`, convoy_id: convoyId, phase: 0, prompt: `p ${status}`, agent: 'developer', adapter: null, model: null,
+        timeout_ms: 30_000, status, retries: 1, max_retries: 1, files: null, depends_on: null, gates: null,
+      })
+    }
+    seeder.close()
+
+    const adapter = makeAdapter()
+    const result = await makeEngine({
+      spec: makeSpec({ concurrency: 4 }, statuses.map(s => ({ id: `t-${s}` }))),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).resume(convoyId)
+
+    expect(result.status).toBe('done')
+    const ran = adapter.execute.mock.calls.map(([t]) => (t as Task).id).sort()
+    expect(ran).toEqual(statuses.filter(s => s !== 'done').map(s => `t-${s}`).sort())
+    const store = createConvoyStore(dbPath)
+    const events = store.getEvents(convoyId).filter(e => e.type === 'task_retried')
+    store.close()
+    expect(events).toHaveLength(8)
+  })
+
+  it('retryFailed with task ids brings the dependents a failure skipped along', async () => {
+    const convoyId = 'convoy-chain'
+    const seeder = createConvoyStore(dbPath)
+    seeder.insertConvoy({ id: convoyId, name: 'Chain', spec_hash: 'x', status: 'done', branch: 'feat/chain', created_at: new Date().toISOString(), spec_yaml: 'name: c' })
+    const task = (id: string, status: 'failed' | 'skipped' | 'done', deps: string[] = []) => seeder.insertTask({
+      id, convoy_id: convoyId, phase: deps.length, prompt: id, agent: 'developer', adapter: null, model: null,
+      timeout_ms: 30_000, status, retries: 0, max_retries: 0, files: null, depends_on: deps.length ? JSON.stringify(deps) : null, gates: null,
+    })
+    task('a', 'failed')
+    task('b', 'skipped', ['a'])
+    task('c', 'skipped', ['b'])
+    task('other', 'failed')
+    seeder.close()
+
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'a' }]), specYaml: 'name: test', adapter: makeAdapter(), dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    await engine.retryFailed(convoyId, ['a'])
+
+    const store = createConvoyStore(dbPath)
+    const byId = Object.fromEntries(store.getTasksByConvoy(convoyId).map(t => [t.id, t.status]))
+    store.close()
+    expect(byId).toEqual({ a: 'pending', b: 'pending', c: 'pending', other: 'failed' })
+  })
+})
+
+// ── Telemetry ─────────────────────────────────────────────────────────────────
+
+describe('telemetry', () => {
+  it('records the agent’s real tier, not a hard-coded "standard"', async () => {
+    const result = await makeEngine({
+      spec: makeSpec({}, [{ id: 'sec', agent: 'security-expert' }, { id: 'doc', agent: 'writer' }]),
+      specYaml: 'name: test', adapter: makeAdapter(), dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).run()
+    const store = createConvoyStore(dbPath)
+    const tiers = Object.fromEntries(store.getEvents(result.convoyId)
+      .filter(e => e.type === 'delegation')
+      .map(e => [e.task_id, (JSON.parse(e.data!) as { tier: string }).tier]))
+    store.close()
+    expect(tiers).toEqual({ sec: 'premium', doc: 'economy' })
+  })
+
+  it('counts a failure once toward the circuit breaker', async () => {
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: false, output: 'err', exitCode: 1 })
+    const result = await makeEngine({
+      spec: makeSpec({ defaults: { circuit_breaker: { threshold: 5 } } }, [{ id: 'only', max_retries: 0 }]),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).run()
+    const store = createConvoyStore(dbPath)
+    const state = JSON.parse(store.getConvoy(result.convoyId)!.circuit_state!) as Record<string, { failures: number }>
+    store.close()
+    expect(state.developer.failures).toBe(1)
+  })
+
+  it('masks a secret in a failure before it reaches the task row, the DLQ and the ledger', async () => {
+    gates._setAllowlistConfigPath('/nonexistent/secret-scan-config.yml')
+    gates._resetAllowlistCache()
+    const token = 'ghp_' + 'abcdefghijklmnopqrstuvwxyz0123456789AB'
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: false, output: `auth failed with token ${token}`, exitCode: 1 })
+    const result = await makeEngine({
+      spec: makeSpec({}, [{ id: 'leaky', max_retries: 0 }]),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).run()
+    const store = createConvoyStore(dbPath)
+    const task = store.getTask('leaky', result.convoyId)!
+    const dlq = store.listDlqEntries(result.convoyId)
+    const events = store.getEvents(result.convoyId)
+    store.close()
+    expect(task.output).not.toContain(token)
+    expect(dlq).toHaveLength(1)
+    expect(dlq[0].error_output).not.toContain(token)
+    expect(JSON.stringify(events)).not.toContain(token)
+    expect(readFileSync(join(tmpDir, '.opencastle', 'AGENT-FAILURES.md'), 'utf8')).not.toContain(token)
+  })
+})
