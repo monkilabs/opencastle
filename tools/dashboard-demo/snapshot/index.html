@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<!-- "live" reads the JSON API of `opencastle convoy dashboard`; tools/dashboard-demo/export.mjs rewrites it to "static", which reads a data/ snapshot. -->
+<meta name="opencastle-dashboard" content="static">
+<meta name="description" content="OpenCastle's Observability dashboard: convoy runs, tasks, reviews, checks and events, read from the project's own run records.">
+<title>Observability Dashboard — OpenCastle</title>
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="stylesheet" href="dashboard.css">
+<script src="dashboard.js" defer></script>
+</head>
+<body>
+  <header class="dash-header">
+    <div class="dash-header__inner">
+      <div class="dash-header__brand">
+        <a href="https://www.opencastle.dev/" class="dash-header__logo-link">
+          <img class="dash-header__icon" src="icon-192.png" alt="OpenCastle" width="28" height="28">
+        </a>
+        <h1 class="dash-header__title">Observability Dashboard</h1>
+        <span class="dash-header__project" id="project-name"></span>
+      </div>
+      <div class="dash-header__actions">
+        <span class="source-badge" id="source-badge">Loading…</span>
+        <select class="run-picker" id="run-picker" aria-label="Show a run">
+          <option value="">Overview of every run</option>
+        </select>
+        <button class="dash-btn dash-btn--ghost" id="export-btn" type="button" title="Download the data this page shows, as JSON">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="dash-layout">
+    <nav class="dash-sidebar" aria-label="Sections">
+      <ul class="dash-sidebar__list">
+        <li><a class="dash-sidebar__link" href="#overall-section" data-section="overall-section" data-view="home">Overview</a></li>
+        <li><a class="dash-sidebar__link" href="#activity-timeline-section" data-section="activity-timeline-section" data-view="home">Activity</a></li>
+        <li><a class="dash-sidebar__link" href="#convoy-list-section" data-section="convoy-list-section" data-view="home">Convoys</a></li>
+        <li><a class="dash-sidebar__link" href="#home-agent-section" data-section="home-agent-section" data-view="home">Agents &amp; models</a></li>
+        <li><a class="dash-sidebar__link" href="#home-tier-section" data-section="home-tier-section" data-view="home">Tiers &amp; mechanism</a></li>
+        <li><a class="dash-sidebar__link" href="#home-quality-section" data-section="home-quality-section" data-view="home">Quality</a></li>
+        <li><a class="dash-sidebar__link" href="#sessions-section" data-section="sessions-section" data-view="home">Sessions</a></li>
+        <li><a class="dash-sidebar__link" href="#tasks-section" data-section="tasks-section" data-view="detail">Tasks</a></li>
+        <li><a class="dash-sidebar__link" href="#deps-section" data-section="deps-section" data-view="detail">Dependencies</a></li>
+        <li><a class="dash-sidebar__link" href="#agent-section" data-section="agent-section" data-view="detail">Agents &amp; models</a></li>
+        <li><a class="dash-sidebar__link" href="#tier-section" data-section="tier-section" data-view="detail">Tiers &amp; mechanism</a></li>
+        <li><a class="dash-sidebar__link" href="#quality-section" data-section="quality-section" data-view="detail">Quality</a></li>
+        <li><a class="dash-sidebar__link" href="#reviews-section" data-section="reviews-section" data-view="detail">Fast reviews</a></li>
+        <li><a class="dash-sidebar__link" href="#panel-section" data-section="panel-section" data-view="detail" id="panel-nav">Panel reviews</a></li>
+        <li><a class="dash-sidebar__link" href="#reliability-section" data-section="reliability-section" data-view="detail">Reliability</a></li>
+        <li><a class="dash-sidebar__link" href="#checks-section" data-section="checks-section" data-view="detail">Checks</a></li>
+        <li><a class="dash-sidebar__link" href="#outputs-section" data-section="outputs-section" data-view="detail">Outputs</a></li>
+        <li><a class="dash-sidebar__link" href="#event-timeline-section" data-section="event-timeline-section" data-view="detail">Event timeline</a></li>
+        <li><a class="dash-sidebar__link" href="#execution-section" data-section="execution-section" data-view="detail">Execution log</a></li>
+        <li><a class="dash-sidebar__link" href="#detail-sessions-section" data-section="detail-sessions-section" data-view="detail">Sessions</a></li>
+      </ul>
+    </nav>
+
+    <main class="dash-main">
+      <nav class="breadcrumbs" id="breadcrumbs" aria-label="Breadcrumb" data-view-hidden>
+        <a class="breadcrumbs__link" href="#" id="breadcrumbs-home">Observability</a>
+        <span class="breadcrumbs__separator" aria-hidden="true">/</span>
+        <span class="breadcrumbs__current" id="breadcrumbs-run"></span>
+      </nav>
+      <div id="notices" aria-live="polite"></div>
+
+      <!-- ==================== Home: every run ==================== -->
+      <div class="view-home" id="view-home">
+        <section class="overall-stats" id="overall-section" data-nav-section>
+          <div class="overall-stats__header">
+            <h2 class="overall-stats__title">Overall Stats</h2>
+            <p class="overall-stats__desc" id="overall-desc">Every convoy run recorded in this project's <code>.opencastle/convoy.db</code>.</p>
+          </div>
+          <div class="overall-stats__grid" id="overall-grid"></div>
+        </section>
+
+        <section class="chart-card" id="activity-timeline-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Activity Timeline</h2>
+            <p class="chart-card__desc">Convoy runs per day they started (UTC), by how they ended</p>
+          </div>
+          <div class="chart-card__body" id="activity-timeline-chart"></div>
+        </section>
+
+        <section class="convoy-list-section" id="convoy-list-section" data-nav-section>
+          <div class="convoy-list-section__header">
+            <h2>Convoys</h2>
+            <p class="convoy-list-section__desc">Every run, newest first. A run recorded as running that no process is working on is shown as interrupted.</p>
+          </div>
+          <div class="convoy-list-filters">
+            <div class="convoy-list-filters__group">
+              <label for="cl-filter-search">Search</label>
+              <input class="convoy-list-filters__input" type="search" id="cl-filter-search" placeholder="Run name or id…" autocomplete="off">
+            </div>
+            <div class="convoy-list-filters__group">
+              <label for="cl-filter-status">Status</label>
+              <select class="convoy-list-filters__select" id="cl-filter-status"><option value="">All</option></select>
+            </div>
+            <div class="convoy-list-filters__group">
+              <label for="cl-filter-from">From</label>
+              <input class="convoy-list-filters__date" type="date" id="cl-filter-from">
+            </div>
+            <div class="convoy-list-filters__group">
+              <label for="cl-filter-to">To</label>
+              <input class="convoy-list-filters__date" type="date" id="cl-filter-to">
+            </div>
+            <button class="dash-btn dash-btn--ghost convoy-list-filters__reset" type="button" id="cl-filter-reset">Reset</button>
+          </div>
+          <div class="table-wrap" id="convoy-list-table-wrap"></div>
+          <div id="convoy-list-pagination"></div>
+        </section>
+
+        <div class="charts-row" id="home-agent-section" data-nav-section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Tasks by Agent</h2>
+              <p class="chart-card__desc">Tasks per agent across every run, by status</p>
+            </div>
+            <div class="chart-card__body" id="home-agent-chart"></div>
+          </section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Model Usage</h2>
+              <p class="chart-card__desc">Tasks by the model the runtime reported</p>
+            </div>
+            <div class="chart-card__body" id="home-model-chart"></div>
+          </section>
+        </div>
+
+        <div class="charts-row" id="home-tier-section" data-nav-section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Tier Distribution</h2>
+              <p class="chart-card__desc">Tasks by the tier their <code>delegation</code> event recorded</p>
+            </div>
+            <div class="chart-card__body" id="home-tier-chart"></div>
+          </section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Delegation Mechanism</h2>
+              <p class="chart-card__desc">Task attempts by how and where they ran, from <code>task_started</code></p>
+            </div>
+            <div class="chart-card__body" id="home-mechanism-chart"></div>
+          </section>
+        </div>
+
+        <section class="chart-card" id="home-quality-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Quality &amp; Reliability</h2>
+            <p class="chart-card__desc">Reviews, checks, the retry queue and artifacts across every run</p>
+          </div>
+          <div class="chart-card__body" id="home-quality-body"></div>
+        </section>
+
+        <section class="chart-card" id="sessions-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Recent Sessions</h2>
+            <p class="chart-card__desc">The newest sessions from both places they are recorded: <code>opencastle log</code> records in <code>.opencastle/logs/events.ndjson</code>, and the <code>session</code> event the engine writes for each task a convoy run finishes</p>
+          </div>
+          <div class="chart-card__body chart-card__body--table" id="sessions-table"></div>
+        </section>
+      </div>
+
+      <!-- ==================== Detail: one run ==================== -->
+      <div class="view-convoy-detail" id="view-convoy-detail" data-view-hidden>
+        <section class="convoy-detail-hero" id="convoy-detail-hero"></section>
+
+        <section class="chart-card" id="tasks-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Tasks</h2>
+            <p class="chart-card__desc">Every task in this run. Click a column to sort.</p>
+          </div>
+          <div class="chart-card__body">
+            <div class="task-summary-cards" id="task-summary-cards"></div>
+            <div class="table-wrap" id="task-table-wrap"></div>
+          </div>
+        </section>
+
+        <section class="chart-card" id="deps-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Dependencies</h2>
+            <p class="chart-card__desc">What each task waits for, from its <code>depends_on</code>. A task sits one column right of the deepest task it waits for. Columns are depth, not a schedule: a task starts as soon as what it waits for is done.</p>
+          </div>
+          <div class="chart-card__body" id="deps-view"></div>
+        </section>
+
+        <div class="charts-row" id="agent-section" data-nav-section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Tasks by Agent</h2>
+              <p class="chart-card__desc">Tasks per agent in this run, by status</p>
+            </div>
+            <div class="chart-card__body" id="agent-chart"></div>
+          </section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Model Usage</h2>
+              <p class="chart-card__desc">Tasks by the model the runtime reported, and reviews by reviewer model</p>
+            </div>
+            <div class="chart-card__body" id="model-chart"></div>
+          </section>
+        </div>
+
+        <div class="charts-row" id="tier-section" data-nav-section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Tier Distribution</h2>
+              <p class="chart-card__desc">Tasks by the tier their <code>delegation</code> event recorded</p>
+            </div>
+            <div class="chart-card__body" id="tier-chart"></div>
+          </section>
+          <section class="chart-card">
+            <div class="chart-card__header">
+              <h2 class="chart-card__title">Delegation Mechanism</h2>
+              <p class="chart-card__desc">Task attempts by how and where they ran, from <code>task_started</code></p>
+            </div>
+            <div class="chart-card__body" id="mechanism-chart"></div>
+          </section>
+        </div>
+
+        <section class="chart-card" id="quality-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Quality / Review</h2>
+            <p class="chart-card__desc">Every review verdict and skipped review recorded in this run. An auto-pass is counted apart: no reviewer read that change.</p>
+          </div>
+          <div class="chart-card__body" id="quality-body"></div>
+        </section>
+
+        <section class="chart-card" id="reviews-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Fast Reviews</h2>
+            <p class="chart-card__desc">Single-reviewer verdicts, with the attempt each one read</p>
+          </div>
+          <div class="chart-card__body chart-card__body--table" id="reviews-table"></div>
+        </section>
+
+        <section class="chart-card" id="panel-section" data-nav-section hidden>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Panel Reviews</h2>
+            <p class="chart-card__desc">Three-reviewer panels: the verdict and each vote</p>
+          </div>
+          <div class="chart-card__body" id="panel-chart"></div>
+        </section>
+
+        <section class="chart-card" id="reliability-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Reliability</h2>
+            <p class="chart-card__desc">Retries, the retry queue (dead-letter queue) and why tasks failed</p>
+          </div>
+          <div class="chart-card__body" id="reliability-body"></div>
+        </section>
+
+        <section class="chart-card" id="checks-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Checks</h2>
+            <p class="chart-card__desc">Every gate that ran: a task's own gates in its worktree, and the spec's gates on the merged result, with the attempt or round each one checked</p>
+          </div>
+          <div class="chart-card__body" id="checks-body"></div>
+        </section>
+
+        <section class="chart-card" id="outputs-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Outputs &amp; Artifacts</h2>
+            <p class="chart-card__desc">What tasks merged, and the artifacts the run recorded</p>
+          </div>
+          <div class="chart-card__body" id="outputs-body"></div>
+        </section>
+
+        <section class="chart-card" id="event-timeline-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Event Timeline</h2>
+            <p class="chart-card__desc">The run's events in the order they were written. Click one for its data.</p>
+          </div>
+          <div class="chart-card__body">
+            <div class="timeline-filters" id="event-timeline-filters" role="group" aria-label="Filter events"></div>
+            <div id="event-timeline-list"></div>
+            <div class="event-timeline-more" id="event-timeline-more"></div>
+          </div>
+        </section>
+
+        <section class="chart-card" id="execution-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Execution Log</h2>
+            <p class="chart-card__desc">Each task in the order it started, with its timing, attempts and outcome</p>
+          </div>
+          <div class="chart-card__body" id="execution-log"></div>
+        </section>
+
+        <section class="chart-card" id="detail-sessions-section" data-nav-section>
+          <div class="chart-card__header">
+            <h2 class="chart-card__title">Sessions</h2>
+            <p class="chart-card__desc">The <code>session</code> events the engine wrote for this run, one per finished task</p>
+          </div>
+          <div class="chart-card__body chart-card__body--table" id="detail-sessions-table"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <footer class="dash-footer" id="footer"></footer>
+</body>
+</html>

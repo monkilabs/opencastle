@@ -1,0 +1,275 @@
+{
+ "events": [
+  {
+   "id": 1,
+   "type": "convoy_started",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "name": "Notes pagination delete",
+    "branch": "convoy/notes-pagination-delete",
+    "base": "main",
+    "concurrency": 1
+   },
+   "created_at": "2026-10-03T16:43:04.961Z",
+   "category": "run",
+   "problem": false
+  },
+  {
+   "id": 2,
+   "type": "task_started",
+   "task_id": "add-get-notes-pagination",
+   "worker_id": "7adf43-add-get-notes-pagination-mf0co",
+   "data": {
+    "worker_id": "7adf43-add-get-notes-pagination-mf0co",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T16:43:05.021Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 3,
+   "type": "review_started",
+   "task_id": "add-get-notes-pagination",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "add-get-notes-pagination",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T16:46:20.126Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 4,
+   "type": "review_verdict",
+   "task_id": "add-get-notes-pagination",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 48223,
+    "model": "claude-haiku-4-5-20251001",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T16:47:02.535Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 5,
+   "type": "task_merged",
+   "task_id": "add-get-notes-pagination",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/notes-pagination-delete",
+    "files": 4
+   },
+   "created_at": "2026-10-03T16:47:02.615Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 6,
+   "type": "task_done",
+   "task_id": "add-get-notes-pagination",
+   "worker_id": "7adf43-add-get-notes-pagination-mf0co",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "7adf43-add-get-notes-pagination-mf0co",
+    "tokens": 2324746,
+    "cost_usd": 1.40296215,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T16:47:02.650Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 7,
+   "type": "session",
+   "task_id": "add-get-notes-pagination",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "add-get-notes-pagination",
+    "outcome": "success",
+    "duration_min": 4,
+    "files_changed": 4,
+    "retries": 0,
+    "convoy_id": "convoy-1791045784848"
+   },
+   "created_at": "2026-10-03T16:47:02.655Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 8,
+   "type": "delegation",
+   "task_id": "add-get-notes-pagination",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791045784848",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791045784848"
+   },
+   "created_at": "2026-10-03T16:47:02.659Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 9,
+   "type": "task_started",
+   "task_id": "add-delete-notes-endpoint",
+   "worker_id": "7adf43-add-delete-notes-endpoin-mf0cp",
+   "data": {
+    "worker_id": "7adf43-add-delete-notes-endpoin-mf0cp",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T16:47:02.714Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 10,
+   "type": "review_started",
+   "task_id": "add-delete-notes-endpoint",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "add-delete-notes-endpoint",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T16:48:09.497Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 11,
+   "type": "review_verdict",
+   "task_id": "add-delete-notes-endpoint",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 45572,
+    "model": "claude-haiku-4-5-20251001",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T16:48:33.377Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 12,
+   "type": "task_merged",
+   "task_id": "add-delete-notes-endpoint",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/notes-pagination-delete",
+    "files": 3
+   },
+   "created_at": "2026-10-03T16:48:33.457Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 13,
+   "type": "task_done",
+   "task_id": "add-delete-notes-endpoint",
+   "worker_id": "7adf43-add-delete-notes-endpoin-mf0cp",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "7adf43-add-delete-notes-endpoin-mf0cp",
+    "tokens": 652778,
+    "cost_usd": 0.5643716,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T16:48:33.494Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 14,
+   "type": "session",
+   "task_id": "add-delete-notes-endpoint",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "add-delete-notes-endpoint",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 3,
+    "retries": 0,
+    "convoy_id": "convoy-1791045784848"
+   },
+   "created_at": "2026-10-03T16:48:33.498Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 15,
+   "type": "delegation",
+   "task_id": "add-delete-notes-endpoint",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791045784848",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791045784848"
+   },
+   "created_at": "2026-10-03T16:48:33.500Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 16,
+   "type": "gate_result",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "command": "npm run test",
+    "passed": true,
+    "exit_code": 0,
+    "scope": "convoy"
+   },
+   "created_at": "2026-10-03T16:48:33.735Z",
+   "category": "check",
+   "problem": false
+  },
+  {
+   "id": 17,
+   "type": "convoy_finished",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "status": "done"
+   },
+   "created_at": "2026-10-03T16:48:33.739Z",
+   "category": "run",
+   "problem": false
+  }
+ ],
+ "more": false
+}

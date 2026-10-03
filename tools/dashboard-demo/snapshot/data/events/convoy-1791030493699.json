@@ -1,0 +1,375 @@
+{
+ "events": [
+  {
+   "id": 1,
+   "type": "convoy_started",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "name": "Notes API — tags, validation, docs",
+    "branch": "convoy/notes-api-tags-validation-docs-70d49b",
+    "base": "main",
+    "concurrency": 1
+   },
+   "created_at": "2026-10-03T12:28:13.818Z",
+   "category": "run",
+   "problem": false
+  },
+  {
+   "id": 2,
+   "type": "task_started",
+   "task_id": "tags",
+   "worker_id": "70d49b-tags-db9mp",
+   "data": {
+    "worker_id": "70d49b-tags-db9mp",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T12:28:13.898Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 3,
+   "type": "review_started",
+   "task_id": "tags",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "tags",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T12:30:14.263Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 4,
+   "type": "review_verdict",
+   "task_id": "tags",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 371473,
+    "model": "claude-opus-5[1m]",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T12:31:44.297Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 5,
+   "type": "task_merged",
+   "task_id": "tags",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/notes-api-tags-validation-docs-70d49b",
+    "files": 2
+   },
+   "created_at": "2026-10-03T12:31:44.388Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 6,
+   "type": "task_done",
+   "task_id": "tags",
+   "worker_id": "70d49b-tags-db9mp",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "70d49b-tags-db9mp",
+    "tokens": 974925,
+    "cost_usd": 2.0064054999999996,
+    "estimated": false,
+    "model": "claude-opus-5[1m]"
+   },
+   "created_at": "2026-10-03T12:31:44.427Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 7,
+   "type": "session",
+   "task_id": "tags",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-opus-5[1m]",
+    "task": "tags",
+    "outcome": "success",
+    "duration_min": 4,
+    "files_changed": 2,
+    "retries": 0,
+    "convoy_id": "convoy-1791030493699"
+   },
+   "created_at": "2026-10-03T12:31:44.432Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 8,
+   "type": "delegation",
+   "task_id": "tags",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791030493699",
+    "agent": "developer",
+    "model": "claude-opus-5[1m]",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791030493699"
+   },
+   "created_at": "2026-10-03T12:31:44.438Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 9,
+   "type": "task_started",
+   "task_id": "validation",
+   "worker_id": "70d49b-validation-db9mq",
+   "data": {
+    "worker_id": "70d49b-validation-db9mq",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T12:31:44.501Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 10,
+   "type": "review_started",
+   "task_id": "validation",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "validation",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T12:36:35.203Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 11,
+   "type": "review_verdict",
+   "task_id": "validation",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 254979,
+    "model": "claude-opus-5[1m]",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T12:37:46.827Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 12,
+   "type": "task_merged",
+   "task_id": "validation",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/notes-api-tags-validation-docs-70d49b",
+    "files": 2
+   },
+   "created_at": "2026-10-03T12:37:46.903Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 13,
+   "type": "task_done",
+   "task_id": "validation",
+   "worker_id": "70d49b-validation-db9mq",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "70d49b-validation-db9mq",
+    "tokens": 1672272,
+    "cost_usd": 2.5990409999999997,
+    "estimated": false,
+    "model": "claude-opus-5[1m]"
+   },
+   "created_at": "2026-10-03T12:37:46.942Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 14,
+   "type": "session",
+   "task_id": "validation",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-opus-5[1m]",
+    "task": "validation",
+    "outcome": "success",
+    "duration_min": 6,
+    "files_changed": 2,
+    "retries": 0,
+    "convoy_id": "convoy-1791030493699"
+   },
+   "created_at": "2026-10-03T12:37:46.948Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 15,
+   "type": "delegation",
+   "task_id": "validation",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791030493699",
+    "agent": "developer",
+    "model": "claude-opus-5[1m]",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791030493699"
+   },
+   "created_at": "2026-10-03T12:37:46.952Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 16,
+   "type": "task_started",
+   "task_id": "docs",
+   "worker_id": "70d49b-docs-db9mr",
+   "data": {
+    "worker_id": "70d49b-docs-db9mr",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T12:37:47.014Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 17,
+   "type": "review_verdict",
+   "task_id": "docs",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": null,
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T12:40:49.485Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 18,
+   "type": "task_merged",
+   "task_id": "docs",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/notes-api-tags-validation-docs-70d49b",
+    "files": 1
+   },
+   "created_at": "2026-10-03T12:40:49.547Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 19,
+   "type": "task_done",
+   "task_id": "docs",
+   "worker_id": "70d49b-docs-db9mr",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "70d49b-docs-db9mr",
+    "tokens": 846680,
+    "cost_usd": 1.2866825,
+    "estimated": false,
+    "model": "claude-opus-5[1m]"
+   },
+   "created_at": "2026-10-03T12:40:49.584Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 20,
+   "type": "session",
+   "task_id": "docs",
+   "worker_id": null,
+   "data": {
+    "agent": "writer",
+    "model": "claude-opus-5[1m]",
+    "task": "docs",
+    "outcome": "success",
+    "duration_min": 3,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791030493699"
+   },
+   "created_at": "2026-10-03T12:40:49.588Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 21,
+   "type": "delegation",
+   "task_id": "docs",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791030493699",
+    "agent": "writer",
+    "model": "claude-opus-5[1m]",
+    "tier": "economy",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791030493699"
+   },
+   "created_at": "2026-10-03T12:40:49.592Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 22,
+   "type": "gate_result",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "command": "npm test",
+    "passed": true,
+    "exit_code": 0,
+    "scope": "convoy"
+   },
+   "created_at": "2026-10-03T12:40:49.801Z",
+   "category": "check",
+   "problem": false
+  },
+  {
+   "id": 23,
+   "type": "convoy_finished",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "status": "done"
+   },
+   "created_at": "2026-10-03T12:40:49.806Z",
+   "category": "run",
+   "problem": false
+  }
+ ],
+ "more": false
+}

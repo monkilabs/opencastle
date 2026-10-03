@@ -23,7 +23,7 @@ const CONVOY_HELP = `
     opencastle convoy "<task>"            Plan it, show the plan, ask, then run it
     opencastle convoy run <spec.yml>      Run a spec you wrote
     opencastle convoy resume              Continue whatever is not done
-    opencastle convoy dashboard           The live viewer
+    opencastle convoy dashboard           The Observability dashboard, live
     opencastle convoy plan --prd <file>   Plan again from a PRD you edited
 
   Options:

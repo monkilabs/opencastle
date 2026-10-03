@@ -1,0 +1,268 @@
+{
+ "run": {
+  "id": "convoy-1791045784848",
+  "name": "Notes pagination delete",
+  "status": "done",
+  "branch": "convoy/notes-pagination-delete",
+  "pipeline_id": null,
+  "created_at": "2026-10-03T16:43:04.960Z",
+  "started_at": "2026-10-03T16:43:04.961Z",
+  "finished_at": "2026-10-03T16:48:33.738Z",
+  "duration_ms": 328777,
+  "tasks_total": 2,
+  "tasks_done": 2,
+  "tasks_failed": 0,
+  "tasks_running": 0,
+  "tokens": 3071319,
+  "cost_usd": 1.9673337499999999,
+  "cost_estimated": false,
+  "alive": false,
+  "display_status": "done",
+  "adapters": [
+   "claude"
+  ],
+  "models": [
+   "claude-sonnet-5"
+  ],
+  "tasks": [
+   {
+    "id": "add-get-notes-pagination",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T16:43:05.021Z",
+    "finished_at": "2026-10-03T16:47:02.650Z",
+    "duration_ms": 237629,
+    "prompt_tokens": 2311235,
+    "completion_tokens": 13511,
+    "total_tokens": 2324746,
+    "cache_read_tokens": 2213384,
+    "cache_write_tokens": 97785,
+    "cost_usd": 1.40296215,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "add-delete-notes-endpoint",
+    "phase": 1,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "add-get-notes-pagination"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T16:47:02.714Z",
+    "finished_at": "2026-10-03T16:48:33.494Z",
+    "duration_ms": 90780,
+    "prompt_tokens": 647462,
+    "completion_tokens": 5316,
+    "total_tokens": 652778,
+    "cache_read_tokens": 605448,
+    "cache_write_tokens": 41996,
+    "cost_usd": 0.5643716,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   }
+  ]
+ },
+ "insights": {
+  "tiers": [
+   {
+    "tier": "standard",
+    "tasks": 2
+   }
+  ],
+  "tiers_not_recorded": 0,
+  "task_tiers": {
+   "add-get-notes-pagination": "standard",
+   "add-delete-notes-endpoint": "standard"
+  },
+  "mechanisms": [
+   {
+    "mechanism": "worktree",
+    "attempts": 2
+   }
+  ],
+  "runtimes": [
+   {
+    "runtime": "claude",
+    "attempts": 2
+   }
+  ],
+  "starts": {
+   "add-get-notes-pagination": 1,
+   "add-delete-notes-endpoint": 1
+  },
+  "reviews": [
+   {
+    "event_id": 4,
+    "task_id": "add-get-notes-pagination",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 48223,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T16:47:02.535Z"
+   },
+   {
+    "event_id": 11,
+    "task_id": "add-delete-notes-endpoint",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 45572,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T16:48:33.377Z"
+   }
+  ],
+  "reviews_skipped": [],
+  "review_stats": {
+   "ran": 2,
+   "passed": 2,
+   "blocked": 0,
+   "skipped": 0,
+   "auto_pass": 0,
+   "tokens": 93795,
+   "by_level": {
+    "fast": {
+     "pass": 2,
+     "block": 0
+    }
+   },
+   "models": {
+    "claude-haiku-4-5-20251001": 2
+   },
+   "disputes": 0
+  },
+  "disputes": [],
+  "checks": [
+   {
+    "event_id": 16,
+    "kind": "gate",
+    "scope": "convoy",
+    "task_id": null,
+    "name": "npm run test",
+    "passed": true,
+    "exit_code": 0,
+    "level": null,
+    "output": null,
+    "attempt": null,
+    "round": 1,
+    "created_at": "2026-10-03T16:48:33.735Z"
+   }
+  ],
+  "check_stats": {
+   "ran": 1,
+   "passed": 1,
+   "failed": 0,
+   "gates": {
+    "passed": 1,
+    "failed": 0
+   },
+   "built_in": {
+    "passed": 0,
+    "failed": 0
+   },
+   "by_scope": {
+    "task": {
+     "passed": 0,
+     "failed": 0
+    },
+    "convoy": {
+     "passed": 1,
+     "failed": 0
+    }
+   },
+   "warnings": 0,
+   "secrets_prevented": 0
+  },
+  "warnings": [],
+  "secrets_prevented": [],
+  "merges": {
+   "add-get-notes-pagination": 4,
+   "add-delete-notes-endpoint": 3
+  },
+  "retries": [],
+  "interruptions": [],
+  "sessions": [
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791045784848",
+    "timestamp": "2026-10-03T16:48:33.498Z",
+    "agent": "developer",
+    "task": "add-delete-notes-endpoint",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 3,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791045784848",
+    "timestamp": "2026-10-03T16:47:02.655Z",
+    "agent": "developer",
+    "task": "add-get-notes-pagination",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 4,
+    "files_changed": 4,
+    "retries": 0
+   }
+  ],
+  "dlq": [],
+  "artifacts": [
+   {
+    "name": "src/notes.js",
+    "type": "file",
+    "task_id": "add-get-notes-pagination",
+    "created_at": "2026-10-03T16:47:02.650Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "src/server.js",
+    "type": "file",
+    "task_id": "add-get-notes-pagination",
+    "created_at": "2026-10-03T16:47:02.650Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/server.test.js",
+    "type": "file",
+    "task_id": "add-get-notes-pagination",
+    "created_at": "2026-10-03T16:47:02.650Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/notes.test.js",
+    "type": "file",
+    "task_id": "add-get-notes-pagination",
+    "created_at": "2026-10-03T16:47:02.650Z",
+    "size_bytes": 0
+   }
+  ],
+  "events_recorded": true
+ }
+}

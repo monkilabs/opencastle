@@ -463,25 +463,44 @@ Tokens and cost are what the runtime reports. Where it reports none, tokens are
 estimated from the text and cost from the model it names, and both are marked
 as estimates ([`pricing.ts`](src/cli/convoy/pricing.ts)).
 
-### Read model and viewer
+### Read model and dashboard
 
 [`read-model.ts`](src/cli/convoy/read-model.ts) is the one read path into a
 project's runs. It opens the database read-only, selects only the columns the
 database has, and never migrates it. A run is live while its status is pending
-or running and the lock's heartbeat is under a minute old. Bare
-`opencastle convoy` and `convoy resume` read through it, and so does the viewer.
+or running and the lock's heartbeat is under a minute old; one recorded as
+running with no live process is shown as `interrupted`. Bare
+`opencastle convoy` and `convoy resume` read through it, and so does the
+dashboard.
 
-The viewer is one HTML page ([`src/cli/viewer/index.html`](src/cli/viewer/index.html),
-no build step) served by [`dashboard.ts`](src/cli/dashboard.ts) on 127.0.0.1,
-with four JSON endpoints: the runs, one run with its tasks, a run's events after
-a cursor, and the agent sessions recorded with `opencastle log`. It answers only
-GET and HEAD, and only for a local Host header. The page polls every 2 seconds
-while a run is live. A run started on a terminal outside CI starts the viewer
-on port 4300, or the next free port, and prints its address.
+Besides runs, tasks and events, it counts what the dashboard shows across runs
+and within one: runs by status, success rate, average and p95 duration, token
+and cost totals (flagged when any part is an estimate), runs per day, tasks by
+agent and model, tiers from `delegation` events, attempts by mechanism from
+`task_started`, every review verdict and skipped review, every gate result with
+the attempt or round it checked, retries, the dead-letter queue and artifacts.
+Every figure is counted from rows the engine wrote; one the database does not
+hold is returned as null, which the page shows as "not reported", never as 0.
+The overview is built from per-project parts, so several projects combine into
+one by their rows (the website's demo does this).
 
-[`tools/viewer-demo/export.mjs`](tools/viewer-demo/export.mjs) writes the same
-page in a static mode over a snapshot of one project's runs; the website
-publishes it at [opencastle.dev/dashboard](https://www.opencastle.dev/dashboard).
+The Observability dashboard is four files in
+[`src/cli/dashboard/`](src/cli/dashboard/) (the HTML, its stylesheet and
+script, and an icon), with no build step, served by
+[`dashboard.ts`](src/cli/dashboard.ts) on 127.0.0.1 with four JSON endpoints:
+the runs with the overview, one run with its tasks and what its events and side
+tables add, a run's events after a cursor, and the agent sessions — the
+`opencastle log` records and the engine's own `session` events, each labelled.
+It answers only GET and HEAD, only for a local Host header, and serves no file
+but its own four. The page refreshes the run list every 10 seconds and a live
+run every 2, reading only the events after its cursor. A run started on a
+terminal outside CI starts the dashboard on port 4300, or the next free port,
+and prints its address.
+
+[`tools/dashboard-demo/export.mjs`](tools/dashboard-demo/export.mjs) writes the
+same page in a static mode over the same API responses, from one or more
+projects' runs; the website publishes it at
+[opencastle.dev/dashboard](https://www.opencastle.dev/dashboard/).
 
 ### Adapters and platform
 
@@ -591,8 +610,8 @@ Agents append sessions, delegations, reviews, panels and disputes to
 against the schema in [logs/README.md](src/orchestrator/customizations/logs/README.md)
 and refuses one that does not match. Convoy events go to `.opencastle/convoy.db`
 and `.opencastle/logs/convoys/<convoy-id>.ndjson`
-([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The convoy viewer shows both; see
-[Read model and viewer](#read-model-and-viewer).
+([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The Observability dashboard
+shows both; see [Read model and dashboard](#read-model-and-dashboard).
 
 ---
 

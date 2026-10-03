@@ -1,0 +1,380 @@
+{
+ "run": {
+  "id": "convoy-1791042515925",
+  "name": "Notes pagination delete",
+  "status": "done",
+  "branch": "convoy/notes-pagination-delete",
+  "pipeline_id": null,
+  "created_at": "2026-10-03T15:48:36.124Z",
+  "started_at": "2026-10-03T15:48:36.125Z",
+  "finished_at": "2026-10-03T15:53:10.187Z",
+  "duration_ms": 274062,
+  "tasks_total": 4,
+  "tasks_done": 4,
+  "tasks_failed": 0,
+  "tasks_running": 0,
+  "tokens": 2385909,
+  "cost_usd": 2.2172707,
+  "cost_estimated": false,
+  "alive": false,
+  "display_status": "done",
+  "adapters": [
+   "claude"
+  ],
+  "models": [
+   "claude-sonnet-5"
+  ],
+  "tasks": [
+   {
+    "id": "notes-store-bulk-delete",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T15:48:36.218Z",
+    "finished_at": "2026-10-03T15:49:16.845Z",
+    "duration_ms": 40627,
+    "prompt_tokens": 539021,
+    "completion_tokens": 2684,
+    "total_tokens": 541705,
+    "cache_read_tokens": 469494,
+    "cache_write_tokens": 69511,
+    "cost_usd": 0.5982221999999999,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "auto-pass",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "pagination-and-delete-routes",
+    "phase": 1,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "notes-store-bulk-delete"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T15:49:16.922Z",
+    "finished_at": "2026-10-03T15:51:07.160Z",
+    "duration_ms": 110238,
+    "prompt_tokens": 573976,
+    "completion_tokens": 7338,
+    "total_tokens": 581314,
+    "cache_read_tokens": 532172,
+    "cache_write_tokens": 41788,
+    "cost_usd": 0.5766258,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "unit-tests-bulk-delete",
+    "phase": 1,
+    "agent": "testing-expert",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "notes-store-bulk-delete"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T15:49:16.932Z",
+    "finished_at": "2026-10-03T15:50:17.283Z",
+    "duration_ms": 60351,
+    "prompt_tokens": 476684,
+    "completion_tokens": 2858,
+    "total_tokens": 479542,
+    "cache_read_tokens": 440234,
+    "cache_write_tokens": 36436,
+    "cost_usd": 0.43958540000000007,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "integration-tests-pagination-bulk-delete",
+    "phase": 2,
+    "agent": "testing-expert",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "pagination-and-delete-routes"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T15:51:07.224Z",
+    "finished_at": "2026-10-03T15:53:09.662Z",
+    "duration_ms": 122438,
+    "prompt_tokens": 637111,
+    "completion_tokens": 7815,
+    "total_tokens": 644926,
+    "cache_read_tokens": 595797,
+    "cache_write_tokens": 41296,
+    "cost_usd": 0.6028372999999999,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   }
+  ]
+ },
+ "insights": {
+  "tiers": [
+   {
+    "tier": "standard",
+    "tasks": 4
+   }
+  ],
+  "tiers_not_recorded": 0,
+  "task_tiers": {
+   "notes-store-bulk-delete": "standard",
+   "unit-tests-bulk-delete": "standard",
+   "pagination-and-delete-routes": "standard",
+   "integration-tests-pagination-bulk-delete": "standard"
+  },
+  "mechanisms": [
+   {
+    "mechanism": "worktree",
+    "attempts": 4
+   }
+  ],
+  "runtimes": [
+   {
+    "runtime": "claude",
+    "attempts": 4
+   }
+  ],
+  "starts": {
+   "notes-store-bulk-delete": 1,
+   "pagination-and-delete-routes": 1,
+   "unit-tests-bulk-delete": 1,
+   "integration-tests-pagination-bulk-delete": 1
+  },
+  "reviews": [
+   {
+    "event_id": 3,
+    "task_id": "notes-store-bulk-delete",
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": null,
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T15:49:16.729Z"
+   },
+   {
+    "event_id": 11,
+    "task_id": "unit-tests-bulk-delete",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 44078,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T15:50:17.168Z"
+   },
+   {
+    "event_id": 17,
+    "task_id": "pagination-and-delete-routes",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 46642,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T15:51:07.042Z"
+   },
+   {
+    "event_id": 24,
+    "task_id": "integration-tests-pagination-bulk-delete",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 47702,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T15:53:09.478Z"
+   }
+  ],
+  "reviews_skipped": [],
+  "review_stats": {
+   "ran": 3,
+   "passed": 3,
+   "blocked": 0,
+   "skipped": 0,
+   "auto_pass": 1,
+   "tokens": 138422,
+   "by_level": {
+    "fast": {
+     "pass": 3,
+     "block": 0
+    }
+   },
+   "models": {
+    "claude-haiku-4-5-20251001": 3
+   },
+   "disputes": 0
+  },
+  "disputes": [],
+  "checks": [
+   {
+    "event_id": 29,
+    "kind": "gate",
+    "scope": "convoy",
+    "task_id": null,
+    "name": "npm run test",
+    "passed": true,
+    "exit_code": 0,
+    "level": null,
+    "output": null,
+    "attempt": null,
+    "round": 1,
+    "created_at": "2026-10-03T15:53:10.180Z"
+   }
+  ],
+  "check_stats": {
+   "ran": 1,
+   "passed": 1,
+   "failed": 0,
+   "gates": {
+    "passed": 1,
+    "failed": 0
+   },
+   "built_in": {
+    "passed": 0,
+    "failed": 0
+   },
+   "by_scope": {
+    "task": {
+     "passed": 0,
+     "failed": 0
+    },
+    "convoy": {
+     "passed": 1,
+     "failed": 0
+    }
+   },
+   "warnings": 0,
+   "secrets_prevented": 0
+  },
+  "warnings": [],
+  "secrets_prevented": [],
+  "merges": {
+   "notes-store-bulk-delete": 1,
+   "unit-tests-bulk-delete": 1,
+   "pagination-and-delete-routes": 1,
+   "integration-tests-pagination-bulk-delete": 1
+  },
+  "retries": [],
+  "interruptions": [],
+  "sessions": [
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791042515925",
+    "timestamp": "2026-10-03T15:53:09.667Z",
+    "agent": "testing-expert",
+    "task": "integration-tests-pagination-bulk-delete",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791042515925",
+    "timestamp": "2026-10-03T15:51:07.163Z",
+    "agent": "developer",
+    "task": "pagination-and-delete-routes",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791042515925",
+    "timestamp": "2026-10-03T15:50:17.288Z",
+    "agent": "testing-expert",
+    "task": "unit-tests-bulk-delete",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 1,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791042515925",
+    "timestamp": "2026-10-03T15:49:16.848Z",
+    "agent": "developer",
+    "task": "notes-store-bulk-delete",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 1,
+    "files_changed": 1,
+    "retries": 0
+   }
+  ],
+  "dlq": [],
+  "artifacts": [
+   {
+    "name": "src/notes.js",
+    "type": "file",
+    "task_id": "notes-store-bulk-delete",
+    "created_at": "2026-10-03T15:49:16.844Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/notes.test.js",
+    "type": "file",
+    "task_id": "unit-tests-bulk-delete",
+    "created_at": "2026-10-03T15:50:17.283Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "src/server.js",
+    "type": "file",
+    "task_id": "pagination-and-delete-routes",
+    "created_at": "2026-10-03T15:51:07.159Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/server.test.js",
+    "type": "file",
+    "task_id": "integration-tests-pagination-bulk-delete",
+    "created_at": "2026-10-03T15:53:09.662Z",
+    "size_bytes": 0
+   }
+  ],
+  "events_recorded": true
+ }
+}

@@ -106,8 +106,8 @@ describe('the release does not depend on the engine schema', () => {
       scripts: Record<string, string>
     }
     // The old dashboard's demo generator and ETL wrote through the convoy store,
-    // so a schema change there could break publishing. The viewer that replaced
-    // it has no build step, so nothing in the release reads the engine schema.
+    // so a schema change there could break publishing. The dashboard now has no
+    // build step, so nothing in the release reads the engine schema.
     expect(pkg.scripts.build).toBe('npm run cli:build')
     expect(pkg.scripts.prepublishOnly).toBe('npm run build')
     expect(Object.keys(pkg.scripts).filter((s) => s.startsWith('dashboard:'))).toEqual([])

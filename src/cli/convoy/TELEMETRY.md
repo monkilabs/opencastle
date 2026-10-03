@@ -188,7 +188,22 @@ Both validators are called at emit time in [`events.ts`](events.ts).
 
 ## Viewing events
 
-`opencastle convoy dashboard` (experimental) serves a project's runs, tasks and
-events from `.opencastle/convoy.db`, read-only through
-[`read-model.ts`](read-model.ts). Working on the viewer itself is described in
-[CONTRIBUTING.md](../../../CONTRIBUTING.md#the-run-viewer).
+`opencastle convoy dashboard` (experimental) is the Observability dashboard: a
+read-only page over a project's runs, tasks and events in `.opencastle/convoy.db`,
+read through [`read-model.ts`](read-model.ts). Beside the task and run rows, its
+panels count these events, and nothing else:
+
+| Panel | Events |
+|-------|--------|
+| Tier Distribution | `delegation` (`tier`, the latest per task) |
+| Delegation Mechanism | `task_started` (`mechanism`, `adapter`) |
+| Quality / Review, Fast Reviews, Panel Reviews | `review_verdict` (an `auto-pass` counted apart from reviews that ran), `review_skipped`, `dispute_opened`; the attempt is the `attempt` of the task's latest `task_started` |
+| Checks | `gate_result`, `built_in_gate_result`; `contract_violation` and `partition_violation` as warnings; `secret_leak_prevented` |
+| Reliability | `task_retried`, `task_failed` (the failure reason); the `dlq` table |
+| Outputs & Artifacts | `task_merged` (`files`); the `artifact` table |
+| Execution Log | `task_started`, `task_retried`, `worker_killed` |
+| Recent Sessions | `session`, beside the `opencastle log` records in `.opencastle/logs/events.ndjson`, each labelled with where it came from |
+| Event Timeline | every event, grouped by `eventCategory` in [`read-model.ts`](read-model.ts) |
+
+Working on the dashboard itself is described in
+[CONTRIBUTING.md](../../../CONTRIBUTING.md#the-dashboard).

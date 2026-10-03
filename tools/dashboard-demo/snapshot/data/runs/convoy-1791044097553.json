@@ -1,0 +1,400 @@
+{
+ "run": {
+  "id": "convoy-1791044097553",
+  "name": "Notes search and export",
+  "status": "done",
+  "branch": "convoy/search-export",
+  "pipeline_id": null,
+  "created_at": "2026-10-03T16:14:57.668Z",
+  "started_at": "2026-10-03T16:14:57.668Z",
+  "finished_at": "2026-10-03T16:21:13.733Z",
+  "duration_ms": 376065,
+  "tasks_total": 3,
+  "tasks_done": 3,
+  "tasks_failed": 0,
+  "tasks_running": 0,
+  "tokens": 3668837,
+  "cost_usd": 2.526366,
+  "cost_estimated": true,
+  "alive": false,
+  "display_status": "done",
+  "adapters": [
+   "claude"
+  ],
+  "models": [
+   "claude-sonnet-5"
+  ],
+  "tasks": [
+   {
+    "id": "search",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T16:14:57.739Z",
+    "finished_at": "2026-10-03T16:16:00.153Z",
+    "duration_ms": 62414,
+    "prompt_tokens": 610580,
+    "completion_tokens": 2760,
+    "total_tokens": 613340,
+    "cache_read_tokens": 574726,
+    "cache_write_tokens": 35836,
+    "cost_usd": 0.475426,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "export",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T16:14:57.746Z",
+    "finished_at": "2026-10-03T16:16:46.833Z",
+    "duration_ms": 109087,
+    "prompt_tokens": 1248378,
+    "completion_tokens": 5794,
+    "total_tokens": 1254172,
+    "cache_read_tokens": 1209627,
+    "cache_write_tokens": 38715,
+    "cost_usd": 0.7293993,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "routes",
+    "phase": 1,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "search",
+     "export"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 1,
+    "started_at": "2026-10-03T16:19:29.422Z",
+    "finished_at": "2026-10-03T16:21:13.518Z",
+    "duration_ms": 104096,
+    "prompt_tokens": 1652221,
+    "completion_tokens": 14073,
+    "total_tokens": 1666294,
+    "cache_read_tokens": 1564941,
+    "cache_write_tokens": 86617,
+    "cost_usd": 1.3215407,
+    "cost_estimated": true,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   }
+  ]
+ },
+ "insights": {
+  "tiers": [
+   {
+    "tier": "standard",
+    "tasks": 3
+   }
+  ],
+  "tiers_not_recorded": 0,
+  "task_tiers": {
+   "search": "standard",
+   "export": "standard",
+   "routes": "standard"
+  },
+  "mechanisms": [
+   {
+    "mechanism": "worktree",
+    "attempts": 5
+   }
+  ],
+  "runtimes": [
+   {
+    "runtime": "claude",
+    "attempts": 5
+   }
+  ],
+  "starts": {
+   "search": 1,
+   "export": 1,
+   "routes": 3
+  },
+  "reviews": [
+   {
+    "event_id": 5,
+    "task_id": "search",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 44232,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T16:16:00.026Z"
+   },
+   {
+    "event_id": 12,
+    "task_id": "export",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 44218,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T16:16:46.706Z"
+   },
+   {
+    "event_id": 24,
+    "task_id": "routes",
+    "level": "fast",
+    "verdict": "block",
+    "tokens": 48330,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 109,
+    "attempt": 1,
+    "created_at": "2026-10-03T16:19:29.309Z"
+   },
+   {
+    "event_id": 28,
+    "task_id": "routes",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 46581,
+    "model": "claude-haiku-4-5-20251001",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 2,
+    "created_at": "2026-10-03T16:21:13.398Z"
+   }
+  ],
+  "reviews_skipped": [],
+  "review_stats": {
+   "ran": 4,
+   "passed": 3,
+   "blocked": 1,
+   "skipped": 0,
+   "auto_pass": 0,
+   "tokens": 183361,
+   "by_level": {
+    "fast": {
+     "pass": 3,
+     "block": 1
+    }
+   },
+   "models": {
+    "claude-haiku-4-5-20251001": 4
+   },
+   "disputes": 0
+  },
+  "disputes": [],
+  "checks": [
+   {
+    "event_id": 33,
+    "kind": "gate",
+    "scope": "convoy",
+    "task_id": null,
+    "name": "npm test",
+    "passed": true,
+    "exit_code": 0,
+    "level": null,
+    "output": null,
+    "attempt": null,
+    "round": 1,
+    "created_at": "2026-10-03T16:21:13.730Z"
+   }
+  ],
+  "check_stats": {
+   "ran": 1,
+   "passed": 1,
+   "failed": 0,
+   "gates": {
+    "passed": 1,
+    "failed": 0
+   },
+   "built_in": {
+    "passed": 0,
+    "failed": 0
+   },
+   "by_scope": {
+    "task": {
+     "passed": 0,
+     "failed": 0
+    },
+    "convoy": {
+     "passed": 1,
+     "failed": 0
+    }
+   },
+   "warnings": 2,
+   "secrets_prevented": 0
+  },
+  "warnings": [
+   {
+    "event_id": 6,
+    "type": "contract_violation",
+    "task_id": "search",
+    "items": [
+     "__contract_block"
+    ],
+    "created_at": "2026-10-03T16:16:00.034Z"
+   },
+   {
+    "event_id": 22,
+    "type": "partition_violation",
+    "task_id": "routes",
+    "items": [
+     ".opencastle/KNOWN-ISSUES.md"
+    ],
+    "created_at": "2026-10-03T16:18:43.016Z"
+   }
+  ],
+  "secrets_prevented": [],
+  "merges": {
+   "search": 2,
+   "export": 2,
+   "routes": 2
+  },
+  "retries": [
+   {
+    "event_id": 25,
+    "task_id": "routes",
+    "attempt": 2,
+    "previous_status": "review-blocked",
+    "reason": "Remove change to .opencastle/KNOWN-ISSUES.md — not in allowed files list (src/server.js, test/server.test.js)",
+    "created_at": "2026-10-03T16:19:29.359Z"
+   }
+  ],
+  "interruptions": [
+   {
+    "event_id": 18,
+    "type": "worker_killed",
+    "task_id": "routes",
+    "signal": "interrupted",
+    "created_at": "2026-10-03T16:17:17.375Z"
+   },
+   {
+    "event_id": 19,
+    "type": "convoy_interrupted",
+    "task_id": null,
+    "signal": "SIGINT",
+    "created_at": "2026-10-03T16:17:17.419Z"
+   },
+   {
+    "event_id": 20,
+    "type": "convoy_resumed",
+    "task_id": null,
+    "signal": null,
+    "created_at": "2026-10-03T16:17:17.747Z"
+   }
+  ],
+  "sessions": [
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791044097553",
+    "timestamp": "2026-10-03T16:21:13.523Z",
+    "agent": "developer",
+    "task": "routes",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 2,
+    "retries": 1
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791044097553",
+    "timestamp": "2026-10-03T16:16:46.838Z",
+    "agent": "developer",
+    "task": "export",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 2,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791044097553",
+    "timestamp": "2026-10-03T16:16:00.158Z",
+    "agent": "developer",
+    "task": "search",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 1,
+    "files_changed": 2,
+    "retries": 0
+   }
+  ],
+  "dlq": [],
+  "artifacts": [
+   {
+    "name": "src/notes.js",
+    "type": "file",
+    "task_id": "search",
+    "created_at": "2026-10-03T16:16:00.153Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/notes.test.js",
+    "type": "file",
+    "task_id": "search",
+    "created_at": "2026-10-03T16:16:00.153Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "src/export.js",
+    "type": "file",
+    "task_id": "export",
+    "created_at": "2026-10-03T16:16:46.833Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/export.test.js",
+    "type": "file",
+    "task_id": "export",
+    "created_at": "2026-10-03T16:16:46.833Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "src/server.js",
+    "type": "file",
+    "task_id": "routes",
+    "created_at": "2026-10-03T16:21:13.518Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/server.test.js",
+    "type": "file",
+    "task_id": "routes",
+    "created_at": "2026-10-03T16:21:13.518Z",
+    "size_bytes": 0
+   }
+  ],
+  "events_recorded": true
+ }
+}

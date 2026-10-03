@@ -44,13 +44,14 @@ jobs:
       - name: Build website
         run: npm run website:build
 
-      # The convoy viewer in its static mode, over a committed snapshot of
-      # recorded runs. Regenerate it with tools/viewer-demo/export.mjs.
-      - name: Add the convoy viewer demo
+      # The Observability dashboard in its static mode, over a committed
+      # snapshot of recorded runs. Regenerate it with tools/dashboard-demo/export.mjs.
+      - name: Add the dashboard demo
         run: |
-          test -f tools/viewer-demo/snapshot/index.html
+          test -f tools/dashboard-demo/snapshot/index.html
+          test -f tools/dashboard-demo/snapshot/dashboard.js
           mkdir -p website/dist/dashboard
-          cp -R tools/viewer-demo/snapshot/. website/dist/dashboard/
+          cp -R tools/dashboard-demo/snapshot/. website/dist/dashboard/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
