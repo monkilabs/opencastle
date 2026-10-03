@@ -55,17 +55,30 @@ node <your-clone>/bin/cli.mjs init --yes && node <your-clone>/bin/cli.mjs sync -
 Run the CLI from your clone as `node <your-clone>/bin/cli.mjs`, in a scratch
 project rather than in the repository itself.
 
-### The dashboard
+### The run viewer
 
-The convoy run viewer in `src/dashboard/` is built from a demo database, the
-way the website deploy builds it:
+The convoy viewer is one HTML page, `src/cli/viewer/index.html`, with no build
+step. `src/cli/dashboard.ts` serves it and its JSON over the read model in
+`src/cli/convoy/read-model.ts`. To work on it, open a project that has runs and
+reload the page after each edit:
 
 ```bash
-npm run dashboard:generate-demo-db && npm run dashboard:etl && npm run dashboard:build
+cd <a scratch project with convoy runs>
+node <your-clone>/bin/cli.mjs convoy dashboard --no-open
 ```
 
-`npm run dashboard:preview` serves the result on port 4300. A project's own
-runs are viewed with `opencastle convoy dashboard`.
+The hosted demo at opencastle.dev/dashboard is the same page over a snapshot of
+one project's runs, committed in `tools/viewer-demo/snapshot/`:
+
+```bash
+npm run cli:build
+node tools/viewer-demo/export.mjs <project> tools/viewer-demo/snapshot
+```
+
+The snapshot is public, task output included. Before committing it, check it
+for local paths and anything else you would not publish:
+`grep -rE '/Users/|/home/|/private/' tools/viewer-demo/snapshot` should print
+nothing.
 
 ## Pull Request Process
 
@@ -114,7 +127,7 @@ Create a branch from `main` using this convention:
 | `bin/` | CLI entry point; loads `dist/`, so build before running it |
 | `src/cli/` | CLI commands and adapters |
 | `src/orchestrator/` | Agent definitions, workflows, skills and integrations |
-| `src/dashboard/` | Convoy run viewer (Astro) |
+| `tools/` | The viewer demo exporter, and the scripts behind the demo video and the social image |
 | `website/` | Project website and docs |
 | `docs/` | Quickstart and the teams design notes |
 | `scripts/` | Repository tooling: claim verification, MCP pin checks, plugin packing |
