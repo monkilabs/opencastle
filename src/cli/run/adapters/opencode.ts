@@ -1,173 +1,161 @@
-import { spawn } from 'node:child_process'
-import { writeFileSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
 import type { Task, ExecuteOptions, ExecuteResult, TokenUsage } from '../../convoy/spec-types.js'
+import { commandExists } from '../platform.js'
+import { opencodePermission } from './permission-modes.js'
+import { runAgent, stopTask, promptOf, interruptedMessage, OUTPUT_LIMIT } from './agent-process.js'
 
-/** Adapter name */
+/**
+ * OpenCode, run headless: `opencode run --format json`.
+ *
+ * With no message argument `opencode run` reads the message from stdin. That
+ * is also the only safe way to pass it: a message given as arguments is
+ * re-joined with quotes added around any that contain a space, so the agent
+ * received `"Fix the bug"`, quotes and all. Each `step_finish` event carries
+ * that step's tokens and cost, which are summed. OpenCode prices the step
+ * itself from its model table — that figure is what is recorded. The stream
+ * does not name the model.
+ */
+
 export const name = 'opencode'
 
 export function supportsSessionContinuity(): boolean { return false }
-/**
- * Check if the `opencode` CLI is available on the system PATH.
- */
+
 export async function isAvailable(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const proc = spawn('which', ['opencode'], { stdio: 'pipe' })
-    proc.on('close', (code) => resolve(code === 0))
-    proc.on('error', () => resolve(false))
-  })
+  return commandExists('opencode')
 }
 
+export interface ParsedOpenCode {
+  /** The text of the last step that produced any: the agent's final answer. */
+  text?: string
+  usage?: TokenUsage
+  costUsd?: number
+  errors: string[]
+}
+
+const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
+
 /**
- * Execute a task by invoking the OpenCode CLI in headless mode.
+ * Read `opencode run --format json` output.
+ *
+ * Step tokens are per step, so they add up. OpenCode's `input` excludes the
+ * cache reads and writes, and its `output` excludes reasoning; both are added
+ * back so `prompt_tokens` and `completion_tokens` count everything.
  */
-export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  let prompt = `You are a ${task.agent}. ${task.prompt}`
+export function parseOpenCodeOutput(stdout: string): ParsedOpenCode {
+  const parsed: ParsedOpenCode = { errors: [] }
+  let stepText: string[] = []
+  let lastText: string[] = []
+  let prompt = 0
+  let completion = 0
+  let cacheRead = 0
+  let cacheWrite = 0
+  let cost = 0
+  let sawTokens = false
+  let sawCost = false
 
-  if (task.files && task.files.length > 0) {
-    prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
-  }
-
-  const args = ['run', prompt, '--format', 'json']
-
-  const cwd = options?.cwd ?? process.cwd()
-  const mcpJsonPath = join(cwd, 'mcp.json')
-  let wroteJson = false
-
-  if (options.mcpServers?.length) {
-    const mcpJson: Record<string, Record<string, unknown>> = {}
-    for (const server of options.mcpServers) {
-      const entry: Record<string, unknown> = {}
-      if (server.command) entry.command = server.command
-      if (server.args) entry.args = server.args
-      if (server.url) entry.url = server.url
-      if (server.config) Object.assign(entry, server.config)
-      mcpJson[server.name] = entry
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim()
+    if (!line.startsWith('{')) continue
+    let ev: Record<string, unknown>
+    try {
+      ev = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
     }
-    writeFileSync(mcpJsonPath, JSON.stringify({ mcpServers: mcpJson }, null, 2), 'utf8')
-    args.push('--mcp-config', mcpJsonPath)
-    wroteJson = true
+    const part = ev.part as Record<string, unknown> | undefined
+    switch (ev.type) {
+      case 'step_start':
+        stepText = []
+        break
+      case 'text':
+        if (typeof part?.text === 'string' && part.text) stepText.push(part.text)
+        break
+      case 'step_finish': {
+        if (stepText.length) lastText = stepText
+        stepText = []
+        const tokens = part?.tokens as Record<string, unknown> | undefined
+        if (tokens) {
+          const cache = (tokens.cache ?? {}) as Record<string, unknown>
+          const read = num(cache.read) ?? 0
+          const write = num(cache.write) ?? 0
+          prompt += (num(tokens.input) ?? 0) + read + write
+          completion += (num(tokens.output) ?? 0) + (num(tokens.reasoning) ?? 0)
+          cacheRead += read
+          cacheWrite += write
+          sawTokens = true
+        }
+        const c = num(part?.cost)
+        if (c !== undefined) {
+          cost += c
+          sawCost = true
+        }
+        break
+      }
+      case 'error': {
+        const err = ev.error as Record<string, unknown> | undefined
+        const data = err?.data as Record<string, unknown> | undefined
+        const message = data?.message ?? err?.message ?? err?.name
+        if (typeof message === 'string') parsed.errors.push(message)
+        break
+      }
+    }
   }
-
-  if (options.mcp_approve_all) {
-    args.push('--approve-mcps')
+  if (stepText.length) lastText = stepText
+  if (lastText.length) parsed.text = lastText.join('\n')
+  if (sawTokens) {
+    parsed.usage = {
+      prompt_tokens: prompt,
+      completion_tokens: completion,
+      total_tokens: prompt + completion,
+      cache_read_tokens: cacheRead,
+      cache_write_tokens: cacheWrite,
+    }
   }
+  // OpenCode reports 0 when it has no price for the model; that is "unknown", not free.
+  if (sawCost && cost > 0) parsed.costUsd = cost
+  return parsed
+}
 
+/** OpenCode's permission JSON, merged over any the user already set in the environment. */
+function permissionEnv(permission: Record<string, string>): Record<string, string> {
+  let existing: Record<string, unknown> = {}
   try {
-  return await new Promise<ExecuteResult>((resolve) => {
-    const proc = spawn('opencode', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
-      cwd,
-    })
+    const parsed = JSON.parse(process.env.OPENCODE_PERMISSION ?? '{}') as unknown
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existing = parsed as Record<string, unknown>
+  } catch { /* not JSON: OpenCode ignores it too */ }
+  return { OPENCODE_PERMISSION: JSON.stringify({ ...existing, ...permission }) }
+}
 
-    let stdout = ''
-    let stderr = ''
+export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+  const permission = opencodePermission(options.permissionMode)
+  const args = ['run', '--format', 'json', ...permission.args]
+  if (options.model) args.push('--model', options.model) // provider/model
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString()
-      if (options.verbose) {
-        process.stdout.write(chunk)
-      }
-    })
-
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-      if (options.verbose) {
-        process.stderr.write(chunk)
-      }
-    })
-
-    proc.on('close', (code) => {
-      let textOutput = [stdout, stderr].filter(Boolean).join('\n')
-      let usage: TokenUsage | undefined
-      try {
-        // Try single JSON object first (claude CLI)
-        const parsed = JSON.parse(stdout) as Record<string, unknown>
-        if (typeof parsed.result === 'string') {
-          textOutput = parsed.result
-        }
-        const u = parsed?.usage as Record<string, number> | undefined
-        if (u) {
-          const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
-          const completionTokens = (u.output_tokens ?? u.completion_tokens) as number | undefined
-          const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
-          usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
-        }
-      } catch {
-        // Fallback: parse JSONL (one JSON object per line)
-        // Claude CLI uses {"result": "text"}, Copilot CLI uses
-        // {"type":"assistant.message","data":{"content":"text"}} for the AI
-        // response and a separate {"type":"result"} line for session metadata.
-        const lines = stdout.split('\n')
-        let lastAssistantContent: string | undefined
-        for (const rawLine of lines) {
-          const line = rawLine.trim()
-          if (!line) continue
-          try {
-            const parsed = JSON.parse(line) as Record<string, unknown>
-            // Claude-style: result text in the result line
-            if (typeof parsed.result === 'string' && parsed.result) {
-              textOutput = parsed.result
-              const u = parsed?.usage as Record<string, number> | undefined
-              if (u) {
-                const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
-                const completionTokens = (u.output_tokens ?? u.completion_tokens) as number | undefined
-                const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
-                usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
-              }
-              lastAssistantContent = undefined // prefer explicit result field
-              break
-            }
-            // Copilot-style: AI response in assistant.message events
-            if (parsed.type === 'assistant.message') {
-              const data = parsed.data as Record<string, unknown> | undefined
-              if (data && typeof data.content === 'string') {
-                lastAssistantContent = data.content
-              }
-            }
-          } catch { /* skip non-JSON lines */ }
-        }
-        if (lastAssistantContent !== undefined) {
-          textOutput = lastAssistantContent
-        }
-      }
-      resolve({
-        success: code === 0,
-        output: textOutput.slice(0, 500_000),
-        exitCode: code ?? -1,
-        usage,
-      })
-    })
-
-    proc.on('error', (err) => {
-      resolve({
-        success: false,
-        output: `Failed to spawn opencode: ${err.message}`,
-        exitCode: -1,
-      })
-    })
-
-    // Store process ref for potential timeout kill
-    task._process = proc
+  const exit = await runAgent(task, {
+    command: 'opencode',
+    args,
+    input: promptOf(task),
+    cwd: options.cwd ?? process.cwd(),
+    ...(permission.permission ? { env: permissionEnv(permission.permission) } : {}),
+    verbose: options.verbose,
   })
-  } finally {
-    if (wroteJson) {
-      try { unlinkSync(mcpJsonPath) } catch { /* ignore */ }
-    }
+
+  const parsed = parseOpenCodeOutput(exit.stdout)
+  const interrupted = interruptedMessage('opencode', task, exit)
+  // An `error` event is a session error or a rejected prompt: the run failed, whatever the exit code says.
+  const success = !interrupted && exit.code === 0 && parsed.errors.length === 0
+  const output = success
+    ? parsed.text ?? exit.stdout
+    : [interrupted, parsed.text, ...parsed.errors, exit.stderr.trim()].filter(Boolean).join('\n')
+  return {
+    success,
+    output: output.slice(0, OUTPUT_LIMIT),
+    exitCode: exit.code,
+    ...(exit.timedOut ? { _timedOut: true } : {}),
+    ...(parsed.usage ? { usage: parsed.usage } : {}),
+    ...(parsed.costUsd !== undefined ? { costUsd: parsed.costUsd } : {}),
   }
 }
 
-/**
- * Kill the process associated with a task (used by timeout enforcement).
- */
 export function kill(task: Task): void {
-  if (task._process && !task._process.killed) {
-    task._process.kill('SIGTERM')
-    setTimeout(() => {
-      if (task._process && !task._process.killed) {
-        task._process.kill('SIGKILL')
-      }
-    }, 5000)
-  }
+  stopTask(task)
 }

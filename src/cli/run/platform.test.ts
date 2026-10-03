@@ -75,4 +75,20 @@ describe.skipIf(!posix)('stopping a process tree', () => {
     }
     expect(groupAlive).toBe(false)
   })
+
+  it('kills at once with a grace of 0, for a process that cannot wait to escalate', async () => {
+    // A shell that ignores SIGTERM: only SIGKILL ends it, and here it comes first.
+    const child = spawnCommand('sh', ['-c', "trap '' TERM; echo ready; while true; do sleep 1; done"], { stdio: ['ignore', 'pipe', 'ignore'] })
+    await new Promise<void>((r) => child.stdout!.once('data', () => r()))
+    const started = Date.now()
+    const closed = new Promise<NodeJS.Signals | null>((r) => child.on('close', (_code, signal) => r(signal)))
+    killTree(child.pid, 0)
+    expect(await closed).toBe('SIGKILL')
+    expect(Date.now() - started).toBeLessThan(2_000)
+  })
+
+  it('does nothing for a process that is already gone', () => {
+    expect(() => killTree(2 ** 22 + 12345)).not.toThrow()
+    expect(() => killTree(undefined)).not.toThrow()
+  })
 })
