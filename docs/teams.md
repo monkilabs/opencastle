@@ -142,7 +142,9 @@ reviewed like any other change.
   — part of an argument, or a header that is not wholly one variable — still
   reaches a Codex server as text, and `doctor` says so.
 - Codex loads a project's `.codex/config.toml` only in a project the user has
-  marked as trusted. `explain` does not say so yet.
+  marked as trusted. `explain` checks Codex's own config for that and says so;
+  `doctor` does not, because trust is a per-person setting and `doctor` runs in
+  CI too.
 - How each assistant treats an unset variable in its own syntax — an empty
   string, the literal text, or a server that fails to start — and whether Claude
   Code's `${VAR:-default}` is the safer spelling there.
