@@ -349,109 +349,59 @@ const sectionIcons: Record<string, string> = {
             <strong>Single-agent primitive:</strong> Ralph Wiggum shows that one agent looping with specs and backpressure can build real software. Gas Town scales this idea to many agents working in parallel with a full orchestration layer.
           </div>
 
-          <h4 class="arch-subheading">Gas Town Architecture</h4>
-          <p>Steve Yegge's <a href="https://github.com/steveyegge/gastown" class="docs-link" target="_blank" rel="noopener noreferrer">Gas Town</a> takes the looping-agent idea to industrial scale — dozens of Claude Code instances working in parallel through a rigorous work representation system called the <strong>MEOW stack</strong> (Molecular Expression of Work):</p>
-
-          <div class="architecture-card">
-            <div class="architecture-card__header">Gas Town Model</div>
-            <div class="architecture-card__flow">
-              <div class="architecture-card__row">
-                <div class="architecture-card__node architecture-card__node--lead">Beads (Git-backed JSONL)</div>
-              </div>
-              <div class="architecture-card__arrow">MEOW stack: Formulas → Molecules → Epics → Beads · state persists in Git</div>
-              <div class="architecture-card__row">
-                <div class="architecture-card__node">Mayor</div>
-                <div class="architecture-card__node">Deacon</div>
-                <div class="architecture-card__node">Polecats</div>
-                <div class="architecture-card__node">Witness</div>
-              </div>
-              <div class="architecture-card__arrow">GUPP: "If there is work on your hook, YOU MUST RUN IT"</div>
-              <div class="architecture-card__row">
-                <div class="architecture-card__node architecture-card__node--lead">Refinery (Merge Queue)</div>
-              </div>
-            </div>
-          </div>
-
-          <ul class="docs-list">
-            <li><strong>Beads</strong> — the atomic unit of work; one-issue-per-line JSON files tracked in Git (a Git-backed JSONL issue tracker built in Go)</li>
-            <li><strong>MEOW stack</strong> — layered work representation: <strong>Beads → Epics → Molecules → Formulas</strong>; state persists in Git so work survives crashes (Nondeterministic Idempotence)</li>
-            <li><strong>GUPP</strong> (Gastown Universal Propulsion Principle) — "If there is work on your hook, YOU MUST RUN IT"; keeps agents driving forward across session crashes</li>
-            <li><strong>Polecats</strong> — ephemeral per-rig workers; they spin up on demand in swarms, produce Merge Requests, get merged, then are fully decommissioned with names recycled — cattle, not pets</li>
-            <li><strong>Deacon</strong> — the "daemon beacon"; a patrol agent that runs workflows in a loop, propagating DYFJ ("Do Your Job") signals to workers, managing orchestration, plugins, and session recycling; has helper workers called Dogs (including Boot)</li>
-            <li><strong>Witness</strong> — the actual worker health monitor; checks on polecats and refineries and detects stuck or zombie workers</li>
-            <li><strong>Convoy</strong> — the ticketing and work-order system that wraps work into a delivery unit, maintaining order and dependencies across the pipeline</li>
-            <li><strong>Refinery</strong> — a merge queue that serializes changes from parallel workers, preventing conflicts before they reach the main branch</li>
-          </ul>
-
-          <h4 class="arch-subheading">Gas Town vs OpenCastle's convoy engine (experimental)</h4>
-          <p>OpenCastle's convoy engine — experimental, under <code>opencastle convoy</code> — takes these ideas and rebuilds them for the IDE-native developer workflow: TypeScript over Go, SQLite over Git JSONL, standard git tooling over custom infrastructure.</p>
+          <h4 class="arch-subheading">Parallel agents, in practice</h4>
+          <p>Steve Yegge's <a href="https://github.com/gastownhall/gastown" class="docs-link" target="_blank" rel="noopener noreferrer">Gas Town</a> scales the loop to many coding agents at once. A Mayor agent turns a request into &ldquo;beads&rdquo; with dependencies, and <code>bd ready</code> lists the ones with no open blockers (<a href="https://github.com/gastownhall/beads" class="docs-link" target="_blank" rel="noopener noreferrer">beads</a>). Each worker gets a git worktree and a tmux session. A merge queue, the Refinery, batches finished work, runs the checks on the merged stack, and bisects when they fail (<a href="https://github.com/gastownhall/gastown/blob/main/docs/reference.md" class="docs-link" target="_blank" rel="noopener noreferrer">reference</a>). Its successor is <a href="https://steve-yegge.medium.com/welcome-to-gas-city-57f564bb3607" class="docs-link" target="_blank" rel="noopener noreferrer">Gas City</a>.</p>
+          <p>The assistants do parts of this themselves. As their documentation describes it in October 2026:</p>
 
           <div class="comparison-table-wrap">
             <table class="comparison-table">
               <thead>
                 <tr>
-                  <th>Aspect</th>
-                  <th>Gas Town</th>
-                  <th>OpenCastle</th>
+                  <th>Tool</th>
+                  <th>Plans the work as</th>
+                  <th>Runs agents in</th>
+                  <th>Merging</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>Language</td>
-                  <td>Go + custom tooling</td>
-                  <td>TypeScript (Node.js 22.5+)</td>
+                  <td><a href="https://code.claude.com/docs/en/commands" class="docs-link" target="_blank" rel="noopener noreferrer">Claude Code <code>/batch</code></a></td>
+                  <td>5 to 30 independent units, approved once</td>
+                  <td>a background subagent per unit, each in a worktree</td>
+                  <td>none documented; each unit runs its tests</td>
                 </tr>
                 <tr>
-                  <td>State storage</td>
-                  <td>Beads (Git-backed JSONL)</td>
-                  <td>SQLite WAL — zero deps, built into Node.js</td>
+                  <td><a href="https://docs.github.com/en/copilot/concepts/agents/copilot-cli/fleet" class="docs-link" target="_blank" rel="noopener noreferrer">Copilot CLI <code>/fleet</code></a></td>
+                  <td>subtasks with dependencies, managed by the main agent</td>
+                  <td>subagents, each with its own context window</td>
+                  <td>the cloud agent opens a draft pull request, and can resolve conflicts and re-run the checks (<a href="https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-on-github" class="docs-link" target="_blank" rel="noopener noreferrer">docs</a>)</td>
                 </tr>
                 <tr>
-                  <td>Worker model</td>
-                  <td>Claude Code instances in tmux</td>
-                  <td>Any of five agent runtimes (Copilot, Claude Code, Cursor, OpenCode, Codex)</td>
+                  <td><a href="https://kiro.dev/docs/custom-agents/subagents/" class="docs-link" target="_blank" rel="noopener noreferrer">Kiro</a></td>
+                  <td>requirements, design and <code>tasks.md</code>; the task graph runs in waves</td>
+                  <td>subagents sharing one workspace</td>
+                  <td>pull requests, never merged automatically (<a href="https://kiro.dev/docs/web/autonomous-mode/" class="docs-link" target="_blank" rel="noopener noreferrer">docs</a>)</td>
                 </tr>
                 <tr>
-                  <td>Setup</td>
-                  <td>tmux + Claude Code + Go binary (<code>gt</code>)</td>
-                  <td><code>npx opencastle init</code> — works in any repo</td>
-                </tr>
-                <tr>
-                  <td>Orchestration</td>
-                  <td>MEOW stack (formulas → molecules → beads)</td>
-                  <td>YAML spec → deterministic execution</td>
-                </tr>
-                <tr>
-                  <td>Isolation</td>
-                  <td>Git worktrees (same as OpenCastle)</td>
-                  <td>Git worktrees — standard tooling</td>
-                </tr>
-                <tr>
-                  <td>Integration</td>
-                  <td>Standalone platform</td>
-                  <td>Plugs into existing IDE workflows</td>
-                </tr>
-                <tr>
-                  <td>Learning curve</td>
-                  <td>Steep — proprietary concepts</td>
-                  <td>Gentle — standard tools, familiar patterns</td>
+                  <td>OpenCastle convoy (experimental)</td>
+                  <td>a PRD and a task plan, checked in code, shown before it runs</td>
+                  <td>a worktree per task, on the agent CLI your assistant already uses</td>
+                  <td>onto one branch, one task at a time after its review; your checks run once at the end</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
-          <h4 class="arch-subheading">Why OpenCastle</h4>
+          <h4 class="arch-subheading">Where the convoy engine fits</h4>
           <div class="highlight-box">
-            <p class="highlight-box__title">Benefits</p>
             <ul class="highlight-box__list">
-              <li><strong>One source, every assistant</strong> — <code>npx opencastle init</code> compiles agents, skills and MCP config for Claude Code, Copilot, Cursor, Windsurf, Codex CLI, OpenCode and Antigravity</li>
-              <li><strong>Minimal setup</strong> — the convoy engine (experimental) runs from a YAML spec per run, with no dedicated infrastructure and no proprietary tooling to learn</li>
-              <li><strong>Crash-safe execution</strong> — SQLite WAL persists all task state; interrupted runs resume from where they stopped</li>
-              <li><strong>Isolated workers</strong> — git worktrees give each parallel agent its own branch, eliminating mid-flight merge conflicts</li>
-              <li><strong>Multi-runtime support</strong> — bring your own AI: GitHub Copilot, Claude Code, Cursor, OpenCode and Codex all supported</li>
-              <li><strong>Observable by default</strong> — SQL-queryable state, NDJSON event logs, and a run viewer (<code>opencastle convoy dashboard</code>)</li>
+              <li><strong>One source, every assistant</strong> — <code>npx opencastle init</code> compiles agents, skills and MCP config for Claude Code, Copilot, Cursor, Windsurf, Codex CLI, OpenCode and Antigravity; the convoy engine runs those same agents</li>
+              <li><strong>The runtime you have</strong> — it drives the CLI for the assistant init set up: Claude Code, Copilot, Cursor, OpenCode or Codex, on macOS, Linux and Windows</li>
+              <li><strong>Nothing to host</strong> — state is one SQLite file in <code>.opencastle/</code>; a stopped run resumes with <code>opencastle convoy resume</code></li>
+              <li><strong>Observable</strong> — an event log per run and a read-only viewer, <code>opencastle convoy dashboard</code></li>
             </ul>
           </div>
+          <p>Real runs, with their time and cost, are in <a href="/docs/use-cases" class="docs-link">Use cases</a>.</p>
         </section>
 
         <!-- ═══════════════════════════════════════ -->
