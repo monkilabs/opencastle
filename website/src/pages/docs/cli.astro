@@ -186,34 +186,58 @@ const commands = [
     category: 'runtime',
     name: 'convoy',
     summary: 'Experimental: plan multi-step work and run it with agents in parallel',
-    description: 'Plans long multi-step work, shows you the plan, and runs it on the agent runtime <code>opencastle init</code> set up: each task in its own git worktree, independent tasks at the same time, the result on a branch of its own. Runs are recorded in SQLite, so an interrupted or failed run resumes rather than restarting.',
+    description: 'Plans multi-step work without changing anything, shows you the plan and asks once, then runs it on the agent runtime <code>opencastle init</code> set up: each task in its own git worktree, independent tasks at the same time, the result on a branch of its own. Your checkout is never touched. Runs are recorded in <code>.opencastle/convoy.db</code>, so an interrupted or failed run resumes instead of starting over. Worked runs, with their time and cost, are on <a href="/docs/use-cases">Use cases</a>.',
     usage: 'npx opencastle convoy [task] [options]',
     options: [
       { flag: '--yes, -y', desc: 'With a task: run the plan without asking' },
       { flag: '--dry-run', desc: 'With a task: plan and write the spec, but do not run it. With run or resume: show what would run' },
       { flag: '--adapter, -a <name>', desc: 'Agent runtime: claude, codex, cursor, opencode or copilot (default: the one opencastle init set up)' },
-      { flag: '--concurrency, -c <n>', desc: 'Tasks at once' },
+      { flag: '--concurrency, -c <n>', desc: 'Tasks at once, 1 to 50' },
       { flag: '--verbose', desc: 'Stream agent output' },
       { flag: '--json', desc: 'With no task: the last run, as JSON' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'Subcommands', content: `<ul>
-        <li><code>opencastle convoy</code> — the last run and the one next step</li>
-        <li><code>opencastle convoy "&lt;task&gt;"</code> — plan it, show the plan, ask, then run it</li>
-        <li><code>opencastle convoy run &lt;spec.yml&gt;</code> — run a spec you wrote</li>
-        <li><code>opencastle convoy resume</code> — continue whatever is not done: failed, interrupted and skipped tasks</li>
-        <li><code>opencastle convoy dashboard</code> — the live viewer (port 4300 by default)</li>
-        <li><code>opencastle convoy plan --prd &lt;path&gt;</code> — plan again from a PRD you edited</li>
-      </ul>
-<p>Each subcommand takes its own options: <code>opencastle convoy run --help</code>.</p>` },
-      { heading: 'Experimental', content: `<p>This namespace may change or be removed. The compiler does not depend on it. Native background and cloud agents now cover much of what it was built for, so treat it as a research surface rather than a stable one.</p>` },
+      { heading: 'Subcommands', content: `<table>
+        <thead><tr><th>Command</th><th>What it does</th><th>Its options</th></tr></thead>
+        <tbody>
+          <tr><td><code>opencastle convoy</code></td><td>The last run and the one next step</td><td><code>--json</code></td></tr>
+          <tr><td><code>opencastle convoy "&lt;task&gt;"</code></td><td>Plan it, show the plan, ask, then run it</td><td><code>--yes</code>, <code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
+          <tr><td><code>opencastle convoy run &lt;spec.yml&gt;</code></td><td>Run a spec, one you wrote or one the planner wrote to <code>.opencastle/convoys/</code></td><td><code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
+          <tr><td><code>opencastle convoy resume</code></td><td>Continue the newest run that is not done. <code>retry</code> is another name for it</td><td><code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
+          <tr><td><code>opencastle convoy dashboard</code></td><td>The live viewer, on 127.0.0.1</td><td><code>--port &lt;n&gt;</code> (default 4300, moving up while busy; 0 picks a free one), <code>--no-open</code></td></tr>
+          <tr><td><code>opencastle convoy plan --prd &lt;file&gt;</code></td><td>Plan again from a PRD you edited</td><td><code>--yes</code>, <code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
+        </tbody>
+      </table>
+<p>Each subcommand has its own help: <code>opencastle convoy run --help</code>.</p>` },
+      { heading: 'Plan, ask, run', content: `<p><code>opencastle convoy "&lt;task&gt;"</code> writes a PRD to <code>.opencastle/prds/</code> and a spec to <code>.opencastle/convoys/</code>. Its agent sessions read the repository and change nothing. It prints the plan as a table — each task, its agent, what it waits for and the files it may change — with the branch, the runtime, the checks that run at the end, and what planning spent. Then it asks <code>Run it? [Y/n]</code>.</p>
+<ul>
+  <li><code>--yes</code> runs it without asking, after one more agent session reviews the plan.</li>
+  <li>No answer — stdin closed, as in a script — means no: nothing runs, and the command to run it later is printed.</li>
+  <li><code>--dry-run</code> stops after writing the spec.</li>
+</ul>
+<p>A run prints each task as it starts and finishes, with its time and cost. It ends with the branch, the <code>git diff</code> and <code>git merge</code> commands for it, the tokens and cost spent (marked <em>est.</em> only where the runtime reported none), and the path of the event log. On a terminal outside CI it also starts the live viewer and prints its address. Ctrl+C stops the agents and exits with code 130; <code>opencastle convoy resume</code> carries on. The exit code is 0 when every task is done and every check passed, and 1 otherwise.</p>` },
+      { heading: 'Runtime', content: `<p>The runtime is the first of: <code>--adapter</code>, the spec's <code>adapter</code>, the assistant <code>opencastle init</code> set up, or the first agent CLI found on PATH. A runtime that is named but not installed is an error, never a quiet switch to another. The run's first lines say which it chose and why.</p>
+<table>
+  <thead><tr><th>Assistant set up by init</th><th>Runtime</th><th>Command</th></tr></thead>
+  <tbody>
+    <tr><td>Claude Code</td><td><code>claude</code></td><td><code>claude</code></td></tr>
+    <tr><td>VS Code (GitHub Copilot)</td><td><code>copilot</code></td><td><code>copilot</code></td></tr>
+    <tr><td>Cursor</td><td><code>cursor</code></td><td><code>cursor-agent</code> (or Cursor's <code>agent</code>)</td></tr>
+    <tr><td>OpenCode</td><td><code>opencode</code></td><td><code>opencode</code></td></tr>
+    <tr><td>Codex CLI</td><td><code>codex</code></td><td><code>codex</code></td></tr>
+  </tbody>
+</table>
+<p>Windsurf and Antigravity have no command-line agent; a project set up only for them runs on the first agent CLI found on PATH, or the one <code>--adapter</code> names. Runtimes are found the same way on macOS, Linux and Windows, npm-installed ones included.</p>` },
+      { heading: 'Models', content: `<p>A task with no <code>model</code> in its spec runs on its agent's capability tier. Claude Code maps premium, standard and economy to its own <code>opus</code>, <code>sonnet</code> and <code>haiku</code> aliases; reviews run on economy, and the planner writes on standard and checks on economy. The other runtimes run on their own default model. A <code>model</code> in the spec, on a task or under <code>defaults</code>, always wins.</p>` },
+      { heading: 'Experimental', content: `<p>This namespace may change or be removed. The compiler does not depend on it. How it works inside is in <a href="https://github.com/monkilabs/opencastle/blob/main/ARCHITECTURE.md#convoy-architecture">ARCHITECTURE.md</a>.</p>` },
     ],
     examples: [
-      { cmd: 'npx opencastle convoy "Add user reviews to the place detail page"', desc: 'Plan and run' },
-      { cmd: 'npx opencastle convoy', desc: 'Status of the last run' },
-      { cmd: 'npx opencastle convoy run .opencastle/convoys/reviews.convoy.yml --dry-run', desc: 'Check a spec and see what would run' },
+      { cmd: 'npx opencastle convoy "Add tags to notes, and reject a note without a title"', desc: 'Plan, show the plan, ask, run' },
+      { cmd: 'npx opencastle convoy', desc: 'Where the last run stands, and what to do next' },
+      { cmd: 'npx opencastle convoy run .opencastle/convoys/note-tags.convoy.yml --dry-run', desc: 'Check a spec and see what would run' },
       { cmd: 'npx opencastle convoy resume', desc: 'Continue what is not done' },
+      { cmd: 'npx opencastle convoy dashboard --no-open', desc: 'Print the viewer\'s address without opening a browser' },
     ],
   },
   {
@@ -488,7 +512,7 @@ Teams:
   fleet       Versions and drift across many repositories
 
 Experimental:
-  convoy      Run multi-step work through the convoy engine
+  convoy      Plan multi-step work and run it with agents in parallel
 
 Options:
   --dry-run        Preview changes without writing files

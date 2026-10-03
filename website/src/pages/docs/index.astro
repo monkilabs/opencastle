@@ -58,10 +58,10 @@ const pages = [
   {
     href: '/docs/use-cases',
     title: 'Use Cases',
-    description: 'Cookbook-style recipes for common projects. Follow step-by-step guides to build real applications with your AI agent team.',
+    description: 'Convoy runs, end to end, with real output: plan and run a feature, stop and resume a run, and run a spec you wrote. Each with its time and cost.',
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>`,
     sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>`,
-    badge: '4 recipes',
+    badge: '3 recipes',
   },
 ];
 ---
@@ -280,22 +280,22 @@ const pages = [
                     <span class="quickstart__option-letter">B</span>
                     <div>
                       <p class="quickstart__option-title">Convoy <span class="quickstart__option-badge">autonomous</span> <span class="quickstart__option-badge">experimental</span></p>
-                      <p class="quickstart__desc">For larger work, the convoy engine plans a spec, then runs its tasks in parallel, each in its own git worktree. It is experimental and may change.</p>
+                      <p class="quickstart__desc">For larger work, the convoy engine plans the work, then runs its tasks in parallel, each in its own git worktree, on the agent CLI init set up. It is experimental and may change.</p>
                       <div class="quickstart__substeps">
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">1</span>
-                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add user reviews to the place detail page"</code>. It writes a PRD to <code class="quickstart__code">.opencastle/prds/</code> and a validated spec to <code class="quickstart__code">.opencastle/convoys/</code>, then shows the plan and asks <em>&ldquo;Run it?&rdquo;</em> &mdash; answer <em>n</em> to review the spec first.</p>
+                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add tags to notes, and reject a note without a title"</code>. Planning changes no code: it writes a PRD and a spec to <code class="quickstart__code">.opencastle/</code>, shows the plan as a table, and asks <em>&ldquo;Run it? [Y/n]&rdquo;</em>. Answer <em>n</em> to edit the spec first and run it later with <code class="quickstart__code">npx opencastle convoy run</code>.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">2</span>
-                          <p class="quickstart__desc"><strong>Review:</strong> check the task breakdown, file partitions, and dependency order in the spec. <code class="quickstart__code">npx opencastle convoy run .opencastle/convoys/your-spec.convoy.yml --dry-run</code> checks it and prints what would run.</p>
+                          <p class="quickstart__desc"><strong>Watch:</strong> the run prints each task as it finishes, with its time and cost; on a terminal it also prints the address of a live viewer. <code class="quickstart__code">npx opencastle convoy</code> says where the last run stands; after Ctrl+C or a failure, <code class="quickstart__code">npx opencastle convoy resume</code> carries on.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">3</span>
-                          <p class="quickstart__desc"><strong>Execute:</strong> <code class="quickstart__code">npx opencastle convoy run .opencastle/convoys/your-spec.convoy.yml</code>. The work lands on a branch of its own; your checkout is not touched.</p>
+                          <p class="quickstart__desc"><strong>Merge:</strong> the work is on a branch of its own, and the run ends with the <code class="quickstart__code">git diff</code> and <code class="quickstart__code">git merge</code> commands for it. Your checkout is not touched.</p>
                         </div>
                       </div>
-                      <p class="quickstart__hint">Every convoy command and option: <a href="/docs/cli#convoy">CLI reference</a>.</p>
+                      <p class="quickstart__hint">Worked runs, with their time and cost: <a href="/docs/use-cases">Use cases</a>. Every command and option: <a href="/docs/cli#convoy">CLI reference</a>.</p>
                     </div>
                   </div>
                 </div>
