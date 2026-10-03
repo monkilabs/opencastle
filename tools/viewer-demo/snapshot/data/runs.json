@@ -1,0 +1,101 @@
+{
+ "project": "demo-project",
+ "generated_at": "2026-10-03T11:54:17.575Z",
+ "runs": [
+  {
+   "id": "convoy-1791028188235",
+   "name": "Order API, second pass (stub agents)",
+   "status": "failed",
+   "branch": "main",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T11:49:48.249Z",
+   "started_at": "2026-10-03T11:49:48.250Z",
+   "finished_at": "2026-10-03T11:50:06.050Z",
+   "duration_ms": 17800,
+   "tasks_total": 5,
+   "tasks_done": 4,
+   "tasks_failed": 1,
+   "tasks_running": 0,
+   "tokens": 15830,
+   "cost_usd": 0.12198599999999998,
+   "alive": false
+  },
+  {
+   "id": "convoy-1791027995505",
+   "name": "Demo snapshot (stub agents)",
+   "status": "failed",
+   "branch": "main",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T11:46:35.630Z",
+   "started_at": "2026-10-03T11:46:35.631Z",
+   "finished_at": "2026-10-03T11:46:43.846Z",
+   "duration_ms": 8215,
+   "tasks_total": 5,
+   "tasks_done": 4,
+   "tasks_failed": 1,
+   "tasks_running": 0,
+   "tokens": 16903,
+   "cost_usd": 0.138081,
+   "alive": false
+  }
+ ],
+ "categories": {
+  "run": [
+   "convoy_failed",
+   "convoy_finished",
+   "convoy_guard",
+   "convoy_resumed",
+   "convoy_started",
+   "ndjson_write_failed",
+   "post_convoy_hook_failed",
+   "swarm_concurrency_update",
+   "watch_cycle_end",
+   "watch_cycle_start",
+   "watch_started",
+   "watch_stopped"
+  ],
+  "task": [
+   "agent_identity_captured",
+   "agent_identity_rejected",
+   "artifact_limit_reached",
+   "artifacts_extracted",
+   "delegation",
+   "dlq_entry_created",
+   "file_injection_received",
+   "session",
+   "task_done",
+   "task_failed",
+   "task_retried",
+   "task_skipped",
+   "task_started",
+   "task_waiting_input",
+   "worker_killed"
+  ],
+  "check": [
+   "built_in_gate_result",
+   "circuit_breaker_blocked",
+   "circuit_breaker_fallback",
+   "circuit_breaker_tripped",
+   "contract_violation",
+   "drift_check_result",
+   "drift_detected",
+   "file_partition_conflict",
+   "partition_violation",
+   "secret_leak_prevented",
+   "tdd_check_failed",
+   "tdd_check_passed",
+   "tdd_check_skipped"
+  ],
+  "review": [
+   "dispute_opened",
+   "review_stage_completed",
+   "review_started",
+   "review_verdict"
+  ],
+  "merge": [
+   "merge_conflict_detected",
+   "merge_conflict_failed"
+  ],
+  "other": []
+ }
+}
