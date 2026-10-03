@@ -293,7 +293,17 @@ describe('interrupting a run', () => {
       adapter,
       signal: controller.signal,
     }).run()
-    await new Promise((r) => setTimeout(r, 300))
+    // Interrupt once `quick` has merged and `slow` is still running.
+    const dbFile = join(repo, '.opencastle', 'convoy.db')
+    for (let i = 0; i < 200; i++) {
+      await new Promise((r) => setTimeout(r, 50))
+      try {
+        const db = new DatabaseSync(dbFile, { readOnly: true })
+        const row = db.prepare("SELECT status FROM task WHERE id = 'quick'").get() as { status: string } | undefined
+        db.close()
+        if (row?.status === 'done') break
+      } catch { /* not created yet */ }
+    }
     controller.abort()
     const result = await run
 

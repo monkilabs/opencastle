@@ -1531,9 +1531,9 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
               cascadeFailure(rec.id)
               return
             }
-            return retryOrFail('review-blocked', `Review blocked: ${firstLine(feedback) || 'no reason given'}`, {
+            return retryOrFail('review-blocked', firstLine(feedback) || 'no reason given', {
               kind: 'review-blocked',
-              output: `Review blocked:\n${feedback}`,
+              output: `Review blocked: ${firstLine(feedback) || 'no reason given'}\n\n${feedback}`,
               note: `A reviewer blocked your previous change:\n${feedback}\n\nFix these and finish the task.`,
             })
           }
@@ -2105,7 +2105,9 @@ function printSummary(progress: Progress, result: ConvoyResult, store: ConvoySto
   lines.push(`  ${icon} ${c.bold(`Convoy ${result.status}`)} in ${result.duration} — ${s.done}/${s.total} tasks done` +
     (s.failed ? `, ${s.failed} failed` : '') + (s.timedOut ? `, ${s.timedOut} timed out` : '') + (s.skipped ? `, ${s.skipped} skipped` : ''))
   for (const t of tasks.filter(x => x.status !== 'done')) {
-    const why = t.status === 'pending' ? 'not started' : firstLine(t.output, 120) || t.status
+    const why = t.status === 'pending'
+      ? (result.status === 'interrupted' ? 'stopped; runs again on resume' : 'not started')
+      : firstLine(t.output, 120) || t.status
     lines.push(`    ${c.dim('•')} ${t.id} ${c.dim(`(${t.status})`)}: ${why}`)
   }
   if (result.gateResults) {
