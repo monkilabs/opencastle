@@ -350,10 +350,24 @@ export function foldTestOnlyTasks(plan: TaskPlan): { plan: TaskPlan; folded: Arr
   const byId = new Map(plan.tasks.map((t) => [t.id, { ...t, files: [...(t.files ?? [])], depends_on: [...(t.depends_on ?? [])] }]))
   const isTestOnly = (t: TaskPlanTask): boolean => (t.files ?? []).length > 0 && (t.files ?? []).every((f) => TEST_PATH.test(f))
   const folded: Array<[string, string]> = []
+  // A dependency another dependency already waits on adds nothing: tests that
+  // list both a store change and the routes built on it test the routes.
+  const ancestors = (id: string, seen = new Set<string>()): Set<string> => {
+    for (const d of byId.get(id)?.depends_on ?? []) {
+      if (!seen.has(d)) {
+        seen.add(d)
+        ancestors(d, seen)
+      }
+    }
+    return seen
+  }
+  const direct = (deps: string[]): string[] => deps.filter((d) => !deps.some((o) => o !== d && ancestors(o).has(d)))
   for (const task of plan.tasks) {
     const t = byId.get(task.id)
-    if (!t || !isTestOnly(t) || t.depends_on.length !== 1) continue
-    const target = byId.get(t.depends_on[0])
+    if (!t || !isTestOnly(t)) continue
+    const deps = direct(t.depends_on)
+    if (deps.length !== 1) continue
+    const target = byId.get(deps[0])
     if (!target || isTestOnly(target)) continue
     const claimedElsewhere = [...byId.values()].some(
       (o) => o.id !== t.id && o.id !== target.id && (o.files ?? []).some((f) => t.files.includes(f)),

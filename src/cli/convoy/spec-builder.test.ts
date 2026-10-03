@@ -645,6 +645,21 @@ describe('foldTestOnlyTasks', () => {
     expect(plan.tasks.find((x) => x.id === 'docs')?.depends_on).toEqual(['api'])
   })
 
+  it('folds tests that list a task and something that task already waits on', () => {
+    // The plan a later real run produced: the integration tests named both the
+    // store change and the routes built on it, so they test the routes.
+    const { plan, folded } = foldTestOnlyTasks({
+      name: 'x',
+      tasks: [
+        t('store', ['src/notes.js']),
+        t('routes', ['src/server.js'], ['store']),
+        t('http-tests', ['test/server.test.js'], ['store', 'routes'], 'testing-expert'),
+      ],
+    })
+    expect(folded).toEqual([['http-tests', 'routes']])
+    expect(plan.tasks.map((x) => x.id)).toEqual(['store', 'routes'])
+  })
+
   it('leaves alone tests that cover several tasks, or files another task claims', () => {
     const several = foldTestOnlyTasks({
       name: 'x',
