@@ -1,5 +1,5 @@
 ---
-description: 'Validate PRD for completeness, clarity, implementability before generating convoy spec. Outputs VALID or INVALID with specific issues.'
+description: 'Check a PRD for the structure the convoy planner needs. Answers with a JSON verdict: valid, or the issues to fix.'
 agent: 'Reviewer'
 output: validation
 ---
@@ -8,44 +8,45 @@ output: validation
 
 # Validate PRD
 
-You are a senior technical reviewer. Validate the PRD below against strict quality criteria before it is used to generate an automated convoy spec. PRD that passes this gate will produce clean, executable convoy spec. PRD that fails will produce bad tasks.
+You are a senior technical reviewer. Check the PRD at the end of this prompt before it is broken into automated agent tasks. A PRD that passes produces clean tasks; one that fails produces bad ones.
 
-Focus on **structural completeness** only — PRD generator already enforces language quality and style. Your job: catch structural problems that would break convoy spec generation. **Pass PRD if sections exist and structure is internally consistent.** Do not fail for stylistic preferences, word choice, or minor phrasing.
+## What Happens to Your Verdict
 
-## PRD to Validate
+When `opencastle convoy` runs this step:
 
-{{goal}}
+- `"valid": true` — planning goes on.
+- `"valid": false` — your `issues` go, word for word, to a step that rewrites the PRD, and the result comes back to you. That happens at most twice; after that, planning continues with the PRD as it is. Each issue must therefore say where the problem is and how to fix it.
 
----
+Check **structure** only. The writer already enforced language and style, and the planner checks the final task list in code — unique ids, dependencies, overlapping files. Pass the PRD if its sections exist and agree with each other. Do not fail it for wording, phrasing or preference.
 
-## Validation Checklist
+The PRD may start with `<!-- validation-pass: N -->`. On pass 2 or later, check only that the earlier issues were fixed — do not raise new ones.
 
-> If PRD contains `<!-- validation-pass: N -->`, this is pass N. On pass 2+, only verify previous fixes were applied — do NOT invent new issues.
+This session is read-only; answer in text.
 
-Evaluate checks below. If ALL pass, respond `VALID`. Only fail for checks marked BLOCKING.
+## Checks (all BLOCKING)
 
-### Required Sections (BLOCKING)
+### Required Sections
 
-All these sections must exist and contain real content (not just the heading):
+Each of these exists and has real content, not just a heading:
 `Overview`, `Goals`, `Non-Goals`, `User Stories & Acceptance Criteria`, `Technical Requirements`, `Implementation Scope`, `Task Breakdown`, `Success Criteria`, `Risks & Open Questions`.
 
-### Structural Integrity (BLOCKING)
+### Structural Integrity
 
-- [ ] No two parallel workstreams (same phase) claim same file
+- [ ] No two workstreams in the same phase claim the same file
 - [ ] No circular dependencies between phases
-- [ ] No conflicting requirements across sections (e.g., Non-Goal contradicts Technical Requirement)
-- [ ] Section content is not placeholder/template text (e.g., "2–3 sentences about…", "Description here")
+- [ ] No requirements that contradict each other across sections (e.g. a Non-Goal against a Technical Requirement)
+- [ ] No placeholder or template text (e.g. "2–3 sentences about…", "Description here")
 
-### Implementation Coherence (BLOCKING)
+### Implementation Coherence
 
-- [ ] Implementation Scope lists specific files or subdirectories (not just `src/` or `the frontend`)
-- [ ] Each workstream lists files it will modify
+- [ ] Implementation Scope names specific files or subdirectories, not just `src/` or "the frontend"
+- [ ] Each workstream in Task Breakdown lists the files it will change, under a `Phase N —` heading
 
 ---
 
 ## Output Format
 
-Your entire response must be single fenced JSON block — no text before or after:
+Your whole answer is one fenced JSON block — nothing before or after it:
 
 ```json
 {
@@ -53,7 +54,7 @@ Your entire response must be single fenced JSON block — no text before or afte
 }
 ```
 
-Or if any **BLOCKING** check fails:
+Or, if any check fails:
 
 ```json
 {
@@ -64,4 +65,10 @@ Or if any **BLOCKING** check fails:
 }
 ```
 
-List only real failures in `issues`. Do not list items that passed.
+List only real failures in `issues`, not the checks that passed.
+
+---
+
+## PRD to Validate
+
+{{goal}}

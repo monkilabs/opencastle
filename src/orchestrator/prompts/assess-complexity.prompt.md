@@ -1,5 +1,5 @@
 ---
-description: 'Assess PRD complexity and recommend convoy strategy (single vs chain). Returns structured JSON consumed by the pipeline.'
+description: 'Size the work in a PRD, score each workstream, and say whether to plan it in one go or as groups planned side by side. Returns JSON.'
 agent: 'Reviewer'
 output: json
 ---
@@ -8,21 +8,24 @@ output: json
 
 # Assess PRD Complexity
 
-Analyze the PRD below; produce complexity assessment as **single JSON object**. Consumed programmatically by pipeline to decide whether to generate one convoy spec or chain of convoy specs.
+Analyze the PRD at the end of this prompt and answer with a **single JSON object**.
 
-## PRD to Analyze
+## What Happens to Your Answer
 
-{{goal}}
+When `opencastle convoy` runs this step (at the same time as the PRD review):
 
-## Original User Prompt
+- The `task_complexity` scores go to the planner, which uses them to set each task's timeout, retries and review level.
+- With `"recommended_strategy": "chain"` and groups that pass the checks below, each group is planned in a session of its own, all at the same time, each seeing only its own phases of the PRD. The plans are then joined into one spec: a group's first tasks wait for the last tasks of every group in its `depends_on`, and groups that do not depend on each other run side by side.
+- Otherwise — `"single"`, or groups that fail the checks — the whole PRD is planned in one session.
+- Your answer is cached against the PRD's exact text, so an unchanged PRD is not assessed twice.
 
-{{context}}
+The group checks: at most 3 groups when `total_tasks` is 15 or fewer, at most 4 above that; every group has at least one phase; no phase is in two groups; `depends_on` names only groups in the list; no cycles; names are kebab-case.
 
----
+This session is read-only; answer in text.
 
 ## Output Rules
 
-**CRITICAL:** Return ONLY single fenced JSON block — no prose, no explanation, no markdown headings. Start with opening fence; end with closing fence.
+**CRITICAL:** Return ONLY a single fenced JSON block — no prose, no explanation, no headings. Start with the opening fence and end with the closing fence.
 
 ## Required JSON Schema
 
@@ -57,24 +60,33 @@ Analyze the PRD below; produce complexity assessment as **single JSON object**. 
 
 ## Field Rules
 
-- `original_prompt`: Copy user's original feature request verbatim from "Original User Prompt" section above. If empty, extract one-sentence summary from PRD's Overview section.
-- `total_tasks`: Count of individual workstreams in the Task Breakdown.
-- `total_phases`: Count of phases in the Task Breakdown.
-- `domains`: List of technical domains involved (e.g., "frontend", "api", "database", "testing", "config").
-- `estimated_duration_minutes`: Rough estimate assuming AI agent execution (not human).
-- `complexity`: `"low"` (1–4 tasks), `"medium"` (5–8 tasks), `"high"` (9+ tasks).
+- `original_prompt`: The user's request, copied verbatim from "Original User Prompt" below. If that section is empty, a one-sentence summary of the PRD's Overview.
+- `total_tasks`: Number of workstreams in the Task Breakdown.
+- `total_phases`: Number of phases in the Task Breakdown.
+- `domains`: Technical domains involved (e.g. "frontend", "api", "database", "testing", "config").
+- `estimated_duration_minutes`: A rough estimate for AI agents doing the work, not people.
+- `complexity`: `"low"` (1–4 workstreams), `"medium"` (5–8), `"high"` (9+).
 - `recommended_strategy`:
-  - `"single"` when: total tasks ≤ 8, OR total phases ≤ 3, OR all tasks are tightly coupled with heavy cross-phase file sharing.
-  - `"chain"` when: total tasks > 8 AND total phases > 3 AND domains have natural boundaries — AND splitting improves failure isolation, observability, or retry granularity.
-- `chain_rationale`: Only filled when `recommended_strategy` is `"chain"` — explain WHY splitting benefits this feature.
+  - `"single"` when: 8 or fewer workstreams, OR 3 or fewer phases, OR the workstreams share files heavily across phases.
+  - `"chain"` when: more than 8 workstreams AND more than 3 phases AND the work splits along real domain boundaries — so the groups can be planned in parallel, each from a smaller part of the PRD.
+- `chain_rationale`: Only for `"chain"` — why splitting helps this feature.
 - `convoy_groups`:
-  - When `"single"`: exactly one group covering all phases.
-  - When `"chain"`: 2–4 groups with explicit `depends_on` order. Each group covers a coherent domain boundary.
-  - **Minimum 3 tasks per group.** Never create a group producing a convoy with only 1–2 tasks — merge small groups with adjacent ones. Single-task convoy is pointless overhead.
-  - **Do NOT map phases 1:1 to groups.** Bundle multiple related phases when tasks are tightly coupled (e.g., config + data in one group, components + pages in another). Only split at genuine domain boundaries where failure isolation matters.
-  - Maximum 3 groups for projects with ≤ 15 tasks. Maximum 4 groups for 16+ tasks.
-- `task_complexity`: Array of per-workstream complexity assessments using Fibonacci scale.
-  - `workstream`: Exact workstream title from PRD's Task Breakdown section.
-  - `phase`: Phase number workstream belongs to.
-  - `complexity`: Fibonacci score: `1` (trivial — single file edit), `2` (simple — small fix, one test), `3` (moderate — new component/endpoint), `5` (significant — multi-file feature), `8` (complex — cross-cutting), `13` (epic — architecture-level).
+  - For `"single"`: exactly one group covering every phase.
+  - For `"chain"`: 2–4 groups. Use `depends_on` only where a group really needs another's output — groups without it run side by side.
+  - **At least 3 workstreams per group.** Merge a smaller group into a neighbour.
+  - **Do not map phases 1:1 to groups.** Bundle related phases (e.g. config + data in one group, components + pages in another). Split only at real domain boundaries.
+- `task_complexity`: One entry per workstream, on a Fibonacci scale.
+  - `workstream`: The workstream's exact title from the Task Breakdown.
+  - `phase`: The phase it belongs to.
+  - `complexity`: `1` (trivial — one file), `2` (simple — small fix, one test), `3` (moderate — new component or endpoint), `5` (significant — multi-file feature), `8` (complex — cross-cutting), `13` (epic — architecture-level).
   - `rationale`: One sentence explaining the score.
+
+---
+
+## PRD to Analyze
+
+{{goal}}
+
+## Original User Prompt
+
+{{context}}
