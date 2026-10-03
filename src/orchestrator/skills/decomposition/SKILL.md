@@ -38,7 +38,7 @@ For score 1-3, objective + files + criteria is sufficient. Full template:
 - Key files: [list]
 - Related patterns: [file:line references]
 - Prior phase output: [compacted summary if applicable]
-- Relevant lessons: [LES-XXX from LESSONS-LEARNED.md]
+- Relevant lessons: [ids from LESSONS-LEARNED.md]
 
 ### Constraints
 - File partition: Only modify files under [paths]
