@@ -66,7 +66,7 @@ shipped is on the website; this is the record of decisions and gaps.
 | **`opencastle plugin`**: `check` loads a plugin as a conformant client must (closed manifest, Agent Skills names, MCP server variants, containment); `build` writes Claude Code's `.claude-plugin/plugin.json` and `.mcp.json` from the portable files; `index` writes the marketplace files Claude Code and Copilot CLI, Cursor and Codex read | The standard leaves Claude Code's manifest and each marketplace format to the client, which is three copies of one fact kept by hand — compiled and checked instead, like everything else |
 | Each integration is an Agent Plugin directory, checked against the spec in CI, and its skill compiles under the skill's own name (`supabase-database/`, not `supabase/`) | An assistant that follows the Agent Skills spec skips a skill whose name does not match its directory — every integration skill was one. An `exclude` naming the old directory still works, with a warning |
 | **`opencastle promote`**: `skill` copies a skill from a person's own skill directories (`~/.claude/skills`, `~/.agents/skills`, …) into `.opencastle/skills/` or, with `--to`, a baseline — checked against the Agent Skills spec and for credentials first. `memory` writes Claude Code's auto memory for the repository (`feedback` and `project` memories) as lessons, leaving out memories about the person, credentials and ones already promoted, and writing the home directory as `~` | Knowledge starts on one laptop: Claude Code's auto memory is machine-local by design, and a personal skill reaches one assistant. Promotion is the step from personal to team to organisation — Productboard's Spark draws the same line between personal and workspace skills — and the pull request that commits it is the review |
-| **Cursor and Windsurf get Agent Skills**, not rules: skills go to `.agents/skills/`, which both read natively, with their scripts and other files. `sync` removes the `rules/skills/` an earlier release wrote | Flattened into rules, a skill lost every non-Markdown file, could not be invoked by name, and was matched like a rule. Cursor's own `/migrate-to-skills` converts exactly those rules |
+| **Cursor and Windsurf get Agent Skills**, not rules: skills go to `.agents/skills/`, which both read natively, with their scripts and other files — as do OpenCode's, which used `.opencode/skills/`. `sync` removes what an earlier release wrote | Flattened into rules, a skill lost every non-Markdown file, could not be invoked by name, and was matched like a rule. Cursor's own `/migrate-to-skills` converts exactly those rules |
 | **Windsurf, now Devin Desktop**: MCP servers go to `.devin/mcp_config.json`, the project file its default agent (Devin Local) reads; `sync` takes our servers out of `.windsurf/mcp.json` | Nothing read `.windsurf/mcp.json` — the legacy Cascade agent reads one global file — so no integration or team server reached Windsurf |
 | **Antigravity**: remote servers as `serverUrl`, the field its MCP docs require; an `env` entry that only forwards `${NAME}` left out | Antigravity expands no variables, so the forwarded `${NAME}` replaced the value the server would have inherited with literal text. `doctor` names any other reference |
 | `explain` says whether Codex trusts the project, reading Codex's own config | Codex loads `.codex/config.toml` — every server written for it — only in a trusted project |
@@ -136,10 +136,10 @@ lead actually asks.
 ### 8. Standards first
 
 Agent Plugins, integration skill names, and one shared `.agents/skills/` for
-Codex, Cursor, Windsurf and Antigravity are done (see Shipped). What remains:
-OpenCode and VS Code still get their own skills directory although both read
-`.agents/skills/` — OpenCode's would go with no loss; VS Code's `.github/skills/`
-is also where Copilot's cloud agent looks, which needs checking first. Claude
+Codex, Cursor, Windsurf, OpenCode and Antigravity are done (see Shipped). What
+remains: VS Code still gets `.github/skills/` although it reads `.agents/skills/`
+too — `.github/skills/` is also where Copilot's cloud agent looks, which needs
+checking first. Claude
 Code reads only `.claude/skills/`, so a project targeting it keeps a second copy
 (see the open question on duplicates). Keep per-assistant dialects only where
 an assistant needs one. Fewer generated files means less to review and less to drift — and

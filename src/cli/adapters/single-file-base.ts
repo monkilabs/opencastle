@@ -73,7 +73,7 @@ export interface SingleFileAdapterConfig {
  */
 const SHARED_ROOT_OWNERS: Record<string, Array<{ ide: string; dotDir: string; skillsDir: string }>> = {
   'AGENTS.md': [
-    { ide: 'opencode', dotDir: '.opencode', skillsDir: '.opencode/skills' },
+    { ide: 'opencode', dotDir: '.opencode', skillsDir: '.agents/skills' },
     { ide: 'codex', dotDir: '.codex', skillsDir: '.agents/skills' },
   ],
 }
@@ -97,7 +97,9 @@ function referenceDir(config: SingleFileAdapterConfig, stack?: StackConfig): {
   const present = owners.filter((o) => selected.has(o.ide))
   if (present.length < 2) return { dir: config.dotDir, skills: skillsDirOf(config), sharedWith: [] }
   const [first, ...rest] = present
-  const elsewhere = rest.flatMap((o) => (o.skillsDir.startsWith(`${o.dotDir}/`) ? [o.dotDir] : [o.dotDir, o.skillsDir]))
+  const elsewhere = rest.flatMap((o) =>
+    o.skillsDir.startsWith(`${o.dotDir}/`) || o.skillsDir === first.skillsDir ? [o.dotDir] : [o.dotDir, o.skillsDir],
+  )
   return { dir: first.dotDir, skills: first.skillsDir, sharedWith: elsewhere }
 }
 

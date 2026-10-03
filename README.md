@@ -223,7 +223,7 @@ still open: **[docs/teams.md](docs/teams.md)**.
 | **GitHub Copilot** | `.github/` — agents, skills, prompts as `/oc:<name>` |
 | **Cursor** | `.cursorrules` + `.cursor/rules/*.mdc` + `.agents/skills/` |
 | **Windsurf** (Devin Desktop) | `.windsurfrules` + `.windsurf/rules/*.md` + `.agents/skills/` + `.devin/mcp_config.json` |
-| **OpenCode** | `AGENTS.md` + `.opencode/` + `opencode.json` |
+| **OpenCode** | `AGENTS.md` + `.agents/skills/` + `.opencode/` + `opencode.json` |
 | **Codex CLI** | `AGENTS.md` + `.agents/skills/` + `.codex/` (MCP in `config.toml`) |
 | **Antigravity** | `GEMINI.md` + `.agents/` (skills in `.agents/skills/`) |
 
