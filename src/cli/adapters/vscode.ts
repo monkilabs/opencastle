@@ -20,7 +20,8 @@ import { isOurVscodePrompt, legacyVscodePrompts, vscodePromptFile, withCommandNa
  *   skills/                    → .github/skills/
  *   agent-workflows/           → .github/agent-workflows/
  *   prompts/<name>.prompt.md   → .github/prompts/oc.<name>.prompt.md  (/oc:<name>)
- *   customizations/            → .opencastle/  (scaffolded once)
+ *
+ * `.opencastle/` is scaffolded by `init`, not here.
  */
 
 export const IDE_ID = 'vscode'

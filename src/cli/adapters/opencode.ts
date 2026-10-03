@@ -10,7 +10,6 @@ import { createSingleFileAdapter } from './single-file-base.js'
  *   agents/*.agent.md          → .opencode/agents/<name>.md
  *   agent-workflows/*.md       → .opencode/workflows/<name>.md
  *   prompts/*.prompt.md        → .opencode/prompts/<name>.md
- *   customizations/            → .opencode/customizations/  (scaffolded once)
  *   mcp.json                   → opencode.json  (OpenCode format: type local/remote)
  */
 

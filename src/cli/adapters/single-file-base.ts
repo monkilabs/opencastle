@@ -48,16 +48,17 @@ export interface SingleFileAdapterConfig {
 /**
  * Creates install/update/getManagedPaths functions from a config object.
  *
- * Both Claude Code and OpenCode share the same structure:
- * 1. A single root .md file with embedded instructions, agent index, and skill index
- * 2. Agent definitions stripped of frontmatter
- * 3. Skills stripped of frontmatter
- * 4. Prompts stripped of frontmatter
- * 5. Workflows stripped of frontmatter
- * 6. Customizations scaffolded once
- * 7. MCP config scaffolded once
+ * Claude Code, OpenCode, Codex CLI and Antigravity share one structure:
+ * 1. A single root .md file — a managed block with the instructions, the agent
+ *    index and the skill index
+ * 2. Agent definitions, frontmatter stripped
+ * 3. Skills as `<name>/SKILL.md` folders with their files, frontmatter kept —
+ *    assistants find a skill by its `name` and `description`
+ * 4. Prompts and workflows, frontmatter stripped
+ * 5. The MCP config, merged into whatever the file already holds
  *
- * The only differences are directory names and file naming conventions.
+ * The differences are directory names, the skills directory, and file naming.
+ * `.opencastle/` is scaffolded by `init`, not by an adapter.
  */
 /**
  * Targets that compile to the same root file, in resolution order.
