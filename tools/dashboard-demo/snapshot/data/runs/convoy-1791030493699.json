@@ -1,0 +1,334 @@
+{
+ "run": {
+  "id": "convoy-1791030493699",
+  "name": "Notes API — tags, validation, docs",
+  "status": "done",
+  "branch": "convoy/notes-api-tags-validation-docs-70d49b",
+  "pipeline_id": null,
+  "created_at": "2026-10-03T12:28:13.818Z",
+  "started_at": "2026-10-03T12:28:13.818Z",
+  "finished_at": "2026-10-03T12:40:49.806Z",
+  "duration_ms": 755988,
+  "tasks_total": 3,
+  "tasks_done": 3,
+  "tasks_failed": 0,
+  "tasks_running": 0,
+  "tokens": 4120329,
+  "cost_usd": 5.892128999999999,
+  "cost_estimated": false,
+  "alive": false,
+  "display_status": "done",
+  "adapters": [
+   "claude"
+  ],
+  "models": [
+   "claude-opus-5[1m]"
+  ],
+  "tasks": [
+   {
+    "id": "tags",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-opus-5[1m]",
+    "retries": 0,
+    "started_at": "2026-10-03T12:28:13.898Z",
+    "finished_at": "2026-10-03T12:31:44.427Z",
+    "duration_ms": 210529,
+    "prompt_tokens": 966285,
+    "completion_tokens": 8640,
+    "total_tokens": 974925,
+    "cache_read_tokens": 901885,
+    "cache_write_tokens": 64368,
+    "cost_usd": 2.0064054999999996,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "validation",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-opus-5[1m]",
+    "retries": 0,
+    "started_at": "2026-10-03T12:31:44.500Z",
+    "finished_at": "2026-10-03T12:37:46.942Z",
+    "duration_ms": 362442,
+    "prompt_tokens": 1649754,
+    "completion_tokens": 22518,
+    "total_tokens": 1672272,
+    "cache_read_tokens": 1590795,
+    "cache_write_tokens": 58915,
+    "cost_usd": 2.5990409999999997,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "docs",
+    "phase": 1,
+    "agent": "writer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "tags",
+     "validation"
+    ],
+    "adapter": "claude",
+    "model": "claude-opus-5[1m]",
+    "retries": 0,
+    "started_at": "2026-10-03T12:37:47.014Z",
+    "finished_at": "2026-10-03T12:40:49.584Z",
+    "duration_ms": 182570,
+    "prompt_tokens": 833199,
+    "completion_tokens": 13481,
+    "total_tokens": 846680,
+    "cache_read_tokens": 777075,
+    "cache_write_tokens": 56100,
+    "cost_usd": 1.2866825,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "auto-pass",
+    "failure_reason": null,
+    "error_tail": null
+   }
+  ]
+ },
+ "insights": {
+  "tiers": [
+   {
+    "tier": "standard",
+    "tasks": 2
+   },
+   {
+    "tier": "economy",
+    "tasks": 1
+   }
+  ],
+  "tiers_not_recorded": 0,
+  "task_tiers": {
+   "tags": "standard",
+   "validation": "standard",
+   "docs": "economy"
+  },
+  "mechanisms": [
+   {
+    "mechanism": "worktree",
+    "attempts": 3
+   }
+  ],
+  "runtimes": [
+   {
+    "runtime": "claude",
+    "attempts": 3
+   }
+  ],
+  "starts": {
+   "tags": 1,
+   "validation": 1,
+   "docs": 1
+  },
+  "reviews": [
+   {
+    "event_id": 4,
+    "task_id": "tags",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 371473,
+    "model": "claude-opus-5[1m]",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T12:31:44.297Z"
+   },
+   {
+    "event_id": 11,
+    "task_id": "validation",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 254979,
+    "model": "claude-opus-5[1m]",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T12:37:46.827Z"
+   },
+   {
+    "event_id": 17,
+    "task_id": "docs",
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": null,
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T12:40:49.485Z"
+   }
+  ],
+  "reviews_skipped": [],
+  "review_stats": {
+   "ran": 2,
+   "passed": 2,
+   "blocked": 0,
+   "skipped": 0,
+   "auto_pass": 1,
+   "tokens": 626452,
+   "by_level": {
+    "fast": {
+     "pass": 2,
+     "block": 0
+    }
+   },
+   "models": {
+    "claude-opus-5[1m]": 2
+   },
+   "disputes": 0
+  },
+  "disputes": [],
+  "checks": [
+   {
+    "event_id": 22,
+    "kind": "gate",
+    "scope": "convoy",
+    "task_id": null,
+    "name": "npm test",
+    "passed": true,
+    "exit_code": 0,
+    "level": null,
+    "output": null,
+    "attempt": null,
+    "round": 1,
+    "created_at": "2026-10-03T12:40:49.801Z"
+   }
+  ],
+  "check_stats": {
+   "ran": 1,
+   "passed": 1,
+   "failed": 0,
+   "gates": {
+    "passed": 1,
+    "failed": 0
+   },
+   "built_in": {
+    "passed": 0,
+    "failed": 0
+   },
+   "by_scope": {
+    "task": {
+     "passed": 0,
+     "failed": 0
+    },
+    "convoy": {
+     "passed": 1,
+     "failed": 0
+    }
+   },
+   "warnings": 0,
+   "secrets_prevented": 0
+  },
+  "warnings": [],
+  "secrets_prevented": [],
+  "merges": {
+   "tags": 2,
+   "validation": 2,
+   "docs": 1
+  },
+  "retries": [],
+  "interruptions": [],
+  "sessions": [
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791030493699",
+    "timestamp": "2026-10-03T12:40:49.588Z",
+    "agent": "writer",
+    "task": "docs",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-opus-5[1m]",
+    "duration_min": 3,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791030493699",
+    "timestamp": "2026-10-03T12:37:46.948Z",
+    "agent": "developer",
+    "task": "validation",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-opus-5[1m]",
+    "duration_min": 6,
+    "files_changed": 2,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791030493699",
+    "timestamp": "2026-10-03T12:31:44.432Z",
+    "agent": "developer",
+    "task": "tags",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-opus-5[1m]",
+    "duration_min": 4,
+    "files_changed": 2,
+    "retries": 0
+   }
+  ],
+  "dlq": [],
+  "artifacts": [
+   {
+    "name": "src/notes.js",
+    "type": "file",
+    "task_id": "tags",
+    "created_at": "2026-10-03T12:31:44.426Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/notes.test.js",
+    "type": "file",
+    "task_id": "tags",
+    "created_at": "2026-10-03T12:31:44.426Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "src/server.js",
+    "type": "file",
+    "task_id": "validation",
+    "created_at": "2026-10-03T12:37:46.942Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/server.test.js",
+    "type": "file",
+    "task_id": "validation",
+    "created_at": "2026-10-03T12:37:46.942Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "README.md",
+    "type": "file",
+    "task_id": "docs",
+    "created_at": "2026-10-03T12:40:49.584Z",
+    "size_bytes": 0
+   }
+  ],
+  "events_recorded": true
+ }
+}

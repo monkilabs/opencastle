@@ -5,7 +5,7 @@ import illustration from '../images/opencastle-illustration.png';
 import dashboardSnapshot from '../images/dashboard-snapshot.png';
 import { PLUGINS } from '../../../src/orchestrator/plugins/index';
 
-const DEMO_URL = 'https://www.opencastle.dev/dashboard';
+const DEMO_URL = 'https://www.opencastle.dev/dashboard/';
 
 const agents = [
   { name: 'Team Lead', tier: 'premium' },
@@ -736,9 +736,11 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         </h2>
         <p class="section__subtitle">
           <code>npx opencastle convoy dashboard</code> (experimental) is a read-only page over a project's
-          convoy runs: each run's branch, runtime, models, time, tokens and cost; every task with what it
-          waits for and why it failed; and the event feed, live while a run works. A run started in a
-          terminal starts it for you.
+          convoy runs. Across every run: success rate, duration, tokens and cost, and tasks by agent, model
+          and tier. For each run: every task with what it waits for and why it failed, each review and check
+          with the attempt it read, retries, and the event timeline, live while a run works. Every figure is
+          read from the runs' own records; one a runtime did not report says so. A run started in a terminal
+          starts it for you.
         </p>
         <a
           href={DEMO_URL}
@@ -758,7 +760,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
           <img
             src={dashboardSnapshot.src}
-            alt="The convoy viewer showing a real five-task run, Note tags: done in 4m 52s for $3.21, with each task's agent, model, dependencies, duration, tokens and cost, and the event feed"
+            alt="The Observability dashboard showing a real five-task run, Note tags: done in 4m 52s for $3.21, with each task's agent, status, what it waits for, duration, tokens and cost"
           />
           <div class="dashboard-preview__overlay">
             View live demo →

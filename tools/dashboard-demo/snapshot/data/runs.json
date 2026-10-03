@@ -1,0 +1,359 @@
+{
+ "project": "notes-api",
+ "projects": 7,
+ "generated_at": "2026-10-03T19:19:04.793Z",
+ "runs": [
+  {
+   "id": "convoy-1791045784848",
+   "name": "Notes pagination delete",
+   "status": "done",
+   "branch": "convoy/notes-pagination-delete",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T16:43:04.960Z",
+   "started_at": "2026-10-03T16:43:04.961Z",
+   "finished_at": "2026-10-03T16:48:33.738Z",
+   "duration_ms": 328777,
+   "tasks_total": 2,
+   "tasks_done": 2,
+   "tasks_failed": 0,
+   "tasks_running": 0,
+   "tokens": 3071319,
+   "cost_usd": 1.9673337499999999,
+   "cost_estimated": false,
+   "alive": false,
+   "display_status": "done"
+  },
+  {
+   "id": "convoy-1791045002364",
+   "name": "Pagination Bulk Delete",
+   "status": "done",
+   "branch": "convoy/pagination-bulk-delete",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T16:30:02.475Z",
+   "started_at": "2026-10-03T16:30:02.475Z",
+   "finished_at": "2026-10-03T16:36:12.577Z",
+   "duration_ms": 370102,
+   "tasks_total": 3,
+   "tasks_done": 3,
+   "tasks_failed": 0,
+   "tasks_running": 0,
+   "tokens": 3191009,
+   "cost_usd": 2.1309225,
+   "cost_estimated": false,
+   "alive": false,
+   "display_status": "done"
+  },
+  {
+   "id": "convoy-1791044097553",
+   "name": "Notes search and export",
+   "status": "done",
+   "branch": "convoy/search-export",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T16:14:57.668Z",
+   "started_at": "2026-10-03T16:14:57.668Z",
+   "finished_at": "2026-10-03T16:21:13.733Z",
+   "duration_ms": 376065,
+   "tasks_total": 3,
+   "tasks_done": 3,
+   "tasks_failed": 0,
+   "tasks_running": 0,
+   "tokens": 3668837,
+   "cost_usd": 2.526366,
+   "cost_estimated": true,
+   "alive": false,
+   "display_status": "done"
+  },
+  {
+   "id": "convoy-1791042515925",
+   "name": "Notes pagination delete",
+   "status": "done",
+   "branch": "convoy/notes-pagination-delete",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T15:48:36.124Z",
+   "started_at": "2026-10-03T15:48:36.125Z",
+   "finished_at": "2026-10-03T15:53:10.187Z",
+   "duration_ms": 274062,
+   "tasks_total": 4,
+   "tasks_done": 4,
+   "tasks_failed": 0,
+   "tasks_running": 0,
+   "tokens": 2385909,
+   "cost_usd": 2.2172707,
+   "cost_estimated": false,
+   "alive": false,
+   "display_status": "done"
+  },
+  {
+   "id": "convoy-1791033704036",
+   "name": "Health check endpoint",
+   "status": "done",
+   "branch": "convoy/health-check-endpoint",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T13:21:44.152Z",
+   "started_at": "2026-10-03T13:21:44.152Z",
+   "finished_at": "2026-10-03T13:25:43.922Z",
+   "duration_ms": 239770,
+   "tasks_total": 2,
+   "tasks_done": 2,
+   "tasks_failed": 0,
+   "tasks_running": 0,
+   "tokens": 1602676,
+   "cost_usd": 1.5013293,
+   "cost_estimated": false,
+   "alive": false,
+   "display_status": "done"
+  },
+  {
+   "id": "convoy-1791033682160",
+   "name": "Note tags",
+   "status": "done",
+   "branch": "convoy/note-tags",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T13:21:22.281Z",
+   "started_at": "2026-10-03T13:21:22.282Z",
+   "finished_at": "2026-10-03T13:26:15.253Z",
+   "duration_ms": 292971,
+   "tasks_total": 5,
+   "tasks_done": 5,
+   "tasks_failed": 0,
+   "tasks_running": 0,
+   "tokens": 3238073,
+   "cost_usd": 3.2082804,
+   "cost_estimated": false,
+   "alive": false,
+   "display_status": "done"
+  },
+  {
+   "id": "convoy-1791030493699",
+   "name": "Notes API — tags, validation, docs",
+   "status": "done",
+   "branch": "convoy/notes-api-tags-validation-docs-70d49b",
+   "pipeline_id": null,
+   "created_at": "2026-10-03T12:28:13.818Z",
+   "started_at": "2026-10-03T12:28:13.818Z",
+   "finished_at": "2026-10-03T12:40:49.806Z",
+   "duration_ms": 755988,
+   "tasks_total": 3,
+   "tasks_done": 3,
+   "tasks_failed": 0,
+   "tasks_running": 0,
+   "tokens": 4120329,
+   "cost_usd": 5.892128999999999,
+   "cost_estimated": false,
+   "alive": false,
+   "display_status": "done"
+  }
+ ],
+ "categories": {
+  "run": [
+   "convoy_failed",
+   "convoy_finished",
+   "convoy_guard",
+   "convoy_interrupted",
+   "convoy_resumed",
+   "convoy_started",
+   "ndjson_write_failed",
+   "post_convoy_hook_failed"
+  ],
+  "task": [
+   "agent_identity_captured",
+   "agent_identity_rejected",
+   "artifact_limit_reached",
+   "artifacts_extracted",
+   "delegation",
+   "dlq_entry_created",
+   "session",
+   "task_done",
+   "task_failed",
+   "task_retried",
+   "task_skipped",
+   "task_started",
+   "worker_killed"
+  ],
+  "check": [
+   "built_in_gate_result",
+   "circuit_breaker_blocked",
+   "circuit_breaker_fallback",
+   "circuit_breaker_tripped",
+   "contract_violation",
+   "gate_result",
+   "partition_violation",
+   "secret_leak_prevented",
+   "tdd_check_failed",
+   "tdd_check_passed",
+   "tdd_check_skipped"
+  ],
+  "review": [
+   "dispute_opened",
+   "review_skipped",
+   "review_started",
+   "review_verdict"
+  ],
+  "merge": [
+   "merge_conflict_detected",
+   "merge_failed",
+   "task_merged"
+  ],
+  "other": []
+ },
+ "overview": {
+  "runs": {
+   "total": 7,
+   "alive": 0,
+   "by_status": {
+    "done": 7
+   },
+   "ended": 7,
+   "done": 7,
+   "success_rate": 1
+  },
+  "duration": {
+   "measured": 7,
+   "avg_ms": 376819.28571428574,
+   "p95_ms": 755988,
+   "max_ms": 755988
+  },
+  "tokens": {
+   "total": 21278152,
+   "runs_reported": 7,
+   "runs_not_reported": 0
+  },
+  "cost": {
+   "total_usd": 19.44363165,
+   "estimated": true,
+   "runs_reported": 7,
+   "runs_not_reported": 0
+  },
+  "activity": [
+   {
+    "date": "2026-10-03",
+    "total": 7,
+    "done": 7,
+    "failed": 0,
+    "interrupted": 0,
+    "other": 0
+   }
+  ],
+  "tasks": {
+   "total": 22,
+   "retries": 1,
+   "by_status": {
+    "done": 22
+   }
+  },
+  "agents": [
+   {
+    "agent": "developer",
+    "total": 14,
+    "done": 14,
+    "failed": 0,
+    "running": 0,
+    "other": 0
+   },
+   {
+    "agent": "testing-expert",
+    "total": 6,
+    "done": 6,
+    "failed": 0,
+    "running": 0,
+    "other": 0
+   },
+   {
+    "agent": "writer",
+    "total": 2,
+    "done": 2,
+    "failed": 0,
+    "running": 0,
+    "other": 0
+   }
+  ],
+  "models": [
+   {
+    "model": "claude-sonnet-5",
+    "tasks": 18
+   },
+   {
+    "model": "claude-opus-5[1m]",
+    "tasks": 3
+   },
+   {
+    "model": "claude-haiku-4-5-20251001",
+    "tasks": 1
+   }
+  ],
+  "models_not_reported": 0,
+  "tiers": [
+   {
+    "tier": "standard",
+    "tasks": 20
+   },
+   {
+    "tier": "economy",
+    "tasks": 2
+   }
+  ],
+  "tiers_not_recorded": 0,
+  "mechanisms": [
+   {
+    "mechanism": "worktree",
+    "attempts": 24
+   }
+  ],
+  "runtimes": [
+   {
+    "runtime": "claude",
+    "attempts": 24
+   }
+  ],
+  "reviews": {
+   "ran": 20,
+   "passed": 19,
+   "blocked": 1,
+   "skipped": 0,
+   "auto_pass": 3,
+   "tokens": 1581397,
+   "by_level": {
+    "fast": {
+     "pass": 19,
+     "block": 1
+    }
+   },
+   "models": {
+    "claude-opus-5[1m]": 2,
+    "claude-sonnet-5": 6,
+    "claude-haiku-4-5-20251001": 12
+   },
+   "disputes": 0
+  },
+  "checks": {
+   "ran": 7,
+   "passed": 7,
+   "failed": 0,
+   "gates": {
+    "passed": 7,
+    "failed": 0
+   },
+   "built_in": {
+    "passed": 0,
+    "failed": 0
+   },
+   "by_scope": {
+    "task": {
+     "passed": 0,
+     "failed": 0
+    },
+    "convoy": {
+     "passed": 7,
+     "failed": 0
+    }
+   },
+   "warnings": 2,
+   "secrets_prevented": 0
+  },
+  "dlq": {
+   "entries": 0,
+   "unresolved": 0
+  },
+  "artifacts": 30
+ }
+}

@@ -1,0 +1,254 @@
+{
+ "run": {
+  "id": "convoy-1791033704036",
+  "name": "Health check endpoint",
+  "status": "done",
+  "branch": "convoy/health-check-endpoint",
+  "pipeline_id": null,
+  "created_at": "2026-10-03T13:21:44.152Z",
+  "started_at": "2026-10-03T13:21:44.152Z",
+  "finished_at": "2026-10-03T13:25:43.922Z",
+  "duration_ms": 239770,
+  "tasks_total": 2,
+  "tasks_done": 2,
+  "tasks_failed": 0,
+  "tasks_running": 0,
+  "tokens": 1602676,
+  "cost_usd": 1.5013293,
+  "cost_estimated": false,
+  "alive": false,
+  "display_status": "done",
+  "adapters": [
+   "claude"
+  ],
+  "models": [
+   "claude-sonnet-5"
+  ],
+  "tasks": [
+   {
+    "id": "health-route",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T13:21:44.222Z",
+    "finished_at": "2026-10-03T13:24:01.809Z",
+    "duration_ms": 137587,
+    "prompt_tokens": 983225,
+    "completion_tokens": 7092,
+    "total_tokens": 990317,
+    "cache_read_tokens": 942887,
+    "cache_write_tokens": 40310,
+    "cost_usd": 0.8564442,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "health-route-tests",
+    "phase": 1,
+    "agent": "testing-expert",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "health-route"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T13:24:01.882Z",
+    "finished_at": "2026-10-03T13:25:42.579Z",
+    "duration_ms": 100697,
+    "prompt_tokens": 479575,
+    "completion_tokens": 3569,
+    "total_tokens": 483144,
+    "cache_read_tokens": 442710,
+    "cache_write_tokens": 36851,
+    "cost_usd": 0.6448851,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   }
+  ]
+ },
+ "insights": {
+  "tiers": [
+   {
+    "tier": "standard",
+    "tasks": 2
+   }
+  ],
+  "tiers_not_recorded": 0,
+  "task_tiers": {
+   "health-route": "standard",
+   "health-route-tests": "standard"
+  },
+  "mechanisms": [
+   {
+    "mechanism": "worktree",
+    "attempts": 2
+   }
+  ],
+  "runtimes": [
+   {
+    "runtime": "claude",
+    "attempts": 2
+   }
+  ],
+  "starts": {
+   "health-route": 1,
+   "health-route-tests": 1
+  },
+  "reviews": [
+   {
+    "event_id": 4,
+    "task_id": "health-route",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 64239,
+    "model": "claude-sonnet-5",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T13:24:01.682Z"
+   },
+   {
+    "event_id": 11,
+    "task_id": "health-route-tests",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 64976,
+    "model": "claude-sonnet-5",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T13:25:42.466Z"
+   }
+  ],
+  "reviews_skipped": [],
+  "review_stats": {
+   "ran": 2,
+   "passed": 2,
+   "blocked": 0,
+   "skipped": 0,
+   "auto_pass": 0,
+   "tokens": 129215,
+   "by_level": {
+    "fast": {
+     "pass": 2,
+     "block": 0
+    }
+   },
+   "models": {
+    "claude-sonnet-5": 2
+   },
+   "disputes": 0
+  },
+  "disputes": [],
+  "checks": [
+   {
+    "event_id": 16,
+    "kind": "gate",
+    "scope": "convoy",
+    "task_id": null,
+    "name": "npm run test",
+    "passed": true,
+    "exit_code": 0,
+    "level": null,
+    "output": null,
+    "attempt": null,
+    "round": 1,
+    "created_at": "2026-10-03T13:25:43.915Z"
+   }
+  ],
+  "check_stats": {
+   "ran": 1,
+   "passed": 1,
+   "failed": 0,
+   "gates": {
+    "passed": 1,
+    "failed": 0
+   },
+   "built_in": {
+    "passed": 0,
+    "failed": 0
+   },
+   "by_scope": {
+    "task": {
+     "passed": 0,
+     "failed": 0
+    },
+    "convoy": {
+     "passed": 1,
+     "failed": 0
+    }
+   },
+   "warnings": 0,
+   "secrets_prevented": 0
+  },
+  "warnings": [],
+  "secrets_prevented": [],
+  "merges": {
+   "health-route": 1,
+   "health-route-tests": 1
+  },
+  "retries": [],
+  "interruptions": [],
+  "sessions": [
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791033704036",
+    "timestamp": "2026-10-03T13:25:42.585Z",
+    "agent": "testing-expert",
+    "task": "health-route-tests",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791033704036",
+    "timestamp": "2026-10-03T13:24:01.815Z",
+    "agent": "developer",
+    "task": "health-route",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   }
+  ],
+  "dlq": [],
+  "artifacts": [
+   {
+    "name": "src/server.js",
+    "type": "file",
+    "task_id": "health-route",
+    "created_at": "2026-10-03T13:24:01.809Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/server.test.js",
+    "type": "file",
+    "task_id": "health-route-tests",
+    "created_at": "2026-10-03T13:25:42.578Z",
+    "size_bytes": 0
+   }
+  ],
+  "events_recorded": true
+ }
+}

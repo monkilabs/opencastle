@@ -18,7 +18,7 @@ import { permissionModeError } from './run/adapters/permission-modes.js'
 import { findProjectRoot, isRunAlive, readRun, readRunSpec, readRuns, type RunSummary } from './convoy/read-model.js'
 import { checkConvoyPlan, createConvoyEngine, RESUME_RESET_STATUSES, type ConvoyResult } from './convoy/engine.js'
 import { EngineAlreadyRunningError } from './convoy/lock.js'
-import { startViewer, type ViewerHandle } from './dashboard.js'
+import { startDashboard, type DashboardHandle } from './dashboard.js'
 import { nearest } from './nearest.js'
 import { c } from './prompt.js'
 import type { TaskSpec } from './convoy/spec-types.js'
@@ -200,13 +200,13 @@ function concurrencyOf(spec: TaskSpec): number {
 }
 
 /**
- * The live viewer, on a terminal and outside CI. A run in a pipeline has nobody
- * to look at it, and a port held open there is a port held for nothing.
+ * The live dashboard, on a terminal and outside CI. A run in a pipeline has
+ * nobody to look at it, and a port held open there is a port held for nothing.
  */
-async function maybeStartViewer(projectRoot: string): Promise<ViewerHandle | null> {
+async function maybeStartDashboard(projectRoot: string): Promise<DashboardHandle | null> {
   if (!process.stdout.isTTY || process.env.CI) return null
   try {
-    return await startViewer({ projectRoot, port: 4300, open: false })
+    return await startDashboard({ projectRoot, port: 4300, open: false })
   } catch {
     // A busy port or a missing page must not stop the run itself.
     return null
@@ -214,13 +214,13 @@ async function maybeStartViewer(projectRoot: string): Promise<ViewerHandle | nul
 }
 
 /**
- * Run the engine, then let go of everything: the viewer's server, any agent an
- * adapter still holds. Whatever happens, the caller gets an exit code back and
+ * Run the engine, then let go of everything: the dashboard's server, any agent
+ * an adapter still holds. Whatever happens, the caller gets an exit code back and
  * nothing is left keeping the process alive.
  */
 async function drive(work: () => Promise<ConvoyResult>, projectRoot: string): Promise<number> {
-  const viewer = await maybeStartViewer(projectRoot)
-  if (viewer) console.log(`  ${c.dim('Live view:')} ${viewer.url}`)
+  const dashboard = await maybeStartDashboard(projectRoot)
+  if (dashboard) console.log(`  ${c.dim('Live view:')} ${dashboard.url}`)
   console.log('')
   try {
     const result = await work()
@@ -231,7 +231,7 @@ async function drive(work: () => Promise<ConvoyResult>, projectRoot: string): Pr
     }
     return fail((err as Error).message)
   } finally {
-    await viewer?.close()
+    await dashboard?.close()
     await cleanupAdapters()
   }
 }

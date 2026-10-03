@@ -1,6 +1,6 @@
 ---
 import '../../styles/global.css';
-import viewerShot from '../../images/dashboard-snapshot.png';
+import dashboardShot from '../../images/dashboard-snapshot.png';
 
 const title = 'Use Cases — OpenCastle';
 const description = 'Real convoy runs, end to end: plan and run a feature from one sentence, and write a spec, stop its run and resume it. Each with the time and cost it took.';
@@ -291,20 +291,22 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <div class="recipe-step__number">4</div>
             <h3 class="recipe-section__heading">Step 4: Watch it</h3>
             <p class="recipe-section__body">
-              On a terminal the run starts a read-only viewer and prints its address (<code>Live view:</code>
-              above). It shows the runs, each run's branch, runtime, models, time, tokens and cost, every task
-              with what it waits for and what it spent, a failed task's reason and the end of its output, and
-              the event feed. While a run is live it refreshes every 2 seconds. To open it at any time:
+              On a terminal the run starts the read-only Observability dashboard and prints its address
+              (<code>Live view:</code> above). It shows totals across every run, and for each run its branch,
+              runtime, models, time, tokens and cost; every task with what it waits for and what it spent; each
+              review and check with the attempt it read; retries; a failed task's reason and the end of its
+              output; and the event timeline. While a run is live it refreshes every 2 seconds. To open it at
+              any time:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
               <pre><code>$ npx opencastle convoy dashboard</code></pre>
             </div>
-            <img class="recipe-shot" src={viewerShot.src} width="1440" height="900" loading="lazy"
-              alt="The convoy viewer showing the Note tags run: done in 4m 52s for $3.21, five tasks with their agents, models, dependencies, durations, tokens and costs, and the event feed" />
+            <img class="recipe-shot" src={dashboardShot.src} width="1440" height="900" loading="lazy"
+              alt="The Observability dashboard showing the Note tags run: done in 4m 52s for $3.21, its five tasks with their agents, status, dependencies, durations, tokens and costs" />
             <p class="recipe-section__body">
-              This is a five-task run on the same project, three tasks at a time. The same page, over that run,
-              is at <a href="https://www.opencastle.dev/dashboard">opencastle.dev/dashboard</a>.
+              This is a five-task run on the same project, three tasks at a time. The same page, over that run
+              and six other recorded runs, is at <a href="https://www.opencastle.dev/dashboard/">opencastle.dev/dashboard</a>.
             </p>
           </section>
 
@@ -384,7 +386,7 @@ $ git merge convoy/notes-pagination-delete</code></pre>
                 <p class="recipe-troubleshooting__solution">
                   A failed attempt runs once more by default, told why the first failed. If it fails again, the
                   tasks that depend on it are skipped and the rest carry on. The summary lists each task that is
-                  not done with its reason, and the viewer shows the end of its output. Fix the cause, then
+                  not done with its reason, and the dashboard shows the end of its output. Fix the cause, then
                   <code>npx opencastle convoy resume</code>.
                 </p>
               </div>
@@ -705,7 +707,7 @@ $ git merge convoy/search-export</code></pre>
     </footer>
 
     <style>
-      /* ── Measured runs and the viewer screenshot ── */
+      /* ── Measured runs and the dashboard screenshot ── */
       .recipe-table {
         width: 100%;
         border-collapse: collapse;

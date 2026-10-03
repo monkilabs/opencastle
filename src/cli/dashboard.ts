@@ -1,16 +1,18 @@
 /**
- * `opencastle convoy dashboard` — a small, read-only, live view of convoy runs.
+ * `opencastle convoy dashboard` — the Observability dashboard: a read-only,
+ * live view of a project's convoy runs.
  *
- * One HTML page (src/cli/viewer/index.html, no build step) and four JSON
- * endpoints over the read model. Every request opens the database read-only,
- * queries and closes it, so what the page shows is what the store holds now —
- * the dashboard this replaces ran an ETL once at startup into a temp directory
- * and served that snapshot for as long as it stayed up.
+ * The page is four files in the package (src/cli/dashboard/: the HTML, its
+ * stylesheet, its script and an icon), with no build step, and a JSON API over
+ * the read model. Every request opens the database read-only, queries and
+ * closes it, so what the page shows is what the store holds now. The dashboard
+ * this replaced ran an ETL once at startup into a temp directory and served that
+ * snapshot for as long as it stayed up.
  *
- *   GET /api/runs                       runs, newest first, plus the event categories
- *   GET /api/runs/:id                   one run with its tasks
- *   GET /api/runs/:id/events?since=<n>  that run's events after cursor n
- *   GET /api/sessions                   agent sessions recorded with `opencastle log`
+ *   GET /api/runs                       runs, newest first, the event categories, and the overview of every run
+ *   GET /api/runs/:id                   one run with its tasks, and what its events and side tables add
+ *   GET /api/runs/:id/events?since=<n>  that run's events after cursor n (&limit, at most 2000)
+ *   GET /api/sessions                   agent sessions: `opencastle log` records and the engine's own
  */
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'
@@ -22,10 +24,12 @@ import {
   convoyDbPath,
   eventCategories,
   findProjectRoot,
+  readAllSessions,
   readEventsSince,
+  readOverview,
   readRun,
+  readRunInsights,
   readRuns,
-  readSessions,
 } from './convoy/read-model.js'
 import { openUrl } from './run/platform.js'
 import { nearest } from './nearest.js'
@@ -35,39 +39,58 @@ const DEFAULT_PORT = 4300
 /** Ports tried after a busy one: 4300 through 4319. */
 const PORT_ATTEMPTS = 20
 const EVENTS_PAGE = 500
+const EVENTS_MAX = 2000
+/** The runs the list carries; the overview counts every run regardless. */
+const RUNS_LISTED = 500
 
-export interface ViewerOptions {
+export interface DashboardOptions {
   projectRoot: string
   /** 0 asks the OS for a free port. Defaults to 4300, moving up while busy. */
   port?: number
   open?: boolean
 }
 
-export interface ViewerHandle {
+export interface DashboardHandle {
   url: string
   close(): Promise<void>
 }
 
-/**
- * The page ships as a file in the package. From the TypeScript source it sits
- * beside this module; from the compiled `dist/cli/dashboard.js` it is back in
- * `src/`, which `files` in package.json publishes.
- */
-function viewerPage(): string {
-  const here = dirname(fileURLToPath(import.meta.url))
-  for (const candidate of [join(here, 'viewer', 'index.html'), join(here, '..', '..', 'src', 'cli', 'viewer', 'index.html')]) {
-    if (existsSync(candidate)) return readFileSync(candidate, 'utf8')
-  }
-  throw new Error('The viewer page is missing from this installation (src/cli/viewer/index.html).')
+/** The page's files, and the only paths served besides the API. */
+export const PAGE_FILES: Readonly<Record<string, string>> = {
+  'index.html': 'text/html; charset=utf-8',
+  'dashboard.css': 'text/css; charset=utf-8',
+  'dashboard.js': 'text/javascript; charset=utf-8',
+  'icon-192.png': 'image/png',
 }
+
+/**
+ * The page ships as files in the package. From the TypeScript source they sit
+ * beside this module; from the compiled `dist/cli/dashboard.js` they are back
+ * in `src/`, which `files` in package.json publishes.
+ */
+export function pageDir(): string {
+  const here = dirname(fileURLToPath(import.meta.url))
+  for (const candidate of [join(here, 'dashboard'), join(here, '..', '..', 'src', 'cli', 'dashboard')]) {
+    if (existsSync(join(candidate, 'index.html'))) return candidate
+  }
+  throw new Error('The dashboard page is missing from this installation (src/cli/dashboard/index.html).')
+}
+
+/**
+ * Same-origin only: the page loads its own script and stylesheet and calls its
+ * own API. Inline style attributes carry the chart widths, so styles allow them;
+ * scripts do not.
+ */
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 function send(res: ServerResponse, status: number, body: unknown, type = 'application/json; charset=utf-8'): void {
   res.writeHead(status, {
     'Content-Type': type,
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
+    ...(type.startsWith('text/html') ? { 'Content-Security-Policy': CSP } : {}),
   })
-  res.end(typeof body === 'string' ? body : JSON.stringify(body))
+  res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body))
 }
 
 /**
@@ -81,7 +104,13 @@ function localHost(req: IncomingMessage): boolean {
   return host === '127.0.0.1' || host === 'localhost' || host === '[::1]'
 }
 
-function handler(projectRoot: string, page: string) {
+function intParam(url: URL, name: string, fallback: number): number | null {
+  const raw = url.searchParams.get(name)
+  if (raw === null) return fallback
+  return /^\d+$/.test(raw) ? Number(raw) : null
+}
+
+function handler(projectRoot: string, dir: string) {
   return (req: IncomingMessage, res: ServerResponse): void => {
     try {
       if (!localHost(req)) return send(res, 403, { error: 'Forbidden host' })
@@ -89,23 +118,35 @@ function handler(projectRoot: string, page: string) {
       const url = new URL(req.url ?? '/', 'http://127.0.0.1')
       const path = url.pathname
 
-      if (path === '/' || path === '/index.html') return send(res, 200, page, 'text/html; charset=utf-8')
+      // Read on every request, so an edit to the page shows on the next reload.
+      const file = path === '/' ? 'index.html' : path.slice(1)
+      if (Object.hasOwn(PAGE_FILES, file)) return send(res, 200, readFileSync(join(dir, file)), PAGE_FILES[file])
+
       if (path === '/api/runs') {
-        return send(res, 200, { project: basename(projectRoot), runs: readRuns(projectRoot), categories: eventCategories() })
+        return send(res, 200, {
+          project: basename(projectRoot),
+          runs: readRuns(projectRoot, RUNS_LISTED),
+          categories: eventCategories(),
+          overview: readOverview(projectRoot),
+        })
       }
-      if (path === '/api/sessions') return send(res, 200, { sessions: readSessions(projectRoot) })
+      if (path === '/api/sessions') return send(res, 200, { sessions: readAllSessions(projectRoot, 50) })
 
       const m = /^\/api\/runs\/([^/]+)(\/events)?$/.exec(path)
       if (m) {
         const id = decodeURIComponent(m[1])
         if (m[2]) {
-          const since = Number(url.searchParams.get('since') ?? 0)
-          if (!Number.isInteger(since) || since < 0) return send(res, 400, { error: 'since must be a non-negative integer' })
-          const events = readEventsSince(projectRoot, id, since, EVENTS_PAGE)
-          return send(res, 200, { events, more: events.length === EVENTS_PAGE })
+          const since = intParam(url, 'since', 0)
+          if (since === null) return send(res, 400, { error: 'since must be a non-negative integer' })
+          const limit = intParam(url, 'limit', EVENTS_PAGE)
+          if (limit === null || limit < 1 || limit > EVENTS_MAX) return send(res, 400, { error: `limit must be a whole number from 1 to ${EVENTS_MAX}` })
+          // One more than asked says whether there is more, without a second query.
+          const read = readEventsSince(projectRoot, id, since, limit + 1)
+          return send(res, 200, { events: read.slice(0, limit), more: read.length > limit })
         }
         const run = readRun(projectRoot, id)
-        return run ? send(res, 200, { run }) : send(res, 404, { error: `No run "${id}" in this project` })
+        if (!run) return send(res, 404, { error: `No run "${id}" in this project` })
+        return send(res, 200, { run, insights: readRunInsights(projectRoot, id) })
       }
       send(res, 404, { error: 'Not found' })
     } catch (err) {
@@ -158,9 +199,9 @@ function closer(server: Server): () => Promise<void> {
     })
 }
 
-/** Start the viewer for one project. Resolves once it is listening. */
-export async function startViewer(opts: ViewerOptions): Promise<ViewerHandle> {
-  const server = createServer(handler(opts.projectRoot, viewerPage()))
+/** Start the dashboard for one project. Resolves once it is listening. */
+export async function startDashboard(opts: DashboardOptions): Promise<DashboardHandle> {
+  const server = createServer(handler(opts.projectRoot, pageDir()))
   const port = await listen(server, opts.port ?? DEFAULT_PORT)
   const url = `http://127.0.0.1:${port}`
   if (opts.open) openUrl(url)
@@ -172,8 +213,10 @@ export async function startViewer(opts: ViewerOptions): Promise<ViewerHandle> {
 const HELP = `
   opencastle convoy dashboard [options]
 
-  Open a live, read-only view of this project's convoy runs: tasks, their
-  dependencies, status, tokens and cost, failure reasons, and the event feed.
+  Open the Observability dashboard: a live, read-only view of this project's
+  convoy runs. Totals across every run; and for each run its tasks and what
+  they wait for, tokens and cost, reviews, checks, retries, failure reasons
+  and the event timeline. Every figure is read from .opencastle/convoy.db.
 
   Options:
     --port <n>      Port to listen on (default ${DEFAULT_PORT}, moving up while busy; 0 picks a free one)
@@ -200,7 +243,7 @@ export function parseDashboardArgs(args: string[]): { port: number; open: boolea
       const near = nearest(arg, FLAGS)
       return { error: `Unknown option ${arg}. ${near ? `Did you mean ${near}?` : `It accepts ${FLAGS.join(', ')}.`}` }
     } else {
-      return { error: `Unexpected argument "${arg}". The viewer shows every run; pick one on the page.` }
+      return { error: `Unexpected argument "${arg}". The dashboard shows every run; pick one on the page.` }
     }
   }
   return { port, open, help }
@@ -220,18 +263,18 @@ export default async function dashboard({ args }: CliContext): Promise<void> {
 
   const found = findProjectRoot(process.cwd())
   const projectRoot = found ?? process.cwd()
-  let viewer: ViewerHandle
+  let dash: DashboardHandle
   try {
-    viewer = await startViewer({ projectRoot, port: parsed.port, open: parsed.open })
+    dash = await startDashboard({ projectRoot, port: parsed.port, open: parsed.open })
   } catch (err) {
     const e = err as NodeJS.ErrnoException
     const why = e.code === 'EADDRINUSE' ? `ports ${parsed.port}–${parsed.port + PORT_ATTEMPTS - 1} are all in use; try --port 0` : e.message
-    console.error(`  ✗ Could not start the viewer: ${why}`)
+    console.error(`  ✗ Could not start the dashboard: ${why}`)
     process.exit(1)
   }
 
   console.log('')
-  console.log(`  Convoy viewer: ${viewer.url}`)
+  console.log(`  Dashboard: ${dash.url}`)
   console.log(`  Project: ${projectRoot}`)
   if (!found) console.log('  No .opencastle/ here or above; showing this directory, which has no runs.')
   else if (!existsSync(convoyDbPath(projectRoot))) console.log('  No convoy runs yet. They appear on the page as they start.')
@@ -243,10 +286,10 @@ export default async function dashboard({ args }: CliContext): Promise<void> {
     const stop = (): void => {
       process.off('SIGINT', stop)
       process.off('SIGTERM', stop)
-      void viewer.close().then(done)
+      void dash.close().then(done)
     }
     process.on('SIGINT', stop)
     process.on('SIGTERM', stop)
   })
-  console.log('  Viewer stopped.')
+  console.log('  Dashboard stopped.')
 }

@@ -244,7 +244,7 @@ and may change; the compiler above does not depend on it.
 opencastle convoy "Add tags to notes, and reject a note without a title"  # plan, show, ask, run
 opencastle convoy                     # the last run and the one next step
 opencastle convoy resume              # continue whatever is not done
-opencastle convoy dashboard           # the live viewer
+opencastle convoy dashboard           # the Observability dashboard, live
 opencastle convoy run my.convoy.yml   # run a spec you wrote
 ```
 

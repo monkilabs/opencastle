@@ -1,0 +1,275 @@
+{
+ "events": [
+  {
+   "id": 1,
+   "type": "convoy_started",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "name": "Health check endpoint",
+    "branch": "convoy/health-check-endpoint",
+    "base": "main",
+    "concurrency": 1
+   },
+   "created_at": "2026-10-03T13:21:44.152Z",
+   "category": "run",
+   "problem": false
+  },
+  {
+   "id": 2,
+   "type": "task_started",
+   "task_id": "health-route",
+   "worker_id": "f66498-health-route-f82qv",
+   "data": {
+    "worker_id": "f66498-health-route-f82qv",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T13:21:44.222Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 3,
+   "type": "review_started",
+   "task_id": "health-route",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "health-route",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T13:23:20.154Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 4,
+   "type": "review_verdict",
+   "task_id": "health-route",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 64239,
+    "model": "claude-sonnet-5",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T13:24:01.682Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 5,
+   "type": "task_merged",
+   "task_id": "health-route",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/health-check-endpoint",
+    "files": 1
+   },
+   "created_at": "2026-10-03T13:24:01.771Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 6,
+   "type": "task_done",
+   "task_id": "health-route",
+   "worker_id": "f66498-health-route-f82qv",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "f66498-health-route-f82qv",
+    "tokens": 990317,
+    "cost_usd": 0.8564442,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T13:24:01.810Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 7,
+   "type": "session",
+   "task_id": "health-route",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "health-route",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791033704036"
+   },
+   "created_at": "2026-10-03T13:24:01.815Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 8,
+   "type": "delegation",
+   "task_id": "health-route",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791033704036",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791033704036"
+   },
+   "created_at": "2026-10-03T13:24:01.821Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 9,
+   "type": "task_started",
+   "task_id": "health-route-tests",
+   "worker_id": "f66498-health-route-tests-f82qw",
+   "data": {
+    "worker_id": "f66498-health-route-tests-f82qw",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T13:24:01.882Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 10,
+   "type": "review_started",
+   "task_id": "health-route-tests",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "health-route-tests",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T13:24:50.358Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 11,
+   "type": "review_verdict",
+   "task_id": "health-route-tests",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 64976,
+    "model": "claude-sonnet-5",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T13:25:42.466Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 12,
+   "type": "task_merged",
+   "task_id": "health-route-tests",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/health-check-endpoint",
+    "files": 1
+   },
+   "created_at": "2026-10-03T13:25:42.542Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 13,
+   "type": "task_done",
+   "task_id": "health-route-tests",
+   "worker_id": "f66498-health-route-tests-f82qw",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "f66498-health-route-tests-f82qw",
+    "tokens": 483144,
+    "cost_usd": 0.6448851,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T13:25:42.579Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 14,
+   "type": "session",
+   "task_id": "health-route-tests",
+   "worker_id": null,
+   "data": {
+    "agent": "testing-expert",
+    "model": "claude-sonnet-5",
+    "task": "health-route-tests",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791033704036"
+   },
+   "created_at": "2026-10-03T13:25:42.585Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 15,
+   "type": "delegation",
+   "task_id": "health-route-tests",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791033704036",
+    "agent": "testing-expert",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791033704036"
+   },
+   "created_at": "2026-10-03T13:25:42.588Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 16,
+   "type": "gate_result",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "command": "npm run test",
+    "passed": true,
+    "exit_code": 0,
+    "scope": "convoy"
+   },
+   "created_at": "2026-10-03T13:25:43.915Z",
+   "category": "check",
+   "problem": false
+  },
+  {
+   "id": 17,
+   "type": "convoy_finished",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "status": "done"
+   },
+   "created_at": "2026-10-03T13:25:43.922Z",
+   "category": "run",
+   "problem": false
+  }
+ ],
+ "more": false
+}

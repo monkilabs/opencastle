@@ -14,8 +14,14 @@ import {
   findProjectRoot,
   isProblemEvent,
   isRunAlive,
+  overviewFrom,
+  readAllSessions,
+  readEngineSessions,
   readEventsSince,
+  readOverview,
+  readOverviewParts,
   readRun,
+  readRunInsights,
   readRunSpec,
   readRuns,
   readSessions,
@@ -338,7 +344,8 @@ describe('isRunAlive', () => {
     lock(process.pid, hostname(), T0, fresh())
     expect(isRunAlive(root, 'new')).toBe(true)
     expect(readRuns(root).find((r) => r.id === 'new')!.alive).toBe(true)
-    expect(readRun(root, 'new')!.alive).toBe(true)
+    const run = readRun(root, 'new')!
+    expect(run).toMatchObject({ alive: true, status: 'running', display_status: 'running' })
   })
 
   it('is false for a finished run, whoever holds the lock', () => {
@@ -419,5 +426,260 @@ describe('findProjectRoot', () => {
     } finally {
       rmSync(outside, { recursive: true, force: true })
     }
+  })
+})
+
+// ── The dashboard's aggregates ──────────────────────────────────────────────
+
+const D1 = '2026-10-01T09:00:00.000Z'
+const D2 = '2026-10-02T09:00:00.000Z'
+const at = (base: string, seconds: number): string => new Date(Date.parse(base) + seconds * 1000).toISOString()
+
+/**
+ * Three runs written through the real store, shaped like what the engine
+ * records now: a finished run whose first task failed a gate, was blocked by a
+ * review and passed on its third attempt, while the second auto-passed; a run
+ * whose only task failed for good; and one a crash left "running".
+ */
+function seedHistory(): void {
+  const store = createConvoyStore(dbPath)
+  const ev = (convoy: string, type: string, data: unknown, taskId: string | null = null, seconds = 0, base = D1): void => {
+    store.insertEvent({ convoy_id: convoy, task_id: taskId, worker_id: null, type, data: JSON.stringify(data), created_at: at(base, seconds) })
+  }
+
+  store.insertConvoy({ id: 'r1', name: 'Tags', spec_hash: 'h', status: 'pending', branch: 'convoy/tags', created_at: D1, spec_yaml: 'x' })
+  task(store, 'r1', 'a')
+  task(store, 'r1', 'b', { phase: 1, depends_on: ['a'], agent: 'writer' })
+  store.updateTaskStatus('a', 'r1', 'done', { started_at: at(D1, 1), finished_at: at(D1, 40), retries: 2, total_tokens: 1000, cost_usd: 0.5, model: 'claude-sonnet-5' })
+  store.updateTaskStatus('b', 'r1', 'done', { started_at: at(D1, 41), finished_at: at(D1, 50), total_tokens: 550, cost_usd: 0.25, model: 'claude-haiku-4-5', cost_estimated: 1 })
+  store.updateTaskReview('a', 'r1', { review_level: 'fast', review_verdict: 'pass', review_tokens: 250, review_model: 'claude-haiku-4-5' })
+  store.updateTaskReview('b', 'r1', { review_level: 'auto-pass', review_verdict: 'pass', review_tokens: 0, review_model: null })
+  store.updateConvoyStatus('r1', 'done', { started_at: D1, finished_at: at(D1, 60), total_tokens: 1550, total_cost_usd: 0.75, cost_estimated: true })
+  ev('r1', 'convoy_started', { name: 'Tags' })
+  ev('r1', 'task_started', { worker_id: 'w1', mechanism: 'worktree', adapter: 'claude', attempt: 1 }, 'a', 1)
+  ev('r1', 'gate_result', { command: 'npm run lint', passed: false, exit_code: 1, scope: 'task' }, 'a', 5)
+  ev('r1', 'task_retried', { previous_status: 'gate-failed', reason: 'Gate "npm run lint" failed (exit 1)', attempt: 2 }, 'a', 6)
+  ev('r1', 'task_started', { worker_id: 'w2', mechanism: 'worktree', adapter: 'claude', attempt: 2 }, 'a', 7)
+  ev('r1', 'gate_result', { command: 'npm run lint', passed: true, exit_code: 0, scope: 'task' }, 'a', 10)
+  ev('r1', 'review_verdict', { level: 'fast', verdict: 'block', tokens: 300, model: 'claude-haiku-4-5', feedback_length: 80 }, 'a', 12)
+  ev('r1', 'task_retried', { previous_status: 'review-blocked', reason: 'Remove the debug log', attempt: 3 }, 'a', 13)
+  ev('r1', 'task_started', { worker_id: 'w3', mechanism: 'worktree', adapter: 'claude', attempt: 3 }, 'a', 14)
+  ev('r1', 'review_verdict', { level: 'fast', verdict: 'pass', tokens: 250, model: 'claude-haiku-4-5', feedback_length: 0 }, 'a', 38)
+  ev('r1', 'contract_violation', { task_id: 'a', agent: 'developer', missing: ['__contract_block'], warnings: [] }, 'a', 39)
+  ev('r1', 'task_merged', { branch: 'convoy/tags', files: 3 }, 'a', 40)
+  ev('r1', 'delegation', { agent: 'developer', tier: 'standard', mechanism: 'convoy' }, 'a', 40)
+  ev('r1', 'session', { agent: 'developer', model: 'claude-sonnet-5', task: 'a', outcome: 'success', duration_min: 1, files_changed: 3, retries: 2, convoy_id: 'r1' }, 'a', 40)
+  ev('r1', 'task_started', { worker_id: 'w4', mechanism: 'worktree', adapter: 'claude', attempt: 1 }, 'b', 41)
+  ev('r1', 'built_in_gate_result', { gate: 'secret_scan', passed: true, output: '' }, 'b', 45)
+  ev('r1', 'review_verdict', { level: 'auto-pass', verdict: 'pass', tokens: 0, model: null, feedback_length: 0 }, 'b', 49)
+  ev('r1', 'task_merged', { branch: 'convoy/tags', files: 1 }, 'b', 50)
+  ev('r1', 'delegation', { agent: 'writer', tier: 'economy', mechanism: 'convoy' }, 'b', 50)
+  ev('r1', 'session', { agent: 'writer', model: 'claude-haiku-4-5', task: 'b', outcome: 'success', duration_min: 0, files_changed: 1, retries: 0, convoy_id: 'r1' }, 'b', 50)
+  ev('r1', 'gate_result', { command: 'npm test', passed: false, exit_code: 1, scope: 'convoy', output: '1 failing' }, null, 52)
+  ev('r1', 'gate_result', { command: 'npm test', passed: true, exit_code: 0, scope: 'convoy' }, null, 58)
+  ev('r1', 'secret_leak_prevented', { patterns: ['github_token'], context: 'event_redacted', original_type: 'task_failed' }, null, 59)
+  ev('r1', 'convoy_finished', { status: 'done' }, null, 60)
+  store.insertArtifact({ id: 'art-1', convoy_id: 'r1', task_id: 'a', name: 'src/tags.js', type: 'file', content: '', created_at: at(D1, 40) })
+  store.insertArtifact({ id: 'art-2', convoy_id: 'r1', task_id: 'b', name: 'summary', type: 'summary', content: 'Added tags', created_at: at(D1, 50) })
+
+  store.insertConvoy({ id: 'r2', name: 'Search', spec_hash: 'h', status: 'pending', branch: null, created_at: D2, spec_yaml: 'x' })
+  task(store, 'r2', 'c')
+  store.updateTaskStatus('c', 'r2', 'failed', { started_at: at(D2, 1), finished_at: at(D2, 100), model: 'claude', output: 'Error: boom' })
+  store.updateConvoyStatus('r2', 'failed', { started_at: D2, finished_at: at(D2, 120) })
+  ev('r2', 'task_started', { worker_id: 'w5', mechanism: 'worktree', adapter: 'codex', attempt: 1 }, 'c', 1, D2)
+  ev('r2', 'review_skipped', { level: 'fast', reason: 'the reviewer timed out' }, 'c', 90, D2)
+  ev('r2', 'task_failed', { reason: 'error', message: 'Error: boom\n    at stub (x.js:1:1)', exit_code: 1 }, 'c', 100, D2)
+  store.insertDlqEntry({
+    id: 'dlq-1', convoy_id: 'r2', task_id: 'c', agent: 'developer', failure_type: 'error', error_output: 'Error: boom',
+    attempts: 1, tokens_spent: null, escalation_task_id: null, resolved: 0, resolution: null, created_at: at(D2, 100), resolved_at: null,
+  })
+
+  store.insertConvoy({ id: 'r3', name: 'Crashed', spec_hash: 'h', status: 'pending', branch: null, created_at: at(D2, 600), spec_yaml: 'x' })
+  task(store, 'r3', 'd')
+  store.updateTaskStatus('d', 'r3', 'running', { started_at: at(D2, 601) })
+  store.updateConvoyStatus('r3', 'running', { started_at: at(D2, 600) })
+  ev('r3', 'task_started', { worker_id: 'w6', mechanism: 'worktree', adapter: 'claude', attempt: 1 }, 'd', 601, D2)
+  store.close()
+}
+
+describe('display status', () => {
+  it('shows a run left "running" with nothing running it as interrupted, and its running task too', () => {
+    seedHistory()
+    const crashed = readRun(root, 'r3')!
+    expect(crashed).toMatchObject({ status: 'running', alive: false, display_status: 'interrupted' })
+    expect(crashed.tasks[0]).toMatchObject({ status: 'running', display_status: 'interrupted' })
+    expect(readRun(root, 'r1')!.display_status).toBe('done')
+  })
+})
+
+describe('the overview', () => {
+  it('counts every run, task, review and check from what the store holds', () => {
+    seedHistory()
+    const o = readOverview(root)
+    expect(o.runs).toEqual({ total: 3, alive: 0, by_status: { done: 1, failed: 1, interrupted: 1 }, ended: 3, done: 1, success_rate: 1 / 3 })
+    expect(o.duration).toEqual({ measured: 2, avg_ms: 90_000, p95_ms: 120_000, max_ms: 120_000 })
+    // Only r1 recorded tokens and cost; the others are not reported, not zero.
+    expect(o.tokens).toEqual({ total: 1550, runs_reported: 1, runs_not_reported: 2 })
+    expect(o.cost).toEqual({ total_usd: 0.75, estimated: true, runs_reported: 1, runs_not_reported: 2 })
+    expect(o.activity).toEqual([
+      { date: '2026-10-01', total: 1, done: 1, failed: 0, interrupted: 0, other: 0 },
+      { date: '2026-10-02', total: 2, done: 0, failed: 1, interrupted: 1, other: 0 },
+    ])
+    expect(o.tasks).toEqual({ total: 4, retries: 2, by_status: { done: 2, failed: 1, interrupted: 1 } })
+    expect(o.agents).toEqual([
+      { agent: 'developer', total: 3, done: 1, failed: 1, running: 0, other: 1 },
+      { agent: 'writer', total: 1, done: 1, failed: 0, running: 0, other: 0 },
+    ])
+    // "claude" names the runtime, not a model, so task c reads as not reported.
+    expect(o.models).toEqual([{ model: 'claude-haiku-4-5', tasks: 1 }, { model: 'claude-sonnet-5', tasks: 1 }])
+    expect(o.models_not_reported).toBe(2)
+    expect(o.tiers).toEqual([{ tier: 'economy', tasks: 1 }, { tier: 'standard', tasks: 1 }])
+    expect(o.tiers_not_recorded).toBe(2)
+    expect(o.mechanisms).toEqual([{ mechanism: 'worktree', attempts: 6 }])
+    expect(o.runtimes).toEqual([{ runtime: 'claude', attempts: 5 }, { runtime: 'codex', attempts: 1 }])
+    expect(o.reviews).toEqual({
+      ran: 2, passed: 1, blocked: 1, skipped: 1, auto_pass: 1, tokens: 550,
+      by_level: { fast: { pass: 1, block: 1 } }, models: { 'claude-haiku-4-5': 2 }, disputes: 0,
+    })
+    expect(o.checks).toEqual({
+      ran: 5, passed: 3, failed: 2,
+      gates: { passed: 2, failed: 2 }, built_in: { passed: 1, failed: 0 },
+      by_scope: { task: { passed: 2, failed: 1 }, convoy: { passed: 1, failed: 1 } },
+      warnings: 1, secrets_prevented: 1,
+    })
+    expect(o.dlq).toEqual({ entries: 1, unresolved: 1 })
+    expect(o.artifacts).toBe(2)
+  })
+
+  it('combines projects by their rows, so a percentile is over every run and not an average of averages', () => {
+    seedHistory()
+    const one = readOverviewParts(root)
+    const two = { ...one, runs: one.runs.map((r) => ({ ...r, id: `${r.id}-copy`, duration_ms: r.duration_ms === null ? null : r.duration_ms * 10 })) }
+    const both = overviewFrom([one, two])
+    expect(both.runs.total).toBe(6)
+    expect(both.duration).toEqual({ measured: 4, avg_ms: 495_000, p95_ms: 1_200_000, max_ms: 1_200_000 })
+    expect(both.reviews!.ran).toBe(4)
+    expect(both.checks!.ran).toBe(10)
+    expect(both.dlq).toEqual({ entries: 2, unresolved: 2 })
+    expect(both.tasks.total).toBe(8)
+    // Combining does not change the parts it was given.
+    expect(one.reviews!.ran).toBe(2)
+  })
+
+  it('is empty, with nothing claimed, for a project that has never run', () => {
+    const o = readOverview(root)
+    expect(o.runs.total).toBe(0)
+    expect(o.runs.success_rate).toBeNull()
+    expect(o.duration.avg_ms).toBeNull()
+    expect(o.tokens.total).toBeNull()
+    expect(o.cost.total_usd).toBeNull()
+    expect(o.reviews).toBeNull()
+    expect(o.dlq).toBeNull()
+    expect(readdirSync(join(root, '.opencastle'))).toEqual([])
+  })
+
+  it('reads an old database: what it never recorded is null, not zero', () => {
+    const db = oldShapeDb()
+    db.exec(`INSERT INTO convoy VALUES ('v4', 'Legacy', 'h', 'done', NULL, '${T0}', '${T0}', '${T1}', 'x', NULL, NULL, NULL)`)
+    db.exec(`INSERT INTO task (id, convoy_id, phase, prompt, agent, status, model) VALUES ('t', 'v4', 0, 'p', 'developer', 'done', 'claude')`)
+    db.exec('DROP TABLE event')
+    db.close()
+    const o = readOverview(root)
+    expect(o.runs).toMatchObject({ total: 1, done: 1, success_rate: 1 })
+    expect(o.tokens.total).toBeNull()
+    expect(o.cost).toMatchObject({ total_usd: null, estimated: undefined })
+    // No event table: reviews, checks and tiers are unknown, and no dlq or artifact table either.
+    expect(o.reviews).toBeNull()
+    expect(o.checks).toBeNull()
+    expect(o.tiers).toEqual([])
+    expect(o.tiers_not_recorded).toBe(1)
+    expect(o.dlq).toBeNull()
+    expect(o.artifacts).toBeNull()
+    expect(o.models_not_reported).toBe(1)
+    const ins = readRunInsights(root, 'v4')!
+    expect(ins).toMatchObject({ events_recorded: false, dlq: null, artifacts: null, reviews: [], checks: [] })
+    const after = new DatabaseSync(dbPath, { readOnly: true })
+    expect((after.prepare('PRAGMA user_version').get() as { user_version: number }).user_version).toBe(4)
+    after.close()
+  })
+})
+
+describe('run insights', () => {
+  it('ties each review and gate to the attempt it read, and numbers the checks on the merged result', () => {
+    seedHistory()
+    const ins = readRunInsights(root, 'r1')!
+    expect(ins.reviews.map((r) => [r.task_id, r.level, r.verdict, r.attempt, r.tokens])).toEqual([
+      ['a', 'fast', 'block', 2, 300],
+      ['a', 'fast', 'pass', 3, 250],
+      ['b', 'auto-pass', 'pass', 1, 0],
+    ])
+    expect(ins.checks.map((c) => [c.name, c.kind, c.scope, c.task_id, c.passed, c.attempt, c.round])).toEqual([
+      ['npm run lint', 'gate', 'task', 'a', false, 1, null],
+      ['npm run lint', 'gate', 'task', 'a', true, 2, null],
+      ['secret_scan', 'built-in', 'task', 'b', true, 1, null],
+      ['npm test', 'gate', 'convoy', null, false, null, 1],
+      ['npm test', 'gate', 'convoy', null, true, null, 2],
+    ])
+    expect(ins.checks[3]).toMatchObject({ exit_code: 1, output: '1 failing' })
+    expect(ins.review_stats).toMatchObject({ ran: 2, passed: 1, blocked: 1, auto_pass: 1, skipped: 0 })
+    expect(ins.tiers).toEqual([{ tier: 'economy', tasks: 1 }, { tier: 'standard', tasks: 1 }])
+    expect(ins.task_tiers).toEqual({ a: 'standard', b: 'economy' })
+    expect(ins.tiers_not_recorded).toBe(0)
+    expect(ins.starts).toEqual({ a: 3, b: 1 })
+    expect(ins.mechanisms).toEqual([{ mechanism: 'worktree', attempts: 4 }])
+    expect(ins.merges).toEqual({ a: 3, b: 1 })
+    expect(ins.retries.map((r) => [r.task_id, r.attempt, r.previous_status])).toEqual([['a', 2, 'gate-failed'], ['a', 3, 'review-blocked']])
+    expect(ins.warnings).toMatchObject([{ type: 'contract_violation', task_id: 'a', items: ['no output summary block in the answer'] }])
+    expect(ins.secrets_prevented).toMatchObject([{ context: 'event_redacted', patterns: ['github_token'] }])
+    expect(ins.artifacts).toEqual([
+      { name: 'src/tags.js', type: 'file', task_id: 'a', created_at: at(D1, 40), size_bytes: 0 },
+      { name: 'summary', type: 'summary', task_id: 'b', created_at: at(D1, 50), size_bytes: 10 },
+    ])
+    expect(ins.dlq).toEqual([])
+    expect(ins.sessions.map((s) => [s.source, s.task, s.convoy_id])).toEqual([['convoy', 'b', 'r1'], ['convoy', 'a', 'r1']])
+    expect(ins.events_recorded).toBe(true)
+  })
+
+  it('reads the retry queue and a review that reached no verdict', () => {
+    seedHistory()
+    const ins = readRunInsights(root, 'r2')!
+    expect(ins.dlq).toEqual([{
+      id: 'dlq-1', task_id: 'c', agent: 'developer', failure_type: 'error', attempts: 1, tokens_spent: null,
+      resolved: false, resolution: null, created_at: at(D2, 100), resolved_at: null, error_tail: 'Error: boom',
+    }])
+    expect(ins.reviews_skipped).toMatchObject([{ task_id: 'c', level: 'fast', reason: 'the reviewer timed out', attempt: 1 }])
+    // The failure reads as what went wrong first, then the engine's code for it.
+    expect(readRun(root, 'r2')!.tasks[0].failure_reason).toBe('Error: boom (error, exit 1)')
+    expect(ins.review_stats).toMatchObject({ ran: 0, skipped: 1 })
+    expect(ins.runtimes).toEqual([{ runtime: 'codex', attempts: 1 }])
+    expect(ins.tiers_not_recorded).toBe(1)
+  })
+
+  it('is null for a run that does not exist', () => {
+    seedHistory()
+    expect(readRunInsights(root, 'nope')).toBeNull()
+  })
+
+  it('does not write to the database it reads', () => {
+    seedHistory()
+    const before = statSync(dbPath).mtimeMs
+    readOverview(root)
+    readRunInsights(root, 'r1')
+    readAllSessions(root)
+    expect(statSync(dbPath).mtimeMs).toBe(before)
+  })
+})
+
+describe('sessions from both sources', () => {
+  it('merges `opencastle log` records with the engine’s session events, newest first, each labelled', () => {
+    seedHistory()
+    const logs = join(root, '.opencastle', 'logs')
+    mkdirSync(logs, { recursive: true })
+    writeFileSync(join(logs, 'events.ndjson'), JSON.stringify({ type: 'session', timestamp: at(D1, 45), agent: 'Developer', task: 'by hand', outcome: 'success' }) + '\n')
+    const all = readAllSessions(root)
+    expect(all.map((s) => [s.source, s.task])).toEqual([['convoy', 'b'], ['log', 'by hand'], ['convoy', 'a']])
+    expect(all[1]).toMatchObject({ convoy_id: null, agent: 'Developer' })
+    expect(readEngineSessions(root, 'r2')).toEqual([])
+    expect(readAllSessions(root, 2)).toHaveLength(2)
   })
 })

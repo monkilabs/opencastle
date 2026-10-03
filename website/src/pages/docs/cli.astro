@@ -205,7 +205,7 @@ const commands = [
           <tr><td><code>opencastle convoy "&lt;task&gt;"</code></td><td>Plan it, show the plan, ask, then run it</td><td><code>--yes</code>, <code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
           <tr><td><code>opencastle convoy run &lt;spec.yml&gt;</code></td><td>Run a spec, one you wrote or one the planner wrote to <code>.opencastle/convoys/</code></td><td><code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
           <tr><td><code>opencastle convoy resume</code></td><td>Continue the newest run that is not done. <code>retry</code> is another name for it</td><td><code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
-          <tr><td><code>opencastle convoy dashboard</code></td><td>The live viewer, on 127.0.0.1</td><td><code>--port &lt;n&gt;</code> (default 4300, moving up while busy; 0 picks a free one), <code>--no-open</code></td></tr>
+          <tr><td><code>opencastle convoy dashboard</code></td><td>The Observability dashboard, live, on 127.0.0.1: totals across every run, and for each run its tasks and what they wait for, tokens and cost, reviews, checks, retries, failure reasons and the event timeline, read from <code>.opencastle/convoy.db</code></td><td><code>--port &lt;n&gt;</code> (default 4300, moving up while busy; 0 picks a free one), <code>--no-open</code></td></tr>
           <tr><td><code>opencastle convoy plan --prd &lt;file&gt;</code></td><td>Plan again from a PRD you edited</td><td><code>--yes</code>, <code>--dry-run</code>, <code>--adapter</code>, <code>--concurrency</code>, <code>--verbose</code></td></tr>
         </tbody>
       </table>
@@ -216,7 +216,7 @@ const commands = [
   <li>No answer — stdin closed, as in a script — means no: nothing runs, and the command to run it later is printed.</li>
   <li><code>--dry-run</code> stops after writing the spec.</li>
 </ul>
-<p>A run prints each task as it starts and finishes, with its time and cost. It ends with the branch, the <code>git diff</code> and <code>git merge</code> commands for it, the tokens and cost spent (marked <em>est.</em> only where the runtime reported none), and the path of the event log. On a terminal outside CI it also starts the live viewer and prints its address. Ctrl+C stops the agents and exits with code 130; <code>opencastle convoy resume</code> carries on. The exit code is 0 when every task is done and every check passed, and 1 otherwise.</p>` },
+<p>A run prints each task as it starts and finishes, with its time and cost. It ends with the branch, the <code>git diff</code> and <code>git merge</code> commands for it, the tokens and cost spent (marked <em>est.</em> only where the runtime reported none), and the path of the event log. On a terminal outside CI it also starts the live dashboard and prints its address. Ctrl+C stops the agents and exits with code 130; <code>opencastle convoy resume</code> carries on. The exit code is 0 when every task is done and every check passed, and 1 otherwise.</p>` },
       { heading: 'Runtime', content: `<p>The runtime is the first of: <code>--adapter</code>, the spec's <code>adapter</code>, the assistant <code>opencastle init</code> set up, or the first agent CLI found on PATH. A runtime that is named but not installed is an error, never a quiet switch to another. The run's first lines say which it chose and why.</p>
 <table>
   <thead><tr><th>Assistant set up by init</th><th>Runtime</th><th>Command</th></tr></thead>
@@ -237,7 +237,7 @@ const commands = [
       { cmd: 'npx opencastle convoy', desc: 'Where the last run stands, and what to do next' },
       { cmd: 'npx opencastle convoy run .opencastle/convoys/note-tags.convoy.yml --dry-run', desc: 'Check a spec and see what would run' },
       { cmd: 'npx opencastle convoy resume', desc: 'Continue what is not done' },
-      { cmd: 'npx opencastle convoy dashboard --no-open', desc: 'Print the viewer\'s address without opening a browser' },
+      { cmd: 'npx opencastle convoy dashboard --no-open', desc: 'Print the dashboard\'s address without opening a browser' },
     ],
   },
   {

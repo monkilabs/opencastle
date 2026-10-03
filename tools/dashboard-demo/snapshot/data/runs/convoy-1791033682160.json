@@ -1,0 +1,448 @@
+{
+ "run": {
+  "id": "convoy-1791033682160",
+  "name": "Note tags",
+  "status": "done",
+  "branch": "convoy/note-tags",
+  "pipeline_id": null,
+  "created_at": "2026-10-03T13:21:22.281Z",
+  "started_at": "2026-10-03T13:21:22.282Z",
+  "finished_at": "2026-10-03T13:26:15.253Z",
+  "duration_ms": 292971,
+  "tasks_total": 5,
+  "tasks_done": 5,
+  "tasks_failed": 0,
+  "tasks_running": 0,
+  "tokens": 3238073,
+  "cost_usd": 3.2082804,
+  "cost_estimated": false,
+  "alive": false,
+  "display_status": "done",
+  "adapters": [
+   "claude"
+  ],
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5"
+  ],
+  "tasks": [
+   {
+    "id": "notes-data-layer",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T13:21:22.373Z",
+    "finished_at": "2026-10-03T13:23:49.981Z",
+    "duration_ms": 147608,
+    "prompt_tokens": 1058231,
+    "completion_tokens": 6113,
+    "total_tokens": 1064344,
+    "cache_read_tokens": 1017552,
+    "cache_write_tokens": 40649,
+    "cost_usd": 0.9060357,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "notes-http-layer",
+    "phase": 0,
+    "agent": "developer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T13:21:22.366Z",
+    "finished_at": "2026-10-03T13:23:03.156Z",
+    "duration_ms": 100790,
+    "prompt_tokens": 487411,
+    "completion_tokens": 3503,
+    "total_tokens": 490914,
+    "cache_read_tokens": 449398,
+    "cache_write_tokens": 37999,
+    "cost_usd": 0.6720615,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "notes-unit-tests",
+    "phase": 1,
+    "agent": "testing-expert",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "notes-data-layer"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T13:23:50.075Z",
+    "finished_at": "2026-10-03T13:26:15.042Z",
+    "duration_ms": 144967,
+    "prompt_tokens": 784912,
+    "completion_tokens": 6422,
+    "total_tokens": 791334,
+    "cache_read_tokens": 742394,
+    "cache_write_tokens": 42496,
+    "cost_usd": 0.8321763,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "notes-http-tests",
+    "phase": 1,
+    "agent": "testing-expert",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "notes-data-layer",
+     "notes-http-layer"
+    ],
+    "adapter": "claude",
+    "model": "claude-sonnet-5",
+    "retries": 0,
+    "started_at": "2026-10-03T13:23:50.072Z",
+    "finished_at": "2026-10-03T13:25:37.895Z",
+    "duration_ms": 107823,
+    "prompt_tokens": 423546,
+    "completion_tokens": 4846,
+    "total_tokens": 428392,
+    "cache_read_tokens": 384763,
+    "cache_write_tokens": 38771,
+    "cost_usd": 0.665103,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "fast",
+    "failure_reason": null,
+    "error_tail": null
+   },
+   {
+    "id": "readme-docs",
+    "phase": 1,
+    "agent": "writer",
+    "status": "done",
+    "display_status": "done",
+    "depends_on": [
+     "notes-data-layer",
+     "notes-http-layer"
+    ],
+    "adapter": "claude",
+    "model": "claude-haiku-4-5-20251001",
+    "retries": 0,
+    "started_at": "2026-10-03T13:23:50.065Z",
+    "finished_at": "2026-10-03T13:24:29.429Z",
+    "duration_ms": 39364,
+    "prompt_tokens": 191557,
+    "completion_tokens": 3529,
+    "total_tokens": 195086,
+    "cache_read_tokens": 140959,
+    "cache_write_tokens": 50565,
+    "cost_usd": 0.1329039,
+    "cost_estimated": false,
+    "review_verdict": "pass",
+    "review_level": "auto-pass",
+    "failure_reason": null,
+    "error_tail": null
+   }
+  ]
+ },
+ "insights": {
+  "tiers": [
+   {
+    "tier": "standard",
+    "tasks": 4
+   },
+   {
+    "tier": "economy",
+    "tasks": 1
+   }
+  ],
+  "tiers_not_recorded": 0,
+  "task_tiers": {
+   "notes-http-layer": "standard",
+   "notes-data-layer": "standard",
+   "readme-docs": "economy",
+   "notes-http-tests": "standard",
+   "notes-unit-tests": "standard"
+  },
+  "mechanisms": [
+   {
+    "mechanism": "worktree",
+    "attempts": 5
+   }
+  ],
+  "runtimes": [
+   {
+    "runtime": "claude",
+    "attempts": 5
+   }
+  ],
+  "starts": {
+   "notes-http-layer": 1,
+   "notes-data-layer": 1,
+   "readme-docs": 1,
+   "notes-http-tests": 1,
+   "notes-unit-tests": 1
+  },
+  "reviews": [
+   {
+    "event_id": 6,
+    "task_id": "notes-http-layer",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 67288,
+    "model": "claude-sonnet-5",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T13:23:03.041Z"
+   },
+   {
+    "event_id": 11,
+    "task_id": "notes-data-layer",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 67175,
+    "model": "claude-sonnet-5",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T13:23:49.866Z"
+   },
+   {
+    "event_id": 19,
+    "task_id": "readme-docs",
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": null,
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T13:24:29.326Z"
+   },
+   {
+    "event_id": 26,
+    "task_id": "notes-http-tests",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 66505,
+    "model": "claude-sonnet-5",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T13:25:37.776Z"
+   },
+   {
+    "event_id": 31,
+    "task_id": "notes-unit-tests",
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 67035,
+    "model": "claude-sonnet-5",
+    "passes": null,
+    "blocks": null,
+    "feedback_length": 0,
+    "attempt": 1,
+    "created_at": "2026-10-03T13:26:14.923Z"
+   }
+  ],
+  "reviews_skipped": [],
+  "review_stats": {
+   "ran": 4,
+   "passed": 4,
+   "blocked": 0,
+   "skipped": 0,
+   "auto_pass": 1,
+   "tokens": 268003,
+   "by_level": {
+    "fast": {
+     "pass": 4,
+     "block": 0
+    }
+   },
+   "models": {
+    "claude-sonnet-5": 4
+   },
+   "disputes": 0
+  },
+  "disputes": [],
+  "checks": [
+   {
+    "event_id": 36,
+    "kind": "gate",
+    "scope": "convoy",
+    "task_id": null,
+    "name": "npm run test",
+    "passed": true,
+    "exit_code": 0,
+    "level": null,
+    "output": null,
+    "attempt": null,
+    "round": 1,
+    "created_at": "2026-10-03T13:26:15.249Z"
+   }
+  ],
+  "check_stats": {
+   "ran": 1,
+   "passed": 1,
+   "failed": 0,
+   "gates": {
+    "passed": 1,
+    "failed": 0
+   },
+   "built_in": {
+    "passed": 0,
+    "failed": 0
+   },
+   "by_scope": {
+    "task": {
+     "passed": 0,
+     "failed": 0
+    },
+    "convoy": {
+     "passed": 1,
+     "failed": 0
+    }
+   },
+   "warnings": 0,
+   "secrets_prevented": 0
+  },
+  "warnings": [],
+  "secrets_prevented": [],
+  "merges": {
+   "notes-http-layer": 1,
+   "notes-data-layer": 1,
+   "readme-docs": 1,
+   "notes-http-tests": 1,
+   "notes-unit-tests": 1
+  },
+  "retries": [],
+  "interruptions": [],
+  "sessions": [
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791033682160",
+    "timestamp": "2026-10-03T13:26:15.047Z",
+    "agent": "testing-expert",
+    "task": "notes-unit-tests",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791033682160",
+    "timestamp": "2026-10-03T13:25:37.903Z",
+    "agent": "testing-expert",
+    "task": "notes-http-tests",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791033682160",
+    "timestamp": "2026-10-03T13:24:29.438Z",
+    "agent": "writer",
+    "task": "readme-docs",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-haiku-4-5-20251001",
+    "duration_min": 1,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791033682160",
+    "timestamp": "2026-10-03T13:23:49.987Z",
+    "agent": "developer",
+    "task": "notes-data-layer",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   },
+   {
+    "source": "convoy",
+    "convoy_id": "convoy-1791033682160",
+    "timestamp": "2026-10-03T13:23:03.163Z",
+    "agent": "developer",
+    "task": "notes-http-layer",
+    "tracker_issue": null,
+    "outcome": "success",
+    "model": "claude-sonnet-5",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0
+   }
+  ],
+  "dlq": [],
+  "artifacts": [
+   {
+    "name": "src/server.js",
+    "type": "file",
+    "task_id": "notes-http-layer",
+    "created_at": "2026-10-03T13:23:03.156Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "src/notes.js",
+    "type": "file",
+    "task_id": "notes-data-layer",
+    "created_at": "2026-10-03T13:23:49.981Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "README.md",
+    "type": "file",
+    "task_id": "readme-docs",
+    "created_at": "2026-10-03T13:24:29.429Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/server.test.js",
+    "type": "file",
+    "task_id": "notes-http-tests",
+    "created_at": "2026-10-03T13:25:37.895Z",
+    "size_bytes": 0
+   },
+   {
+    "name": "test/notes.test.js",
+    "type": "file",
+    "task_id": "notes-unit-tests",
+    "created_at": "2026-10-03T13:26:15.041Z",
+    "size_bytes": 0
+   }
+  ],
+  "events_recorded": true
+ }
+}

@@ -55,30 +55,46 @@ node <your-clone>/bin/cli.mjs init --yes && node <your-clone>/bin/cli.mjs sync -
 Run the CLI from your clone as `node <your-clone>/bin/cli.mjs`, in a scratch
 project rather than in the repository itself.
 
-### The run viewer
+### The dashboard
 
-The convoy viewer is one HTML page, `src/cli/viewer/index.html`, with no build
-step. `src/cli/dashboard.ts` serves it and its JSON over the read model in
-`src/cli/convoy/read-model.ts`. To work on it, open a project that has runs and
-reload the page after each edit:
+The Observability dashboard is four files in `src/cli/dashboard/`:
+`index.html`, `dashboard.css`, `dashboard.js` and `icon-192.png`. There is no
+build step. `src/cli/dashboard.ts` serves them and a JSON API over the read
+model in `src/cli/convoy/read-model.ts`, which is where every figure on the page
+is counted. The page only formats what the API returns: a figure that is not
+in the API does not belong on the page, and one the API returns as null shows
+as "not reported". To work on it, open a project that has runs and reload the
+page after each edit; the server reads the files on every request:
 
 ```bash
 cd <a scratch project with convoy runs>
 node <your-clone>/bin/cli.mjs convoy dashboard --no-open
 ```
 
-The hosted demo at opencastle.dev/dashboard is the same page over a snapshot of
-one project's runs, committed in `tools/viewer-demo/snapshot/`:
+Check the page at 390 px wide as well as on a desktop, in both the light and
+the dark scheme: it follows the OS setting.
+
+The hosted demo at opencastle.dev/dashboard is the same page in its static mode
+over a committed snapshot of real runs, in `tools/dashboard-demo/snapshot/`.
+The snapshot is data only: the exporter writes the API's responses for each
+project into `data/` and combines the projects. The deploy puts the current page
+from `src/cli/dashboard/` beside it with `assemble.mjs`, which you can run to
+look at the result:
 
 ```bash
 npm run cli:build
-node tools/viewer-demo/export.mjs <project> tools/viewer-demo/snapshot
+node tools/dashboard-demo/export.mjs --out tools/dashboard-demo/snapshot \
+  --name "<label>" <project> [<project>...]
+node tools/dashboard-demo/assemble.mjs tools/dashboard-demo/snapshot /tmp/dashboard-site
 ```
 
-The snapshot is public, task output included. Before committing it, check it
-for local paths and anything else you would not publish:
-`grep -rE '/Users/|/home/|/private/' tools/viewer-demo/snapshot` should print
-nothing.
+Use only projects with real runs; never generate demo data. The snapshot is
+public. The exporter replaces each project's path with `<project>` and the home
+directory with `~`, and refuses to write anything that still holds an absolute
+local path or your user name, but read the task output in it before committing:
+`grep -rE '/Users/|/home/|/private/' tools/dashboard-demo/snapshot` should print
+nothing. A change to the page needs no new export: the demo always serves the
+page the CLI does.
 
 ## Pull Request Process
 
@@ -127,7 +143,7 @@ Create a branch from `main` using this convention:
 | `bin/` | CLI entry point; loads `dist/`, so build before running it |
 | `src/cli/` | CLI commands and adapters |
 | `src/orchestrator/` | Agent definitions, workflows, skills and integrations |
-| `tools/` | The viewer demo exporter, and the scripts behind the demo video and the social image |
+| `tools/` | The dashboard demo exporter, and the scripts behind the demo video and the social image |
 | `website/` | Project website and docs |
 | `docs/` | Quickstart and the teams design notes |
 | `scripts/` | Repository tooling: claim verification, MCP pin checks, plugin packing |

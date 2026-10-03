@@ -1,0 +1,543 @@
+{
+ "events": [
+  {
+   "id": 1,
+   "type": "convoy_started",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "name": "Notes search and export",
+    "branch": "convoy/search-export",
+    "base": "main",
+    "concurrency": 4
+   },
+   "created_at": "2026-10-03T16:14:57.669Z",
+   "category": "run",
+   "problem": false
+  },
+  {
+   "id": 2,
+   "type": "task_started",
+   "task_id": "search",
+   "worker_id": "b1602c-search-leufg",
+   "data": {
+    "worker_id": "b1602c-search-leufg",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T16:14:57.740Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 3,
+   "type": "task_started",
+   "task_id": "export",
+   "worker_id": "b1602c-export-leufh",
+   "data": {
+    "worker_id": "b1602c-export-leufh",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T16:14:57.746Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 4,
+   "type": "review_started",
+   "task_id": "search",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "search",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T16:15:40.525Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 5,
+   "type": "review_verdict",
+   "task_id": "search",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 44232,
+    "model": "claude-haiku-4-5-20251001",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T16:16:00.026Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 6,
+   "type": "contract_violation",
+   "task_id": "search",
+   "worker_id": null,
+   "data": {
+    "task_id": "search",
+    "agent": "developer",
+    "missing": [
+     "__contract_block"
+    ],
+    "warnings": []
+   },
+   "created_at": "2026-10-03T16:16:00.034Z",
+   "category": "check",
+   "problem": true
+  },
+  {
+   "id": 7,
+   "type": "task_merged",
+   "task_id": "search",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/search-export",
+    "files": 2
+   },
+   "created_at": "2026-10-03T16:16:00.115Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 8,
+   "type": "task_done",
+   "task_id": "search",
+   "worker_id": "b1602c-search-leufg",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "b1602c-search-leufg",
+    "tokens": 613340,
+    "cost_usd": 0.475426,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T16:16:00.153Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 9,
+   "type": "session",
+   "task_id": "search",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "search",
+    "outcome": "success",
+    "duration_min": 1,
+    "files_changed": 2,
+    "retries": 0,
+    "convoy_id": "convoy-1791044097553"
+   },
+   "created_at": "2026-10-03T16:16:00.158Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 10,
+   "type": "delegation",
+   "task_id": "search",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791044097553",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791044097553"
+   },
+   "created_at": "2026-10-03T16:16:00.162Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 11,
+   "type": "review_started",
+   "task_id": "export",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "export",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T16:16:27.848Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 12,
+   "type": "review_verdict",
+   "task_id": "export",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 44218,
+    "model": "claude-haiku-4-5-20251001",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T16:16:46.706Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 13,
+   "type": "task_merged",
+   "task_id": "export",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/search-export",
+    "files": 2
+   },
+   "created_at": "2026-10-03T16:16:46.794Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 14,
+   "type": "task_done",
+   "task_id": "export",
+   "worker_id": "b1602c-export-leufh",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "b1602c-export-leufh",
+    "tokens": 1254172,
+    "cost_usd": 0.7293993,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T16:16:46.833Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 15,
+   "type": "session",
+   "task_id": "export",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "export",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 2,
+    "retries": 0,
+    "convoy_id": "convoy-1791044097553"
+   },
+   "created_at": "2026-10-03T16:16:46.838Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 16,
+   "type": "delegation",
+   "task_id": "export",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791044097553",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791044097553"
+   },
+   "created_at": "2026-10-03T16:16:46.842Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 17,
+   "type": "task_started",
+   "task_id": "routes",
+   "worker_id": "b1602c-routes-leufi",
+   "data": {
+    "worker_id": "b1602c-routes-leufi",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T16:16:46.901Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 18,
+   "type": "worker_killed",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "reason": "interrupted",
+    "task_id": "routes"
+   },
+   "created_at": "2026-10-03T16:17:17.375Z",
+   "category": "task",
+   "problem": true
+  },
+  {
+   "id": 19,
+   "type": "convoy_interrupted",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "signal": "SIGINT",
+    "requeued": []
+   },
+   "created_at": "2026-10-03T16:17:17.419Z",
+   "category": "run",
+   "problem": true
+  },
+  {
+   "id": 20,
+   "type": "convoy_resumed",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "original_created_at": "2026-10-03T16:14:57.668Z",
+    "reset": []
+   },
+   "created_at": "2026-10-03T16:17:17.747Z",
+   "category": "run",
+   "problem": false
+  },
+  {
+   "id": 21,
+   "type": "task_started",
+   "task_id": "routes",
+   "worker_id": "b1602c-routes-lhuii",
+   "data": {
+    "worker_id": "b1602c-routes-lhuii",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T16:17:17.808Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 22,
+   "type": "partition_violation",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "task_id": "routes",
+    "allowed": [
+     "src/server.js",
+     "test/server.test.js"
+    ],
+    "actual": [
+     ".opencastle/KNOWN-ISSUES.md",
+     "src/server.js",
+     "test/server.test.js"
+    ],
+    "violations": [
+     ".opencastle/KNOWN-ISSUES.md"
+    ]
+   },
+   "created_at": "2026-10-03T16:18:43.016Z",
+   "category": "check",
+   "problem": true
+  },
+  {
+   "id": 23,
+   "type": "review_started",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "routes",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T16:18:43.022Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 24,
+   "type": "review_verdict",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "block",
+    "tokens": 48330,
+    "model": "claude-haiku-4-5-20251001",
+    "feedback_length": 109
+   },
+   "created_at": "2026-10-03T16:19:29.309Z",
+   "category": "review",
+   "problem": true
+  },
+  {
+   "id": 25,
+   "type": "task_retried",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "previous_status": "review-blocked",
+    "reason": "Remove change to .opencastle/KNOWN-ISSUES.md — not in allowed files list (src/server.js, test/server.test.js)",
+    "attempt": 2
+   },
+   "created_at": "2026-10-03T16:19:29.359Z",
+   "category": "task",
+   "problem": true
+  },
+  {
+   "id": 26,
+   "type": "task_started",
+   "task_id": "routes",
+   "worker_id": "b1602c-routes-lhuij",
+   "data": {
+    "worker_id": "b1602c-routes-lhuij",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 2
+   },
+   "created_at": "2026-10-03T16:19:29.423Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 27,
+   "type": "review_started",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "routes",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T16:20:40.088Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 28,
+   "type": "review_verdict",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 46581,
+    "model": "claude-haiku-4-5-20251001",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T16:21:13.398Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 29,
+   "type": "task_merged",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/search-export",
+    "files": 2
+   },
+   "created_at": "2026-10-03T16:21:13.481Z",
+   "category": "merge",
+   "problem": false
+  },
+  {
+   "id": 30,
+   "type": "task_done",
+   "task_id": "routes",
+   "worker_id": "b1602c-routes-lhuij",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "b1602c-routes-lhuij",
+    "tokens": 1666294,
+    "cost_usd": 1.3215407,
+    "estimated": true,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T16:21:13.519Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 31,
+   "type": "session",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "routes",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 2,
+    "retries": 1,
+    "convoy_id": "convoy-1791044097553"
+   },
+   "created_at": "2026-10-03T16:21:13.523Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 32,
+   "type": "delegation",
+   "task_id": "routes",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791044097553",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 1,
+    "phase": 1,
+    "convoy_id": "convoy-1791044097553"
+   },
+   "created_at": "2026-10-03T16:21:13.528Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 33,
+   "type": "gate_result",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "command": "npm test",
+    "passed": true,
+    "exit_code": 0,
+    "scope": "convoy"
+   },
+   "created_at": "2026-10-03T16:21:13.730Z",
+   "category": "check",
+   "problem": false
+  },
+  {
+   "id": 34,
+   "type": "convoy_finished",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "status": "done"
+   },
+   "created_at": "2026-10-03T16:21:13.733Z",
+   "category": "run",
+   "problem": false
+  }
+ ],
+ "more": false
+}
