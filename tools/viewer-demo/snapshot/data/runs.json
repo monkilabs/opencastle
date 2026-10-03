@@ -1,6 +1,6 @@
 {
  "project": "notes-api",
- "generated_at": "2026-10-03T15:58:16.851Z",
+ "generated_at": "2026-10-03T16:51:35.671Z",
  "runs": [
   {
    "id": "convoy-1791033682160",
@@ -43,7 +43,6 @@
    "session",
    "task_done",
    "task_failed",
-   "task_merged",
    "task_retried",
    "task_skipped",
    "task_started",
@@ -70,7 +69,8 @@
   ],
   "merge": [
    "merge_conflict_detected",
-   "merge_failed"
+   "merge_failed",
+   "task_merged"
   ],
   "other": []
  }
