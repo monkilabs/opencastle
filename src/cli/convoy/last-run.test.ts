@@ -89,13 +89,23 @@ describe('isResumable', () => {
     expect(isResumable({ kind: 'pipeline', record: pipeline({ status: 'failed' }) })).toBe(true)
   })
 
-  it('treats a failed convoy as not resumable — retry is that verb', () => {
-    expect(isResumable({ kind: 'convoy', record: convoy({ status: 'failed' }) })).toBe(false)
+  it('treats a failed or interrupted convoy as resumable — resume does what retry did', () => {
+    for (const status of ['failed', 'gate-failed', 'interrupted'] as const) {
+      expect(isResumable({ kind: 'convoy', record: convoy({ status }) })).toBe(true)
+    }
   })
 
   it('treats a done run of either kind as finished', () => {
     expect(isResumable({ kind: 'pipeline', record: pipeline({ status: 'done' }) })).toBe(false)
     expect(isResumable({ kind: 'convoy', record: convoy({ status: 'done' }) })).toBe(false)
+  })
+
+  it('does not trust a done status while a task is not done', () => {
+    // Older runs ended `done` with dependents still skipped.
+    const tasks = { getTasksByConvoy: () => [{ status: 'done' }, { status: 'skipped' }] }
+    expect(isResumable({ kind: 'convoy', record: convoy({ status: 'done' }) }, tasks)).toBe(true)
+    const allDone = { getTasksByConvoy: () => [{ status: 'done' }] }
+    expect(isResumable({ kind: 'convoy', record: convoy({ status: 'done' }) }, allDone)).toBe(false)
   })
 
   it('resumes pending and running convoys', () => {

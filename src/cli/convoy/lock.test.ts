@@ -61,6 +61,22 @@ describe('engine lock', () => {
     lock.release()
   })
 
+  it('takes over at once when the owner died on this host, however fresh its heartbeat', () => {
+    // A run killed with Ctrl+C leaves a heartbeat a second old. Waiting 30 s for
+    // it to expire is what made an immediate `convoy resume` refuse to start.
+    const now = new Date().toISOString()
+    const deadPid = 999999
+    expect(() => process.kill(deadPid, 0)).toThrow()
+    db.prepare(
+      'INSERT INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
+    ).run(deadPid, hostname(), now, now)
+
+    const lock = acquireEngineLock(db, dbPath)
+    const row = db.prepare('SELECT pid FROM engine_lock WHERE id = 1').get() as { pid: number }
+    expect(row.pid).toBe(process.pid)
+    lock.release()
+  })
+
   it('throws EngineAlreadyRunningError when lock is held by a live process', () => {
     const now = new Date().toISOString()
     db.prepare(

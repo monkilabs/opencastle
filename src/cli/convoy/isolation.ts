@@ -20,59 +20,120 @@ export interface PartitionViolation {
   violations: string[]
 }
 
+/** One line of the run summary every task sees. */
+export interface PlanEntry {
+  id: string
+  agent: string
+  summary: string
+  files: string[]
+  depends_on: string[]
+}
+
+// ── Prompt layout ─────────────────────────────────────────────────────────────
+//
+// Every task's prompt is the shared context followed by the task's own part.
+// The shared context is byte-identical for every task of a run, so a runtime
+// with a prompt cache reads it once and serves it to the rest at a tenth of
+// the price; anything that differs per task comes after it.
+//
+// The old preamble opened with the task's id, repeated the first 200
+// characters of the prompt as an "Objective" (on a retry, the retry banner),
+// stated the file rule a second time after the adapter had, and sent every
+// runtime to `.github/instructions/`, a path only Copilot uses.
+
+const SUMMARY_MAX = 100
+
+/** A one-line summary of a task for the run summary. */
+export function summarizeTask(task: { id: string; description?: string; prompt: string }): string {
+  const source = task.description && task.description !== task.id ? task.description : task.prompt
+  const line = source.split('\n').map((l) => l.trim()).find(Boolean) ?? ''
+  return line.length > SUMMARY_MAX ? line.slice(0, SUMMARY_MAX - 1) + '…' : line
+}
+
+/** The part of the prompt every task in a run shares, word for word. */
+export function buildSharedContext(opts: {
+  convoyName: string
+  plan: PlanEntry[]
+  artifactsDir: string
+}): string {
+  const plan = opts.plan.map((t) => {
+    const after = t.depends_on.length > 0 ? ` (after ${t.depends_on.join(', ')})` : ''
+    const files = t.files.length > 0 ? ` — files: ${t.files.join(', ')}` : ''
+    return `- ${t.id} [${t.agent}]${after}: ${t.summary}${files}`
+  })
+  return [
+    `# Convoy: ${opts.convoyName}`,
+    '',
+    'You are one of several agents working on this project at the same time. Each works on one task, in its own git worktree; the convoy merges each finished task into the convoy branch.',
+    '',
+    '## The plan',
+    ...plan,
+    '',
+    '## Rules',
+    '- Do your task and nothing else. Change only the files your task lists; if it needs a change elsewhere, say so in your answer instead of making it.',
+    '- Leave committing to the convoy. It commits your work when you finish.',
+    "- Follow the project's own conventions and instruction files.",
+    `- For long output (a report, a data dump), write it to a file under ${opts.artifactsDir}<your task id>/ and mention it in your answer as \`[ARTIFACT: <file name>] <one-line summary>\`.`,
+  ].join('\n')
+}
+
+/** The part of the prompt that is this task's alone. */
+export function buildTaskSection(opts: {
+  id: string
+  agent: string
+  files: string[]
+  prompt: string
+  dependencyResults?: DependencyResult[]
+  previousWork?: string[]
+  retryNote?: string | null
+  contract?: string | null
+}): string {
+  // The role and the file list are stated here and nowhere else: the adapters
+  // no longer add "You are a <agent>" or "Only modify files under".
+  const parts: string[] = [
+    `## Your task: ${opts.id}`,
+    `You are the ${opts.agent} agent for this task.`,
+    opts.files.length > 0 ? `Files you may change: ${opts.files.join(', ')}` : 'Files: not limited to a list',
+  ]
+  if (opts.dependencyResults && opts.dependencyResults.length > 0) {
+    parts.push('', '### What the tasks before you produced', formatDependencyResults(opts.dependencyResults))
+  }
+  if (opts.previousWork && opts.previousWork.length > 0) {
+    parts.push('', `### Earlier work by ${opts.agent}`, opts.previousWork.join('\n\n'))
+  }
+  parts.push('', '### Instructions', opts.prompt.trim())
+  if (opts.retryNote) {
+    parts.push('', '### Your previous attempt', opts.retryNote.trim())
+  }
+  if (opts.contract) {
+    parts.push('', opts.contract)
+  }
+  return parts.join('\n')
+}
+
+/** Shared context first, the task's part last. */
+export function composePrompt(shared: string, taskSection: string): string {
+  return `${shared}\n\n---\n\n${taskSection}\n`
+}
+
 // ── Formatting ────────────────────────────────────────────────────────────────
 
 export function formatDependencyResults(deps: DependencyResult[]): string {
   return deps
     .map(dep => {
-      let text = '#### ' + dep.taskId + ' (' + dep.agent + ') \u2014 ' + dep.status + '\n'
+      let text = '#### ' + dep.taskId + ' (' + dep.agent + ') — ' + dep.status + '\n'
         + (dep.summary ?? 'No summary available.') + '\n'
         + 'Files changed: ' + (dep.filesChanged.length > 0 ? dep.filesChanged.join(', ') : 'none')
 
       if (dep.artifactRefs && dep.artifactRefs.length > 0) {
         text += '\nArtifacts available:\n'
-          + dep.artifactRefs.map(r => '- ' + r.path + ' \u2014 "' + r.summary + '"').join('\n')
+          + dep.artifactRefs.map(r => '- ' + r.path + ' — "' + r.summary + '"').join('\n')
           + '\n\nTo read an artifact, open the file at the path above.'
       }
 
       return text
     })
     .join('\n\n')
-}
-
-export function buildIsolationPreamble(
-  task: { id: string; description: string; prompt: string; files: string[]; agent: string },
-  dependencyResults: DependencyResult[],
-): string {
-  const objective = task.description || task.prompt.slice(0, 200)
-  const fileList = task.files.length > 0 ? task.files.map(f => '- ' + f).join('\n') : '- (none specified)'
-  const depSection = dependencyResults.length > 0
-    ? formatDependencyResults(dependencyResults)
-    : 'No dependencies \u2014 you are in the first phase.'
-
-  return [
-    '## Context Isolation Notice',
-    'You are a fresh agent with NO prior context. You have no knowledge of other tasks',
-    'in this convoy. Your only context is what follows.',
-    '',
-    '### Your Task',
-    '- **ID:** ' + task.id,
-    '- **Agent:** ' + task.agent,
-    '- **Objective:** ' + objective,
-    '',
-    '### Your File Partition',
-    'You may ONLY read and modify files within this partition:',
-    fileList,
-    '',
-    'Do NOT modify files outside this partition. If you discover a need to change files',
-    'outside your partition, note it in your output but do not make the change.',
-    '',
-    '### Dependency Results',
-    depSection,
-    '',
-    '### Project Conventions',
-    'Read `.github/instructions/general.instructions.md` for coding standards.',
-  ].join('\n')
 }
 
 // ── Partition violation detection ─────────────────────────────────────────────
@@ -119,6 +180,7 @@ export function resolveDependencyResults(
   store: ConvoyStore,
   convoyId: string,
   dependsOn: string[],
+  basePath?: string,
 ): DependencyResult[] {
   return dependsOn
     .map((depId) => {
@@ -148,7 +210,7 @@ export function resolveDependencyResults(
 
       let artifactRefs: ArtifactRef[] | undefined
       try {
-        const refs = listArtifacts(convoyId, depId)
+        const refs = listArtifacts(convoyId, depId, basePath)
         if (refs.length > 0) artifactRefs = refs
       } catch { /* non-critical */ }
 

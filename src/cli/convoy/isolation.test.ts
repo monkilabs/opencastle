@@ -1,60 +1,86 @@
 import { describe, it, expect } from 'vitest'
 import {
-  buildIsolationPreamble,
+  buildSharedContext,
+  buildTaskSection,
+  composePrompt,
+  summarizeTask,
   formatDependencyResults,
   detectPartitionViolations,
   type DependencyResult,
+  type PlanEntry,
 } from './isolation.js'
 
-describe('buildIsolationPreamble', () => {
-  const baseTask = {
-    id: 'task-1',
-    description: 'Implement the auth service',
-    prompt: 'Please implement the auth service with JWT tokens',
-    files: ['src/auth/', 'src/services/auth.ts'],
-    agent: 'developer',
-  }
+const plan: PlanEntry[] = [
+  { id: 'api', agent: 'developer', summary: 'Build the API', files: ['src/api/'], depends_on: [] },
+  { id: 'tests', agent: 'testing-expert', summary: 'Test the API', files: ['test/api.test.ts'], depends_on: ['api'] },
+]
 
-  it('with no dependencies contains task ID, agent, description, file list, and no-dependency text', () => {
-    const result = buildIsolationPreamble(baseTask, [])
-    expect(result).toContain('task-1')
-    expect(result).toContain('developer')
-    expect(result).toContain('Implement the auth service')
-    expect(result).toContain('src/auth/')
-    expect(result).toContain('src/services/auth.ts')
-    expect(result).toContain('No dependencies')
-    expect(result).toContain('first phase')
+describe('buildSharedContext', () => {
+  const shared = buildSharedContext({ convoyName: 'Auth', plan, artifactsDir: '/repo/.opencastle/artifacts/c1/' })
+
+  it('lists the whole plan with dependencies and files', () => {
+    expect(shared).toContain('# Convoy: Auth')
+    expect(shared).toContain('- api [developer]: Build the API — files: src/api/')
+    expect(shared).toContain('- tests [testing-expert] (after api): Test the API — files: test/api.test.ts')
   })
 
-  it('with 2 completed dependencies includes dependency summaries and files', () => {
-    const depResults: DependencyResult[] = [
-      { taskId: 'task-0', agent: 'architect', status: 'done', summary: 'Designed the auth schema', filesChanged: ['schema.ts', 'types.ts'] },
-      { taskId: 'task-0b', agent: 'developer', status: 'done', summary: 'Set up project structure', filesChanged: ['package.json'] },
+  it('states the file rule once, and names no runtime-specific path', () => {
+    expect(shared.match(/Change only the files/g)).toHaveLength(1)
+    expect(shared).not.toContain('.github/instructions')
+  })
+
+  it('is the same text for every task, so a prompt cache can serve it', () => {
+    const a = composePrompt(shared, buildTaskSection({ id: 'api', agent: 'developer', files: ['src/api/'], prompt: 'Build it' }))
+    const b = composePrompt(shared, buildTaskSection({ id: 'tests', agent: 'testing-expert', files: [], prompt: 'Test it' }))
+    expect(a.startsWith(shared)).toBe(true)
+    expect(b.startsWith(shared)).toBe(true)
+  })
+})
+
+describe('buildTaskSection', () => {
+  it('puts the task prompt in once, with no copied "Objective"', () => {
+    const prompt = 'Please implement the auth service with JWT tokens'
+    const section = buildTaskSection({ id: 'task-1', agent: 'developer', files: ['src/auth/'], prompt })
+    expect(section).toContain('## Your task: task-1')
+    expect(section).toContain('You are the developer agent for this task.')
+    expect(section).toContain('Files you may change: src/auth/')
+    expect(section.split(prompt)).toHaveLength(2)
+    expect(section).not.toContain('Objective')
+  })
+
+  it('adds dependency results, earlier work, the retry note and the contract only when present', () => {
+    const deps: DependencyResult[] = [
+      { taskId: 'task-0', agent: 'architect', status: 'done', summary: 'Designed the auth schema', filesChanged: ['schema.ts'] },
     ]
-    const result = buildIsolationPreamble(baseTask, depResults)
-    expect(result).toContain('task-0')
-    expect(result).toContain('Designed the auth schema')
-    expect(result).toContain('schema.ts, types.ts')
-    expect(result).toContain('task-0b')
-    expect(result).toContain('package.json')
-    expect(result).not.toContain('No dependencies')
-  })
+    const bare = buildTaskSection({ id: 't', agent: 'developer', files: [], prompt: 'Do it' })
+    expect(bare).toContain('Files: not limited to a list')
+    expect(bare).not.toContain('previous attempt')
 
-  it('with failed dependency includes failure status', () => {
-    const depResults: DependencyResult[] = [
-      { taskId: 'task-x', agent: 'developer', status: 'failed', summary: 'Build failed due to type errors', filesChanged: [] },
-    ]
-    const result = buildIsolationPreamble(baseTask, depResults)
-    expect(result).toContain('failed')
-    expect(result).toContain('Build failed due to type errors')
+    const full = buildTaskSection({
+      id: 't',
+      agent: 'developer',
+      files: [],
+      prompt: 'Do it',
+      dependencyResults: deps,
+      previousWork: ['Last time I did X'],
+      retryNote: 'The gate `npm test` failed',
+      contract: '## Output Contract (REQUIRED)',
+    })
+    expect(full).toContain('Designed the auth schema')
+    expect(full).toContain('Last time I did X')
+    expect(full).toContain('### Your previous attempt\nThe gate `npm test` failed')
+    // The task's own prompt survives a retry: the note is added, not swapped in.
+    expect(full).toContain('### Instructions\nDo it')
+    expect(full.indexOf('### Instructions')).toBeLessThan(full.indexOf('### Your previous attempt'))
+    expect(full.trim().endsWith('## Output Contract (REQUIRED)')).toBe(true)
   })
+})
 
-  it('uses prompt slice when no description', () => {
-    const longPrompt = 'A'.repeat(300)
-    const task = { ...baseTask, description: '', prompt: longPrompt }
-    const result = buildIsolationPreamble(task, [])
-    expect(result).toContain('A'.repeat(200))
-    expect(result).not.toContain('A'.repeat(201))
+describe('summarizeTask', () => {
+  it('prefers a real description, else the first line of the prompt, trimmed', () => {
+    expect(summarizeTask({ id: 'a', description: 'Write docs', prompt: 'x' })).toBe('Write docs')
+    expect(summarizeTask({ id: 'a', description: 'a', prompt: '\nFirst line\nsecond' })).toBe('First line')
+    expect(summarizeTask({ id: 'a', prompt: 'A'.repeat(300) }).length).toBe(100)
   })
 })
 

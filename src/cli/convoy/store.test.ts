@@ -99,11 +99,11 @@ describe('DB creation', () => {
     expect(row.journal_mode).toBe('wal')
   })
 
-  it('sets schema version to 13', () => {
+  it('sets schema version to 14', () => {
     const db = new DatabaseSync(dbPath)
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number }
     db.close()
-    expect(row.user_version).toBe(13)
+    expect(row.user_version).toBe(14)
   })
 
   it('creates all required tables', () => {
@@ -131,7 +131,7 @@ describe('DB creation', () => {
     store2.close()
     // Reassign so afterEach does not double-close
     store = createConvoyStore(dbPath)
-    expect(row.user_version).toBe(13)
+    expect(row.user_version).toBe(14)
   })
 })
 
@@ -208,8 +208,8 @@ describe('schema migration', () => {
     verifyDb.close()
 
     expect(cols.map(c => c.name)).toContain('adapter')
-    // v1 chains through v2→v3→v4→...→v10→v11→v12→v13 in one init, so final version is 13
-    expect(version.user_version).toBe(13)
+    // v1 chains through v2→v3→v4→...→v12→v13→v14 in one init, so final version is 14
+    expect(version.user_version).toBe(14)
   })
 
   it('schema migration v2 to v3 adds cost columns', () => {
@@ -295,7 +295,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(13)
+    expect(version.user_version).toBe(14)
   })
 
   it('schema migration v1 to v3 chains correctly in a single init', () => {
@@ -381,7 +381,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(13)
+    expect(version.user_version).toBe(14)
   })
 
   it('schema migration v3 to v4 creates pipeline table and adds pipeline_id to convoy', () => {
@@ -464,7 +464,7 @@ describe('schema migration', () => {
 
     expect(convoyCols.map(c => c.name)).toContain('pipeline_id')
     expect(tables.map(t => t.name)).toContain('pipeline')
-    expect(version.user_version).toBe(13)
+    expect(version.user_version).toBe(14)
   })
 })
 
@@ -1458,7 +1458,7 @@ describe('schema migration v5 → v6', () => {
     v5Verify.close()
     migratedStore.close()
 
-    expect(row.user_version).toBe(13)
+    expect(row.user_version).toBe(14)
     expect(taskStepTable?.name).toBe('task_step')
     expect(convoy?.id).toBe('convoy-auto')
     expect(task?.id).toBe('task-auto')
@@ -1628,7 +1628,7 @@ describe('schema migration v6→v7 (drift detection columns)', () => {
 
     expect(cols.map(c => c.name)).toContain('drift_score')
     expect(cols.map(c => c.name)).toContain('drift_retried')
-    expect(version.user_version).toBe(13)
+    expect(version.user_version).toBe(14)
   })
 
   it('new databases include drift_score and drift_retried in CREATE TABLE', () => {
@@ -1862,7 +1862,7 @@ describe('migration full chain v4→v10', () => {
     const verifyDb = new DatabaseSync(chainDbPath)
     verifyDb.exec('PRAGMA foreign_keys = 0')
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(13)
+    expect(version).toBe(14)
 
     // Verify all new tables exist
     const tables = (verifyDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name)
@@ -1959,7 +1959,7 @@ describe('migration v12 → v13', () => {
 
     expect(cols).not.toContain('compaction_count')
     expect(cols).not.toContain('discovered_issues')
-    expect(version).toBe(13)
+    expect(version).toBe(14)
 
     // The rows, and the fields beside the dropped ones, survive the rewrite.
     expect(convoy?.name).toBe('Kept')
@@ -1980,6 +1980,57 @@ describe('migration v12 → v13', () => {
       const again = createConvoyStore(dbPath13)
       again.close()
     }).not.toThrow()
+  })
+})
+
+describe('migration v13 → v14', () => {
+  it('adds the spend, retry-note and kept-branch columns to a v13 database', () => {
+    const path = join(tmpDir, 'v13-to-v14.db')
+    const seeded = createConvoyStore(path)
+    seeded.insertConvoy(makeConvoy({ id: 'c1' }))
+    seeded.insertTask(makeTask({ id: 't1', convoy_id: 'c1' }))
+    seeded.close()
+
+    // Take the new columns away again, as a v13 database would not have them.
+    const raw = new DatabaseSync(path)
+    for (const col of ['cache_read_tokens', 'cache_write_tokens', 'cost_estimated', 'retry_note', 'branch']) {
+      raw.exec(`ALTER TABLE task DROP COLUMN ${col}`)
+    }
+    raw.exec('ALTER TABLE convoy DROP COLUMN base_ref')
+    raw.exec('ALTER TABLE convoy DROP COLUMN cost_estimated')
+    raw.exec('ALTER TABLE convoy DROP COLUMN adapter')
+    raw.exec('PRAGMA user_version = 13')
+    raw.close()
+
+    const migrated = createConvoyStore(path)
+    migrated.updateTaskStatus('t1', 'c1', 'failed', {
+      cache_read_tokens: 10,
+      cache_write_tokens: 2,
+      cost_estimated: 1,
+      retry_note: 'gate failed',
+      branch: 'convoy-abc-t1-1',
+    })
+    migrated.updateConvoyBranch('c1', 'convoy/x-abc123', 'main')
+    const t1 = migrated.getTask('t1', 'c1')!
+    const convoy = migrated.getConvoy('c1')!
+    migrated.close()
+
+    expect(t1).toMatchObject({
+      cache_read_tokens: 10,
+      cache_write_tokens: 2,
+      cost_estimated: 1,
+      retry_note: 'gate failed',
+      branch: 'convoy-abc-t1-1',
+    })
+    expect(convoy.branch).toBe('convoy/x-abc123')
+    expect(convoy.base_ref).toBe('main')
+    expect(convoy.cost_estimated).toBe(0)
+    expect(convoy).toHaveProperty('adapter', null)
+  })
+
+  it('records the runtime a run used', () => {
+    store.insertConvoy({ ...makeConvoy({ id: 'c-adapter' }), adapter: 'codex' })
+    expect(store.getConvoy('c-adapter')?.adapter).toBe('codex')
   })
 })
 
@@ -2615,7 +2666,7 @@ describe('v9→v10 migration', () => {
     // Verify version = 11
     const verifyDb = new DatabaseSync(migDb)
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(13)
+    expect(version).toBe(14)
 
     // Verify new REAL columns exist
     const convoyCols = (verifyDb.prepare('PRAGMA table_info(convoy)').all() as Array<{ name: string }>).map(c => c.name)

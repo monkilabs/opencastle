@@ -27,17 +27,19 @@ export type LastRun =
 /**
  * A finished run has nothing to continue.
  *
- * `failed` is resumable for a pipeline — a convoy in the chain failed, the user
- * fixes it, the chain carries on — but not for a standalone convoy, where
- * `retry` is the verb that reopens failed work. That asymmetry is the existing
- * behaviour of both branches; it is preserved here rather than invented.
+ * `resume` now does everything `retry` did — failed, timed-out, interrupted and
+ * skipped tasks all go back to pending — so a convoy is resumable unless it
+ * finished `done`. And `done` alone is not trusted: older runs ended `done`
+ * with tasks still skipped, and the status screen then said "nothing
+ * outstanding" over work that never ran.
  */
-const RESUMABLE_PIPELINE = new Set(['pending', 'running', 'failed'])
-const RESUMABLE_CONVOY = new Set(['pending', 'running'])
+const RESUMABLE_PIPELINE = new Set(['pending', 'running', 'failed', 'interrupted'])
 
 export interface LastRunSource {
   getLatestPipeline(): PipelineRecord | undefined
   getLatestStandaloneConvoy(): ConvoyRecord | undefined
+  /** When available, a convoy with any task not done counts as resumable, whatever its status. */
+  getTasksByConvoy?(convoyId: string): Array<{ status: string }>
 }
 
 /**
@@ -65,10 +67,11 @@ export function selectLastRun(store: LastRunSource): LastRun | null {
 }
 
 /** True when `resume` can continue this run. */
-export function isResumable(run: LastRun): boolean {
-  return run.kind === 'pipeline'
-    ? RESUMABLE_PIPELINE.has(run.record.status)
-    : RESUMABLE_CONVOY.has(run.record.status)
+export function isResumable(run: LastRun, store?: Pick<LastRunSource, 'getTasksByConvoy'>): boolean {
+  if (run.kind === 'pipeline') return RESUMABLE_PIPELINE.has(run.record.status)
+  if (run.record.status !== 'done') return true
+  const tasks = store?.getTasksByConvoy?.(run.record.id) ?? []
+  return tasks.some((t) => t.status !== 'done')
 }
 
 /**
@@ -83,5 +86,5 @@ export function selectResumableRun(
 ): { run: LastRun; resumable: boolean } | null {
   const run = selectLastRun(store)
   if (!run) return null
-  return { run, resumable: isResumable(run) }
+  return { run, resumable: isResumable(run, store) }
 }
