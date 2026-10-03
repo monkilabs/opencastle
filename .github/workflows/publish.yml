@@ -147,10 +147,8 @@ jobs:
 
       - name: Build
         if: steps.bump.outputs.type != 'none'
-        # Deliberately does not generate demo data. The demo generator writes
-        # through the convoy store, so a schema change there used to break the
-        # npm release. The published dashboard ships empty and fills from the
-        # user's own runs.
+        # The CLI only. The convoy viewer is one HTML file under src/ with no
+        # build step, and it reads the user's own runs.
         run: npm run build
 
       - name: Publish

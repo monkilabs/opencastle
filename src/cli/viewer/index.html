@@ -1,0 +1,511 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<!-- "live" reads the JSON API of `opencastle convoy dashboard`; tools/viewer-demo/export.mjs rewrites it to "static", which reads a data/ snapshot. -->
+<meta name="opencastle-viewer" content="live">
+<link rel="icon" href="data:,">
+<title>Convoy viewer</title>
+<style>
+:root {
+  --bg: #f6f6f3; --panel: #ffffff; --text: #1d1d1f; --muted: #6a6a70; --line: #e2e2dd; --chip: #eeeeea;
+  --accent: #3451c6; --ok: #2b8a3e; --bad: #c92a2a; --warn: #a85400; --run: #1864ab;
+  --ok-bg: #e6f4ea; --bad-bg: #fdecec; --warn-bg: #fff3e0; --run-bg: #e7f1fb;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #131315; --panel: #1b1b1e; --text: #ececee; --muted: #9b9ba2; --line: #2d2d32; --chip: #26262b;
+    --accent: #8ea2ff; --ok: #69db7c; --bad: #ff8a8a; --warn: #ffb067; --run: #74c0fc;
+    --ok-bg: #16301d; --bad-bg: #3a1b1b; --warn-bg: #3a2814; --run-bg: #152a3d;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
+h1 { font-size: 20px; margin: 0; overflow-wrap: anywhere; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 24px 0 8px; font-weight: 600; }
+.muted { color: var(--muted); }
+.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.top strong { font-size: 15px; }
+.layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px; max-width: 1280px; margin: 0 auto; padding: 16px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+aside .panel { padding: 8px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+summary { cursor: pointer; padding: 6px 8px; font-weight: 600; }
+.runs { list-style: none; margin: 4px 0 0; padding: 0; }
+.runs a { display: block; padding: 8px; border-radius: 8px; color: inherit; text-decoration: none; }
+.runs a:hover { background: var(--chip); }
+.runs a[aria-current="true"] { background: var(--run-bg); }
+.rname { display: flex; align-items: center; gap: 6px; font-weight: 600; overflow-wrap: anywhere; }
+.rmeta { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.dot.live { background: var(--run); box-shadow: 0 0 0 3px var(--run-bg); animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .dot.live { animation: none; } }
+.head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: flex-start; }
+.badges { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.s-done { background: var(--ok-bg); color: var(--ok); }
+.s-bad { background: var(--bad-bg); color: var(--bad); }
+.s-warn { background: var(--warn-bg); color: var(--warn); }
+.s-run { background: var(--run-bg); color: var(--run); }
+.dot.s-done { background: var(--ok); } .dot.s-bad { background: var(--bad); } .dot.s-warn { background: var(--warn); } .dot.s-run { background: var(--run); }
+.note { margin: 12px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); }
+.note.err { background: var(--bad-bg); color: var(--bad); }
+.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px 16px; margin: 16px 0 0; }
+.facts div { min-width: 0; }
+.facts dt { color: var(--muted); font-size: 12px; }
+.facts dd { margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--chip); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+td .sub { display: block; color: var(--muted); font-size: 12px; }
+tr.fail td { background: var(--bad-bg); color: var(--text); }
+tr.fail pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chips button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+.chips button[aria-pressed="true"] { background: var(--text); color: var(--panel); border-color: var(--text); }
+.feed { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; max-height: 520px; overflow: auto; }
+.feed li { display: grid; grid-template-columns: 70px minmax(0, 190px) minmax(0, 1fr); gap: 2px 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+.feed li:last-child { border-bottom: 0; }
+.feed li.problem { background: var(--bad-bg); }
+.feed time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.feed .type { font-weight: 600; overflow-wrap: anywhere; }
+.feed .data { color: var(--muted); overflow-wrap: anywhere; }
+.feed .data b { color: var(--text); font-weight: 600; }
+.empty { color: var(--muted); padding: 12px; }
+footer { max-width: 1280px; margin: 0 auto; padding: 0 16px 24px; color: var(--muted); font-size: 12.5px; }
+button.link { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; }
+@media (max-width: 760px) {
+  .layout { grid-template-columns: minmax(0, 1fr); padding: 12px; gap: 12px; }
+  aside .panel { position: static; max-height: none; }
+  .panel { padding: 12px; }
+  .feed li { grid-template-columns: 64px minmax(0, 1fr); }
+  /* Tables become one card per row, every cell labelled, so nothing hides off to the side. */
+  table.cards { min-width: 0; }
+  table.cards thead { display: none; }
+  table.cards tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 12px; padding: 10px; border-bottom: 1px solid var(--line); }
+  table.cards td { border: 0; padding: 0; text-align: left; white-space: normal; }
+  table.cards td.key { grid-column: 1 / -1; font-weight: 600; }
+  table.cards td[data-label]::before { content: attr(data-label); display: block; color: var(--muted); font-size: 11.5px; }
+  table.cards tr.fail { display: block; background: var(--bad-bg); }
+  table.cards tr:last-child { border-bottom: 0; }
+  .feed .data { grid-column: 1 / -1; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <strong>OpenCastle Convoy</strong>
+  <span id="where" class="muted"></span>
+</header>
+<main class="layout">
+  <aside>
+    <div class="panel">
+      <details id="runs-box" open>
+        <summary>Runs <span id="runs-count" class="muted"></span></summary>
+        <ol id="runs" class="runs"></ol>
+      </details>
+    </div>
+  </aside>
+  <div>
+    <section id="run" class="panel" aria-live="polite"><p class="empty">Loading…</p></section>
+    <section class="panel" style="margin-top:16px">
+      <h2 style="margin-top:0">Agent sessions <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">recorded with <code>opencastle log</code>, for the whole project</span></h2>
+      <div id="sessions"><p class="empty">Loading…</p></div>
+    </section>
+  </div>
+</main>
+<footer id="foot"></footer>
+<script>
+'use strict'
+const LIVE = document.querySelector('meta[name="opencastle-viewer"]').content !== 'static'
+const FAST_MS = 2000
+const SLOW_MS = 10000
+const FEED_SHOWN = 500
+const CATEGORY_LABELS = { run: 'Run', task: 'Tasks', check: 'Checks', review: 'Reviews', merge: 'Merge', other: 'Other' }
+const FAILED = ['failed', 'gate-failed', 'timed-out', 'review-blocked', 'hook-failed', 'disputed']
+const WARN = ['interrupted', 'wait-for-input', 'skipped']
+const RUNNING = ['running', 'assigned']
+
+const state = {
+  project: '', generatedAt: null, runs: [], categories: {}, sessions: [],
+  selected: null, follow: true, gen: 0, run: null, events: [], cursor: 0,
+  filter: 'all', fastTimer: null, error: null,
+}
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id)
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const pad = (n) => String(n).padStart(2, '0')
+const fileId = (id) => String(id).replace(/[^\w.-]/g, '_')
+
+function statusClass(s) {
+  if (s === 'done') return 's-done'
+  if (FAILED.includes(s)) return 's-bad'
+  if (WARN.includes(s)) return 's-warn'
+  if (RUNNING.includes(s)) return 's-run'
+  return ''
+}
+function badge(s) { return `<span class="badge ${statusClass(s)}">${esc(s)}</span>` }
+function parse(iso) { const t = Date.parse(iso); return Number.isFinite(t) ? new Date(t) : null }
+function fmtTime(iso) { const d = parse(iso); return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` : esc(iso || '—') }
+function fmtDate(iso) {
+  const d = parse(iso)
+  return d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${fmtTime(iso)}` : esc(iso || '—')
+}
+function fmtShort(iso) {
+  const d = parse(iso)
+  if (!d) return '—'
+  const today = new Date().toDateString() === d.toDateString()
+  return (today ? '' : `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} `) + `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+function fmtDuration(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '—'
+  const s = Math.floor(ms / 1000)
+  if (s < 1) return '<1s'
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m ${pad(s % 60)}s`
+  return `${Math.floor(m / 60)}h ${pad(m % 60)}m`
+}
+function fmtTokens(n) {
+  if (n == null) return '—'
+  if (n < 1000) return String(n)
+  if (n < 1e6) return `${(n / 1e3).toFixed(1)}K`
+  return `${(n / 1e6).toFixed(2)}M`
+}
+function fmtCost(n, estimated) {
+  if (n == null) return '—'
+  const text = n > 0 && n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`
+  return estimated ? `${text} <span class="muted" title="An estimate, not a figure the runtime reported">est.</span>` : text
+}
+function since(iso) { const d = parse(iso); return d ? Date.now() - d.getTime() : null }
+
+// ── data ─────────────────────────────────────────────────────────────────────
+async function get(path) {
+  const res = await fetch(path, { cache: 'no-store' })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `${res.status} ${res.statusText}`)
+  return body
+}
+const api = LIVE
+  ? {
+      runs: () => get('api/runs'),
+      run: (id) => get(`api/runs/${encodeURIComponent(id)}`),
+      events: (id, after) => get(`api/runs/${encodeURIComponent(id)}/events?since=${after}`),
+      sessions: () => get('api/sessions'),
+    }
+  : {
+      runs: () => get('data/runs.json'),
+      run: (id) => get(`data/runs/${fileId(id)}.json`),
+      events: (id) => get(`data/events/${fileId(id)}.json`),
+      sessions: () => get('data/sessions.json'),
+    }
+
+async function loadRuns() {
+  const body = await api.runs()
+  state.project = body.project || ''
+  state.generatedAt = body.generated_at || null
+  state.runs = body.runs || []
+  state.categories = body.categories || {}
+  state.error = null
+  renderWhere()
+  renderRuns()
+}
+
+async function loadSessions() {
+  try {
+    state.sessions = (await api.sessions()).sessions || []
+    renderSessions()
+  } catch (err) {
+    $('sessions').innerHTML = `<p class="note err">Could not read sessions: ${esc(err.message)}</p>`
+  }
+}
+
+/** New events only: the cursor moves forward and nothing already shown is read again. */
+async function loadEvents(id, cursor) {
+  if (!LIVE) return { events: (await api.events(id)).events || [], cursor: 0 }
+  const fresh = []
+  for (let page = 0; page < 40; page++) {
+    const body = await api.events(id, cursor)
+    const batch = body.events || []
+    if (batch.length) { fresh.push(...batch); cursor = batch[batch.length - 1].id }
+    if (!body.more) break
+  }
+  return { events: fresh, cursor }
+}
+
+async function select(id, follow) {
+  clearTimeout(state.fastTimer)
+  const gen = ++state.gen
+  Object.assign(state, { selected: id, follow, run: null, events: [], cursor: 0 })
+  renderRuns()
+  if (!id) return renderRun()
+  $('run').innerHTML = '<p class="empty">Loading…</p>'
+  await refresh(gen)
+}
+
+async function refresh(gen) {
+  const id = state.selected
+  try {
+    const [detail, ev] = await Promise.all([api.run(id), loadEvents(id, state.cursor)])
+    if (gen !== state.gen) return
+    state.run = detail.run
+    if (ev.events.length) { state.events = state.events.concat(ev.events); state.cursor = ev.cursor }
+    state.error = null
+    renderRun()
+    if (LIVE && state.run.alive) state.fastTimer = setTimeout(() => refresh(gen), FAST_MS)
+  } catch (err) {
+    if (gen !== state.gen) return
+    state.error = err.message
+    renderRun()
+    if (LIVE) state.fastTimer = setTimeout(() => refresh(gen), 5000)
+  }
+}
+
+/** Every 10 seconds: pick up runs that started, and wake a run that changed while it was not being polled. */
+async function slowTick() {
+  try {
+    await loadRuns()
+  } catch (err) {
+    state.error = `Lost contact with the viewer server (${err.message}). Retrying.`
+    renderWhere()
+    return
+  }
+  loadSessions()
+  const newest = state.runs[0]
+  if (state.follow && newest && newest.id !== state.selected) return select(newest.id, true)
+  const cur = state.runs.find((r) => r.id === state.selected)
+  const shown = state.run
+  if (cur && shown && !shown.alive && (cur.alive || cur.status !== shown.status || cur.tasks_done !== shown.tasks_done || cur.finished_at !== shown.finished_at)) {
+    clearTimeout(state.fastTimer)
+    refresh(state.gen)
+  }
+}
+
+function fromHash() {
+  const m = /^#run=(.+)$/.exec(location.hash)
+  try { return m ? decodeURIComponent(m[1]) : null } catch { return null }
+}
+
+// ── rendering ────────────────────────────────────────────────────────────────
+function renderWhere() {
+  const parts = []
+  if (state.project) parts.push(`project <b>${esc(state.project)}</b>`)
+  if (!LIVE) parts.push(`snapshot exported ${state.generatedAt ? fmtDate(state.generatedAt) : ''} — not live`)
+  $('where').innerHTML = parts.join(' · ')
+  $('foot').innerHTML = state.error ? `<p class="note err">${esc(state.error)}</p>` :
+    LIVE ? 'Read-only. Live runs refresh every 2 seconds; the run list every 10.' : 'A static snapshot of recorded runs.'
+}
+
+function runMeta(r) {
+  const bits = [r.alive ? 'live' : r.status, fmtShort(r.started_at || r.created_at)]
+  if (r.duration_ms != null) bits.push(fmtDuration(r.duration_ms))
+  bits.push(`${r.tasks_done}/${r.tasks_total} done`)
+  if (r.cost_usd != null) bits.push(fmtCost(r.cost_usd, r.cost_estimated))
+  return bits.join(' · ')
+}
+
+function renderRuns() {
+  $('runs-count').textContent = state.runs.length ? `(${state.runs.length})` : ''
+  if (!state.runs.length) {
+    $('runs').innerHTML = `<li class="empty">${LIVE ? 'No runs yet.' : 'This snapshot has no runs.'}</li>`
+    return
+  }
+  $('runs').innerHTML = state.runs.map((r) => `
+    <li><a href="#run=${encodeURIComponent(r.id)}" aria-current="${r.id === state.selected}" title="${esc(r.id)}">
+      <span class="rname"><span class="dot ${r.alive ? 'live' : statusClass(r.status)}"></span>${esc(r.name)}</span>
+      <span class="rmeta">${runMeta(r)}</span>
+    </a></li>`).join('')
+}
+
+function elapsedOf(run) {
+  if (run.duration_ms != null) return fmtDuration(run.duration_ms)
+  if (run.alive) return fmtDuration(since(run.started_at || run.created_at))
+  return '—'
+}
+
+function factsHtml(run) {
+  const failed = run.tasks_failed ? ` · <span style="color:var(--bad)">${run.tasks_failed} failed</span>` : ''
+  const running = run.tasks_running ? ` · ${run.tasks_running} running` : ''
+  const facts = [
+    ['Branch', run.branch ? `<code>${esc(run.branch)}</code>` : '<span class="muted">current checkout</span>'],
+    ['Adapter', run.adapters.length ? esc(run.adapters.join(', ')) : '<span class="muted">not recorded</span>'],
+    ['Model', run.models.length ? esc(run.models.join(', ')) : '<span class="muted">not reported</span>'],
+    ['Started', fmtDate(run.started_at || run.created_at)],
+    [run.alive ? 'Elapsed' : 'Duration', `<span id="elapsed">${elapsedOf(run)}</span>`],
+    ['Tasks', `${run.tasks_done}/${run.tasks_total} done${failed}${running}`],
+    ['Tokens', fmtTokens(run.tokens) + (run.alive && run.tokens != null ? ' <span class="muted">so far</span>' : '')],
+    ['Cost', fmtCost(run.cost_usd, run.cost_estimated)],
+  ]
+  return `<dl class="facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
+}
+
+function tokensCell(t) {
+  const parts = [['prompt', t.prompt_tokens], ['completion', t.completion_tokens], ['cache read', t.cache_read_tokens], ['cache write', t.cache_write_tokens]]
+    .filter(([, n]) => n != null).map(([k, n]) => `${k} ${n.toLocaleString()}`)
+  return `<span title="${esc(parts.join(', '))}">${fmtTokens(t.total_tokens)}</span>`
+}
+
+function tasksHtml(run) {
+  if (!run.tasks.length) return '<p class="empty">No tasks recorded.</p>'
+  const rows = run.tasks.map((t) => {
+    const model = t.model && run.models.length > 1 ? `<span class="sub">${esc(t.model)}</span>` : ''
+    const retries = t.retries ? `<span class="sub">${t.retries} ${t.retries === 1 ? 'retry' : 'retries'}</span>` : ''
+    const live = RUNNING.includes(t.status) && run.alive && t.started_at ? `<span class="sub">${fmtDuration(since(t.started_at))} so far</span>` : ''
+    const row = `<tr>
+      <td class="key"><code>${esc(t.id)}</code></td>
+      <td data-label="Agent">${esc(t.agent)}${model}</td>
+      <td data-label="Status">${badge(t.status)}${retries}</td>
+      <td data-label="Depends on">${t.depends_on.length ? t.depends_on.map((d) => `<code>${esc(d)}</code>`).join(', ') : '<span class="muted">—</span>'}</td>
+      <td data-label="Duration" class="num">${t.duration_ms != null ? fmtDuration(t.duration_ms) : live || '—'}</td>
+      <td data-label="Tokens" class="num">${tokensCell(t)}</td>
+      <td data-label="Cost" class="num">${fmtCost(t.cost_usd, t.cost_estimated)}</td>
+    </tr>`
+    if (!FAILED.includes(t.status) || (!t.failure_reason && !t.error_tail)) return row
+    const reason = t.failure_reason ? `<b>${esc(t.failure_reason)}</b>` : '<b>failed</b>'
+    const tail = t.error_tail ? `<details><summary>Last lines of output</summary><pre>${esc(t.error_tail)}</pre></details>` : ''
+    return row + `<tr class="fail"><td colspan="7"><code>${esc(t.id)}</code> ${reason}${tail}</td></tr>`
+  })
+  return `<div class="table-wrap"><table class="cards">
+    <thead><tr><th>Task</th><th>Agent</th><th>Status</th><th>Depends on</th><th class="num">Duration</th><th class="num">Tokens</th><th class="num">Cost</th></tr></thead>
+    <tbody>${rows.join('')}</tbody></table></div>`
+}
+
+function summarizeData(data, runId) {
+  if (data == null) return ''
+  if (typeof data !== 'object') return esc(String(data).slice(0, 300))
+  // The run's own id repeats on every event of it and says nothing new here.
+  return Object.entries(data).filter(([k, v]) => !(k === 'convoy_id' && v === runId)).map(([k, v]) => {
+    let text = v == null ? 'null' : typeof v === 'object' ? (Array.isArray(v) && v.every((x) => typeof x !== 'object') ? v.join(', ') : JSON.stringify(v)) : String(v)
+    if (text.length > 160) text = text.slice(0, 157) + '…'
+    return `${esc(k)}=<b>${esc(text)}</b>`
+  }).join(' ')
+}
+
+function feedMatches(e) {
+  if (state.filter === 'all') return true
+  if (state.filter === 'problem') return e.problem
+  return e.category === state.filter
+}
+
+function feedHtml() {
+  const counts = { all: state.events.length, problem: 0 }
+  for (const e of state.events) { counts[e.category] = (counts[e.category] || 0) + 1; if (e.problem) counts.problem++ }
+  const chip = (key, label, title) => `<button type="button" data-filter="${key}" aria-pressed="${state.filter === key}" title="${esc(title)}">${label} ${counts[key] || 0}</button>`
+  const chips = [chip('all', 'All', 'Every event'), chip('problem', 'Problems', 'Failures, violations, conflicts, retries and failed checks')]
+  for (const [key, types] of Object.entries(state.categories)) {
+    if (types.length || counts[key]) chips.push(chip(key, CATEGORY_LABELS[key] || key, types.join(', ')))
+  }
+  const shown = state.events.filter(feedMatches)
+  const items = shown.slice(-FEED_SHOWN).reverse().map((e) => `
+    <li class="${e.problem ? 'problem' : ''}">
+      <time datetime="${esc(e.created_at)}" title="${esc(e.created_at)}">${fmtTime(e.created_at)}</time>
+      <span class="type">${esc(e.type)}${e.task_id ? ` <code class="muted">${esc(e.task_id)}</code>` : ''}</span>
+      <span class="data">${summarizeData(e.data, state.selected)}</span>
+    </li>`).join('')
+  const more = shown.length > FEED_SHOWN ? `<p class="muted">Showing the newest ${FEED_SHOWN} of ${shown.length}.</p>` : ''
+  return `<div class="chips" role="group" aria-label="Filter events">${chips.join('')}</div>
+    ${items ? `<ol class="feed">${items}</ol>` : `<p class="empty">${state.events.length ? 'No events in this group.' : 'No events yet.'}</p>`}${more}`
+}
+
+function renderRun() {
+  const box = $('run')
+  if (!state.selected) {
+    box.innerHTML = LIVE
+      ? '<p class="empty">No convoy runs in this project yet. Start one with <code>opencastle convoy "&lt;task&gt;"</code> and it appears here.</p>'
+      : '<p class="empty">This snapshot has no runs.</p>'
+    return
+  }
+  const run = state.run
+  if (!run) {
+    box.innerHTML = state.error ? `<p class="note err">Could not read run <code>${esc(state.selected)}</code>: ${esc(state.error)}</p>` : '<p class="empty">Loading…</p>'
+    return
+  }
+  const feedScroll = box.querySelector('.feed')?.scrollTop || 0
+  const open = [...box.querySelectorAll('tr.fail details')].map((d) => d.open)
+  const liveBadge = !LIVE ? '' : run.alive ? '<span class="badge s-run"><span class="dot live" style="display:inline-block;margin-right:5px"></span>live</span>' : '<span class="badge">not running</span>'
+  const which = state.follow
+    ? `Showing the newest run${LIVE ? ', and following new ones' : ''}.`
+    : `Showing a run you picked. <button type="button" class="link" id="follow">Show the newest</button>`
+  const stale = LIVE && !run.alive && ['pending', 'running'].includes(run.status)
+    ? `<p class="note">Recorded as ${esc(run.status)}, but no process is working on it: the run was interrupted. <code>opencastle convoy resume</code> continues it.</p>` : ''
+  const err = state.error ? `<p class="note err">${esc(state.error)}</p>` : ''
+  box.innerHTML = `
+    <div class="head">
+      <div><h1>${esc(run.name)}</h1><div class="muted"><code>${esc(run.id)}</code>${run.pipeline_id ? ` · pipeline <code>${esc(run.pipeline_id)}</code>` : ''}</div></div>
+      <div class="badges">${badge(run.status)}${liveBadge}</div>
+    </div>
+    <p class="muted" style="margin:8px 0 0">${which}</p>
+    ${stale}${err}
+    ${factsHtml(run)}
+    <h2>Tasks</h2>${tasksHtml(run)}
+    <h2>Events</h2><div id="feed">${feedHtml()}</div>`
+  const feed = box.querySelector('.feed')
+  if (feed) feed.scrollTop = feedScroll
+  box.querySelectorAll('tr.fail details').forEach((d, i) => { if (open[i]) d.open = true })
+}
+
+function renderSessions() {
+  const rows = state.sessions.slice(0, 20)
+  if (!rows.length) {
+    $('sessions').innerHTML = '<p class="empty">No sessions logged yet.</p>'
+    return
+  }
+  const outcome = (o) => `<span class="badge ${{ success: 's-done', failed: 's-bad', partial: 's-warn' }[o] || ''}">${esc(o || '—')}</span>`
+  $('sessions').innerHTML = `<div class="table-wrap"><table class="cards">
+    <thead><tr><th>Task</th><th>When</th><th>Agent</th><th>Outcome</th><th class="num">Minutes</th><th class="num">Files</th><th>Model</th></tr></thead>
+    <tbody>${rows.map((s) => `<tr>
+      <td class="key">${esc(s.task || '—')}${s.tracker_issue ? `<span class="sub">${esc(s.tracker_issue)}</span>` : ''}</td>
+      <td data-label="When">${fmtDate(s.timestamp)}</td>
+      <td data-label="Agent">${esc(s.agent || '—')}</td>
+      <td data-label="Outcome">${outcome(s.outcome)}</td>
+      <td data-label="Minutes" class="num">${s.duration_min ?? '—'}</td>
+      <td data-label="Files" class="num">${s.files_changed ?? '—'}</td>
+      <td data-label="Model">${esc(s.model || '—')}</td>
+    </tr>`).join('')}</tbody></table></div>
+    ${state.sessions.length > rows.length ? `<p class="muted">The newest ${rows.length} of ${state.sessions.length}.</p>` : ''}`
+}
+
+// ── wiring ───────────────────────────────────────────────────────────────────
+$('run').addEventListener('click', (e) => {
+  const chip = e.target.closest('[data-filter]')
+  if (chip) { state.filter = chip.dataset.filter; $('feed').innerHTML = feedHtml(); return }
+  if (e.target.id === 'follow') { history.replaceState(null, '', location.pathname + location.search); select(state.runs[0]?.id ?? null, true) }
+})
+window.addEventListener('hashchange', () => {
+  const id = fromHash()
+  if (id && id !== state.selected) select(id, false)
+})
+setInterval(() => {
+  const el = $('elapsed')
+  if (el && state.run && state.run.alive) el.textContent = elapsedOf(state.run)
+}, 1000)
+
+async function boot() {
+  if (matchMedia('(max-width: 760px)').matches) $('runs-box').open = false
+  try {
+    await loadRuns()
+  } catch (err) {
+    state.error = `Could not read runs: ${err.message}`
+    renderWhere()
+    $('run').innerHTML = `<p class="note err">${esc(state.error)}</p>`
+    if (LIVE) setTimeout(boot, SLOW_MS)
+    return
+  }
+  loadSessions()
+  const picked = fromHash()
+  await select(picked && state.runs.some((r) => r.id === picked) ? picked : state.runs[0]?.id ?? null, !picked)
+  if (LIVE) setInterval(slowTick, SLOW_MS)
+}
+boot()
+</script>
+</body>
+</html>

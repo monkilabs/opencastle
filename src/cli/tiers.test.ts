@@ -105,8 +105,6 @@ describe('framework content is free of model names', () => {
     // Explains why the pinning was removed.
     'src/cli/tiers.ts',
     'src/cli/tiers.test.ts',
-    // Fixture data simulating reported values.
-    'src/dashboard/scripts/integration-test.ts',
   ])
 
   function walk(dir: string, out: string[] = []): string[] {
@@ -146,10 +144,10 @@ describe('framework content is free of model names', () => {
 })
 
 /**
- * A tier is one fact about an agent, and it is written down in four places: the
- * agent's own frontmatter, the map in tiers.ts, the registry table that ships to
- * users, and the dashboard's colouring. That is exactly the shape of duplication
- * this module was created to end, so the copies are checked against the source.
+ * A tier is one fact about an agent, and it is written down in three places: the
+ * agent's own frontmatter, the map in tiers.ts, and the registry table that ships
+ * to users. That is exactly the shape of duplication this module was created to
+ * end, so the copies are checked against the source.
  */
 const agentNames = new Map<string, string>()
 
@@ -206,17 +204,6 @@ describe('every copy of the tier table agrees with the agents', () => {
     for (const label of rows.keys()) {
       expect(shipped, `agent-registry.md lists retired ${label}`).toContain(label)
     }
-  })
-
-  it('the dashboard colours the same agents as economy', () => {
-    const dashboard = readFileSync(
-      resolve(import.meta.dirname, '..', 'dashboard', 'src', 'pages', 'index.astro'),
-      'utf8',
-    )
-    const listed = /var ECONOMY_AGENTS = \[(.*?)\]/s.exec(dashboard)?.[1] ?? ''
-    const inDashboard = [...listed.matchAll(/'([^']+)'/g)].map((m) => m[1]).sort()
-    const economy = [...declared].filter(([, t]) => t === 'economy').map(([a]) => a).sort()
-    expect(inDashboard).toEqual(economy)
   })
 })
 

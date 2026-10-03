@@ -1,0 +1,26 @@
+{
+ "sessions": [
+  {
+   "timestamp": "2026-10-03T11:47:19.491Z",
+   "agent": "Reviewer",
+   "task": "Review checkout discount",
+   "tracker_issue": null,
+   "outcome": "partial",
+   "model": null,
+   "duration_min": 6,
+   "files_changed": null,
+   "retries": null
+  },
+  {
+   "timestamp": "2026-10-03T11:47:11.246Z",
+   "agent": "Developer",
+   "task": "PRJ-12: Order form validation",
+   "tracker_issue": "PRJ-12",
+   "outcome": "success",
+   "model": null,
+   "duration_min": 14,
+   "files_changed": 3,
+   "retries": 0
+  }
+ ]
+}

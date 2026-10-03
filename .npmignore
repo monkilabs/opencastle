@@ -13,7 +13,3 @@ node_modules/
 # IDE
 .idea/
 .vscode/*
-
-# Dashboard build artifacts (not the dist itself)
-src/dashboard/node_modules/
-src/dashboard/.astro/

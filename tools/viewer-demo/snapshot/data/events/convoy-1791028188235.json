@@ -1,0 +1,559 @@
+{
+ "events": [
+  {
+   "id": 36,
+   "type": "convoy_started",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "name": "Order API, second pass (stub agents)"
+   },
+   "created_at": "2026-10-03T11:49:48.250Z",
+   "category": "run",
+   "problem": false
+  },
+  {
+   "id": 37,
+   "type": "task_started",
+   "task_id": "api-schema",
+   "worker_id": "worker-api-schema-1791028188260",
+   "data": {
+    "worker_id": "worker-api-schema-1791028188260",
+    "mechanism": "background"
+   },
+   "created_at": "2026-10-03T11:49:48.288Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 38,
+   "type": "task_started",
+   "task_id": "checkout-tests",
+   "worker_id": "worker-checkout-tests-1791028188260",
+   "data": {
+    "worker_id": "worker-checkout-tests-1791028188260",
+    "mechanism": "background"
+   },
+   "created_at": "2026-10-03T11:49:48.294Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 39,
+   "type": "task_failed",
+   "task_id": "checkout-tests",
+   "worker_id": "worker-checkout-tests-1791028188260",
+   "data": {
+    "reason": "error",
+    "exit_code": 1,
+    "worker_id": "worker-checkout-tests-1791028188260"
+   },
+   "created_at": "2026-10-03T11:49:52.374Z",
+   "category": "task",
+   "problem": true
+  },
+  {
+   "id": 40,
+   "type": "session",
+   "task_id": "checkout-tests",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude",
+    "task": "checkout-tests",
+    "outcome": "failed",
+    "duration_min": 0,
+    "files_changed": 0,
+    "retries": 0,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:49:52.379Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 41,
+   "type": "delegation",
+   "task_id": "checkout-tests",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791028188235",
+    "agent": "developer",
+    "model": "claude",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "failed",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:49:52.382Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 42,
+   "type": "dlq_entry_created",
+   "task_id": "checkout-tests",
+   "worker_id": null,
+   "data": {
+    "dlq_id": "dlq-checkout-tests-1791028192389",
+    "task_id": "checkout-tests",
+    "agent": "developer",
+    "failure_type": "error"
+   },
+   "created_at": "2026-10-03T11:49:52.390Z",
+   "category": "task",
+   "problem": true
+  },
+  {
+   "id": 43,
+   "type": "review_started",
+   "task_id": "api-schema",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "task_id": "api-schema",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T11:49:55.396Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 44,
+   "type": "review_verdict",
+   "task_id": "api-schema",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": "default",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T11:49:55.401Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 45,
+   "type": "contract_violation",
+   "task_id": "api-schema",
+   "worker_id": null,
+   "data": {
+    "task_id": "api-schema",
+    "agent": "developer",
+    "missing": [
+     "__contract_block"
+    ],
+    "warnings": []
+   },
+   "created_at": "2026-10-03T11:49:55.512Z",
+   "category": "check",
+   "problem": true
+  },
+  {
+   "id": 46,
+   "type": "task_done",
+   "task_id": "api-schema",
+   "worker_id": "worker-api-schema-1791028188260",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "worker-api-schema-1791028188260"
+   },
+   "created_at": "2026-10-03T11:49:55.516Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 47,
+   "type": "session",
+   "task_id": "api-schema",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude",
+    "task": "api-schema",
+    "outcome": "success",
+    "duration_min": 0,
+    "files_changed": 0,
+    "retries": 0,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:49:55.519Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 48,
+   "type": "delegation",
+   "task_id": "api-schema",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791028188235",
+    "agent": "developer",
+    "model": "claude",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:49:55.522Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 49,
+   "type": "task_started",
+   "task_id": "ui-form",
+   "worker_id": "worker-ui-form-1791028195526",
+   "data": {
+    "worker_id": "worker-ui-form-1791028195526",
+    "mechanism": "background"
+   },
+   "created_at": "2026-10-03T11:49:55.556Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 50,
+   "type": "task_started",
+   "task_id": "api-handler",
+   "worker_id": "worker-api-handler-1791028195526",
+   "data": {
+    "worker_id": "worker-api-handler-1791028195526",
+    "mechanism": "background"
+   },
+   "created_at": "2026-10-03T11:49:55.561Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 51,
+   "type": "review_started",
+   "task_id": "ui-form",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "task_id": "ui-form",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T11:50:00.650Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 52,
+   "type": "review_verdict",
+   "task_id": "ui-form",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": "default",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T11:50:00.655Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 53,
+   "type": "contract_violation",
+   "task_id": "ui-form",
+   "worker_id": null,
+   "data": {
+    "task_id": "ui-form",
+    "agent": "developer",
+    "missing": [
+     "__contract_block"
+    ],
+    "warnings": []
+   },
+   "created_at": "2026-10-03T11:50:00.759Z",
+   "category": "check",
+   "problem": true
+  },
+  {
+   "id": 54,
+   "type": "task_done",
+   "task_id": "ui-form",
+   "worker_id": "worker-ui-form-1791028195526",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "worker-ui-form-1791028195526"
+   },
+   "created_at": "2026-10-03T11:50:00.763Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 55,
+   "type": "session",
+   "task_id": "ui-form",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude",
+    "task": "ui-form",
+    "outcome": "success",
+    "duration_min": 0,
+    "files_changed": 0,
+    "retries": 0,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:50:00.768Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 56,
+   "type": "delegation",
+   "task_id": "ui-form",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791028188235",
+    "agent": "developer",
+    "model": "claude",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:50:00.770Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 57,
+   "type": "review_started",
+   "task_id": "api-handler",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "task_id": "api-handler",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T11:50:01.659Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 58,
+   "type": "review_verdict",
+   "task_id": "api-handler",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": "default",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T11:50:01.666Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 59,
+   "type": "contract_violation",
+   "task_id": "api-handler",
+   "worker_id": null,
+   "data": {
+    "task_id": "api-handler",
+    "agent": "developer",
+    "missing": [
+     "__contract_block"
+    ],
+    "warnings": []
+   },
+   "created_at": "2026-10-03T11:50:01.778Z",
+   "category": "check",
+   "problem": true
+  },
+  {
+   "id": 60,
+   "type": "task_done",
+   "task_id": "api-handler",
+   "worker_id": "worker-api-handler-1791028195526",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "worker-api-handler-1791028195526"
+   },
+   "created_at": "2026-10-03T11:50:01.783Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 61,
+   "type": "session",
+   "task_id": "api-handler",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude",
+    "task": "api-handler",
+    "outcome": "success",
+    "duration_min": 0,
+    "files_changed": 0,
+    "retries": 0,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:50:01.787Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 62,
+   "type": "delegation",
+   "task_id": "api-handler",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791028188235",
+    "agent": "developer",
+    "model": "claude",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:50:01.790Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 63,
+   "type": "task_started",
+   "task_id": "api-docs",
+   "worker_id": "worker-api-docs-1791028201796",
+   "data": {
+    "worker_id": "worker-api-docs-1791028201796",
+    "mechanism": "background"
+   },
+   "created_at": "2026-10-03T11:50:01.823Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 64,
+   "type": "review_started",
+   "task_id": "api-docs",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "task_id": "api-docs",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T11:50:05.911Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 65,
+   "type": "review_verdict",
+   "task_id": "api-docs",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": "default",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T11:50:05.918Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 66,
+   "type": "contract_violation",
+   "task_id": "api-docs",
+   "worker_id": null,
+   "data": {
+    "task_id": "api-docs",
+    "agent": "writer",
+    "missing": [
+     "__contract_block"
+    ],
+    "warnings": []
+   },
+   "created_at": "2026-10-03T11:50:06.030Z",
+   "category": "check",
+   "problem": true
+  },
+  {
+   "id": 67,
+   "type": "task_done",
+   "task_id": "api-docs",
+   "worker_id": "worker-api-docs-1791028201796",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "worker-api-docs-1791028201796"
+   },
+   "created_at": "2026-10-03T11:50:06.036Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 68,
+   "type": "session",
+   "task_id": "api-docs",
+   "worker_id": null,
+   "data": {
+    "agent": "writer",
+    "model": "claude",
+    "task": "api-docs",
+    "outcome": "success",
+    "duration_min": 0,
+    "files_changed": 0,
+    "retries": 0,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:50:06.042Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 69,
+   "type": "delegation",
+   "task_id": "api-docs",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791028188235",
+    "agent": "writer",
+    "model": "claude",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 2,
+    "convoy_id": "convoy-1791028188235"
+   },
+   "created_at": "2026-10-03T11:50:06.045Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 70,
+   "type": "convoy_failed",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "status": "failed",
+    "reason": "One or more tasks failed"
+   },
+   "created_at": "2026-10-03T11:50:06.050Z",
+   "category": "run",
+   "problem": true
+  }
+ ],
+ "more": false
+}
