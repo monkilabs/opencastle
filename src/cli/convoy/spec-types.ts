@@ -204,9 +204,15 @@ export interface ExecuteOptions {
    * which adapter honours which.
    */
   permissionMode?: PermissionMode;
-  /** MCP servers to make available during execution (Phase 19.7). */
+  /** A model name the runtime understands; omitted means the runtime's own default. */
+  model?: string;
+  /**
+   * @deprecated Ignored. Agents read the project's own MCP config, which
+   * `opencastle sync` compiles for every assistant; writing a second copy
+   * deleted a committed `mcp.json` and dropped its `env`.
+   */
   mcpServers?: MCPServerConfig[];
-  /** Automatically approve all MCP permission requests. */
+  /** @deprecated Ignored, with `mcpServers`. */
   mcp_approve_all?: boolean;
 }
 
@@ -215,6 +221,10 @@ export interface TokenUsage {
   prompt_tokens?: number;
   completion_tokens?: number;
   total_tokens?: number;
+  /** Input tokens read from the runtime's prompt cache. */
+  cache_read_tokens?: number;
+  /** Input tokens written to the runtime's prompt cache. */
+  cache_write_tokens?: number;
 }
 
 /** Result from an agent adapter execution. */
@@ -226,6 +236,10 @@ export interface ExecuteResult {
   taskId?: string;
   /** Token usage data if available from the adapter. */
   usage?: TokenUsage;
+  /** Cost as the runtime reported it. Undefined when it reports none — never guessed here. */
+  costUsd?: number;
+  /** The model the runtime actually used, when it says. */
+  model?: string;
 }
 
 /** Reporter interface for the run command. */
