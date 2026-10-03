@@ -1,0 +1,603 @@
+{
+ "events": [
+  {
+   "id": 1,
+   "type": "convoy_started",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "name": "Note tags",
+    "branch": "convoy/note-tags",
+    "base": "main",
+    "concurrency": 3
+   },
+   "created_at": "2026-10-03T13:21:22.282Z",
+   "category": "run",
+   "problem": false
+  },
+  {
+   "id": 2,
+   "type": "task_started",
+   "task_id": "notes-http-layer",
+   "worker_id": "43c7a6-notes-http-layer-f7lva",
+   "data": {
+    "worker_id": "43c7a6-notes-http-layer-f7lva",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T13:21:22.367Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 3,
+   "type": "task_started",
+   "task_id": "notes-data-layer",
+   "worker_id": "43c7a6-notes-data-layer-f7lv9",
+   "data": {
+    "worker_id": "43c7a6-notes-data-layer-f7lv9",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T13:21:22.373Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 4,
+   "type": "review_started",
+   "task_id": "notes-http-layer",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "notes-http-layer",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T13:22:10.766Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 5,
+   "type": "review_started",
+   "task_id": "notes-data-layer",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "notes-data-layer",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T13:22:45.390Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 6,
+   "type": "review_verdict",
+   "task_id": "notes-http-layer",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 67288,
+    "model": "claude-sonnet-5",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T13:23:03.041Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 7,
+   "type": "task_merged",
+   "task_id": "notes-http-layer",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/note-tags",
+    "files": 1
+   },
+   "created_at": "2026-10-03T13:23:03.120Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 8,
+   "type": "task_done",
+   "task_id": "notes-http-layer",
+   "worker_id": "43c7a6-notes-http-layer-f7lva",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "43c7a6-notes-http-layer-f7lva",
+    "tokens": 490914,
+    "cost_usd": 0.6720615,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T13:23:03.157Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 9,
+   "type": "session",
+   "task_id": "notes-http-layer",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "notes-http-layer",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:23:03.163Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 10,
+   "type": "delegation",
+   "task_id": "notes-http-layer",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791033682160",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:23:03.168Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 11,
+   "type": "review_verdict",
+   "task_id": "notes-data-layer",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 67175,
+    "model": "claude-sonnet-5",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T13:23:49.866Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 12,
+   "type": "task_merged",
+   "task_id": "notes-data-layer",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/note-tags",
+    "files": 1
+   },
+   "created_at": "2026-10-03T13:23:49.945Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 13,
+   "type": "task_done",
+   "task_id": "notes-data-layer",
+   "worker_id": "43c7a6-notes-data-layer-f7lv9",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "43c7a6-notes-data-layer-f7lv9",
+    "tokens": 1064344,
+    "cost_usd": 0.9060357,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T13:23:49.981Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 14,
+   "type": "session",
+   "task_id": "notes-data-layer",
+   "worker_id": null,
+   "data": {
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "task": "notes-data-layer",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:23:49.987Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 15,
+   "type": "delegation",
+   "task_id": "notes-data-layer",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791033682160",
+    "agent": "developer",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 0,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:23:49.991Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 16,
+   "type": "task_started",
+   "task_id": "readme-docs",
+   "worker_id": "43c7a6-readme-docs-f7lvd",
+   "data": {
+    "worker_id": "43c7a6-readme-docs-f7lvd",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T13:23:50.065Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 17,
+   "type": "task_started",
+   "task_id": "notes-http-tests",
+   "worker_id": "43c7a6-notes-http-tests-f7lvc",
+   "data": {
+    "worker_id": "43c7a6-notes-http-tests-f7lvc",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T13:23:50.072Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 18,
+   "type": "task_started",
+   "task_id": "notes-unit-tests",
+   "worker_id": "43c7a6-notes-unit-tests-f7lvb",
+   "data": {
+    "worker_id": "43c7a6-notes-unit-tests-f7lvb",
+    "mechanism": "worktree",
+    "adapter": "claude",
+    "attempt": 1
+   },
+   "created_at": "2026-10-03T13:23:50.075Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 19,
+   "type": "review_verdict",
+   "task_id": "readme-docs",
+   "worker_id": null,
+   "data": {
+    "level": "auto-pass",
+    "verdict": "pass",
+    "tokens": 0,
+    "model": null,
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T13:24:29.326Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 20,
+   "type": "task_merged",
+   "task_id": "readme-docs",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/note-tags",
+    "files": 1
+   },
+   "created_at": "2026-10-03T13:24:29.388Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 21,
+   "type": "task_done",
+   "task_id": "readme-docs",
+   "worker_id": "43c7a6-readme-docs-f7lvd",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "43c7a6-readme-docs-f7lvd",
+    "tokens": 195086,
+    "cost_usd": 0.1329039,
+    "estimated": false,
+    "model": "claude-haiku-4-5-20251001"
+   },
+   "created_at": "2026-10-03T13:24:29.430Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 22,
+   "type": "session",
+   "task_id": "readme-docs",
+   "worker_id": null,
+   "data": {
+    "agent": "writer",
+    "model": "claude-haiku-4-5-20251001",
+    "task": "readme-docs",
+    "outcome": "success",
+    "duration_min": 1,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:24:29.438Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 23,
+   "type": "delegation",
+   "task_id": "readme-docs",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791033682160",
+    "agent": "writer",
+    "model": "claude-haiku-4-5-20251001",
+    "tier": "economy",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:24:29.443Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 24,
+   "type": "review_started",
+   "task_id": "notes-http-tests",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "notes-http-tests",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T13:24:47.029Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 25,
+   "type": "review_started",
+   "task_id": "notes-unit-tests",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "task_id": "notes-unit-tests",
+    "model": "default"
+   },
+   "created_at": "2026-10-03T13:25:13.488Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 26,
+   "type": "review_verdict",
+   "task_id": "notes-http-tests",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 66505,
+    "model": "claude-sonnet-5",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T13:25:37.776Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 27,
+   "type": "task_merged",
+   "task_id": "notes-http-tests",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/note-tags",
+    "files": 1
+   },
+   "created_at": "2026-10-03T13:25:37.857Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 28,
+   "type": "task_done",
+   "task_id": "notes-http-tests",
+   "worker_id": "43c7a6-notes-http-tests-f7lvc",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "43c7a6-notes-http-tests-f7lvc",
+    "tokens": 428392,
+    "cost_usd": 0.665103,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T13:25:37.896Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 29,
+   "type": "session",
+   "task_id": "notes-http-tests",
+   "worker_id": null,
+   "data": {
+    "agent": "testing-expert",
+    "model": "claude-sonnet-5",
+    "task": "notes-http-tests",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:25:37.903Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 30,
+   "type": "delegation",
+   "task_id": "notes-http-tests",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791033682160",
+    "agent": "testing-expert",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:25:37.908Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 31,
+   "type": "review_verdict",
+   "task_id": "notes-unit-tests",
+   "worker_id": null,
+   "data": {
+    "level": "fast",
+    "verdict": "pass",
+    "tokens": 67035,
+    "model": "claude-sonnet-5",
+    "feedback_length": 0
+   },
+   "created_at": "2026-10-03T13:26:14.923Z",
+   "category": "review",
+   "problem": false
+  },
+  {
+   "id": 32,
+   "type": "task_merged",
+   "task_id": "notes-unit-tests",
+   "worker_id": null,
+   "data": {
+    "branch": "convoy/note-tags",
+    "files": 1
+   },
+   "created_at": "2026-10-03T13:26:15.007Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 33,
+   "type": "task_done",
+   "task_id": "notes-unit-tests",
+   "worker_id": "43c7a6-notes-unit-tests-f7lvb",
+   "data": {
+    "exit_code": 0,
+    "worker_id": "43c7a6-notes-unit-tests-f7lvb",
+    "tokens": 791334,
+    "cost_usd": 0.8321763,
+    "estimated": false,
+    "model": "claude-sonnet-5"
+   },
+   "created_at": "2026-10-03T13:26:15.042Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 34,
+   "type": "session",
+   "task_id": "notes-unit-tests",
+   "worker_id": null,
+   "data": {
+    "agent": "testing-expert",
+    "model": "claude-sonnet-5",
+    "task": "notes-unit-tests",
+    "outcome": "success",
+    "duration_min": 2,
+    "files_changed": 1,
+    "retries": 0,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:26:15.047Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 35,
+   "type": "delegation",
+   "task_id": "notes-unit-tests",
+   "worker_id": null,
+   "data": {
+    "session_id": "convoy-1791033682160",
+    "agent": "testing-expert",
+    "model": "claude-sonnet-5",
+    "tier": "standard",
+    "mechanism": "convoy",
+    "outcome": "success",
+    "retries": 0,
+    "phase": 1,
+    "convoy_id": "convoy-1791033682160"
+   },
+   "created_at": "2026-10-03T13:26:15.050Z",
+   "category": "task",
+   "problem": false
+  },
+  {
+   "id": 36,
+   "type": "gate_result",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "command": "npm run test",
+    "passed": true,
+    "exit_code": 0,
+    "scope": "convoy"
+   },
+   "created_at": "2026-10-03T13:26:15.249Z",
+   "category": "check",
+   "problem": false
+  },
+  {
+   "id": 37,
+   "type": "convoy_finished",
+   "task_id": null,
+   "worker_id": null,
+   "data": {
+    "status": "done"
+   },
+   "created_at": "2026-10-03T13:26:15.254Z",
+   "category": "run",
+   "problem": false
+  }
+ ],
+ "more": false
+}
