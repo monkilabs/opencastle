@@ -37,14 +37,15 @@ Every subtask must be tracked. **No issue = no implementation.** This step produ
 5. **Link to roadmap** — Reference the roadmap section in the issue description so context is never lost
 6. **Verify issues exist** — List all created issue IDs. If count is 0, do NOT proceed to Step 2.5
 
-### 2.5 Generate Convoy Spec (BLOCKING — decides how Step 3 proceeds)
+### 2.5 Write the Convoy Spec (BLOCKING — decides how Step 3 proceeds)
 
-All project-related work executes via the convoy engine — regardless of subtask count.
+All project-related work executes via OpenCastle's convoy engine — regardless of subtask count. The convoy engine is experimental; say so when you hand the spec over.
 
-1. **Generate the spec** — use the `generate-convoy` prompt with the decomposed task list. The spec IS the implementation plan; even single-task fixes go through convoy for observability.
-2. **Hand the spec to the user** — tell them to run: `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml`
-3. **The convoy engine handles** isolated git worktrees, parallel execution, merge queue ordering, crash recovery, and structured logging automatically.
-4. **After convoy completes** — proceed to Step 4 (validation) and Step 5 (delivery/PR).
+1. **Write the spec** — plan the decomposed task list by the rules in the `generate-convoy` prompt: self-contained task prompts, plain file paths (no `*` or `?`), no two tasks in the same phase sharing a path, `depends_on` for ordering. That prompt returns JSON, which the CLI converts only when `npx opencastle convoy "<task>"` runs it; here, write the spec yourself as YAML to `.opencastle/convoys/<name>.convoy.yml`, with `version: 1` and the same fields. The spec IS the implementation plan; even single-task fixes go through convoy for observability.
+2. **Check the spec** — run `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml --dry-run`. It parses the spec and prints the execution plan without starting an agent. It does not check file paths, so check the rule above yourself: the engine refuses glob paths and overlapping paths when the run starts.
+3. **Hand the spec to the user** — tell them the convoy engine is experimental, and to run: `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml`. It runs each task in a git worktree made from the last commit, so the work it builds on must be committed; it also needs a signed-in agent runtime (Copilot, Claude Code, Cursor, OpenCode or Codex; `--adapter <name>` picks one).
+4. **The convoy engine handles** isolated git worktrees, parallel execution, merge queue ordering, crash recovery, and structured logging automatically.
+5. **After convoy completes** — proceed to Step 4 (validation) and Step 5 (delivery/PR).
 
 ### 3. Implementation Rules
 

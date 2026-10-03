@@ -43,10 +43,12 @@ const actual = {
   skills: countDirEntries(join(orchestrator, 'skills'), () => true),
   plugins: countDirEntries(join(orchestrator, 'plugins'), (n) => !n.endsWith('.ts')),
   // README.md documents the directory for contributors; it is not a template,
-  // and no adapter installs it.
+  // and no adapter installs it. shared-delivery-phase.md is installed, but it is
+  // the phase every template ends with, not a template of its own — counting it
+  // made the README say 9 while the template tables everywhere else list 8.
   workflows: countDirEntries(
     join(orchestrator, 'agent-workflows'),
-    (n) => n.endsWith('.md') && n !== 'README.md',
+    (n) => n.endsWith('.md') && n !== 'README.md' && n !== 'shared-delivery-phase.md',
   ),
 }
 
@@ -76,8 +78,11 @@ function contentFilesFor(dir: string, exts: string[], out: string[] = []): strin
   if (!existsSync(dir)) return out
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, entry.name)
-    if (entry.isDirectory()) contentFilesFor(p, exts, out)
-    else if (exts.some((e) => entry.name.endsWith(e))) out.push(p)
+    if (entry.isDirectory()) {
+      // Installed dependencies are not our instructions, and a tool's own
+      // node_modules would make every scan here read thousands of files.
+      if (entry.name !== 'node_modules') contentFilesFor(p, exts, out)
+    } else if (exts.some((e) => entry.name.endsWith(e))) out.push(p)
   }
   return out
 }
@@ -166,12 +171,34 @@ describe('shipped content instructs only commands that exist', () => {
     expect(files.length).toBeGreaterThan(0)
   })
 
+  // The demo video is built by scripts that call the entrypoint directly, and its
+  // narration is plain text. Neither shape was read: the build ran
+  // `node "$SCRIPT_DIR/../bin/cli.mjs" dashboard`, a removed command, and only
+  // `opencastle <cmd>` was ever matched. Scripts and narration are read for that
+  // check alone — the model and invention checks are written for prose.
+  const toolScripts = load(contentFilesFor(join(repoRoot, 'tools'), ['.mjs', '.cjs', '.js', '.ts', '.txt']))
+
+  /** Invocations of a removed command: by name, or through `bin/cli.mjs`. */
+  const removedUsages = (cmd: string): RegExp[] => [
+    new RegExp(`(?:npx )?opencastle ${cmd}(?![a-z-])`, 'g'),
+    new RegExp(`cli\\.mjs["']?[ \\t]+${cmd}(?![a-z-])`, 'g'),
+  ]
+
+  it('recognises a removed command called through bin/cli.mjs', () => {
+    // The line that went unnoticed, so the pattern is held to it.
+    const line = 'node "$SCRIPT_DIR/../bin/cli.mjs" dashboard --seed --no-open &'
+    expect(removedUsages('dashboard').some((re) => new RegExp(re.source).test(line))).toBe(true)
+    // A subcommand of a real command is not the removed top-level one.
+    expect(removedUsages('dashboard').some((re) => new RegExp(re.source).test('node bin/cli.mjs convoy dashboard'))).toBe(false)
+  })
+
   it('names no removed command', () => {
     const offenders: string[] = []
     for (const cmd of replacedCommands()) {
-      const usage = new RegExp(`(?:npx )?opencastle ${cmd}(?![a-z-])`, 'g')
-      for (const file of files) {
-        for (const hit of file.text.matchAll(usage)) offenders.push(`${file.rel}: ${hit[0]}`)
+      for (const usage of removedUsages(cmd)) {
+        for (const file of [...files, ...toolScripts]) {
+          for (const hit of file.text.matchAll(usage)) offenders.push(`${file.rel}: ${hit[0]}`)
+        }
       }
     }
     expect(offenders).toEqual([])

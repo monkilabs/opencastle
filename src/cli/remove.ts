@@ -309,9 +309,12 @@ export default async function remove({ args }: CliContext): Promise<void> {
   }
 
   if (!assumeYes) {
+    // `refuse`: removing is not undone by running it again, so a piped run that
+    // ran out of answers aborts, as `sync` does, instead of taking the default.
     const proceed = await confirm(
       mode === 'all' ? 'Go ahead?' : 'Continue?',
       mode !== 'all',
+      'refuse',
     )
     if (!proceed) {
       console.log('  Aborted.\n')

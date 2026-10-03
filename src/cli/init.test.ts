@@ -801,7 +801,7 @@ describe('Claude Code adapter install', () => {
     expect(content).not.toContain('**supabase-database**')
   })
 
-  it('strips frontmatter from agent files in .claude/agents/', async () => {
+  it('writes agent files in .claude/agents/ with only the frontmatter Claude Code reads', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
 
@@ -812,9 +812,10 @@ describe('Claude Code adapter install', () => {
     expect(agents).not.toContain('data-engineer.agent.md')
 
     const devAgent = await readFile(join(agentsDir, 'developer.agent.md'), 'utf8')
-    // Should NOT start with frontmatter
-    expect(devAgent).not.toMatch(/^---\n/)
-    // Should contain the body content (starts with comment or heading)
+    // A name and a description make it a subagent; the source's VS Code fields
+    // (tools, tier, handoffs) are not carried over.
+    expect(devAgent).toMatch(/^---\nname: developer\ndescription: "[^"\n]+"\n---\n/)
+    expect(devAgent).not.toMatch(/^tier:/m)
     expect(devAgent).toContain('Developer')
   })
 

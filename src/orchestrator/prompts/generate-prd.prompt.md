@@ -135,7 +135,7 @@ Phase 3 — Verification (depends on Phase 2):
 ## Success Criteria
 
 Measurable, binary checks confirming feature is shippable:
-- [ ] All acceptance criteria in User Stories All acceptance criteria in User Stories & Acceptance Criteria pass Acceptance Criteria pass
+- [ ] All acceptance criteria in User Stories & Acceptance Criteria pass
 - [ ] TypeScript compiles with zero errors
 - [ ] Lint passes with zero warnings
 - [ ] Unit test coverage ≥ 95% on all new/changed files

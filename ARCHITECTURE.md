@@ -67,16 +67,17 @@ Defined once in [`src/cli/tiers.ts`](src/cli/tiers.ts); agent frontmatter carrie
 
 ## Execution Modes
 
-The Team Lead operates in two modes depending on task complexity:
+The Team Lead takes one of three paths, depending on the task:
 
 | Mode | When | Mechanism | Parallelism |
 |------|------|-----------|-------------|
-| **Compact** | Score ≤2, single subtask | Inline `runSubagent` calls | Sequential |
+| **Compact** | Score ≤2, single subtask | Direct sub-agent delegation | Sequential |
 | **Convoy** | Score 3+ or multi-task | `.convoy.yml` spec → ConvoyEngine | Parallel (DAG-based) |
+| **Utility** | `create-skill`, `brainstorm`, `quick-refinement` | Direct delegation, no convoy | Sequential |
 
 **Compact mode** handles small, focused tasks synchronously within a single conversation. The Team Lead delegates to one specialist at a time, reviews the output, and moves on.
 
-**Convoy mode** is the structured execution engine for complex, multi-step work. See [Convoy Architecture](#convoy-architecture) below.
+**Convoy mode** runs complex, multi-step work through the experimental convoy engine. See [Convoy Architecture](#convoy-architecture) below.
 
 ---
 
@@ -111,8 +112,8 @@ src/orchestrator/
 ├── instructions/    # Cross-cutting guidelines
 ├── agent-workflows/ # Multi-step workflow templates
 ├── prompts/         # Prompt templates
-├── plugins/         # IDE marketplace plugins
-└── customizations/  # Project-specific overrides
+├── plugins/         # Integrations — each an Agent Plugin (plugin.json, skills/, mcp.json) declared in config.ts
+└── customizations/  # Templates scaffolded into a project's .opencastle/
 ```
 
 **Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `react-development`, `security-hardening`, `testing-workflow`, `observability-logging`.
@@ -122,19 +123,20 @@ src/orchestrator/
 
 ## Adapters
 
-OpenCastle generates agent definitions for multiple IDE formats via pluggable adapters:
+One adapter per assistant ([`src/cli/adapters/`](src/cli/adapters/)) compiles
+instructions, agents, skills, commands and MCP config into that assistant's
+format. Which paths each one writes is in the README's
+[Supported assistants](README.md#supported-assistants) table.
 
-| Adapter | IDE |
-|---------|-----|
-| `vscode` | GitHub Copilot (VS Code chat participants) |
-| `cursor` | Cursor AI |
+| Adapter | Assistant |
+|---------|-----------|
+| `vscode` | VS Code (GitHub Copilot) |
+| `cursor` | Cursor |
 | `claude-code` | Claude Code |
 | `opencode` | OpenCode |
-| `windsurf` | Windsurf |
+| `windsurf` | Windsurf (Devin Desktop) |
 | `codex` | Codex CLI |
 | `antigravity` | Antigravity |
-
-Convoys can mix adapters in a single run — each task is assigned to an adapter independently.
 
 ---
 
@@ -163,8 +165,12 @@ cycle is an error.
   `node_modules` from the declaring layer upwards — so npm, pnpm, Yarn and
   workspaces all work, and the version is whatever the project's lockfile
   pinned. OpenCastle fetches nothing itself. A package is a baseline when its
-  `package.json` declares `"opencastle": { "baseline": "<dir>" }`. A version
-  in `extends` (`pkg@1.2.3`) and an absolute path are refused.
+  `package.json` declares `"opencastle": { "baseline": "<dir>" }`, or when it
+  is an Agent Plugin (a `plugin.json` at its root); then the layer is its
+  `dev.opencastle/` directory plus the portable `skills/` and `mcp.json`. A
+  relative path resolves from the directory of the `config.json` that names it
+  — `.opencastle/` for the project. A version in `extends` (`pkg@1.2.3`) and an absolute path
+  are refused.
 - **Materialized source.** `materialize()` writes the merged items to a scratch
   directory shaped like `src/orchestrator/`, normalising team files on the way:
   LF line endings (so a digest is the same on every checkout), `applyTo: '**'`
@@ -239,6 +245,10 @@ cycle is an error.
 | `database-migration` | Migrations, access policies, rollback |
 | `refactoring` | Safe refactoring with behavior preservation |
 
+Each template ends with the shared delivery phase
+([`shared-delivery-phase.md`](src/orchestrator/agent-workflows/shared-delivery-phase.md)):
+commit, push, open a pull request, never merge.
+
 ---
 
 ## Quality Gates
@@ -259,7 +269,9 @@ cycle is an error.
 
 ## Convoy Architecture
 
-A **convoy** is the structured execution engine for multi-agent workflows. It provides deterministic, crash-recoverable orchestration with file isolation, DAG-based scheduling, and layered validation.
+A **convoy** is the structured execution engine for multi-agent workflows. It provides deterministic, crash-recoverable orchestration with file isolation, DAG-based scheduling, and layered validation. It is experimental.
+
+Workers run on one of five runtimes ([`src/cli/run/adapters/`](src/cli/run/adapters/)): `claude`, `copilot`, `cursor`, `opencode` and `codex`. A convoy can mix them — each task is assigned a runtime independently. Windsurf and Antigravity are compile targets only.
 
 ### Lifecycle
 
@@ -322,7 +334,7 @@ defaults:
 ```
 
 ```
-npx opencastle convoy run --permission-mode bypassPermissions
+npx opencastle convoy run -f .opencastle/convoys/my-feature.convoy.yml --permission-mode bypassPermissions
 ```
 
 `bypassPermissions` gives a worker a free hand and is a sandbox-shaped choice; `default` restores the prompt-driven behavior, which in a non-interactive run means the worker writes nothing. Isolation still comes from the per-task worktree and the `files` partition either way.
@@ -360,17 +372,9 @@ The engine tracks agent failures over the life of a convoy:
 
 ### Event System
 
-46 canonical event types provide full observability:
+46 canonical event types cover the convoy and task lifecycle, reviews and disputes, gates, safety checks, circuit breakers, watch mode and worker health. [TELEMETRY.md](src/cli/convoy/TELEMETRY.md) lists every one with its data fields.
 
-| Category | Events |
-|----------|--------|
-| Convoy lifecycle | `convoy_started`, `convoy_finished`, `convoy_failed`, `convoy_guard` |
-| Task lifecycle | `task_started`, `task_done`, `task_failed`, `task_skipped`, `task_retried` |
-| Review & disputes | `review_verdict`, `dispute_opened`, `dlq_entry_created` |
-| Safety | `secret_leak_prevented`, `drift_detected`, `merge_conflict_detected` |
-| Infrastructure | `circuit_breaker_tripped`, `worker_killed` |
-
-Events are dual-written to **SQLite** (queryable, durable) and **NDJSON** (append-only, crash-safe via `fsyncSync`). Secret scanning runs on every NDJSON write.
+Events are dual-written to **SQLite** (`.opencastle/convoy.db`; queryable, durable) and **NDJSON** (`.opencastle/logs/convoys/<convoy-id>.ndjson`; append-only, crash-safe via `fsyncSync`). Secret scanning runs on every NDJSON write.
 
 ### Contracts & Output Validation
 
@@ -387,7 +391,7 @@ Tasks can write artifacts to `.opencastle/artifacts/{convoy-id}/{task-id}/`:
 
 - Named files with metadata (type, summary, size)
 - Downstream tasks can read upstream artifacts via dependency resolution
-- Pruned by age as later convoys run
+- Only the most recent convoys' artifacts are kept
 
 ---
 
@@ -396,7 +400,9 @@ Tasks can write artifacts to `.opencastle/artifacts/{convoy-id}/{task-id}/`:
 Each plugin that brings an MCP server declares it once
 ([`src/orchestrator/plugins/*/config.ts`](src/orchestrator/plugins/)), and every
 adapter writes it in that target's dialect — `servers` for VS Code,
-`mcpServers` for most others, OpenCode's `mcp` with `local`/`remote` entries.
+`[mcp_servers.<name>]` TOML tables for Codex, OpenCode's `mcp` with
+`local`/`remote` entries, and `mcpServers` for the rest (Antigravity's remote
+servers as `serverUrl`).
 
 An MCP server is code an agent runs with the developer's credentials, so the
 defaults are held to the rules a supply-chain review would apply:
@@ -414,10 +420,10 @@ defaults are held to the rules a supply-chain review would apply:
 - **Audited.** `doctor` and the status command read every target's MCP config,
   including servers the user added ([`mcp-audit.ts`](src/cli/mcp-audit.ts)): an
   unpinned package warns (fails, when the team's policy sets `requirePinned`); a
-  package missing from npm, a remote server Claude Code would read as stdio, a
-  credential written into the file, or a server the team's policy does not
-  allow, fails. Each finding carries the remedy that works for
-  it — `sync` only for entries it still owns. What it cannot read (a container
+  package OpenCastle knows is not on npm, a remote server Claude Code would read
+  as stdio, a credential written into the file, or a server the team's policy
+  does not allow, fails. Each finding carries the remedy that works for it —
+  `sync` only for entries it still owns. What it cannot read (a container
   image, a runner option it does not know) it reports as not audited rather than
   passing.
 - **Checked in CI.** `sync --check` runs the same audit, so it cannot pass what
@@ -430,17 +436,13 @@ defaults are held to the rules a supply-chain review would apply:
 
 ## Observability
 
-All execution is logged to `.opencastle/logs/events.ndjson` using the `opencastle log` CLI:
+Agents append sessions, delegations, reviews, panels and disputes to
+`.opencastle/logs/events.ndjson` with `opencastle log`; the record schema is in
+[logs/README.md](src/orchestrator/customizations/logs/README.md). Convoy events
+go to `.opencastle/convoy.db` and `.opencastle/logs/convoys/<convoy-id>.ndjson`
+([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)).
 
-| Record type | Who logs | When |
-|-------------|----------|------|
-| `session` | Every agent | Every session (hard gate) |
-| `delegation` | Team Lead | After each delegation |
-| `review` | Team Lead | After each fast review |
-| `panel` | Panel runner | After each panel vote |
-| `dispute` | Team Lead | After each dispute |
-
-The [dashboard](src/dashboard/) provides a web UI for exploring convoy runs, task timelines, agent performance, and event streams.
+The [dashboard](src/dashboard/) (`opencastle convoy dashboard`, experimental) provides a web UI for exploring convoy runs, task timelines, agent performance, and event streams.
 
 ---
 
@@ -457,7 +459,7 @@ The [dashboard](src/dashboard/) provides a web UI for exploring convoy runs, tas
 | `explain` | What every assistant here is given, where each piece comes from, and what you still need to set up |
 | `review` | What a change does to the assistants, compared with the lock at a base ref |
 | `ci` | Write a GitHub Actions workflow running `sync --check` and `review`, and optionally CODEOWNERS lines |
-| `baseline` | Scaffold (`init`) or validate (`check`) a baseline package — one `init` creates is also an Agent Plugin |
+| `baseline` | Scaffold (`init`) or validate (`check`) a baseline package — one that `init` creates is also an Agent Plugin |
 | `plugin` | Check an Agent Plugin, build Claude Code's files from it (`build`), write marketplace files for a directory of them (`index`) |
 | `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or Claude Code's auto memory for this repository into lessons (`memory`) |
 | `fleet` | OpenCastle and baseline versions, and MCP server spread, across many repositories' locks |

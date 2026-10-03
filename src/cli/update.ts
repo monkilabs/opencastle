@@ -75,7 +75,8 @@ const UPDATE_HELP = `
     --force           Force update even if versions match
     --allow-downgrade Recompile with this OpenCastle even though a newer one
                       compiled the project
-    --reconfigure     Re-run IDE and stack selection
+    --reconfigure     Choose the tech and team tools again (the assistants
+                      are chosen by opencastle init)
     --help, -h        Show this help
 `
 
@@ -422,11 +423,11 @@ export default async function update({
 
   if (isVersionBump) {
     console.log(
-      `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'update'}: ${c.dim(`v${manifest.version}`)} → ${c.green(`v${pkg.version}`)}\n`
+      `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'sync'}: ${c.dim(`v${manifest.version}`)} → ${c.green(`v${pkg.version}`)}\n`
     )
   } else {
     console.log(
-      `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'reconfigure'} ${c.dim(`v${pkg.version}`)}\n`
+      `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'sync'} ${c.dim(`v${pkg.version}`)}\n`
     )
   }
 

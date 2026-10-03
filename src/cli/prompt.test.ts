@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { computeVisibleWindow } from './prompt.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { computeVisibleWindow, c } from './prompt.js';
 
 describe('computeVisibleWindow', () => {
   it('returns full range when all items fit', () => {
@@ -62,5 +62,24 @@ describe('computeVisibleWindow', () => {
     expect(end - start).toBe(3);
     expect(start).toBeLessThanOrEqual(10);
     expect(end).toBeGreaterThan(10);
+  });
+});
+
+describe('colours', () => {
+  const saved = process.env.NO_COLOR;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.NO_COLOR;
+    else process.env.NO_COLOR = saved;
+  });
+
+  it('wrap text in an SGR sequence by default', () => {
+    delete process.env.NO_COLOR;
+    expect(c.green('ok')).toBe('\x1B[32mok\x1B[0m');
+  });
+
+  it('are left out when NO_COLOR is set (no-color.org)', () => {
+    process.env.NO_COLOR = '1';
+    expect(c.green('ok')).toBe('ok');
+    expect(c.bold(c.dim('x'))).toBe('x');
   });
 });

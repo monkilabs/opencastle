@@ -4,11 +4,11 @@ Welcome! We're glad you're interested in contributing to OpenCastle. Whether it'
 
 ## Code of Conduct
 
-By participating in this project you agree to treat everyone with respect and follow the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/). Be kind, be constructive.
+By participating in this project you agree to treat everyone with respect and follow our [Code of Conduct](CODE_OF_CONDUCT.md). Be kind, be constructive.
 
 ## Reporting Bugs
 
-Found a bug? Please [open an issue](https://github.com/monkilabs/opencastle/issues/new) with:
+Found a bug? Please [open an issue](https://github.com/monkilabs/opencastle/issues/new/choose) with:
 
 - A clear, descriptive title
 - Steps to reproduce the problem
@@ -18,7 +18,7 @@ Found a bug? Please [open an issue](https://github.com/monkilabs/opencastle/issu
 
 ## Suggesting Features
 
-Have an idea? [Open a feature request](https://github.com/monkilabs/opencastle/issues/new) and describe:
+Have an idea? [Open a feature request](https://github.com/monkilabs/opencastle/issues/new/choose) and describe:
 
 - The problem you're trying to solve
 - Your proposed solution
@@ -28,7 +28,7 @@ Have an idea? [Open a feature request](https://github.com/monkilabs/opencastle/i
 
 ### Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 22.5 (the CLI uses `node:sqlite`)
 - **npm**
 
 ### Getting Started
@@ -41,15 +41,31 @@ cd opencastle
 # 2. Install dependencies
 npm install
 
-# 3. Build the project
+# 3. Build the CLI — bin/cli.mjs loads from dist/, and some tests drive it
 npm run cli:build
 
 # 4. Run tests
 npm test
 
-# 5. Try the CLI locally
-npx opencastle doctor
+# 5. Try the CLI on a scratch project
+mkdir -p /tmp/oc-try && cd /tmp/oc-try && git init -q
+node <your-clone>/bin/cli.mjs init --yes && node <your-clone>/bin/cli.mjs sync --check
 ```
+
+Run the CLI from your clone as `node <your-clone>/bin/cli.mjs`, in a scratch
+project rather than in the repository itself.
+
+### The dashboard
+
+The convoy run viewer in `src/dashboard/` is built from a demo database, the
+way the website deploy builds it:
+
+```bash
+npm run dashboard:generate-demo-db && npm run dashboard:etl && npm run dashboard:build
+```
+
+`npm run dashboard:preview` serves the result on port 4300. A project's own
+runs are viewed with `opencastle convoy dashboard`.
 
 ## Pull Request Process
 
@@ -66,9 +82,16 @@ Create a branch from `main` using this convention:
 
 1. **Keep PRs focused** — one concern per pull request.
 2. **Write tests** for any new functionality.
-3. **Run the full suite** — make sure `npm test` passes.
-4. **Build cleanly** — confirm `npm run cli:build` succeeds with no errors.
-5. **Write a clear PR description** — explain what changed and why.
+3. **Run what CI runs, in its order.** After `npm ci`, CI runs:
+   ```bash
+   npx tsc --noEmit && npm run cli:build && npm test && npm run verify:claims
+   ```
+   The build comes before the tests: `bin/cli.mjs` loads from `dist/`, and
+   without it the tests that drive the CLI skip or fail. Between `npm test` and
+   `verify:claims`, CI also runs two scripted checks on scratch projects — a
+   compile-and-check round trip and an upgrade from a pre-0.36 install — written
+   out in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+4. **Write a clear PR description** — explain what changed and why.
 
 ### Review Expectations
 
@@ -88,10 +111,13 @@ Create a branch from `main` using this convention:
 
 | Directory | Purpose |
 |-----------|---------|
+| `bin/` | CLI entry point; loads `dist/`, so build before running it |
 | `src/cli/` | CLI commands and adapters |
-| `src/orchestrator/` | Agent definitions, workflows, and skills |
-| `src/dashboard/` | Observability dashboard (Astro) |
-| `website/` | Project website |
+| `src/orchestrator/` | Agent definitions, workflows, skills and integrations |
+| `src/dashboard/` | Convoy run viewer (Astro) |
+| `website/` | Project website and docs |
+| `docs/` | Quickstart and the teams design notes |
+| `scripts/` | Repository tooling: claim verification, MCP pin checks, plugin packing |
 
 ## Getting Help
 

@@ -327,10 +327,19 @@ export function filesUnder(root: string, within?: string[], onSkip?: (abs: strin
   return out
 }
 
-/** A digest of what a layer contributes: its config and its content directories. */
-function layerIntegrity(root: string): string {
+/**
+ * A digest of what a layer contributes: its config and its content directories.
+ *
+ * An Agent Plugin keeps only its skills at the root; its servers are in
+ * `mcp.json` and everything else in `dev.opencastle/`. Hashing the root alone
+ * left all of that out, so an instruction edited without a version bump moved
+ * nothing in the lock and `review` had nothing to say about it.
+ */
+function layerIntegrity(root: string, extensionRoot?: string): string {
   const hash = createHash('sha256')
-  const parts = [LAYER_CONFIG_FILE, ...CONTENT_KINDS.map((k) => LAYER_DIR[k])]
+  const own = [LAYER_CONFIG_FILE, ...CONTENT_KINDS.map((k) => LAYER_DIR[k])]
+  const ext = extensionRoot ? relative(root, extensionRoot).split(sep).join('/') : null
+  const parts = ext ? [...own, 'plugin.json', 'mcp.json', ...own.map((p) => `${ext}/${p}`)] : own
   for (const part of parts) {
     const abs = join(root, part)
     if (!existsSync(abs)) continue
@@ -525,7 +534,7 @@ function loadExtends(
     for (const inner of plugin.config.extends ?? []) {
       loadExtends(inner, plugin.extensionRoot, plugin.configFile, [...chain, real], ctx)
     }
-    ctx.layers.push({ id, kind: 'baseline', root, version: version ?? plugin.version, integrity: layerIntegrity(root), ...plugin })
+    ctx.layers.push({ id, kind: 'baseline', root, version: version ?? plugin.version, integrity: layerIntegrity(root, plugin.extensionRoot), ...plugin })
     return
   }
 

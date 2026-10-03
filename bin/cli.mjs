@@ -11,6 +11,16 @@ const pkgRoot = resolve(__dirname, '..')
 
 const [, , command, ...rawArgs] = process.argv
 
+// A reader that stops early — `opencastle explain | head` — closes the pipe, and
+// the next write raised EPIPE as an unhandled error: a stack trace after the
+// lines that were wanted. Stop quietly instead, as `cat` and `git` do.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (err) => {
+    if (err && err.code === 'EPIPE') process.exit(0)
+    throw err
+  })
+}
+
 /**
  * `--flag=value` and `--flag value` are the same thing.
  *
@@ -192,7 +202,8 @@ const commands = { ...VISIBLE, ...HIDDEN }
 // belongs to it too — `opencastle --json` is documented in the help text, in
 // status's own help, and on the website, and used to answer "Unknown command".
 if (!command || command.startsWith('-')) {
-  const bare = ['--json', '--help', '-h']
+  // `--debug` is global; alone it is the status command with stack traces on.
+  const bare = ['--json', '--help', '-h', '--debug']
   if (!command || bare.includes(command)) {
     if (command === '--help' || command === '-h') {
       console.log(HELP)

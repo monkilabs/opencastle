@@ -30,7 +30,8 @@ const CONVOY_HELP = `
     opencastle convoy run -f <spec>      Execute a spec you wrote by hand
 
   Options:
-    --dry-run            Plan only; do not execute
+    --dry-run            With a task: print the first planning prompt and stop.
+                         With run: show the execution plan
     --verbose            Stream agent output
     --adapter, -a <name> Agent runtime to plan and run with
     --skip-validation    Skip PRD and spec validation passes

@@ -3,7 +3,7 @@
 /**
  * Generate the OG social card image for the OpenCastle GitHub repo / website.
  *
- * Usage:  node scripts/generate-og-image.mjs
+ * Usage:  node tools/og-image/generate-og-image.mjs
  *
  * Requires: playwright (already in devDependencies)
  * Output:   website/public/og-image.png (1280×640)
@@ -18,8 +18,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const HTML_PATH = path.resolve(__dirname, 'og-card.html');
-const LOGO_PATH = path.resolve(__dirname, '..', 'opencastle-logo.png');
-const OUTPUT_PATH = path.resolve(__dirname, '..', 'website', 'public', 'og-image.png');
+const LOGO_PATH = path.resolve(__dirname, '..', '..', 'opencastle-logo.png');
+const OUTPUT_PATH = path.resolve(__dirname, '..', '..', 'website', 'public', 'og-image.png');
 
 async function main() {
   const browser = await chromium.launch();

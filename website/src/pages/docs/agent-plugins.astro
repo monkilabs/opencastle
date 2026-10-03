@@ -47,11 +47,12 @@ const pluginTree = `my-plugin/
 
 const extendConfig = `// .opencastle/config.json
 {
-  "extends": ["@acme/ai-standard"]   // any Agent Plugin on npm, or "./path/to/one"
+  "extends": ["@acme/ai-standard"]   // an installed package, or a path from this file: "../plugins/ai-standard"
 }`;
 
 const baselineTree = `ai-standard/
 ├── package.json             "opencastle": { "baseline": "." }
+├── README.md
 ├── plugin.json              the Agent Plugins manifest
 ├── mcp.json                 servers every assistant can start as they are
 ├── skills/
@@ -61,9 +62,11 @@ const baselineTree = `ai-standard/
 │   ├── config.json          the policy, and servers that need \${NAME} variables
 │   └── instructions/
 │       └── engineering-standards.md
+├── .github/workflows/
+│   └── check.yml            runs opencastle baseline check on every push and pull request
 ├── .claude-plugin/
 │   └── plugin.json          Claude Code's copy — opencastle plugin build writes it
-└── .mcp.json                Claude Code's copy of mcp.json`;
+└── .mcp.json                Claude Code's copy of mcp.json, once mcp.json has a server`;
 
 const manifest = `{
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
@@ -101,7 +104,8 @@ const marketTree = `agent-plugins/
 └── .agents/plugins/marketplace.json    Codex`;
 
 const indexOutput = `$ npx opencastle plugin index
-  ✓ Listed 2 plugin(s) in .claude-plugin/marketplace.json, .cursor-plugin/marketplace.json, .agents/plugins/marketplace.json`;
+  ✓ Listed 2 plugin(s) in .claude-plugin/marketplace.json, .cursor-plugin/marketplace.json, .agents/plugins/marketplace.json
+  …`;
 
 const marketJson = `{
   "name": "acme.agent-plugins",
@@ -222,7 +226,7 @@ const integrationTree = `src/orchestrator/plugins/supabase/
             <table class="comparison-table">
               <thead><tr><th>Standard</th><th>Covers</th><th>What OpenCastle does with it</th></tr></thead>
               <tbody>
-                <tr><td><strong>AGENTS.md</strong></td><td>Project instructions</td><td>Writes it for Codex CLI and OpenCode; each other assistant gets its own root file with the same content</td></tr>
+                <tr><td><strong>AGENTS.md</strong></td><td>Project instructions</td><td>Writes it for Codex CLI and OpenCode, and Antigravity reads it beside <code>GEMINI.md</code>; Claude Code gets the same content in <code>CLAUDE.md</code>, Copilot, Cursor and Windsurf in their own instruction and rule files</td></tr>
                 <tr><td><strong>Agent Skills</strong> (<code>SKILL.md</code>)</td><td>Procedures an agent loads when a task matches</td><td>Every skill — OpenCastle's, your baseline's, your project's — is compiled as a <code>SKILL.md</code> folder named as the skill, where each assistant reads skills</td></tr>
                 <tr><td><strong>MCP</strong></td><td>Tools and data an agent can call</td><td>Writes every server in each assistant's own config, in its own variable syntax — JSON for six, <code>.codex/config.toml</code> for Codex</td></tr>
                 <tr><td><strong>Agent Plugins 1.0</strong></td><td>A package of skills and MCP servers</td><td>Uses any Agent Plugin as a baseline, publishes yours as one, and ships each of its {integrationCount} integrations as one</td></tr>
@@ -275,7 +279,7 @@ const integrationTree = `src/orchestrator/plugins/supabase/
           </p>
           <pre><code>{extendConfig}</code></pre>
           <p>
-            <code>opencastle sync</code> then compiles its skills and its servers into all seven assistants,
+            <code>opencastle sync</code> then compiles its skills and its servers into every assistant the project compiles for,
             held to your policy and recorded in the lock, like any baseline's. No OpenCastle declaration is
             needed in its <code>package.json</code>: a <code>plugin.json</code> at its root is enough.
           </p>
@@ -283,7 +287,7 @@ const integrationTree = `src/orchestrator/plugins/supabase/
             <li><strong>Skills</strong> are compiled as they are. One the Agent Skills spec would have an assistant skip — a name that does not match its directory — is reported.</li>
             <li><strong>Servers</strong> in <code>mcp.json</code> become the project's: <code>./</code> and <code>{'${PLUGIN_ROOT}'}</code> become the plugin's path from the project root, where assistants start a project's servers.</li>
             <li>A server that uses <code>{'${PLUGIN_DATA}'}</code>, a working directory of its own, or the legacy SSE transport is left out with the reason: those need an assistant that installs the plugin itself.</li>
-            <li>A plugin a conformant client would reject — a manifest outside the closed schema — is an error, and nothing is written.</li>
+            <li>A manifest a conformant client would reject — a missing name, a field of the wrong type — is an error, and nothing is written.</li>
           </ul>
         </section>
 
@@ -302,6 +306,11 @@ const integrationTree = `src/orchestrator/plugins/supabase/
             in <code>mcp.json</code>. One that needs a token or another value from the developer goes in
             <code>dev.opencastle/config.json</code>, written as <code>{'${NAME}'}</code>: the standard has no
             way to name a secret yet, and OpenCastle spells the variable the way each assistant expects.
+          </p>
+          <p>
+            The scaffold's policy in <code>dev.opencastle/config.json</code> allows only its example servers.
+            Add a new server's name to <code>policy.mcp.allow</code>, and a remote server's host to
+            <code>policy.mcp.remoteHosts</code>, or <code>opencastle baseline check</code> fails on it.
           </p>
           <p>
             Claude Code reads its own manifest, so <code>opencastle plugin build</code> writes
@@ -332,7 +341,7 @@ const integrationTree = `src/orchestrator/plugins/supabase/
             repository once — <code>claude plugin marketplace add acme/agent-plugins</code>,
             <code>copilot plugin marketplace add acme/agent-plugins</code>,
             <code>codex plugin marketplace add acme/agent-plugins</code>, or in Cursor under Dashboard → Plugins →
-            Team Marketplaces. Run <code>opencastle plugin index --check</code> in CI so a new plugin is never
+            Team Marketplaces → Import. Run <code>opencastle plugin index --check</code> in CI so a new plugin is never
             missing from the list.
           </p>
         </section>

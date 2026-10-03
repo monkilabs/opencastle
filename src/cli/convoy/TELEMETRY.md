@@ -1,6 +1,8 @@
 # Convoy Telemetry Model
 
-How Convoy concepts map to [OpenTelemetry](https://opentelemetry.io/) semantics.
+The events the convoy engine (experimental) records, and how its concepts map
+to [OpenTelemetry](https://opentelemetry.io/) semantics. OpenCastle does not
+export OpenTelemetry; the mapping is for anyone writing an exporter.
 
 ## Conceptual Mapping
 
@@ -24,10 +26,12 @@ Every event carries `convoy_id`, `task_id`, and `worker_id` (all nullable) to en
 
 ## Storage
 
-- **Primary**: SQLite (`convoy.db`) — durable, queryable, crash-safe
-- **Supplementary**: NDJSON (`convoy-events.ndjson`) — append-only log for streaming/grep
+- **Primary**: SQLite (`.opencastle/convoy.db`) — durable, queryable, crash-safe
+- **Supplementary**: NDJSON, one file per convoy (`.opencastle/logs/convoys/<convoy-id>.ndjson`) — append-only log for streaming/grep
 
-SQLite is the source of truth. NDJSON is replayed from SQLite on crash recovery via `recoverNdjson()`.
+SQLite is the source of truth. On resume, `recoverNdjson()` truncates a partial last line and replays the SQLite events missing from the NDJSON file.
+
+These are separate from the agent log, `.opencastle/logs/events.ndjson`, which `opencastle log` appends to ([schema](../../orchestrator/customizations/logs/README.md)).
 
 ### Write Strategy (v1)
 
@@ -37,103 +41,108 @@ NDJSON writes use synchronous `appendFileSync` + `fsyncSync` per event. This ens
 - **Throughput**: Not suitable for >10,000 events/second workloads.
 - **Crash-safety**: Every event is fsynced before the engine continues, so a crash never loses the last event.
 
-An async buffered writer is deferred as an optimization for Phase 5 if profiling shows sync writes become a bottleneck.
+An async buffered writer is deferred until profiling shows sync writes are a bottleneck.
 
 ## Event Type Reference
 
-All 39 canonical event types emitted by the convoy engine.
+All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). Sources are relative to `src/cli/`.
 
 ### Convoy Lifecycle
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `convoy_started` | engine.ts | `name?: string` |
-| `convoy_finished` | engine.ts | `status: string` |
-| `convoy_failed` | engine.ts | `status: string; reason?: string` |
-| `convoy_guard` | engine.ts | `checks?: string[]` |
+| `convoy_started` | convoy/engine.ts | `name?: string` |
+| `convoy_finished` | convoy/engine.ts | `status: string` |
+| `convoy_failed` | convoy/engine.ts | `status: string; reason?: string` |
+| `convoy_guard` | convoy/engine.ts | `checks?: string[]` |
+| `convoy_resumed` | convoy/engine.ts | `original_created_at?: string` |
 
 ### Task Lifecycle
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `task_started` | engine.ts | `worker_id?: string` |
-| `task_done` | engine.ts | `status?: string; retries?: number; worker_id?: string` |
-| `task_failed` | engine.ts | `reason: string; worker_id?: string; gate?: string; hook?: string` |
-| `task_skipped` | engine.ts | `reason: string` |
-| `task_retried` | engine.ts | `previous_status: string` |
-| `task_waiting_input` | engine.ts | `task_id?: string; reason?: string` |
+| `task_started` | convoy/engine.ts | `worker_id?: string` |
+| `task_done` | convoy/engine.ts | `status?: string; retries?: number; worker_id?: string` |
+| `task_failed` | convoy/engine.ts | `reason: string; worker_id?: string; gate?: string; hook?: string` |
+| `task_skipped` | convoy/engine.ts | `reason: string` |
+| `task_retried` | convoy/engine.ts | `previous_status: string` |
+| `task_waiting_input` | convoy/engine.ts | `task_id?: string; reason?: string` |
 
 ### Review & Disputes
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `review_started` | engine.ts | `level: string; task_id?: string; model?: string` |
-| `review_verdict` | engine.ts | `level: string; verdict: string; tokens: number; model?: string; feedback_length?: number; budget_exceeded?: boolean; budget_downgrade?: boolean; budget_skip?: boolean; passes?: number; blocks?: number` |
-| `dispute_opened` | engine.ts | `dispute_id: string; task_id: string; agent?: string; reason?: string` |
-| `dlq_entry_created` | engine.ts | `dlq_id: string; task_id: string; agent?: string; attempts?: number` |
+| `review_started` | convoy/engine.ts | `level: string; task_id?: string; model?: string` |
+| `review_stage_completed` | convoy/engine.ts | `stage: string; verdict: string; tokens: number; task_id?: string; model?: string` |
+| `review_verdict` | convoy/engine.ts | `level: string; verdict: string; tokens: number; model?: string; feedback_length?: number; budget_exceeded?: boolean; budget_downgrade?: boolean; budget_skip?: boolean; passes?: number; blocks?: number` |
+| `dispute_opened` | convoy/engine.ts | `dispute_id: string; task_id: string; agent?: string; reason?: string` |
+| `dlq_entry_created` | convoy/engine.ts | `dlq_id: string; task_id: string; agent?: string; attempts?: number` |
 
 ### Drift Detection
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `drift_check_result` | engine.ts | `score?: number; threshold?: number; passed?: boolean` |
-| `drift_detected` | engine.ts | `score?: number; files?: string[]` |
+| `drift_check_result` | convoy/engine.ts | `score?: number; threshold?: number; passed?: boolean` |
+| `drift_detected` | convoy/engine.ts | `score?: number; files?: string[]` |
 
 ### Circuit Breaker
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `circuit_breaker_tripped` | engine.ts | `agent?: string; failure_count?: number; threshold?: number` |
-| `circuit_breaker_fallback` | engine.ts | `original_agent?: string; fallback_agent?: string; task_id?: string` |
-| `circuit_breaker_blocked` | engine.ts | `agent?: string; task_id?: string` |
+| `circuit_breaker_tripped` | convoy/engine.ts | `agent?: string; failure_count?: number; threshold?: number` |
+| `circuit_breaker_fallback` | convoy/engine.ts | `original_agent?: string; fallback_agent?: string; task_id?: string` |
+| `circuit_breaker_blocked` | convoy/engine.ts | `agent?: string; task_id?: string` |
 
 ### Merge & Worktree
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `merge_conflict_detected` | engine.ts | `task_id?: string; files?: string[]` |
-| `merge_conflict_failed` | engine.ts | `task_id?: string; error?: string` |
+| `merge_conflict_detected` | convoy/engine.ts | `task_id?: string; files?: string[]` |
+| `merge_conflict_failed` | convoy/engine.ts | `task_id?: string; error?: string` |
 
 ### Artifacts & Injection
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `file_injection_received` | engine.ts | `task_id?: string; from_task?: string; name?: string` |
-| `artifact_limit_reached` | engine.ts | `task_id?: string; limit?: number; current?: number` |
+| `file_injection_received` | convoy/engine.ts | `task_id?: string; from_task?: string; name?: string` |
+| `artifact_limit_reached` | convoy/engine.ts | `task_id?: string; limit?: number; current?: number` |
+| `artifacts_extracted` | convoy/engine.ts | `task_id?: string; count?: number; artifacts?: Array<{ filename: string; summary?: string }>` |
 
 ### Agent Intelligence
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `agent_identity_captured` | engine.ts | `agent?: string; task_id?: string` |
-| `agent_identity_rejected` | engine.ts | `agent?: string; task_id?: string; reason?: string` |
-| `swarm_concurrency_update` | engine.ts | `new_concurrency?: number; reason?: string` |
+| `agent_identity_captured` | convoy/engine.ts | `agent?: string; task_id?: string` |
+| `agent_identity_rejected` | convoy/engine.ts | `agent?: string; task_id?: string; reason?: string` |
+| `swarm_concurrency_update` | convoy/engine.ts | `new_concurrency?: number; reason?: string` |
 
 ### Hooks
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `post_convoy_hook_failed` | engine.ts | `hook?: string; error?: string` |
+| `post_convoy_hook_failed` | convoy/engine.ts | `hook?: string; error?: string` |
 
 ### Observability / Session
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `session` | engine.ts | `agent?: string; model?: string; task?: string; outcome?: string; duration_min?: number` |
-| `delegation` | engine.ts | `agent?: string; model?: string; tier?: string; mechanism?: string; outcome?: string` |
+| `session` | convoy/engine.ts | `agent?: string; model?: string; task?: string; outcome?: string; duration_min?: number` |
+| `delegation` | convoy/engine.ts | `agent?: string; model?: string; tier?: string; mechanism?: string; outcome?: string` |
+
+`run/reporter.ts` also writes `session` and `delegation` records, to the agent log rather than the convoy's events.
 
 ### Security & Reliability
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `secret_leak_prevented` | engine.ts, events.ts | `original_type?: string; patterns?: string[]; task_id?: string; findings_count?: number; context?: string` |
-| `ndjson_write_failed` | events.ts | `original_type?: string` |
+| `secret_leak_prevented` | convoy/engine.ts, convoy/events.ts | `original_type?: string; patterns?: string[]; task_id?: string; findings_count?: number; context?: string` |
+| `ndjson_write_failed` | convoy/events.ts | `original_type?: string` |
 
 ### Built-in Gates
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `built_in_gate_result` | engine.ts | `gate: string; passed: boolean; output?: string; level?: string` |
+| `built_in_gate_result` | convoy/engine.ts | `gate: string; passed: boolean; output?: string; level?: string` |
 
 ### Watch Mode
 
@@ -148,12 +157,23 @@ All 39 canonical event types emitted by the convoy engine.
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `worker_killed` | health.ts | `reason?: string; worker_id?: string; task_id?: string` |
+| `worker_killed` | convoy/health.ts | `reason?: string; worker_id?: string; task_id?: string` |
 
-### Discovered Issues
+### Contracts & Partitions
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
+| `contract_violation` | convoy/engine.ts | `task_id?: string; agent?: string; missing?: string[]; warnings?: string[]` |
+| `partition_violation` | convoy/engine.ts | `task_id?: string; allowed?: string[]; actual?: string[]; violations?: string[]` |
+| `file_partition_conflict` | convoy/engine.ts | `conflicts?: Array<{ phase: number; taskA: string; taskB: string; overlapping: string[] }>` |
+
+### TDD Gate
+
+| Event Type | Source | Data Fields |
+|-----------|--------|-------------|
+| `tdd_check_passed` | convoy/engine.ts | `task_id?: string; new_source_files?: number; existing_test_files?: number` |
+| `tdd_check_failed` | convoy/engine.ts | `task_id?: string; missing_test_files?: string[]; new_source_files?: number` |
+| `tdd_check_skipped` | convoy/engine.ts | `task_id?: string; reason?: string; agent?: string` |
 
 ## Derived Metrics
 
@@ -176,26 +196,8 @@ These are computed from raw events, not emitted directly.
 
 Both validators are called at emit time in [`events.ts`](events.ts).
 
-## Dashboard Build Pipeline
+## Viewing events
 
-To build the dashboard with real convoy data:
-
-```sh
-# 1. Run ETL to extract data from SQLite → JSON
-npm run dashboard:etl
-
-# 2. Build the Astro dashboard (reads from public/data/*.json)
-npx astro build --root src/dashboard
-
-# 3. Serve locally (optional)
-npx astro preview --root src/dashboard
-```
-
-In CI, add these steps after tests pass:
-
-```yaml
-- run: npm run dashboard:etl
-- run: npx astro build --root src/dashboard
-```
-
-The ETL script gracefully handles missing databases — it produces empty JSON files so the dashboard renders an empty state instead of crashing.
+`opencastle convoy dashboard` (experimental) serves a project's runs from
+`.opencastle/convoy.db`. Building the dashboard itself from the demo database is
+described in [CONTRIBUTING.md](../../../CONTRIBUTING.md#the-dashboard).

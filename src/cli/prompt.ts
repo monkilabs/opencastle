@@ -16,15 +16,19 @@ function moveUp(n: number): string {
 
 // ── Color helpers ─────────────────────────────────────────────────
 
+/** One SGR style, unless `NO_COLOR` is set (https://no-color.org). Read per call, so a test can set it. */
+const sgr = (code: string) => (s: string) =>
+  process.env.NO_COLOR ? s : `\x1B[${code}m${s}\x1B[0m`;
+
 /** ANSI color helpers for CLI output. */
 export const c = {
-  cyan: (s: string) => `\x1B[36m${s}\x1B[0m`,
-  green: (s: string) => `\x1B[32m${s}\x1B[0m`,
-  yellow: (s: string) => `\x1B[33m${s}\x1B[0m`,
-  red: (s: string) => `\x1B[31m${s}\x1B[0m`,
-  bold: (s: string) => `\x1B[1m${s}\x1B[0m`,
-  dim: (s: string) => `\x1B[2m${s}\x1B[0m`,
-  magenta: (s: string) => `\x1B[35m${s}\x1B[0m`,
+  cyan: sgr('36'),
+  green: sgr('32'),
+  yellow: sgr('33'),
+  red: sgr('31'),
+  bold: sgr('1'),
+  dim: sgr('2'),
+  magenta: sgr('35'),
 };
 
 // ── Scrollable window helper ──────────────────────────────────────

@@ -231,6 +231,20 @@ describe('a plugin as a team’s baseline', () => {
     }
   })
 
+  it('moves its integrity when anything it contributes changes, not only its skills', () => {
+    plugin('standard')
+    write(project, { '.opencastle/config.json': JSON.stringify({ extends: ['../standard'] }) })
+    const integrity = (): string | undefined =>
+      resolveSources({ pkgRoot, projectRoot: project, stack: noTools }).layers.find((l) => l.id === 'standard')?.integrity
+    const before = integrity()
+    expect(before).toMatch(/^sha256-/)
+    write(join(project, 'standard'), { 'dev.opencastle/instructions/standards.md': '# Standards\n\nBe brief.\n' })
+    const afterInstruction = integrity()
+    expect(afterInstruction).not.toBe(before)
+    write(join(project, 'standard'), { 'mcp.json': mcp({ docs: { type: 'streamable-http', url: 'https://docs.acme.example/v2/mcp' } }) })
+    expect(integrity()).not.toBe(afterInstruction)
+  })
+
   it('extends one published to npm as it is, with no OpenCastle declaration', () => {
     plugin('node_modules/@acme/standard', { 'package.json': JSON.stringify({ name: '@acme/standard', version: '1.2.0' }) })
     write(project, { '.opencastle/config.json': JSON.stringify({ extends: ['@acme/standard'] }) })

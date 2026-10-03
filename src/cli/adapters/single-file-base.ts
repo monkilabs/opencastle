@@ -51,6 +51,49 @@ export interface SingleFileAdapterConfig {
    * present on disk now, relative to the project root. Removed on update.
    */
   legacyOutputs?: (_projectRoot: string) => string[]
+  /**
+   * Prompts and workflows become slash commands that list a description.
+   * Claude Code takes it from frontmatter and otherwise from the first line,
+   * which once frontmatter was stripped was the managed-file banner — every
+   * `/oc:` command described as "This file is managed by OpenCastle".
+   */
+  commandDescriptions?: boolean
+  /**
+   * Agent files are the assistant's own subagents, which it registers only
+   * with a `name` and a `description` in frontmatter. Claude Code reads
+   * `.claude/agents/`; written bare, every agent there was a file it never
+   * offered to delegate to. Everything else in the source frontmatter (VS Code
+   * tool names, handoffs, the tier) means nothing to it and is left out, so the
+   * agent inherits the session's tools and model.
+   */
+  agentFrontmatter?: boolean
+}
+
+/** An agent's name as a subagent: its file name, lower-case and hyphenated. */
+function subagentName(file: string): string {
+  return basename(file).replace(/\.agent\.md$|\.md$/, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+}
+
+/** An agent file: the body, under a name and description when the assistant registers subagents. */
+function agentFile(file: string, content: string, withFrontmatter: boolean): string {
+  const body = stripFrontmatter(content) + '\n'
+  if (!withFrontmatter) return body
+  const description = commandDescription(content) ?? subagentName(file)
+  return `---\nname: ${subagentName(file)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}`
+}
+
+/** The frontmatter `description`, or the first heading, as a command's one line. */
+function commandDescription(content: string): string | undefined {
+  const fromMeta = parseFrontmatterMeta(content).description
+  if (fromMeta) return fromMeta
+  return stripFrontmatter(content).match(/^#\s+(.+)$/m)?.[1]?.trim()
+}
+
+/** A command file: the body, under a description when the assistant lists one. */
+function commandFile(content: string, withDescription: boolean): string {
+  const body = stripFrontmatter(content) + '\n'
+  const description = withDescription ? commandDescription(content) : undefined
+  return description ? `---\ndescription: ${JSON.stringify(description)}\n---\n\n${body}` : body
 }
 
 /**
@@ -355,7 +398,7 @@ export function createSingleFileAdapter(
         if (!file.endsWith('.md')) continue
         const destPath = resolve(destAgents, file)
         const content = await readFile(resolve(agentsDir, file), 'utf8')
-        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, agentFile(file, content, config.agentFrontmatter === true), overwrite, results)
       }
     }
 
@@ -399,7 +442,7 @@ export function createSingleFileAdapter(
         const name = basename(file, '.prompt.md') || basename(file, '.md')
         const destPath = resolve(destPrompts, `${name}.md`)
         const content = await readFile(resolve(promptDir, file), 'utf8')
-        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, commandFile(content, config.commandDescriptions === true), overwrite, results)
       }
     }
 
@@ -414,7 +457,7 @@ export function createSingleFileAdapter(
         const name = basename(file, '.md')
         const destPath = resolve(destWf, `${config.workflowPrefix}${name}.md`)
         const content = await readFile(resolve(wfDir, file), 'utf8')
-        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, commandFile(content, config.commandDescriptions === true), overwrite, results)
       }
     }
 
@@ -595,7 +638,7 @@ function pruneEmptied(root: string, dirs: Set<string>): void {
 }
 
 /** Every file under a directory, relative to it. */
-function filesUnderDir(root: string): string[] {
+export function filesUnderDir(root: string): string[] {
   const out: string[] = []
   const walk = (dir: string, prefix: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {

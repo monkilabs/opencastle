@@ -132,4 +132,11 @@ describe('global behavior', () => {
     // Everything else must still reach the user.
     expect(source).toMatch(/console\.error\(`\$\{warning\.name\}: \$\{warning\.message\}`\)/)
   })
+
+  it('stops quietly when the reader closes the pipe early', () => {
+    // `opencastle init | head` printed an EPIPE stack trace after the lines that
+    // were wanted. Whether a run reaches that write depends on timing, so the
+    // handler is asserted here rather than raced in a test.
+    expect(source).toMatch(/stream\.on\('error'[\s\S]{0,80}err\.code === 'EPIPE'\) process\.exit\(0\)/)
+  })
 })

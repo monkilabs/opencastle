@@ -15,9 +15,11 @@ import { CLAUDE_COMMANDS_DIR, legacyClaudeCommands } from '../command-namespace.
  * The rest of `.claude/commands/` belongs to whoever writes there; `sync` never
  * touches it, beyond removing what a release before the namespace left at the top.
  *
- * Note: Claude Code has no "agents" concept. Agent definitions are embedded
- *       as reference sections within CLAUDE.md so Claude can adopt personas
- *       when asked.
+ *   agents/*.agent.md          → .claude/agents/<name>.agent.md            (subagents)
+ *
+ * Each command keeps one line of frontmatter, its description, which is what
+ * Claude Code lists beside it in the `/` menu. Each agent keeps a name and a
+ * description, which is what makes it a subagent Claude Code can delegate to.
  */
 
 export const IDE_ID = 'claude-code'
@@ -32,6 +34,8 @@ const { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs } = 
   workflowPrefix: 'workflow-',
   frameworkDirs: ['agents', 'skills', CLAUDE_COMMANDS_DIR],
   legacyOutputs: (projectRoot) => legacyClaudeCommands(projectRoot),
+  commandDescriptions: true,
+  agentFrontmatter: true,
 })
 
 export { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs }

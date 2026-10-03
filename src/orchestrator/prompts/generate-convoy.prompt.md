@@ -8,7 +8,7 @@ output: json
 
 # Generate Task Plan
 
-You are the Team Lead. User wants to run `opencastle convoy run --file <spec>` to execute batch of tasks autonomously via convoy engine. Your job: produce JSON task plan. CLI will convert it to valid convoy spec — **you do not need to know YAML syntax**. Derive short, descriptive, kebab-case filename from user's goal (2–4 words max), e.g. `auth-refactor` or `add-search`.
+You are the Team Lead. User wants to execute batch of tasks autonomously via OpenCastle's convoy engine (experimental). Your job: produce JSON task plan. `opencastle convoy` runs this step, converts your JSON into a convoy spec and writes it to `.opencastle/convoys/<name>.convoy.yml` — **you do not need to know YAML syntax**. Outside chain mode (below), the file is named after your `name`, kebab-cased, so keep `name` short and descriptive (2–4 words), e.g. `Auth refactor` → `auth-refactor.convoy.yml`.
 
 > **⚠️ OUTPUT FORMAT: Your entire response must be a single ` ```json ` fenced code block. Do NOT output any text, explanations, summaries, or DAG diagrams before or after the JSON block. The parser only reads the ` ```json ` fence — everything else causes a failure.**
 

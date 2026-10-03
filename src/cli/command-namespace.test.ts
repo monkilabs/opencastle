@@ -120,6 +120,41 @@ describe('Claude Code: /oc:<name>', () => {
     expect(existsSync(join(project, '.claude/commands/oc/workflow-bug-fix.md'))).toBe(true)
   })
 
+  it('gives each command the one line Claude Code lists beside it, and nothing else', async () => {
+    write(project, {
+      '.opencastle/prompts/release.prompt.md': "---\ndescription: 'Cut a release'\nagent: 'Team Lead (OpenCastle)'\n---\n\nRELEASE-PROMPT\n",
+    })
+    const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot)
+    try {
+      await (await IDE_ADAPTERS['claude-code']()).install(pkgRoot, project, stack, undefined, src)
+    } finally {
+      src.dispose()
+    }
+    const release = readFileSync(join(project, '.claude/commands/oc/release.md'), 'utf8')
+    // Without it Claude Code shows the first line, which was the managed-file banner.
+    expect(release.startsWith('---\ndescription: "Cut a release"\n---\n')).toBe(true)
+    expect(release).not.toContain('agent:')
+    // A workflow has no frontmatter; its heading is the description.
+    expect(readFileSync(join(project, '.claude/commands/oc/workflow-bug-fix.md'), 'utf8')).toMatch(
+      /^---\ndescription: "Workflow: Bug Fix"\n---\n/,
+    )
+  })
+
+  it('writes each agent as a subagent Claude Code registers: a name and a description', async () => {
+    const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot)
+    try {
+      await (await IDE_ADAPTERS['claude-code']()).install(pkgRoot, project, stack, undefined, src)
+    } finally {
+      src.dispose()
+    }
+    const lead = readFileSync(join(project, '.claude/agents/team-lead.agent.md'), 'utf8')
+    // Without frontmatter Claude Code never listed one of them.
+    expect(lead).toMatch(/^---\nname: team-lead\ndescription: "Task orchestrator[^\n]*"\n---\n/)
+    // VS Code's tool names and handoffs mean nothing to it.
+    expect(lead).not.toContain('handoffs:')
+    expect(lead).not.toContain('tools:')
+  })
+
   it('leaves a command someone wrote alone: not swept, not overwritten, not drift', async () => {
     write(project, { '.claude/commands/deploy.md': OWN_COMMAND, '.claude/commands/bug-fix.md': OWN_COMMAND })
     const adapter = await IDE_ADAPTERS['claude-code']()

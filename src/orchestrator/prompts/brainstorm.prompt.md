@@ -126,12 +126,12 @@ Not every task needs brainstorm. Skip this prompt; go directly to `implement-fea
 - The task is a simple config change or docs update
 - Technical approach is obvious and unambiguous
 - The scope is a single file or component with no design decisions
-- The task is well-understood and can be expressed as a convoy spec directly → use `generate-convoy` instead
+- The task is well-understood and can be expressed as a convoy spec directly → use `implement-feature`, which writes the spec
 
 ## After Brainstorming
 
 Once the brainstorm is complete and the user confirms (or you're confident in the approach):
 
-1. **Transition to planning** — use the brainstorm report as input for `implement-feature` (which will choose between direct delegation and convoy execution based on task count)
+1. **Transition to planning** — use the brainstorm report as input for `implement-feature`, which writes a convoy spec for all project work, whatever its size, for the user to run with `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml` (the convoy engine is experimental)
 2. **Preserve context** — include the brainstorm report in delegation prompts so agents understand *why* an approach was chosen
 3. **Reference in tracker** — link the brainstorm findings in the tracker issue description
