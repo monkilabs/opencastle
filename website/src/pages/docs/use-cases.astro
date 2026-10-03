@@ -1,84 +1,46 @@
 ---
 import '../../styles/global.css';
+import viewerShot from '../../images/dashboard-snapshot.png';
 
 const title = 'Use Cases — OpenCastle';
-const description = 'Cookbook-style recipes for building real applications with OpenCastle. Follow step-by-step guides to build personal portfolios, SaaS dashboards, and more using your AI agent team.';
+const description = 'Worked convoy runs with real output: plan and run a feature, stop a run and resume it, and run a spec you wrote. Each with the time and cost it took.';
 
 const recipes = [
   {
-    id: 'portfolio',
-    title: 'Build a Personal Portfolio Website',
-    status: 'published' as const,
+    id: 'plan-and-run',
+    title: 'Plan and run a feature',
     steps: [
-      { id: 'intro', label: 'Introduction' },
-      { id: 'what-youll-build', label: "What you'll build" },
-      { id: 'prerequisites', label: 'Prerequisites' },
-      { id: 'step-1', label: 'Step 1: Initialize' },
-      { id: 'step-2', label: 'Step 2: Describe project' },
-      { id: 'step-3', label: 'Step 3: Review the spec' },
-      { id: 'step-4', label: 'Step 4: Preview the plan' },
-      { id: 'step-5', label: 'Step 5: Execute' },
-      { id: 'step-6', label: 'Step 6: Monitor' },
-      { id: 'step-7', label: 'Step 7: Review & iterate' },
-      { id: 'troubleshooting', label: 'Tips & Troubleshooting' },
-      { id: 'whats-next', label: "What's next" },
+      { id: 'run-intro', label: 'Introduction' },
+      { id: 'run-prerequisites', label: 'Before you start' },
+      { id: 'run-step-1', label: 'Step 1: Initialize' },
+      { id: 'run-step-2', label: 'Step 2: Describe the task' },
+      { id: 'run-step-3', label: 'Step 3: The run' },
+      { id: 'run-step-4', label: 'Step 4: Watch it' },
+      { id: 'run-step-5', label: 'Step 5: Review and merge' },
+      { id: 'run-cost', label: 'Time and cost' },
+      { id: 'run-troubleshooting', label: 'When something fails' },
     ],
   },
   {
-    id: 'team-work',
-    title: 'Team Work with Linear',
-    status: 'published' as const,
+    id: 'interrupt-resume',
+    title: 'Stop a run and resume it',
     steps: [
-      { id: 'team-intro', label: 'Introduction' },
-      { id: 'team-what-youll-build', label: "What you'll set up" },
-      { id: 'team-prerequisites', label: 'Prerequisites' },
-      { id: 'team-step-1', label: 'Step 1: Initialize' },
-      { id: 'team-step-2', label: 'Step 2: Connect Linear' },
-      { id: 'team-step-3', label: 'Step 3: Create issues' },
-      { id: 'team-step-4', label: 'Step 4: Assign & partition' },
-      { id: 'team-step-5', label: 'Step 5: Execute convoy' },
-      { id: 'team-step-6', label: 'Step 6: Review together' },
-      { id: 'team-step-7', label: 'Step 7: Ship the PR' },
-      { id: 'team-troubleshooting', label: 'Tips & Troubleshooting' },
-      { id: 'team-whats-next', label: "What's next" },
+      { id: 'resume-intro', label: 'Introduction' },
+      { id: 'resume-step-1', label: 'Step 1: Press Ctrl+C' },
+      { id: 'resume-step-2', label: 'Step 2: See where it stands' },
+      { id: 'resume-step-3', label: 'Step 3: Resume' },
     ],
   },
   {
-    id: 'api-backend',
-    title: 'Build a REST API Backend',
-    status: 'published' as const,
+    id: 'hand-written-spec',
+    title: 'Write a spec by hand',
     steps: [
-      { id: 'api-intro', label: 'Introduction' },
-      { id: 'api-what-youll-build', label: "What you'll build" },
-      { id: 'api-prerequisites', label: 'Prerequisites' },
-      { id: 'api-step-1', label: 'Step 1: Initialize' },
-      { id: 'api-step-2', label: 'Step 2: Describe the API' },
-      { id: 'api-step-3', label: 'Step 3: Review the PRD' },
-      { id: 'api-step-4', label: 'Step 4: Preview the plan' },
-      { id: 'api-step-5', label: 'Step 5: Execute' },
-      { id: 'api-step-6', label: 'Step 6: Test the API' },
-      { id: 'api-step-7', label: 'Step 7: Review & iterate' },
-      { id: 'api-troubleshooting', label: 'Tips & Troubleshooting' },
-      { id: 'api-whats-next', label: "What's next" },
-    ],
-  },
-  {
-    id: 'existing-project',
-    title: 'Add OpenCastle to an Existing Project',
-    status: 'published' as const,
-    steps: [
-      { id: 'existing-intro', label: 'Introduction' },
-      { id: 'existing-what-youll-set-up', label: "What you'll set up" },
-      { id: 'existing-prerequisites', label: 'Prerequisites' },
-      { id: 'existing-step-1', label: 'Step 1: Initialize' },
-      { id: 'existing-step-2', label: 'Step 2: Review integrations' },
-      { id: 'existing-step-3', label: 'Step 3: Verify setup' },
-      { id: 'existing-step-4', label: 'Step 4: Generate a PRD' },
-      { id: 'existing-step-5', label: 'Step 5: Review PRD & run' },
-      { id: 'existing-step-6', label: 'Step 6: Verify compatibility' },
-      { id: 'existing-step-7', label: 'Step 7: Iterate & expand' },
-      { id: 'existing-troubleshooting', label: 'Tips & Troubleshooting' },
-      { id: 'existing-whats-next', label: "What's next" },
+      { id: 'spec-intro', label: 'Introduction' },
+      { id: 'spec-step-1', label: 'Step 1: Write the spec' },
+      { id: 'spec-step-2', label: 'Step 2: Check it' },
+      { id: 'spec-step-3', label: 'Step 3: Run it' },
+      { id: 'spec-step-4', label: 'Step 4: Review and merge' },
+      { id: 'spec-fields', label: 'What a spec can say' },
     ],
   },
 ];
@@ -135,76 +97,56 @@ const recipes = [
 
       <main class="docs-main">
         <p class="docs-subtitle">
-          Cookbook-style recipes that walk you through building real applications end-to-end
-          using OpenCastle's AI agent team. Each recipe covers setup, execution, iteration, and delivery.
+          Three convoy recipes, each run end to end on a small Node.js notes API: two source files, four
+          tests, a <code>CLAUDE.md</code>, and Claude Code as the agent runtime. The output is what the CLI
+          printed, trimmed where marked with <code>…</code>.
         </p>
         <div class="recipe-tip">
-          <strong>Experimental:</strong> these recipes run their work through the convoy engine
-          (<code>opencastle convoy</code>), which is experimental and may change. Its commands are on the
-          <a href="/docs/cli#convoy">CLI page</a>.
+          <strong>Experimental:</strong> the convoy engine (<code>opencastle convoy</code>) is experimental
+          and may change. Every command and flag is on the <a href="/docs/cli#convoy">CLI page</a>.
         </div>
 
-        <article class="recipe" id="portfolio">
+        <!-- ═══════════════ Recipe 1 ═══════════════ -->
+        <article class="recipe" id="plan-and-run">
           <h2 class="recipe__title">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>
-            Build a Personal Portfolio Website
+            Plan and run a feature
           </h2>
 
-          <!-- Introduction -->
-          <section class="recipe-section" id="intro">
+          <section class="recipe-section" id="run-intro">
             <h3 class="recipe-section__heading">Introduction</h3>
             <p class="recipe-section__body">
-              This recipe builds a personal portfolio website with OpenCastle's AI agent team, from an
-              empty directory to code on a feature branch ready for review. One <code>opencastle convoy</code>
-              command turns your description into a plan; the convoy engine then runs specialist agents
-              on it, in parallel where the plan allows.
+              You describe a feature in one sentence. OpenCastle plans it without changing anything, shows
+              you the plan and asks once. The agents then work in git worktrees of their own, in parallel where
+              the plan allows, and the result lands on a branch for you to review and merge. Your checkout is
+              never touched.
             </p>
-          </section>
-
-          <!-- What you'll build -->
-          <section class="recipe-section" id="what-youll-build">
-            <h3 class="recipe-section__heading">What you'll build</h3>
-            <p class="recipe-section__body">A personal portfolio site with four pages:</p>
-            <ul class="recipe-section__list">
-              <li><strong>Home</strong> — Hero section with name/tagline, recent projects grid, and a call to action</li>
-              <li><strong>About</strong> — Bio paragraph, skills grid, timeline, and social links</li>
-              <li><strong>Projects</strong> — Filterable project cards with tags, links, and screenshots</li>
-              <li><strong>Contact</strong> — Accessible contact form with client and server-side validation</li>
-            </ul>
             <p class="recipe-section__body">
-              The stack goes in your description: this recipe asks for Next.js with Tailwind CSS. Responsive
-              layout, dark mode and SEO are in the description too, so they end up in the plan.
+              The run quoted here added pagination and <code>DELETE /notes</code> to the notes API: four tasks,
+              planned in 5 minutes 41 seconds and run in 4 minutes 34 seconds, for $3.78 in all.
             </p>
           </section>
 
-          <!-- Prerequisites -->
-          <section class="recipe-section" id="prerequisites">
-            <h3 class="recipe-section__heading">Prerequisites</h3>
+          <section class="recipe-section" id="run-prerequisites">
+            <h3 class="recipe-section__heading">Before you start</h3>
             <ul class="recipe-prereq">
-              <li>Node.js 22.5 or later</li>
-              <li>Git</li>
-              <li>An AI coding assistant OpenCastle compiles for — Claude Code, VS Code with GitHub Copilot, Cursor, Windsurf, OpenCode, Codex CLI or Antigravity</li>
-              <li>An agent runtime the convoy can drive, signed in: GitHub Copilot, Claude Code (<code>claude</code>), Cursor's agent CLI (<code>agent</code>), OpenCode (<code>opencode</code>) or Codex (<code>codex</code>). OpenCastle uses the first it finds, Copilot first; <code>--adapter &lt;name&gt;</code> picks one</li>
-              <li>An empty directory</li>
+              <li>Node.js 22.5 or later, and Git</li>
+              <li>A git repository with at least one commit</li>
+              <li>An agent CLI, installed and signed in: Claude Code (<code>claude</code>), GitHub Copilot (<code>copilot</code>), Cursor (<code>cursor-agent</code>), OpenCode (<code>opencode</code>) or Codex (<code>codex</code>). The convoy uses the one for the assistant <code>opencastle init</code> sets up — see <a href="/docs/cli#convoy">Runtime</a></li>
+              <li>Your project's checks as <code>package.json</code> scripts — <code>typecheck</code>, <code>lint</code>, <code>test</code>, <code>build</code> — if you want them run at the end</li>
             </ul>
           </section>
 
-          <!-- Step 1 -->
-          <section class="recipe-section recipe-step" id="step-1">
+          <section class="recipe-section recipe-step" id="run-step-1">
             <div class="recipe-step__number">1</div>
-            <h3 class="recipe-section__heading">Step 1: Initialize your project</h3>
+            <h3 class="recipe-section__heading">Step 1: Initialize</h3>
             <p class="recipe-section__body">
-              Create a git repository and run the initializer. It reads the repository, shows what it found
-              and asks once; press Enter to accept. An empty directory has no stack to find, so it sets up
-              VS Code with Chrome DevTools and writes <code>.github/</code>, <code>.vscode/mcp.json</code> and
-              <code>.opencastle/</code>. For another assistant, run <code>npx opencastle init --customize</code>
-              instead.
+              Run the initializer in the repository. It finds the <code>CLAUDE.md</code>, so it compiles for
+              Claude Code, and that is the runtime the convoy will use.
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ mkdir my-portfolio &amp;&amp; cd my-portfolio
-$ git init
-$ npm init -y
+              <pre><code>$ cd ~/notes-api
 $ npx opencastle init</code></pre>
             </div>
             <div class="recipe-output">
@@ -213,635 +155,336 @@ $ npx opencastle init</code></pre>
 
   Scanning repository…
 
+  Found assistant config:
+    • Claude Code (CLAUDE.md)
+
   Will compile for:
-    → VS Code (new)
+    → Claude Code
 
   Integrations detected:
     chrome-devtools
 
-  Set this up? [Y/n]
+  Set this up? [Y/n] y
+
   Configuring project...
   ✓ Populated 2 config files
   → Removed 9 unused template(s)
-  ✓ Created 113 files
-  ✓ Created .gitignore with OpenCastle entries
-
-  Next steps:
-  1. Reload VS Code window (Cmd+Shift+P → "Developer: Reload Window")
-  2. Type /oc: in Copilot Chat for OpenCastle's commands — /oc:bootstrap-customizations first on an existing codebase
-  3. Commit what this wrote, .opencastle/ included — teammates get the same setup on clone
-  4. opencastle ci — fail a pull request whose generated config no longer matches
-
-  Also used by your team? opencastle init --customize
-  compiles the same config for Cursor, Claude Code, OpenCode, Windsurf, Codex CLI, Antigravity</code></pre>
+  ✓ Created 110 files
+  ✓ Updated .gitignore with OpenCastle entries
+  ✓ Merged into your existing CLAUDE.md
+    your content is above the managed block and is never overwritten
+  …</code></pre>
             </div>
             <p class="recipe-section__body">
-              Commit what init wrote. The convoy runs each task in a git worktree made from your last commit,
-              so files that aren't committed aren't there.
+              Commit what it wrote. Each task's worktree starts from your last commit, so anything uncommitted
+              is not there for the agents.
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
               <pre><code>$ git add -A
 $ git commit -m "Add OpenCastle"</code></pre>
             </div>
-            <div class="recipe-tip">
-              <strong>Tip:</strong> init picks integrations from your <code>package.json</code> and config
-              files. Add one later with <code>npx opencastle add &lt;pack&gt;</code> —
-              <code>npx opencastle add --list</code> shows them all. Every init flag is on the
-              <a href="/docs/cli#init">CLI page</a>.
-            </div>
           </section>
 
-          <!-- Step 2 -->
-          <section class="recipe-section recipe-step" id="step-2">
+          <section class="recipe-section recipe-step" id="run-step-2">
             <div class="recipe-step__number">2</div>
-            <h3 class="recipe-section__heading">Step 2: Describe your project</h3>
+            <h3 class="recipe-section__heading">Step 2: Describe the task</h3>
             <p class="recipe-section__body">
-              Run <code>npx opencastle convoy "&lt;task&gt;"</code> with a plain-English description of what you
-              want. OpenCastle writes a product requirements document (PRD), validates it, assesses its
-              complexity, turns it into a convoy spec and validates that too. Each step is one of the
-              <a href="/docs/prompts#pipeline">convoy pipeline prompts</a>; the fix steps run only when a
-              validation fails, which is why this run goes from step 2 to step 4.
+              Say what you want, with the details that matter to you. Planning changes no code: its agent
+              sessions read the repository, write a PRD, check and size it, and break it into tasks, and the
+              plan is then checked in code. This run passed
+              <code>--yes</code>, so one more session reviewed the plan (<code>Plan reviewed</code>) and the run
+              started without asking.
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy "Build a personal portfolio website with Next.js and \
-  Tailwind CSS: a home page featuring a hero section and recent projects, an \
-  about page with bio and skills, a projects page with filterable cards, and a \
-  contact page with a form. Use modern design, dark mode support, responsive \
-  layout, and SEO optimization."</code></pre>
+              <pre><code>$ npx opencastle convoy "Add pagination to GET /notes: limit and offset query parameters \
+  (defaults 20 and 0, limit capped at 100, a negative or non-numeric value is a 400 with \
+  a JSON error). Add DELETE /notes, which removes every note and answers 204. Cover both \
+  with tests." --yes</code></pre>
             </div>
             <div class="recipe-output">
-              <pre><code>  opencastle convoy
+              <pre><code>  opencastle convoy — planning, read-only
+  Runtime: Claude Code — configured by opencastle init
 
-  [1/7] Generating PRD…
+  ✓ PRD written .opencastle/prds/notes-pagination-and-bulk-delete.prd.md
+  ✓ PRD checked
+  ✓ Sized low, 4 workstreams
+  ✓ 4 tasks planned
+  ✓ Plan checked
+  ✓ Plan reviewed
 
-  ✓ PRD written to .opencastle/prds/portfolio.prd.md
+  Plan: Notes pagination delete — 4 tasks, up to 2 at a time
 
-  [2/7] Validating PRD…
-  [4/7] Assessing complexity…
-  (running in parallel)
+    TASK                              AGENT           DEPENDS ON                    FILES
+    notes-store-bulk-delete           developer       –                             src/notes.js
+    pagination-and-delete-routes      developer       notes-store-bulk-delete       src/server.js
+    unit-tests-bulk-delete            testing-expert  notes-store-bulk-delete       test/notes.test.js
+    integration-tests-pagination-bu…  testing-expert  pagination-and-delete-routes  test/server.test.js
 
-  ✓ Complexity assessment saved to .opencastle/prds/portfolio.complexity.json
-  ✓ PRD is valid
+  Branch convoy/notes-pagination-delete · runtime claude · then once: npm run test
+  Spec   .opencastle/convoys/notes-pagination-delete.convoy.yml
+  Planned in 5m 41s · 5 sessions · 677K tokens · $1.56</code></pre>
+            </div>
+            <p class="recipe-section__body">
+              The table is the plan: who does what, after what, touching which files. Under it are the branch the
+              work lands on, the runtime, the checks that run once at the end (found in
+              <code>package.json</code>), the spec file, and what planning spent.
+            </p>
+            <p class="recipe-section__body">
+              Without <code>--yes</code>, the command stops here and asks. Enter runs the plan. <strong>n</strong>,
+              or no answer at all — as in a script — starts nothing and prints the command for later:
+            </p>
+            <div class="recipe-output">
+              <pre><code>  Run it? [Y/n] n
 
-  ℹ Complexity: medium | Strategy: single
-
-  Generating task plan…
-
-  ✓ Task plan generated (6 tasks)
-  ✓ Convoy spec written to .opencastle/convoys/portfolio.convoy.yml
-
-  ✓ Schema validation passed
-  Validating convoy spec…
-
-  ✓ Spec is valid
-
-  Pipeline complete!
-
-  PRD:           .opencastle/prds/portfolio.prd.md
-  Convoy spec:   .opencastle/convoys/portfolio.convoy.yml
-
-  Preview: npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml --dry-run
-  Execute: npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml
-
-  Run it? [Y/n]</code></pre>
+  Not started. To run it later: opencastle convoy run .opencastle/convoys/&lt;name&gt;.convoy.yml</code></pre>
             </div>
             <div class="recipe-tip">
-              <strong>Answer n.</strong> The run ends by asking <code>Run it? [Y/n]</code>, and
-              Enter means yes. This recipe reviews the spec and previews the plan first, so answer
-              <strong>n</strong>; the <code>Preview:</code> and <code>Execute:</code> lines are the commands for
-              Steps 4 and 5.
-            </div>
-            <div class="recipe-tip">
-              <strong>Tip:</strong> <code>--dry-run</code> plans, shows the plan and writes the spec, and
-              stops there. <code>--yes</code> runs the plan without asking.
+              <strong>Tip:</strong> <code>--dry-run</code> plans and writes the spec, then stops. The spec is
+              plain YAML: edit it and run it with <code>npx opencastle convoy run</code>, as in
+              <a href="#hand-written-spec">the third recipe</a>. To plan again from a PRD you edited, run
+              <code>npx opencastle convoy plan --prd .opencastle/prds/&lt;name&gt;.prd.md</code>.
             </div>
           </section>
 
-          <!-- Step 3 -->
-          <section class="recipe-section recipe-step" id="step-3">
+          <section class="recipe-section recipe-step" id="run-step-3">
             <div class="recipe-step__number">3</div>
-            <h3 class="recipe-section__heading">Step 3: Review the generated spec</h3>
+            <h3 class="recipe-section__heading">Step 3: The run</h3>
             <p class="recipe-section__body">
-              Open <code>.opencastle/convoys/portfolio.convoy.yml</code>. It lists every task with its agent,
-              the files it may change, and the tasks it waits for; the CLI adds the defaults — timeouts,
-              retries, review.
+              Each task starts as soon as the tasks it depends on are done, in a worktree of its own. When its
+              agent finishes, the work is committed there and gets one read-only review — unless its task is
+              marked <code>review: auto</code> and the change is small — and is merged onto the run's branch, one
+              task at a time. The test suite ran once, at the end, on the merged result.
             </p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">.opencastle/convoys/portfolio.convoy.yml (excerpt)</div>
-              <pre><code># .opencastle/convoys/portfolio.convoy.yml
-name: Portfolio
-version: 1
-concurrency: 3
-on_failure: stop
-branch: feat/portfolio
-defaults:
-  timeout: 30m
-  max_retries: 1
-  review: fast
-  …
-tasks:
-  - id: foundation-setup
-    agent: ui-ux-expert
-    description: Scaffold Next.js with Tailwind, design tokens, layout and UI components
-    files:
-      - package.json
-      - tsconfig.json
-      - app/globals.css
-      - app/layout.tsx
-      - components/ui/
-    prompt: Set up a Next.js App Router project with TypeScript and Tailwind CSS. Create design tokens in app/globals.css, a
-      shared layout in app/layout.tsx, and Button, Card, Heading and Section components in components/ui/. Run npm run
-      lint and npx tsc --noEmit; both must pass.
-  - id: home-page
-    agent: developer
-    description: Build home page with hero section and projects grid
-    files:
-      - app/page.tsx
-      - components/Hero.tsx
-      - components/ProjectGrid.tsx
-    depends_on:
-      - foundation-setup
-    …
-  - id: seo-meta
-    agent: developer
-    description: Add SEO metadata, Open Graph image, and a sitemap
-    files:
-      - app/sitemap.ts
-      - app/opengraph-image.tsx
-    depends_on:
-      - home-page
-      - about-page
-      - projects-page
-      - contact-page
-    prompt: Add an Open Graph image at app/opengraph-image.tsx and a sitemap at app/sitemap.ts covering every page.
-gates:
-  - npm run lint
-  - npx tsc --noEmit</code></pre>
-            </div>
-            <div class="recipe-tip">
-              <strong>Tip:</strong> You can edit the spec before running it — add tasks, change
-              <code>files</code>, agents or dependencies. Keep <code>files</code> to plain paths: the engine
-              refuses <code>*</code> and <code>?</code>, and two tasks in the same phase may not share a path.
-              <code>--dry-run</code> doesn't check either, so the run would stop at the start.
-            </div>
-          </section>
-
-          <!-- Step 4 -->
-          <section class="recipe-section recipe-step" id="step-4">
-            <div class="recipe-step__number">4</div>
-            <h3 class="recipe-section__heading">Step 4: Preview the execution plan</h3>
-            <p class="recipe-section__body">
-              Add <code>--dry-run</code> to see the phases and the order tasks will run in, without starting an
-              agent. Tasks in the same phase run in parallel, up to <code>concurrency</code>. The adapter is the
-              agent runtime the run will use.
-            </p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml --dry-run</code></pre>
-            </div>
             <div class="recipe-output">
-              <pre><code>  ℹ Auto-detected adapter: copilot
+              <pre><code>  Convoy: Notes pagination delete — 4 tasks
+  Models: by agent tier — premium opus, standard sonnet, economy haiku (and reviews)
+  Live view: http://127.0.0.1:4300
 
-  🏰 Convoy Plan: Portfolio
-  Adapter: copilot | Concurrency: 3 | Tasks: 6
-  Branch: feat/portfolio
-  Gates: 2 validation commands
+  Branch convoy/notes-pagination-delete (from main) · 4 tasks · up to 2 at once
+  ▶ [notes-store-bulk-delete] developer
+  ✓ [notes-store-bulk-delete] (40s) · $0.60
+  ▶ [pagination-and-delete-routes] developer
+  ▶ [unit-tests-bulk-delete] testing-expert
+  ✓ [unit-tests-bulk-delete] (1m) · $0.44
+  ✓ [pagination-and-delete-routes] (1m 50s) · $0.58
+  ▶ [integration-tests-pagination-bulk-delete] testing-expert
+  ✓ [integration-tests-pagination-bulk-delete] (2m 2s) · $0.60
 
-  🏰 Execution Plan: Portfolio
-  Adapter:     copilot
-  Concurrency: 3
-  On failure:  stop
-  Tasks:       6
-  ──────────────────────────────────
-  Phase 1:
-    foundation-setup — Scaffold Next.js with Tailwind, design tokens, layout and UI components [ui-ux-expert, 30m] [package.json, tsconfig.json, app/globals.css, app/layout.tsx, components/ui/]
+  Gates:
+  ✓ npm run test
 
-  Phase 2:
-    home-page — Build home page with hero section and projects grid [developer, 30m] (after: foundation-setup) [app/page.tsx, components/Hero.tsx, components/ProjectGrid.tsx]
-    about-page — Build about page with bio, skills grid, and social links [developer, 30m] (after: foundation-setup) [app/about/page.tsx, components/SkillGrid.tsx]
-    projects-page — Build projects page with filterable project cards [developer, 30m] (after: foundation-setup) [app/projects/page.tsx, components/ProjectFilter.tsx]
-    contact-page — Build contact page with a validated form [developer, 30m] (after: foundation-setup) [app/contact/page.tsx, app/contact/actions.ts, components/ContactForm.tsx]
-
-  Phase 3:
-    seo-meta — Add SEO metadata, Open Graph image, and a sitemap [developer, 30m] (after: home-page, about-page, projects-page, contact-page) [app/sitemap.ts, app/opengraph-image.tsx]</code></pre>
+  ──────────────────────────────────────
+  ✓ Convoy done in 4m 34s — 4/4 tasks done
+  Gates: 1/1 passed
+  Spent: 2.4M tokens · $2.22
+  Convoy: convoy-1791042515925
+  Branch: convoy/notes-pagination-delete (from main)
+    Review: git diff main...convoy/notes-pagination-delete
+    Merge:  git merge convoy/notes-pagination-delete
+  Log: .opencastle/logs/convoys/convoy-1791042515925.ndjson</code></pre>
+            </div>
+            <p class="recipe-section__body">
+              The developer and testing-expert agents are standard tier, so they ran on <code>sonnet</code>;
+              the reviews ran on <code>haiku</code>. The first task changed few enough lines to pass on size;
+              the other three were reviewed and passed. The suite went from 4 tests to 19.
+            </p>
+            <div class="recipe-tip">
+              <strong>Tip:</strong> while it runs, the last line of the terminal shows what is running, what is
+              queued, how many are done, the time and the cost so far. <code>--verbose</code> also streams each
+              agent's output.
             </div>
           </section>
 
-          <!-- Step 5 -->
-          <section class="recipe-section recipe-step" id="step-5">
-            <div class="recipe-step__number">5</div>
-            <h3 class="recipe-section__heading">Step 5: Execute the convoy</h3>
+          <section class="recipe-section recipe-step" id="run-step-4">
+            <div class="recipe-step__number">4</div>
+            <h3 class="recipe-section__heading">Step 4: Watch it</h3>
             <p class="recipe-section__body">
-              Run it without <code>--dry-run</code>. The run viewer opens in your browser. The engine creates the
-              spec's branch, <code>feat/portfolio</code>, and runs each task in its own git worktree, so agents
-              work in parallel without touching each other's files. Each finished task is reviewed and merged
-              into the convoy's own branch, and the spec's <code>gates</code> run once at the end. When the run
-              ends, OpenCastle prints a summary — what failed and why, the branch, and how to review and merge
-              it — and exits.
+              On a terminal the run starts a read-only viewer and prints its address (<code>Live view:</code>
+              above). It shows the runs, each run's branch, runtime, models, time, tokens and cost, every task
+              with what it waits for and what it spent, a failed task's reason and the end of its output, and
+              the event feed. While a run is live it refreshes every 2 seconds. To open it at any time:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml</code></pre>
-            </div>
-            <div class="recipe-tip">
-              <strong>Note:</strong> If your machine sleeps or the process is interrupted, resume any time
-              with <code>npx opencastle convoy resume</code>. It also re-runs the tasks that failed, and the
-              ones a failure skipped; finished tasks are kept.
-            </div>
-          </section>
-
-          <!-- Step 6 -->
-          <section class="recipe-section recipe-step" id="step-6">
-            <div class="recipe-step__number">6</div>
-            <h3 class="recipe-section__heading">Step 6: Monitor progress</h3>
-            <p class="recipe-section__body">
-              While the convoy runs, or after it finishes, open the run viewer to see what each task did.
-            </p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal — new tab</div>
               <pre><code>$ npx opencastle convoy dashboard</code></pre>
             </div>
+            <img class="recipe-shot" src={viewerShot.src} width="1440" height="900" loading="lazy"
+              alt="The convoy viewer showing the Note tags run: done in 4m 52s for $3.21, five tasks with their agents, models, dependencies, durations, tokens and costs, and the event feed" />
             <p class="recipe-section__body">
-              It opens at <code>http://localhost:4300</code>, or the next free port, and shows:
+              This is a five-task run on the same project, three tasks at a time. The same page, over that run,
+              is at <a href="https://www.opencastle.dev/dashboard">opencastle.dev/dashboard</a>.
             </p>
+          </section>
+
+          <section class="recipe-section recipe-step" id="run-step-5">
+            <div class="recipe-step__number">5</div>
+            <h3 class="recipe-section__heading">Step 5: Review and merge</h3>
+            <p class="recipe-section__body">
+              The work is on <code>convoy/notes-pagination-delete</code>. Your own branch has only the plan's
+              files, <code>.opencastle/prds/</code> and <code>.opencastle/convoys/</code>, new and uncommitted.
+              Read the change, then merge it, or push the branch and open a pull request.
+            </p>
+            <div class="recipe-code">
+              <div class="recipe-code__header">Terminal</div>
+              <pre><code>$ git diff main...convoy/notes-pagination-delete
+$ git merge convoy/notes-pagination-delete</code></pre>
+            </div>
+            <p class="recipe-section__body">
+              <code>npx opencastle convoy</code> with nothing after it says where the last run stands and the
+              one thing to do next:
+            </p>
+            <div class="recipe-output">
+              <pre><code>  🚚 Convoy (experimental)
+
+  ✓ Notes pagination delete — done
+    4/4 done
+    Branch convoy/notes-pagination-delete
+
+  Next: opencastle convoy "&lt;task&gt;"
+  every task is done; start another</code></pre>
+            </div>
+          </section>
+
+          <section class="recipe-section" id="run-cost">
+            <h3 class="recipe-section__heading">Time and cost</h3>
+            <p class="recipe-section__body">
+              Four runs on this project with Claude Code. What a run takes depends on the runtime, the model,
+              the project and the task, so read these as one data point, not a promise.
+            </p>
+            <table class="recipe-table recipe-table--runs">
+              <thead>
+                <tr><th>What was asked</th><th>Tasks</th><th>Planning</th><th>Running</th><th>Tests</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>“Add a GET /health endpoint…, with a test” <code>--yes</code></td><td>2, one at a time</td><td>not shown</td><td>3m 59s · $1.50</td><td>4 → 6</td></tr>
+                <tr><td>“Add tags to notes: … Reject invalid notes with 400 … Document every endpoint in README.md …” <code>--yes</code></td><td>5, up to 3 at once</td><td>not shown</td><td>4m 53s · $3.21</td><td>4 → 18</td></tr>
+                <tr><td>This recipe: pagination and <code>DELETE /notes</code>, <code>--yes</code></td><td>4, up to 2 at once</td><td>5m 41s · $1.56</td><td>4m 34s · $2.22</td><td>4 → 19</td></tr>
+                <tr><td><a href="#hand-written-spec">A spec written by hand</a>: tags, validation, docs</td><td>3, one at a time</td><td>none</td><td>12m 36s · $5.89</td><td>4 → 39</td></tr>
+              </tbody>
+            </table>
             <ul class="recipe-section__list">
-              <li>The convoys and their tasks, with each task's status</li>
-              <li>The task pipeline, phase by phase</li>
-              <li>Review and gate results</li>
-              <li>The retry queue: tasks that failed too often and need your attention</li>
-              <li>The event timeline and the execution log</li>
+              <li><strong>The model matters most.</strong> In the five-task run the developer tasks ran on
+                <code>sonnet</code> for $0.67–$0.91 each, in 1m 40s–2m 27s, and the writer on <code>haiku</code> for
+                $0.13 in 39s. The hand-written run came before tasks were given a model by tier: everything ran on
+                the account's default, Opus, at $2.01–$2.60 a developer task, 3m 30s–6m 2s each.</li>
+              <li><strong>Planning is part of the bill.</strong> The first two runs came before the plan printed
+                what planning spent. In the third it was 41% of the total.</li>
+              <li><strong>Reviews are small.</strong> They run on the economy model: <code>haiku</code> in the
+                third run, at 44K–48K tokens each. The first two ran before that change, with reviews on
+                <code>sonnet</code> at 64K–67K tokens each.</li>
             </ul>
-            <div class="recipe-tip">
-              <strong>Tip:</strong> Whenever a convoy runs in a terminal — <code>convoy run</code>,
-              <code>resume</code>, or answering yes to <code>Run it?</code> — it prints a <em>Live view</em>
-              address for the viewer. For a short status in the terminal, run <code>npx opencastle convoy</code>.
-            </div>
           </section>
 
-          <!-- Step 7 -->
-          <section class="recipe-section recipe-step" id="step-7">
-            <div class="recipe-step__number">7</div>
-            <h3 class="recipe-section__heading">Step 7: Review and iterate</h3>
-            <p class="recipe-section__body">
-              Check out the feature branch and review the generated code. Run the dev server
-              to inspect the result in your browser, then iterate with quick-refinement prompts.
-            </p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git checkout feat/portfolio
-$ npm run dev
-# Open http://localhost:3000 in your browser</code></pre>
-            </div>
-            <p class="recipe-section__body">
-              For tweaks, use the <code>quick-refinement</code> prompt rather than another convoy. In Claude Code
-              and Copilot Chat it is <code>/oc:quick-refinement</code>; in the other assistants, ask for it by
-              name — see <a href="/docs/prompts#how-to-use">how to run a prompt</a>.
-            </p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">VS Code Copilot Chat</div>
-              <pre><code># Open Copilot Chat (Ctrl+Alt+I) → type /oc:quick-refinement
-# Describe the change, for example:
-"Polish the hero section animation — fade in from below
- rather than appear instantly. Respect prefers-reduced-motion."</code></pre>
-            </div>
-            <p class="recipe-section__body">
-              When satisfied, run the checks and, with a GitHub remote set up, open a pull request:
-            </p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npm run lint
-$ git push -u origin feat/portfolio
-$ gh pr create --title "feat: personal portfolio" --body "Built with OpenCastle's convoy engine"</code></pre>
-            </div>
-          </section>
-
-          <!-- Tips & Troubleshooting -->
-          <section class="recipe-section" id="troubleshooting">
-            <h3 class="recipe-section__heading">Tips &amp; Troubleshooting</h3>
+          <section class="recipe-section" id="run-troubleshooting">
+            <h3 class="recipe-section__heading">When something fails</h3>
             <div class="recipe-troubleshooting">
               <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">The PRD or spec keeps failing validation</p>
+                <p class="recipe-troubleshooting__problem">A task failed</p>
                 <p class="recipe-troubleshooting__solution">
-                  OpenCastle tries twice to fix it, then carries on with the best version it has and prints
-                  the remaining issues. Read them before you run the spec; if they matter, make your
-                  description more specific about scope and requirements and run the pipeline again.
+                  A failed attempt runs once more by default, told why the first failed. If it fails again, the
+                  tasks that depend on it are skipped and the rest carry on. The summary lists each task that is
+                  not done with its reason, and the viewer shows the end of its output. Fix the cause, then
+                  <code>npx opencastle convoy resume</code>.
                 </p>
               </div>
               <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">A task keeps failing</p>
+                <p class="recipe-troubleshooting__problem">The checks failed at the end</p>
                 <p class="recipe-troubleshooting__solution">
-                  <code>npx opencastle convoy</code> shows what failed, and the run viewer shows why, with the
-                  last lines of each failed task's output. Fix the cause — a failing gate, a missing script —
-                  then <code>npx opencastle convoy resume</code> re-runs what is not done.
+                  A planned spec gives one agent one attempt to fix the merged result. If the checks still fail,
+                  the run ends <code>gate-failed</code> with the failing command and its first line of output; the
+                  branch has the work so far.
                 </p>
               </div>
               <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Need to change scope mid-run</p>
+                <p class="recipe-troubleshooting__problem">A task could not be merged</p>
                 <p class="recipe-troubleshooting__solution">
-                  Stop the convoy with <code>Ctrl+C</code> — the state is saved to <code>.opencastle/convoy.db</code>.
-                  <code>npx opencastle convoy resume</code> continues the run as it was started: it replays the
-                  spec saved then, so edits to the file don't apply. To
-                  change scope, edit the spec and start a new run with
-                  <code>npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml</code>; it works on
-                  the same branch.
+                  A conflict re-runs the task once on top of the work it collided with. If it still cannot merge,
+                  the task fails and the summary names the branch its work is kept on.
                 </p>
               </div>
               <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Want to run overnight</p>
+                <p class="recipe-troubleshooting__problem">No runtime found</p>
                 <p class="recipe-troubleshooting__solution">
-                  Each task writes its state to <code>.opencastle/convoy.db</code> before and after it runs. If
-                  your machine sleeps or the process is killed, <code>npx opencastle convoy resume</code> picks up
-                  where it left off.
+                  The run stops before planning and names the CLI to install. To use another one, pass
+                  <code>--adapter</code>.
                 </p>
               </div>
             </div>
           </section>
-
-          <!-- What's next -->
-          <section class="recipe-section" id="whats-next">
-            <h3 class="recipe-section__heading">What's next</h3>
-            <p class="recipe-section__body">Now that you've shipped a portfolio, try these next steps:</p>
-            <ul class="recipe-section__list">
-              <li>
-                <strong>Larger projects</strong> — The same <code>opencastle convoy</code> command plans an
-                e-commerce store or an API backend. When the complexity step finds a PRD too large for one
-                convoy, it plans a chain of convoys that run one after another.
-              </li>
-              <li>
-                <strong>Explore Prompt Templates</strong> — The <a href="/docs/prompts">Prompt Templates</a>
-                page has ready-to-use templates for brainstorming, feature implementation, PR
-                review, and skill creation.
-              </li>
-              <li>
-                <strong>Read the Agentic Development guide</strong> — The <a href="/docs/agentic-development">Agentic Development</a>
-                guide covers best practices for multi-agent orchestration, quality gates,
-                and how to get the most out of your agent team.
-              </li>
-              <li>
-                <strong>Explore the CLI</strong> — The <a href="/docs/cli">CLI Reference</a>
-                documents every <code>opencastle</code> command with all flags and examples.
-              </li>
-            </ul>
-          </section>
-
         </article>
 
-        <article class="recipe" id="team-work">
+        <!-- ═══════════════ Recipe 2 ═══════════════ -->
+        <article class="recipe" id="interrupt-resume">
           <h2 class="recipe__title">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>
-            Team Work with Linear
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>
+            Stop a run and resume it
           </h2>
 
-          <!-- Introduction -->
-          <section class="recipe-section" id="team-intro">
+          <section class="recipe-section" id="resume-intro">
             <h3 class="recipe-section__heading">Introduction</h3>
-            <p class="recipe-section__body">This recipe runs OpenCastle in a team repository with Linear as the issue tracker. You'll add the Linear integration, plan a feature with the convoy pipeline, put Linear issue IDs into the convoy's tasks, run the convoy, and open one pull request that closes the issues.</p>
-            <p class="recipe-section__body">The convoy engine doesn't talk to Linear itself: the issue IDs travel in the task descriptions and prompts and in the pull request, and Linear closes the issues when the pull request merges. Your assistant reaches Linear through Linear's MCP server, so the Team Lead can create and update issues while you plan.</p>
+            <p class="recipe-section__body">
+              Stop a run whenever you need the machine, the terminal or the budget back. Everything is recorded
+              in <code>.opencastle/convoy.db</code>, so <code>resume</code> carries on with what is not done and
+              keeps what is. The same command picks up a run that failed, or one that was killed outright.
+            </p>
+            <p class="recipe-section__body">
+              This recipe stops the spec from <a href="#plan-and-run">the first recipe</a> after its first task.
+              The output comes from running that spec with a stand-in for the agent, so its times and costs mean
+              nothing and are left out (<code>…</code>); every other line is as the CLI printed it.
+            </p>
           </section>
 
-          <!-- What you'll set up -->
-          <section class="recipe-section" id="team-what-youll-build">
-            <h3 class="recipe-section__heading">What you'll set up</h3>
-            <p class="recipe-section__body">A Linear → OpenCastle → Agents → PR workflow that keeps issues, tasks and code tied together. The convoy builds every task on one feature branch, each task carries its Linear ID, and the pull request references them all.</p>
-
-            <div class="recipe-mockup">
-              <div class="recipe-mockup__chrome">
-                <div class="recipe-mockup__dots"><span></span><span></span><span></span></div>
-                <div class="recipe-mockup__url">Linear — Your Team</div>
-              </div>
-              <div class="recipe-mockup__body">
-                <div class="mockup-section-label">Linear board</div>
-                <div class="mockup-grid">
-                  <div class="mockup-card mockup-card--text">
-                    <div class="mockup-card__title">To Do</div>
-                    <div class="mockup-card__text">PRJ-211 · Create login form</div>
-                    <div class="mockup-card__text">PRJ-212 · Auth flow tests</div>
-                  </div>
-                  <div class="mockup-card mockup-card--text">
-                    <div class="mockup-card__title">In Progress</div>
-                    <div class="mockup-card__text">PRJ-210 · Auth API</div>
-                  </div>
-                  <div class="mockup-card mockup-card--text">
-                    <div class="mockup-card__title">Done</div>
-                    <div class="mockup-card__text">PRJ-209 · Design auth flow</div>
-                  </div>
-                </div>
-              </div>
-              <div class="recipe-mockup__pages">
-                <span class="recipe-mockup__page recipe-mockup__page--active">Linear</span>
-                <span class="recipe-mockup__page">OpenCastle</span>
-                <span class="recipe-mockup__page">Agents</span>
-                <span class="recipe-mockup__page">PR</span>
-              </div>
-            </div>
-
-            <ul class="recipe-section__list">
-              <li><strong>Connect Linear</strong> — <code>npx opencastle add linear</code> configures Linear's remote MCP server; each teammate signs in with OAuth.</li>
-              <li><strong>Create issues</strong> — one per task in the plan, in Linear or through the Linear tools in your assistant.</li>
-              <li><strong>Partition code</strong> — give each task its own files so agents don't collide.</li>
-              <li><strong>Run a convoy</strong> — agents build the tasks on one feature branch, ready for a pull request that references the Linear issues.</li>
-            </ul>
-          </section>
-
-          <!-- Prerequisites -->
-          <section class="recipe-section" id="team-prerequisites">
-            <h3 class="recipe-section__heading">Prerequisites</h3>
-            <ul class="recipe-prereq">
-              <li>Node.js 22.5 or later, Git, an AI coding assistant and an agent runtime for the convoy — as in the <a href="#prerequisites">first recipe</a></li>
-              <li>A Linear workspace with at least one project</li>
-              <li>A shared repository that your team has access to</li>
-            </ul>
-          </section>
-
-          <!-- Step 1 -->
-          <section class="recipe-section recipe-step" id="team-step-1">
+          <section class="recipe-section recipe-step" id="resume-step-1">
             <div class="recipe-step__number">1</div>
-            <h3 class="recipe-section__heading">Step 1: Initialize</h3>
-            <p class="recipe-section__body">From your local clone, run the initializer. It reads the repository, shows what it found and asks once — the full output is in the <a href="#step-1">first recipe</a>, and every flag is on the <a href="/docs/cli#init">CLI page</a>.</p>
+            <h3 class="recipe-section__heading">Step 1: Press Ctrl+C</h3>
+            <p class="recipe-section__body">
+              The first Ctrl+C stops the agents and starts no new task. The tasks that were running go back to
+              the queue, the run is marked interrupted, and the command exits with code 130. A second Ctrl+C
+              quits at once.
+            </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ cd your-team-repo
-$ npx opencastle init</code></pre>
+              <pre><code>$ npx opencastle convoy run .opencastle/convoys/notes-pagination-delete.convoy.yml</code></pre>
             </div>
+            <p class="recipe-section__body">Ctrl+C while the second and third tasks run:</p>
             <div class="recipe-output">
-              <pre><code>  …
-  Set this up? [Y/n]
-  Configuring project...
-  …
-  ✓ Created 113 files
-  …</code></pre>
+              <pre><code>  Convoy: Notes pagination delete — 4 tasks
+  Runtime: Claude Code — adapter: claude in the spec
+  Models: by agent tier — premium opus, standard sonnet, economy haiku (and reviews)
+
+  Branch convoy/notes-pagination-delete (from main) · 4 tasks · up to 2 at once
+  ▶ [notes-store-bulk-delete] developer
+  ✓ [notes-store-bulk-delete] (…) · …
+  ▶ [pagination-and-delete-routes] developer
+  ▶ [unit-tests-bulk-delete] testing-expert
+
+  ■ SIGINT — stopping: killing running agents, no new tasks. Press Ctrl+C again to quit at once.
+
+  ──────────────────────────────────────
+  ■ Convoy interrupted in … — 1/4 tasks done
+    • pagination-and-delete-routes (pending): stopped; runs again on resume
+    • unit-tests-bulk-delete (pending): stopped; runs again on resume
+    • integration-tests-pagination-bulk-delete (pending): stopped; runs again on resume
+  Spent: …
+  Convoy: convoy-1791043409905
+  Branch: convoy/notes-pagination-delete (from main)
+    Review: git diff main...convoy/notes-pagination-delete
+    Merge:  git merge convoy/notes-pagination-delete
+  Log: .opencastle/logs/convoys/convoy-1791043409905.ndjson
+  Resume with: opencastle convoy resume</code></pre>
             </div>
+            <p class="recipe-section__body">
+              The finished task is already merged onto the branch, and your checkout is as it was. A session
+              stopped mid-way never reports what it used, so its tokens are estimated and the run's totals are
+              marked <em>est.</em>
+            </p>
           </section>
 
-          <!-- Step 2 -->
-          <section class="recipe-section recipe-step" id="team-step-2">
+          <section class="recipe-section recipe-step" id="resume-step-2">
             <div class="recipe-step__number">2</div>
-            <h3 class="recipe-section__heading">Step 2: Connect Linear</h3>
-            <p class="recipe-section__body">Add the Linear integration. It recompiles the config with Linear's remote MCP server.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle add linear</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  🏰 OpenCastle add
-
-    + linear
-
-  Recompiling targets…
-
-  🏰 OpenCastle sync v1.0.0
-
-  IDEs: VS Code
-  Tech: chrome-devtools
-  Team: linear
-  Framework files are recompiled from source; edits there are replaced.
-  Customization files will be preserved.
-
-
-  ✓ Updated 1 framework files
-  + Created 1 new files
-  ✓ Updated skill matrix
-  ✓ Rebuilt MCP config
-  ✓ Updated .opencastle/lock.json (opencastle review explains the change)
-
-  ⟳ Reload VS Code window (Cmd+Shift+P → "Developer: Reload Window") to pick up changes</code></pre>
-            </div>
-            <p class="recipe-section__body">Linear needs no API key, so <code>npx opencastle doctor</code> reports no variables to set (<a href="/docs/cli#doctor">what doctor checks</a>):</p>
-            <div class="recipe-output">
-              <pre><code>  …
-  ✓ MCP environment variables  No env vars required
-  …</code></pre>
-            </div>
-            <p class="recipe-section__body">Commit what init and add wrote — teammates get the same setup on clone, and the convoy's worktrees start from your last commit. Then open your assistant: the first time it connects to Linear, it opens a browser window to sign in.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git add .gitignore .opencastle .github .vscode
-$ git commit -m "chore: add OpenCastle with Linear"</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Each teammate signs in once, with their own Linear account, so issue history shows who did what. No shared key to rotate, and nothing secret goes into <code>.env</code> or the committed config.</div>
-          </section>
-
-          <!-- Step 3 -->
-          <section class="recipe-section recipe-step" id="team-step-3">
-            <div class="recipe-step__number">3</div>
-            <h3 class="recipe-section__heading">Step 3: Create issues</h3>
-            <p class="recipe-section__body">Plan the feature with the convoy pipeline: it writes a PRD and a convoy spec whose tasks you'll map to Linear issues. It runs the same steps as in the <a href="#step-2">first recipe</a>. Answer <strong>n</strong> when it asks <code>Run it? [Y/n]</code> — the IDs go in first.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy "Add user authentication with login, sessions, and role-based access"</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  Pipeline complete!
-
-  PRD:           .opencastle/prds/user-authentication.prd.md
-  Convoy spec:   .opencastle/convoys/user-authentication.convoy.yml
-  …
-  Run it? [Y/n]</code></pre>
-            </div>
-            <p class="recipe-section__body">Review the generated PRD to confirm it captures the right scope before continuing:</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">.opencastle/prds/user-authentication.prd.md (excerpt)</div>
-              <pre><code># User Authentication — PRD
-
-## Overview
-Add sign-in with email and password, server-side sessions, and role-based access for admins and members.
-
-## Goals
-1. A member signs in with email and password and stays signed in for 7 days.
-2. Only admins can open /admin.
-
-## Implementation Scope
-| Concern | Files / Directories |
-|---------|---------------------|
-| API | `src/server/auth/` |
-| UI | `src/ui/auth/` |
-| Tests | `tests/integration/auth/` |
-…</code></pre>
-            </div>
-            <p class="recipe-section__body">Once the PRD looks right, create one Linear issue per task in the spec — in Linear's UI, or by asking your assistant, which has Linear's tools now.</p>
-            <div class="recipe-tip"><strong>Tip:</strong> If you prefer full manual control, create the epic and child issues in Linear first, then write the convoy spec by hand with those IDs in it.</div>
-          </section>
-
-          <!-- Step 4 -->
-          <section class="recipe-section recipe-step" id="team-step-4">
-            <div class="recipe-step__number">4</div>
-            <h3 class="recipe-section__heading">Step 4: Assign &amp; partition</h3>
-            <p class="recipe-section__body">Edit the spec: put each Linear ID in its task's <code>description</code> and <code>prompt</code>, and give each task its own <code>files</code>. Each task runs in an isolated worktree and may change only those paths. Use plain paths — the engine refuses <code>*</code> and <code>?</code>.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">.opencastle/convoys/user-authentication.convoy.yml (excerpt)</div>
-              <pre><code># .opencastle/convoys/user-authentication.convoy.yml
-name: User authentication
-version: 1
-concurrency: 3
-on_failure: stop
-branch: feat/user-authentication
-defaults:
-  timeout: 30m
-  max_retries: 1
-  review: fast
-  …
-tasks:
-  - id: api-auth
-    agent: developer
-    description: PRJ-210 · Implement authentication API with sessions and JWTs
-    files:
-      - src/server/auth/
-    prompt: "Linear issue PRJ-210. Implement the authentication API in src/server/auth/ with server-side sessions and JWTs."
-  - id: login-form
-    agent: developer
-    description: PRJ-211 · Create login form with client-side validation
-    files:
-      - src/ui/auth/
-    depends_on:
-      - api-auth
-    prompt: "Linear issue PRJ-211. Create the login form in src/ui/auth/ with client-side validation, calling the API from src/server/auth/."
-  - id: session-tests
-    agent: testing-expert
-    description: PRJ-212 · Add integration tests for the auth flow
-    files:
-      - tests/integration/auth/
-    depends_on:
-      - login-form
-    prompt: "Linear issue PRJ-212. Add integration tests for login, session expiry and role checks in tests/integration/auth/."
-gates:
-  - npm run lint
-  - npx tsc --noEmit</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Use <code>depends_on</code> for tasks that require artifacts from prior tasks — this enforces ordering and reduces merge conflicts.</div>
-          </section>
-
-          <!-- Step 5 -->
-          <section class="recipe-section recipe-step" id="team-step-5">
-            <div class="recipe-step__number">5</div>
-            <h3 class="recipe-section__heading">Step 5: Execute convoy</h3>
-            <p class="recipe-section__body">Preview the plan, then run it. Each task runs in its own git worktree and is merged into <code>feat/user-authentication</code> when it passes review — the <a href="#step-5">first recipe</a> describes a run.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/user-authentication.convoy.yml --dry-run
-$ npx opencastle convoy run .opencastle/convoys/user-authentication.convoy.yml</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  Phase 1:
-    api-auth — PRJ-210 · Implement authentication API with sessions and JWTs [developer, 30m] [src/server/auth/]
-
-  Phase 2:
-    login-form — PRJ-211 · Create login form with client-side validation [developer, 30m] (after: api-auth) [src/ui/auth/]
-
-  Phase 3:
-    session-tests — PRJ-212 · Add integration tests for the auth flow [testing-expert, 30m] (after: login-form) [tests/integration/auth/]</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> <code>npx opencastle convoy resume</code> continues after an interruption or a failure: it re-runs the failed tasks and the ones a failure skipped, and keeps the finished ones.</div>
-          </section>
-
-          <!-- Step 6 -->
-          <section class="recipe-section recipe-step" id="team-step-6">
-            <div class="recipe-step__number">6</div>
-            <h3 class="recipe-section__heading">Step 6: Review together</h3>
-            <p class="recipe-section__body"><code>npx opencastle convoy</code> shows how the last run ended. Before opening the pull request, check each task's gate and review results in the run viewer, and that every Linear ID is the right one.</p>
+            <h3 class="recipe-section__heading">Step 2: See where it stands</h3>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
               <pre><code>$ npx opencastle convoy</code></pre>
@@ -849,584 +492,245 @@ $ npx opencastle convoy run .opencastle/convoys/user-authentication.convoy.yml</
             <div class="recipe-output">
               <pre><code>  🚚 Convoy (experimental)
 
-  ✓ User authentication — done
-    3/3 done
+  ! Notes pagination delete — interrupted
+    1/4 done, 3 pending
+    Branch convoy/notes-pagination-delete
 
-  Nothing outstanding. Start another with opencastle convoy "&lt;task&gt;"</code></pre>
+  Next: opencastle convoy resume
+  runs what is not done — failed, interrupted and skipped tasks — and keeps the rest</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> <code>npx opencastle convoy dashboard</code> opens the run viewer at <code>http://localhost:4300</code>, or the next free port: per-task gate results, the execution log and the retry queue. It only displays the run; reviews and approvals happen in your pull request.</div>
-          </section>
-
-          <!-- Step 7 -->
-          <section class="recipe-section recipe-step" id="team-step-7">
-            <div class="recipe-step__number">7</div>
-            <h3 class="recipe-section__heading">Step 7: Ship the PR</h3>
-            <p class="recipe-section__body">Push the feature branch and open a pull request. Include all related Linear issue IDs in the PR body — Linear will use those references to auto-close issues when the PR merges.</p>
+            <p class="recipe-section__body"><code>--dry-run</code> lists what resuming would run, and starts nothing:</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git push -u origin feat/user-authentication
-$ gh pr create --title "feat: user authentication" --body "Closes PRJ-210, closes PRJ-211, closes PRJ-212"</code></pre>
+              <pre><code>$ npx opencastle convoy resume --dry-run</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Use the exact Linear IDs in the PR body (e.g. <code>PRJ-210</code>). With Linear's GitHub integration installed, Linear links the pull request to the issues and moves them to <strong>Done</strong> when it merges, if your workspace rules allow it.</div>
-          </section>
+            <div class="recipe-output">
+              <pre><code>  Resuming Notes pagination delete (convoy-1791043409905) — interrupted, 1/4 tasks done
 
-          <!-- Tips & Troubleshooting -->
-          <section class="recipe-section" id="team-troubleshooting">
-            <h3 class="recipe-section__heading">Tips &amp; Troubleshooting</h3>
-            <div class="recipe-troubleshooting">
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Linear tools do not appear in the assistant</p>
-                <p class="recipe-troubleshooting__solution">Run <code>npx opencastle doctor</code>: it flags an MCP config your assistant cannot load. Installs from before the switch to Linear's own server are moved over by <code>npx opencastle sync</code> unless you edited the entry.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">The browser sign-in never appears</p>
-                <p class="recipe-troubleshooting__solution">Restart the assistant so it reconnects to the server. If your network blocks <code>mcp.linear.app</code>, ask for it to be allowed — the server is remote.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Task descriptions don't match Linear issues</p>
-                <p class="recipe-troubleshooting__solution">Fix the IDs in the spec before the run. After it, a run replays the spec it started with, so put the right IDs in the pull request body instead.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Merge conflicts between tasks</p>
-                <p class="recipe-troubleshooting__solution">Give each task paths of its own under <code>files</code>, and order tasks that must touch the same file with <code>depends_on</code>. If a conflict occurs, resolve it on the feature branch and tighten the spec for next time.</p>
-              </div>
+  Would run 3 of 4 task(s):
+    pagination-and-delete-routes — developer [pending]
+    unit-tests-bulk-delete — testing-expert [pending]
+    integration-tests-pagination-bulk-delete — testing-expert [pending]
+
+  Dry run — nothing started, nothing recorded.</code></pre>
             </div>
           </section>
 
-          <!-- What's next -->
-          <section class="recipe-section" id="team-whats-next">
-            <h3 class="recipe-section__heading">What's next</h3>
-            <ul class="recipe-section__list">
-              <li><strong>Checks on every pull request</strong> — <code>npx opencastle ci</code> adds a GitHub Actions check that fails a pull request whose generated config no longer matches its sources; your own CI runs on the convoy's branch as usual. The <a href="/docs/agentic-development">Agentic Development</a> guide covers review practice.</li>
-              <li><strong>Other trackers</strong> — <code>npx opencastle add jira</code> (or <code>trello</code>, <code>notion</code>) adds another tracker alongside Linear or in its place.</li>
-              <li><strong>Shared setup across repositories</strong> — the <a href="/docs/teams">Teams</a> page covers baselines, policy and rollout.</li>
-            </ul>
-          </section>
+          <section class="recipe-section recipe-step" id="resume-step-3">
+            <div class="recipe-step__number">3</div>
+            <h3 class="recipe-section__heading">Step 3: Resume</h3>
+            <p class="recipe-section__body">
+              It continues the newest run that is not done, on the same branch and the same runtime, with the
+              spec as it was when the run started.
+            </p>
+            <div class="recipe-code">
+              <div class="recipe-code__header">Terminal</div>
+              <pre><code>$ npx opencastle convoy resume</code></pre>
+            </div>
+            <div class="recipe-output">
+              <pre><code>  Resuming Notes pagination delete (convoy-1791043409905) — interrupted, 1/4 tasks done
+  Runtime: Claude Code — the runtime this run started on
+  Models: by agent tier — premium opus, standard sonnet, economy haiku (and reviews)
 
+  Branch convoy/notes-pagination-delete (from main) · 3 task(s) to run
+  ▶ [unit-tests-bulk-delete] testing-expert
+  ▶ [pagination-and-delete-routes] developer
+  ✓ [unit-tests-bulk-delete] (…) · …
+  ✓ [pagination-and-delete-routes] (…) · …
+  ▶ [integration-tests-pagination-bulk-delete] testing-expert
+  ✓ [integration-tests-pagination-bulk-delete] (…) · …
+
+  Gates:
+  ✓ npm run test
+
+  ──────────────────────────────────────
+  ✓ Convoy done in … — 4/4 tasks done
+  Gates: 1/1 passed
+  Spent: …
+  Convoy: convoy-1791043409905
+  Branch: convoy/notes-pagination-delete (from main)
+    Review: git diff main...convoy/notes-pagination-delete
+    Merge:  git merge convoy/notes-pagination-delete
+  Log: .opencastle/logs/convoys/convoy-1791043409905.ndjson</code></pre>
+            </div>
+            <div class="recipe-tip">
+              <strong>Tip:</strong> resume also re-runs failed tasks, with their retries back, and the tasks a
+              failure skipped. To change what a task does, edit the spec and start it again with
+              <code>npx opencastle convoy run</code>: resume replays the spec the run started with.
+            </div>
+          </section>
         </article>
 
-        <article class="recipe" id="api-backend">
+        <!-- ═══════════════ Recipe 3 ═══════════════ -->
+        <article class="recipe" id="hand-written-spec">
           <h2 class="recipe__title">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>
-            Build a REST API Backend
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>
+            Write a spec by hand
           </h2>
 
-          <!-- Introduction -->
-          <section class="recipe-section" id="api-intro">
+          <section class="recipe-section" id="spec-intro">
             <h3 class="recipe-section__heading">Introduction</h3>
-            <p class="recipe-section__body">This recipe covers building a Node.js REST API with CRUD endpoints for users, projects, and tasks, JWT authentication middleware, input validation with Zod, and automated test coverage. It walks through initializing the workspace, running OpenCastle's pipeline to plan routes, models, middleware, and tests, reviewing the PRD, and verifying the result locally.</p>
-            <p class="recipe-section__body">The convoy runs parallel agents on the server scaffolding, route handlers, validation, auth, and tests, with quality gates and a review of every task.</p>
+            <p class="recipe-section__body">
+              When you already know the tasks, skip planning and write the spec yourself. This one asks for tags,
+              input validation and a README, after <code>opencastle init</code> as in
+              <a href="#run-step-1">the first recipe</a>.
+            </p>
           </section>
 
-          <!-- What you'll build -->
-          <section class="recipe-section" id="api-what-youll-build">
-            <h3 class="recipe-section__heading">What you'll build</h3>
-            <p class="recipe-section__body">A task management REST API served at <code>/api/v1</code> with endpoints for users, projects, and tasks, role-based access control, and full test coverage. The mockup below represents a sample JSON response from the generated API.</p>
-
-            <div class="recipe-mockup">
-              <div class="recipe-mockup__chrome">
-                <div class="recipe-mockup__dots"><span></span><span></span><span></span></div>
-                <div class="recipe-mockup__url">localhost:3000/api/v1</div>
-              </div>
-              <div class="recipe-mockup__body">
-                <pre><code>{`{
-  "data": [
-    {
-      "id": "task_01",
-      "title": "Design API",
-      "status": "open",
-      "assigneeId": "user_123",
-      "dueDate": "2026-04-01"
-    }
-  ],
-  "meta": { "page": 1, "limit": 10, "total": 42 }
-}`}</code></pre>
-              </div>
-              <div class="recipe-mockup__pages">
-                <span class="recipe-mockup__page recipe-mockup__page--active">Routes ·</span>
-                <span class="recipe-mockup__page">Models ·</span>
-                <span class="recipe-mockup__page">Middleware ·</span>
-                <span class="recipe-mockup__page">Tests</span>
-              </div>
-            </div>
-
-            <ul class="recipe-section__list">
-              <li><strong>API routes</strong> — CRUD for users, projects, tasks</li>
-              <li><strong>Auth</strong> — JWT authentication and role-based access control</li>
-              <li><strong>Validation</strong> — Zod schemas for request bodies and params</li>
-              <li><strong>Data</strong> — lightweight SQLite models (Node 22.5+), migrations, and seeds</li>
-              <li><strong>Tests</strong> — unit and integration tests with CI-friendly tooling</li>
-            </ul>
-          </section>
-
-          <!-- Prerequisites -->
-          <section class="recipe-section" id="api-prerequisites">
-            <h3 class="recipe-section__heading">Prerequisites</h3>
-            <ul class="recipe-prereq">
-              <li>Node.js 22.5 or later, Git, an AI coding assistant and an agent runtime for the convoy — as in the <a href="#prerequisites">first recipe</a></li>
-            </ul>
-          </section>
-
-          <!-- Step 1 -->
-          <section class="recipe-section recipe-step" id="api-step-1">
+          <section class="recipe-section recipe-step" id="spec-step-1">
             <div class="recipe-step__number">1</div>
-            <h3 class="recipe-section__heading">Step 1: Initialize</h3>
-            <p class="recipe-section__body">Create a new directory, initialize git and npm, run the OpenCastle initializer, and commit what it wrote. In an empty project it finds no stack — the output is the same as in the <a href="#step-1">first recipe</a>, and every flag is on the <a href="/docs/cli#init">CLI page</a>.</p>
+            <h3 class="recipe-section__heading">Step 1: Write the spec</h3>
+            <p class="recipe-section__body">
+              Give each task an <code>id</code>, an <code>agent</code>, the <code>files</code> it may change and a
+              <code>prompt</code>; <code>depends_on</code> orders them. Keep code and its tests in the same task.
+              Tasks with no files in common run at the same time.
+            </p>
             <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ mkdir task-api
-$ cd task-api
-$ git init
-$ npm init -y
-$ npx opencastle init
-$ git add -A
-$ git commit -m "Add OpenCastle"</code></pre>
+              <div class="recipe-code__header">notes.convoy.yml</div>
+              <pre><code>{`version: 1
+name: Notes API — tags, validation, docs
+gates:
+  - npm test
+tasks:
+  - id: tags
+    agent: developer
+    description: Tags on notes, with filtering
+    files: [src/notes.js, test/notes.test.js]
+    prompt: |
+      Add tags to notes. createNote accepts an optional \`tags\` array of strings
+      (trimmed, lower-cased, duplicates removed, default []). listNotes accepts an
+      optional \`{ tag }\` filter and returns only notes carrying that tag.
+      Add tests in test/notes.test.js. Keep the project dependency-free; run \`npm test\`.
+  - id: validation
+    agent: developer
+    description: Reject invalid notes with 400
+    files: [src/server.js, test/server.test.js]
+    prompt: |
+      In src/server.js, POST /notes must reject a body whose \`title\` is missing, not a
+      string, empty after trimming, or longer than 200 characters, with status 400 and
+      JSON \`{ "error": "<reason>" }\`. Invalid JSON is also a 400. GET /notes passes a
+      \`?tag=\` query through as listNotes({ tag }) (listNotes may ignore it until tags land).
+      Add tests in test/server.test.js. Keep it dependency-free; run \`npm test\`.
+  - id: docs
+    agent: writer
+    description: Document the API
+    depends_on: [tags, validation]
+    files: [README.md]
+    prompt: |
+      Write README.md for this notes API: what it is, how to run it (\`npm start\`) and test it
+      (\`npm test\`), and every endpoint with an example request and response, including tags
+      and the validation errors. Read the source to get it right.`}</code></pre>
             </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  Integrations detected:
-    chrome-devtools
-
-  Set this up? [Y/n]
-  …
-  ✓ Created 113 files
-  …</code></pre>
+            <div class="recipe-tip">
+              <strong>Tip:</strong> a spec you write gets no checks unless it lists them under
+              <code>gates</code>; the planner adds them from <code>package.json</code>. Keep <code>files</code>
+              to paths and directories: a pattern such as <code>src/*.js</code> is refused.
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Name the server framework in your description in Step 2 — Express, Fastify or another. OpenCastle has no integration for either, so there is nothing to add here.</div>
           </section>
 
-          <!-- Step 2 -->
-          <section class="recipe-section recipe-step" id="api-step-2">
+          <section class="recipe-section recipe-step" id="spec-step-2">
             <div class="recipe-step__number">2</div>
-            <h3 class="recipe-section__heading">Step 2: Describe the API</h3>
-            <p class="recipe-section__body">Run <code>npx opencastle convoy "&lt;task&gt;"</code> with a description of the API. It generates a PRD, validates it, assesses complexity, and produces a convoy spec — the full run is shown in the <a href="#step-2">first recipe</a>. Answer <strong>n</strong> when it asks <code>Run it? [Y/n]</code>: you'll review the PRD first.</p>
+            <h3 class="recipe-section__heading">Step 2: Check it</h3>
+            <p class="recipe-section__body">
+              <code>--dry-run</code> runs the same checks a run does and shows the order, the runtime, the branch
+              and the gates. It starts nothing and records nothing.
+            </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy "Build a REST API for a task management app \
-  with users, projects, and tasks, using Express. Include JWT authentication, \
-  role-based access control, input validation with Zod, and comprehensive test coverage."</code></pre>
+              <pre><code>$ npx opencastle convoy run notes.convoy.yml --dry-run</code></pre>
             </div>
             <div class="recipe-output">
-              <pre><code>  …
-  Pipeline complete!
+              <pre><code>  Convoy: Notes API — tags, validation, docs — 3 tasks, up to 4 at once
 
-  PRD:           .opencastle/prds/rest-api-task-management.prd.md
-  Convoy spec:   .opencastle/convoys/rest-api-task-management.convoy.yml
-  …
-  Run it? [Y/n]</code></pre>
+    TASK        AGENT      WAITS FOR         FILES
+    tags        developer  –                 src/notes.js, test/notes.test.js
+    validation  developer  –                 src/server.js, test/server.test.js
+    docs        writer     tags, validation  README.md
+
+  Runtime Claude Code — configured by opencastle init
+  Branch  convoy/&lt;name&gt;-&lt;id&gt;, created when it runs
+  Gates   npm test (once, after the tasks)
+
+  Dry run — nothing started, nothing recorded. To run it: opencastle convoy run notes.convoy.yml</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Keep the prompt focused and include explicit constraints (e.g., "use Zod", "JWT", "SQLite") so generated code matches your stack.</div>
           </section>
 
-          <!-- Step 3 -->
-          <section class="recipe-section recipe-step" id="api-step-3">
+          <section class="recipe-section recipe-step" id="spec-step-3">
             <div class="recipe-step__number">3</div>
-            <h3 class="recipe-section__heading">Step 3: Review the PRD</h3>
-            <p class="recipe-section__body">OpenCastle writes the PRD to <code>.opencastle/prds/</code>. Review and tweak endpoints, auth rules, and validation before running the convoy.</p>
+            <h3 class="recipe-section__heading">Step 3: Run it</h3>
             <div class="recipe-code">
-              <div class="recipe-code__header">.opencastle/prds/rest-api-task-management.prd.md (excerpt)</div>
-              <pre><code># REST API Task Management — PRD
-
-## Technical Requirements
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | /api/v1/users | admin, user | list users |
-| POST | /api/v1/users | admin | create user |
-| GET | /api/v1/users/:id | admin, user | get user |
-| PUT | /api/v1/users/:id | admin | update user |
-| DELETE | /api/v1/users/:id | admin | delete user |
-| GET | /api/v1/projects | admin, user | list projects |
-| POST | /api/v1/projects | admin | create project |
-| GET | /api/v1/projects/:id | admin, user | get project |
-| PUT | /api/v1/projects/:id | admin | update project |
-| DELETE | /api/v1/projects/:id | admin | delete project |
-| GET | /api/v1/tasks | admin, user | list tasks |
-| POST | /api/v1/tasks | admin, user | create task |
-| GET | /api/v1/tasks/:id | admin, user | get task |
-| PUT | /api/v1/tasks/:id | admin, user | update task |
-| DELETE | /api/v1/tasks/:id | admin, user | delete task |
-
-- JWT in `Authorization: Bearer &lt;token&gt;`; roles: admin, user; role checks per route
-- Users: `email` (email), `password` (min 8)
-- Projects: `name` (string, required)
-- Tasks: `title` (string, required), `status` (enum: open|in_progress|done), `assigneeId` (uuid)
-…</code></pre>
+              <div class="recipe-code__header">Terminal</div>
+              <pre><code>$ npx opencastle convoy run notes.convoy.yml</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> After editing the PRD, rebuild the spec from it: <code>npx opencastle convoy plan --prd .opencastle/prds/rest-api-task-management.prd.md</code>. It reuses the complexity assessment saved beside the PRD, so delete <code>rest-api-task-management.complexity.json</code> first if you changed the scope.</div>
+            <p class="recipe-section__body">
+              The run below is real, from an earlier build in which a spec without <code>concurrency</code> ran
+              one task at a time and every task ran on the account's default model, Opus. Today the same spec
+              runs <code>tags</code> and <code>validation</code> together, up to 4 at once, the developer tasks on
+              <code>sonnet</code> and the writer on <code>haiku</code>.
+            </p>
+            <div class="recipe-output">
+              <pre><code>  …
+  Branch convoy/notes-api-tags-validation-docs-70d49b (from main) · 3 tasks · up to 1 at once
+  ▶ [tags] developer
+  ✓ [tags] (3m 30s) · $2.01
+  ▶ [validation] developer
+  ✓ [validation] (6m 2s) · $2.60
+  ▶ [docs] writer
+  ✓ [docs] (3m 2s) · $1.29
+
+  Gates:
+  ✓ npm test
+
+  ──────────────────────────────────────
+  ✓ Convoy done in 12m 36s — 3/3 tasks done
+  Gates: 1/1 passed
+  Spent: 4.1M tokens · $5.89
+  Convoy: convoy-1791030493699
+  Branch: convoy/notes-api-tags-validation-docs-70d49b (from main)
+    Review: git diff main...convoy/notes-api-tags-validation-docs-70d49b
+    Merge:  git merge convoy/notes-api-tags-validation-docs-70d49b
+  Log: .opencastle/logs/convoys/convoy-1791030493699.ndjson</code></pre>
+            </div>
+            <p class="recipe-section__body">
+              The branch is named after the spec, with a short id, because the spec names none. The suite went
+              from 4 tests to 39.
+            </p>
           </section>
 
-          <!-- Step 4 -->
-          <section class="recipe-section recipe-step" id="api-step-4">
+          <section class="recipe-section recipe-step" id="spec-step-4">
             <div class="recipe-step__number">4</div>
-            <h3 class="recipe-section__heading">Step 4: Preview the plan</h3>
-            <p class="recipe-section__body">Preview the convoy execution plan with <code>--dry-run</code> on the <code>run</code> command. This shows the dependency graph and execution order without starting an agent.</p>
+            <h3 class="recipe-section__heading">Step 4: Review and merge</h3>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/rest-api-task-management.convoy.yml --dry-run</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  🏰 Execution Plan: REST API task management
-  Adapter:     copilot
-  Concurrency: 3
-  On failure:  stop
-  Tasks:       8
-  ──────────────────────────────────
-  Phase 1:
-    setup-project — Scaffold Express with TypeScript, Zod and Vitest [developer, 30m] [package.json, tsconfig.json, src/app.ts, src/server.ts]
-
-  Phase 2:
-    db-schema — Create SQLite schema, migrations and seeds [data-engineer, 30m] (after: setup-project) [src/db/]
-    auth-middleware — Add JWT authentication and role checks [security-expert, 30m] (after: setup-project) [src/middleware/auth.ts]
-
-  Phase 3:
-    user-routes — CRUD routes for users [developer, 30m] (after: db-schema, auth-middleware) [src/routes/users.ts, src/schemas/user.ts]
-    project-routes — CRUD routes for projects [developer, 30m] (after: db-schema, auth-middleware) [src/routes/projects.ts, src/schemas/project.ts]
-    task-routes — CRUD routes for tasks [developer, 30m] (after: db-schema, auth-middleware) [src/routes/tasks.ts, src/schemas/task.ts]
-
-  Phase 4:
-    route-index — Mount routes behind the auth middleware [developer, 30m] (after: user-routes, project-routes, task-routes) [src/routes/index.ts]
-
-  Phase 5:
-    integration-tests — Integration tests for every endpoint [testing-expert, 30m] (after: route-index) [tests/]</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Use the dry-run to confirm the decomposition and catch unwanted changes before executing.</div>
-          </section>
-
-          <!-- Step 5 -->
-          <section class="recipe-section recipe-step" id="api-step-5">
-            <div class="recipe-step__number">5</div>
-            <h3 class="recipe-section__heading">Step 5: Execute</h3>
-            <p class="recipe-section__body">Run the convoy to execute the plan. Each task runs in an isolated git worktree and is merged into <code>feat/rest-api-task-management</code> when it passes review; the <a href="#step-5">first recipe</a> describes a run.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/rest-api-task-management.convoy.yml</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> A failed task is retried once by default (<code>max_retries</code> in the spec). To continue after an interruption or a failure, use <code>npx opencastle convoy resume</code>; it re-runs only what is not done.</div>
-          </section>
-
-          <!-- Step 6 -->
-          <section class="recipe-section recipe-step" id="api-step-6">
-            <div class="recipe-step__number">6</div>
-            <h3 class="recipe-section__heading">Step 6: Test the API</h3>
-            <p class="recipe-section__body">Check out the convoy's branch, run the generated test suite and start the server — the scripts are whatever the setup task wrote to <code>package.json</code>.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git checkout feat/rest-api-task-management
-$ npm test
-$ npm start</code></pre>
-            </div>
-            <p class="recipe-section__body">Then exercise an endpoint. With an empty database and a valid token, the task list returns an empty <code>data</code> array and a <code>meta.total</code> of 0.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:3000/api/v1/tasks | jq</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> If a test fails, the run viewer (<code>npx opencastle convoy dashboard</code>) shows which task changed which files, with its gate results and log.</div>
-          </section>
-
-          <!-- Step 7 -->
-          <section class="recipe-section recipe-step" id="api-step-7">
-            <div class="recipe-step__number">7</div>
-            <h3 class="recipe-section__heading">Step 7: Review &amp; iterate</h3>
-            <p class="recipe-section__body">Review the generated code and use your assistant to request tweaks. Then push the branch and open a PR.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git push -u origin feat/rest-api-task-management
-$ gh pr create --title "feat: REST API for task management" --body "Built with OpenCastle's convoy engine"</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> To act on review comments, use the <code>/oc:resolve-pr-comments</code> prompt; for small tweaks, <code>/oc:quick-refinement</code>. <a href="/docs/prompts#how-to-use">How to run a prompt</a> in your assistant.</div>
-          </section>
-
-          <!-- Tips & Troubleshooting -->
-          <section class="recipe-section" id="api-troubleshooting">
-            <h3 class="recipe-section__heading">Tips &amp; Troubleshooting</h3>
-            <div class="recipe-troubleshooting">
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Port 3000 already in use</p>
-                <p class="recipe-troubleshooting__solution">Change the PORT environment variable before starting the server: <code>PORT=4000 npm start</code>.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Authentication middleware not applied</p>
-                <p class="recipe-troubleshooting__solution">Check that the auth middleware is mounted before the protected routes in <code>src/routes/index.ts</code>. To have the Team Lead trace it, run the <code>/oc:bug-fix</code> prompt with the request that got through.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Tests failing on CI</p>
-                <p class="recipe-troubleshooting__solution">Ensure CI provides required env vars (JWT secret, DB URL) and run migrations in the CI job before tests.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Want to add more endpoints later</p>
-                <p class="recipe-troubleshooting__solution">Run <code>npx opencastle convoy "&lt;task&gt;"</code> with a description of the new endpoints. This generates a new PRD and convoy spec for the additions. For quick changes, use the <code>/oc:quick-refinement</code> prompt.</p>
-              </div>
+              <pre><code>$ git diff main...convoy/notes-api-tags-validation-docs-70d49b
+$ git merge convoy/notes-api-tags-validation-docs-70d49b</code></pre>
             </div>
           </section>
 
-          <!-- What's next -->
-          <section class="recipe-section" id="api-whats-next">
-            <h3 class="recipe-section__heading">What's next</h3>
-            <ul class="recipe-section__list">
-              <li><strong><a href="/docs/cli">CLI Reference</a></strong> — full command options and flags</li>
-              <li><strong><a href="/docs/agentic-development">Agentic Development</a></strong> — guide to working with agent teams and PR workflows</li>
-              <li><strong><a href="#team-work">Team Work</a></strong> — recipe for multi-agent collaboration on larger features</li>
-              <li><strong><a href="#existing-project">Existing Project</a></strong> — how to onboard OpenCastle into a repo with existing code</li>
-            </ul>
+          <section class="recipe-section" id="spec-fields">
+            <h3 class="recipe-section__heading">What a spec can say</h3>
+            <p class="recipe-section__body">Everything else has a default:</p>
+            <table class="recipe-table">
+              <thead><tr><th>Field</th><th>Default</th><th>What it does</th></tr></thead>
+              <tbody>
+                <tr><td><code>branch</code></td><td><code>convoy/&lt;name&gt;-&lt;id&gt;</code></td><td>Where the work lands. Never the branch you have checked out</td></tr>
+                <tr><td><code>concurrency</code></td><td>4</td><td>Tasks at once; <code>--concurrency</code> overrides it</td></tr>
+                <tr><td><code>on_failure</code></td><td><code>continue</code></td><td><code>continue</code> skips only what depends on a failed task; <code>stop</code> starts nothing new</td></tr>
+                <tr><td><code>adapter</code></td><td>the one <code>opencastle init</code> set up</td><td>The runtime, for this spec</td></tr>
+                <tr><td><code>gates</code>, <code>gate_retries</code></td><td>none, 0</td><td>Commands run once at the end, and how many fix attempts a failure gets</td></tr>
+                <tr><td><code>defaults.timeout</code>, <code>timeout</code></td><td><code>30m</code></td><td>Per task</td></tr>
+                <tr><td><code>defaults.max_retries</code>, <code>max_retries</code></td><td>1</td><td>Attempts after the first</td></tr>
+                <tr><td><code>defaults.review</code>, <code>review</code></td><td><code>auto</code></td><td><code>auto</code> passes a writer's change, and one of at most 10 lines in 2 files, without a reviewer; <code>fast</code> always reviews; <code>panel</code> asks three reviewers; <code>none</code> skips</td></tr>
+                <tr><td><code>defaults.model</code>, <code>model</code></td><td>by the agent's tier</td><td>The model, for every task or for one</td></tr>
+                <tr><td><code>defaults.permission_mode</code></td><td><code>acceptEdits</code></td><td>What the agents may do: <code>default</code>, <code>acceptEdits</code>, <code>auto</code>, <code>dontAsk</code>, <code>bypassPermissions</code> or <code>plan</code></td></tr>
+              </tbody>
+            </table>
+            <p class="recipe-section__body">
+              The planner writes the same format; open any spec in <code>.opencastle/convoys/</code> for another
+              example. How the engine reads it is in
+              <a href="https://github.com/monkilabs/opencastle/blob/main/ARCHITECTURE.md#spec-defaults">ARCHITECTURE.md</a>.
+            </p>
           </section>
-
-        </article>
-
-        <article class="recipe" id="existing-project">
-          <h2 class="recipe__title">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>
-            Add OpenCastle to an Existing Project
-          </h2>
-
-          <!-- Introduction -->
-          <section class="recipe-section" id="existing-intro">
-            <h3 class="recipe-section__heading">Introduction</h3>
-            <p class="recipe-section__body">This recipe adds OpenCastle to a repository that already has code, tests, CI, and established conventions. <code>opencastle init</code> detects your stack and asks once. It doesn't touch your source code. Instruction files you wrote at the root — <code>CLAUDE.md</code>, <code>AGENTS.md</code>, <code>.cursorrules</code>, <code>.github/copilot-instructions.md</code> — keep your content above a managed block. A file of yours inside a directory OpenCastle generates, such as <code>.cursor/rules/</code> or <code>.github/agents/</code>, is named by init and removed by the next <code>sync</code>; move it into <code>.opencastle/</code> and it is compiled for every assistant.</p>
-          </section>
-
-          <!-- What you'll set up -->
-          <section class="recipe-section" id="existing-what-youll-set-up">
-            <h3 class="recipe-section__heading">What you'll set up</h3>
-            <p class="recipe-section__body">A fully configured OpenCastle workspace layered on top of your existing project, with the integrations init detected and a first feature built through the convoy.</p>
-            <ul class="recipe-section__list">
-              <li><strong>Initialize</strong> — detect the stack and add OpenCastle config without touching code</li>
-              <li><strong>Review integrations</strong> — check what init detected in the manifest</li>
-              <li><strong>PRD</strong> — create a first PRD for a new feature in the existing codebase</li>
-              <li><strong>Execute</strong> — run convoy gated on existing tests and lint</li>
-              <li><strong>Verify</strong> — review, iterate, and merge through your normal workflow</li>
-            </ul>
-          </section>
-
-          <!-- Prerequisites -->
-          <section class="recipe-section" id="existing-prerequisites">
-            <h3 class="recipe-section__heading">Prerequisites</h3>
-            <ul class="recipe-prereq">
-              <li>An existing project with git history and at least one commit</li>
-              <li>Node.js 22.5 or later, an AI coding assistant and an agent runtime for the convoy — as in the <a href="#prerequisites">first recipe</a></li>
-            </ul>
-          </section>
-
-          <!-- Step 1 -->
-          <section class="recipe-section recipe-step" id="existing-step-1">
-            <div class="recipe-step__number">1</div>
-            <h3 class="recipe-section__heading">Step 1: Initialize OpenCastle</h3>
-            <p class="recipe-section__body">Run <code>npx opencastle init</code> from the project root. It reads <code>package.json</code>, <code>tsconfig.json</code> and other config files, shows the integrations it found, and asks once. Here, a Next.js 15 project with TypeScript, Tailwind CSS, Vitest and ESLint:</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle init</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  Integrations detected:
-    nextjs, vitest, chrome-devtools
-
-  Set this up? [Y/n]
-  Configuring project...
-  ✓ Populated 3 config files
-  → Removed 8 unused template(s)
-  ✓ Created 115 files
-  …</code></pre>
-            </div>
-            <p class="recipe-section__body">The full output is in the <a href="#step-1">first recipe</a>, and every flag is on the <a href="/docs/cli#init">CLI page</a>. Commit what init wrote on a branch of its own — the convoy in Step 5 runs each task in a git worktree made from your last commit, so the config has to be committed first.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git checkout -b chore/opencastle-config
-$ git add .gitignore .opencastle .github .vscode
-$ git commit -m "chore: add OpenCastle configuration"</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Next, run the <a href="/docs/prompts#bootstrap-customizations">bootstrap-customizations</a> prompt once — <code>/oc:bootstrap-customizations</code> in Claude Code and Copilot Chat. It reads your schemas, routes and environment variables and fills in what init could not detect.</div>
-          </section>
-
-          <!-- Step 2 -->
-          <section class="recipe-section recipe-step" id="existing-step-2">
-            <div class="recipe-step__number">2</div>
-            <h3 class="recipe-section__heading">Step 2: Review detected integrations</h3>
-            <p class="recipe-section__body">OpenCastle stores your stack in <code>.opencastle/manifest.json</code>. <code>stack</code> lists the integrations it installed; <code>repoInfo</code> is everything it detected, including tools that have no integration of their own, like Tailwind CSS here.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">.opencastle/manifest.json (excerpt)</div>
-              <pre><code>{`{
-  …
-  "stack": {
-    "ides": [
-      "vscode"
-    ],
-    "techTools": [
-      "nextjs",
-      "vitest",
-      "chrome-devtools"
-    ],
-    "teamTools": []
-  },
-  "repoInfo": {
-    "language": "typescript",
-    "mcpConfig": true,
-    "frameworks": [
-      "next"
-    ],
-    "testing": [
-      "vitest",
-      "chrome-devtools"
-    ],
-    "styling": [
-      "tailwind"
-    ],
-    …
-  }
-}`}</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> To add an integration init missed, run <code>npx opencastle add &lt;pack&gt;</code> (<code>npx opencastle add --list</code> shows them all). To pick everything by hand, run <code>npx opencastle init --customize</code>.</div>
-          </section>
-
-          <!-- Step 3 -->
-          <section class="recipe-section recipe-step" id="existing-step-3">
-            <div class="recipe-step__number">3</div>
-            <h3 class="recipe-section__heading">Step 3: Verify setup with doctor</h3>
-            <p class="recipe-section__body">Run <code>npx opencastle doctor</code> to verify the workspace is correctly configured. Every check it runs is listed on the <a href="/docs/cli#doctor">CLI page</a>.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle doctor</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  ✓ OpenCastle manifest (.opencastle/manifest.json)  v1.0.0, IDE: vscode
-  ✓ Customizations directory  15 entries
-  ! Skill matrix  11 unresolved capability slot(s)
-  …
-  All checks passed with 1 warning(s).</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> A <code>!</code> is a warning, not a failure. Unresolved capability slots are parts of a stack — a CMS, payments, email — that this project has no integration for. Fix any <code>✗</code> before running convoys.</div>
-          </section>
-
-          <!-- Step 4 -->
-          <section class="recipe-section recipe-step" id="existing-step-4">
-            <div class="recipe-step__number">4</div>
-            <h3 class="recipe-section__heading">Step 4: Generate a PRD for a new feature</h3>
-            <p class="recipe-section__body">Describe a small, scoped feature. Let <code>npx opencastle convoy "&lt;task&gt;"</code> write the PRD and spec, or write <code>.opencastle/prds/&lt;name&gt;.prd.md</code> yourself and run <code>npx opencastle convoy plan --prd &lt;path&gt;</code>. Reference existing code paths so agents understand context. Answer <strong>n</strong> when it asks <code>Run it? [Y/n]</code>: you'll review the PRD first.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy "Add user notifications with a server-side API \
-  at /api/notifications and a UI inbox component. Include a database migration \
-  for a notifications table and unit tests for both API and UI."</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  Pipeline complete!
-
-  PRD:           .opencastle/prds/user-notifications.prd.md
-  Convoy spec:   .opencastle/convoys/user-notifications.convoy.yml
-  …
-  Run it? [Y/n]</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Reference existing code paths (files and folders) so agents can locate relevant code quickly.</div>
-          </section>
-
-          <!-- Step 5 -->
-          <section class="recipe-section recipe-step" id="existing-step-5">
-            <div class="recipe-step__number">5</div>
-            <h3 class="recipe-section__heading">Step 5: Review the PRD and run</h3>
-            <p class="recipe-section__body">Review the generated PRD to confirm it captures the right scope. Tweak requirements, file paths, or constraints before running the convoy.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">.opencastle/prds/user-notifications.prd.md (excerpt)</div>
-              <pre><code># User Notifications — PRD
-
-## Overview
-Server-side notification API with a database migration and a UI inbox component.
-
-## Implementation Scope
-| Concern | Files / Directories |
-|---------|---------------------|
-| Database | `db/migrations/add_notifications.sql` |
-| API | `app/api/notifications/route.ts`, `app/api/notifications/[id]/route.ts` |
-| UI | `components/NotificationInbox/` |
-| Tests | `__tests__/api/notifications.test.ts`, `__tests__/components/NotificationInbox.test.tsx` |
-…</code></pre>
-            </div>
-            <p class="recipe-section__body">If you edit the PRD, rebuild the spec with <code>npx opencastle convoy plan --prd .opencastle/prds/user-notifications.prd.md</code>. Then preview the execution plan and run:</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run .opencastle/convoys/user-notifications.convoy.yml --dry-run
-$ npx opencastle convoy run .opencastle/convoys/user-notifications.convoy.yml</code></pre>
-            </div>
-            <div class="recipe-output">
-              <pre><code>  …
-  Phase 1:
-    db-migration — Create notifications table migration [data-engineer, 30m] [db/migrations/add_notifications.sql]
-
-  Phase 2:
-    api-routes — Notification API: list, mark read, delete [developer, 30m] (after: db-migration) [app/api/notifications/route.ts, app/api/notifications/[id]/route.ts]
-    notification-inbox — Inbox component with unread badge [ui-ux-expert, 30m] (after: db-migration) [components/NotificationInbox/]
-
-  Phase 3:
-    api-tests — Unit tests for the API handlers [testing-expert, 30m] (after: api-routes) [__tests__/api/notifications.test.ts]
-    inbox-tests — Unit tests for the inbox component [testing-expert, 30m] (after: notification-inbox) [__tests__/components/NotificationInbox.test.tsx]</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Add lint, type-check, and test commands to the <code>gates</code> section of your convoy spec to catch regressions automatically. For example: <code>gates: ["npm run lint", "npx tsc --noEmit", "npm test"]</code></div>
-          </section>
-
-          <!-- Step 6 -->
-          <section class="recipe-section recipe-step" id="existing-step-6">
-            <div class="recipe-step__number">6</div>
-            <h3 class="recipe-section__heading">Step 6: Verify compatibility</h3>
-            <p class="recipe-section__body">Check out the feature branch the convoy built, inspect the changes, and run your existing test suite and linter to confirm nothing broke. Doctor's output is the same as in Step 3.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git checkout feat/user-notifications
-$ npm test
-$ npm run lint
-$ npx opencastle doctor</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Doctor checks your overall setup health. Run your project’s own test suite and linter separately to catch code-level regressions.</div>
-          </section>
-
-          <!-- Step 7 -->
-          <section class="recipe-section recipe-step" id="existing-step-7">
-            <div class="recipe-step__number">7</div>
-            <h3 class="recipe-section__heading">Step 7: Iterate & expand</h3>
-            <p class="recipe-section__body">Push both branches and open two pull requests: the configuration from Step 1, and the feature. The feature branch starts from the configuration commit, so merge the configuration first; until then the feature's pull request shows both. Use OpenCastle progressively for additional features — start small and increase scope as confidence grows.</p>
-            <div class="recipe-code">
-              <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ git push -u origin chore/opencastle-config feat/user-notifications
-$ gh pr create --head chore/opencastle-config --title "chore: add OpenCastle configuration" --body "OpenCastle config for every assistant"
-$ gh pr create --head feat/user-notifications --title "feat: user notifications" --body "Built with OpenCastle's convoy engine"</code></pre>
-            </div>
-            <div class="recipe-tip"><strong>Tip:</strong> Start with small, well-scoped features to build confidence before tackling larger refactors.</div>
-          </section>
-
-          <!-- Tips & Troubleshooting -->
-          <section class="recipe-section" id="existing-troubleshooting">
-            <h3 class="recipe-section__heading">Tips & Troubleshooting</h3>
-            <div class="recipe-troubleshooting">
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Init missed a framework</p>
-                <p class="recipe-troubleshooting__solution">Add it with <code>npx opencastle add &lt;pack&gt;</code>, or run <code>npx opencastle init --customize</code> to pick everything by hand. Running plain <code>init</code> again asks <code>Re-initialize? [y/N]</code> and detects the same things.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">init names files of yours</p>
-                <p class="recipe-troubleshooting__solution">They sit in a directory OpenCastle generates, and the next <code>sync</code> removes them. Move each into <code>.opencastle/</code> — <code>instructions/</code>, <code>skills/&lt;name&gt;/</code> or <code>agents/</code> — and the next sync compiles it for every assistant.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Existing tests fail after convoy</p>
-                <p class="recipe-troubleshooting__solution">Add lint, type-check, and test commands to the <code>gates</code> section of your convoy spec so they run at the end of every run. Inspect failing diffs and revert with git if required.</p>
-              </div>
-              <div class="recipe-troubleshooting__item">
-                <p class="recipe-troubleshooting__problem">Want to use OpenCastle alongside existing CI</p>
-                <p class="recipe-troubleshooting__solution">The convoy produces a standard git branch, and you open the pull request — your existing CI runs on it as usual. <code>npx opencastle ci</code> adds a check that the generated config matches its sources.</p>
-              </div>
-            </div>
-          </section>
-
-          <!-- What's next -->
-          <section class="recipe-section" id="existing-whats-next">
-            <h3 class="recipe-section__heading">What's next</h3>
-            <ul class="recipe-section__list">
-              <li><strong><a href="/docs/cli">CLI Reference</a></strong> — full command options and flags</li>
-              <li><strong><a href="/docs/agentic-development">Agentic Development</a></strong> — guide to working with agent teams and PR workflows</li>
-              <li><strong><a href="#portfolio">Portfolio</a></strong> — recipe for building a project from scratch</li>
-              <li><strong><a href="#api-backend">REST API Backend</a></strong> — recipe for generating a full API</li>
-            </ul>
-          </section>
-
         </article>
 
       </main>
@@ -1444,6 +748,35 @@ $ gh pr create --head feat/user-notifications --title "feat: user notifications"
     </footer>
 
     <style>
+      /* ── Measured runs and the viewer screenshot ── */
+      .recipe-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0 16px;
+        font-size: 0.875rem;
+      }
+      .recipe-table th,
+      .recipe-table td {
+        text-align: left;
+        vertical-align: top;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-secondary);
+      }
+      .recipe-table th { color: var(--text-primary); font-weight: 600; }
+      .recipe-table code { font-size: 0.8125rem; }
+      .recipe-shot {
+        display: block;
+        width: 100%;
+        height: auto;
+        margin: 12px 0 8px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+      .recipe-table--runs td:nth-child(n+3) { white-space: nowrap; }
+      @media (max-width: 640px) {
+        .recipe-table { display: block; overflow-x: auto; }
+      }
       /* ── Design tokens ── */
       :root {
         --bg-primary: #0a0a0f;
