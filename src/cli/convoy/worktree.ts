@@ -84,9 +84,50 @@ let identityKnown: boolean | null = null
  * fresh container) used to fail the task outright; the convoy signs as itself
  * there, and only there.
  */
+/**
+ * git refuses a command, before doing anything, when another git process holds
+ * a lock it needs — the index, a ref, packed-refs. Tasks create and remove
+ * worktrees and branches in one repository at the same moment, so a refusal is
+ * contention, not a fault, and a moment later the command goes through.
+ */
+const LOCK_CONTENTION = /\.lock'?: File exists|Unable to create '[^']*\.lock'|cannot lock ref|could not lock config file|failed to read \S*worktrees\/\S*\/(commondir|gitdir)/i
+
+/**
+ * One worktree command at a time per repository.
+ *
+ * `git worktree add` reads every other worktree's entry under .git/worktrees/,
+ * and one being written by a concurrent add is half there: with eight tasks
+ * starting together, two failed "Could not create a worktree: fatal: failed to
+ * read .git/worktrees/<other>/commondir". Adding, removing and listing
+ * worktrees, and deleting branches, now queue per repository. Each takes
+ * milliseconds; the agents still run side by side.
+ */
+const repoQueues = new Map<string, Promise<unknown>>()
+
+function changesWorktrees(args: string[]): boolean {
+  return args[0] === 'worktree' || (args[0] === 'branch' && (args.includes('-D') || args.includes('-d')))
+}
+
 export async function git(args: string[], cwd: string): Promise<string> {
-  const { stdout } = await execFile('git', args, { cwd, maxBuffer: 64 * 1024 * 1024 })
-  return stdout
+  if (!changesWorktrees(args)) return runGit(args, cwd)
+  const key = realOrResolved(cwd)
+  const prev = repoQueues.get(key) ?? Promise.resolve()
+  const next = prev.then(() => runGit(args, cwd), () => runGit(args, cwd))
+  repoQueues.set(key, next.catch(() => undefined))
+  return next
+}
+
+async function runGit(args: string[], cwd: string): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const { stdout } = await execFile('git', args, { cwd, maxBuffer: 64 * 1024 * 1024 })
+      return stdout
+    } catch (err) {
+      const text = `${(err as { stderr?: string }).stderr ?? ''}\n${(err as Error).message}`
+      if (attempt >= 6 || !LOCK_CONTENTION.test(text)) throw err
+      await new Promise((r) => setTimeout(r, 40 * 2 ** attempt + Math.random() * 40))
+    }
+  }
 }
 
 async function gitWithIdentity(args: string[], cwd: string): Promise<string> {

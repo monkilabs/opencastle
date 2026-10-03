@@ -246,3 +246,56 @@ describe('ensureRootWorktree', () => {
       .rejects.toBeInstanceOf(BranchInUseError)
   })
 })
+
+describe('git under contention', () => {
+  it('waits out a lock another git process holds, instead of failing the task', async () => {
+    const { git } = await import('./worktree.js')
+    const { writeFileSync, rmSync: rm } = await import('node:fs')
+    const dir = mkdtempSync(join(tmpdir(), 'oc-gitlock-'))
+    try {
+      await git(['init', '-q'], dir)
+      writeFileSync(join(dir, 'a.txt'), 'a\n')
+      // Another process holds the index for a moment.
+      const lock = join(dir, '.git', 'index.lock')
+      writeFileSync(lock, '')
+      setTimeout(() => rm(lock, { force: true }), 150)
+      await git(['add', '-A'], dir)
+      expect(await git(['diff', '--cached', '--name-only'], dir)).toContain('a.txt')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('still fails at once on an error that is not contention', async () => {
+    const { git } = await import('./worktree.js')
+    const dir = mkdtempSync(join(tmpdir(), 'oc-gitlock-'))
+    try {
+      await git(['init', '-q'], dir)
+      const started = Date.now()
+      await expect(git(['checkout', 'no-such-branch'], dir)).rejects.toThrow()
+      expect(Date.now() - started).toBeLessThan(1000)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('many tasks starting at once', () => {
+  it('creates every worktree when twelve are asked for together', async () => {
+    // A concurrent `git worktree add` read another's half-written entry and
+    // failed the task ("failed to read .git/worktrees/<other>/commondir").
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'oc-wt-many-')))
+    try {
+      const { git } = await import('./worktree.js')
+      await git(['init', '-q', '-b', 'main'], dir)
+      await git(['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'init'], dir)
+      const manager = createWorktreeManager(dir)
+      const paths = await Promise.all(Array.from({ length: 12 }, (_, i) => manager.create(`w${i}`, 'main')))
+      expect(paths).toHaveLength(12)
+      expect((await manager.list()).length).toBeGreaterThanOrEqual(12)
+      await Promise.all(paths.map((p) => manager.remove(p)))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})

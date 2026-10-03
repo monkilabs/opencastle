@@ -6,7 +6,7 @@
  * not only the statuses it records.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir, hostname } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -89,6 +89,38 @@ function engine(opts: Partial<ConvoyEngineOptions> & Pick<ConvoyEngineOptions, '
   })
 }
 
+/**
+ * Wait until the run's own log says `taskId` was merged.
+ *
+ * The conflict tests need one task to merge before the other finishes. A fixed
+ * sleep did that on an idle machine and not under load: the first task's
+ * commit and merge outran the sleep, the order flipped, and the task with no
+ * retry left took the conflict instead.
+ */
+async function mergedFirst(taskId: string): Promise<void> {
+  const dir = join(repo, '.opencastle', 'logs', 'convoys')
+  const merged = (): boolean => {
+    if (!existsSync(dir)) return false
+    return readdirSync(dir).some((f) =>
+      readFileSync(join(dir, f), 'utf8').split('\n').some((line) => line.includes('"type":"task_merged"') && line.includes(`"task_id":"${taskId}"`)))
+  }
+  for (let i = 0; i < 400 && !merged(); i++) await new Promise((r) => setTimeout(r, 25))
+  if (!merged()) throw new Error(`${taskId} was never merged`)
+}
+
+/** Every task that did not finish, and why: the message a failing assertion should carry. */
+function whyNotDone(convoyId: string): string {
+  const store = createConvoyStore(join(repo, '.opencastle', 'convoy.db'))
+  try {
+    return store.getTasksByConvoy(convoyId)
+      .filter((t) => t.status !== 'done')
+      .map((t) => `${t.id}: ${t.status} — ${String(t.output ?? '').slice(0, 600)}`)
+      .join('\n')
+  } finally {
+    store.close()
+  }
+}
+
 function filesOn(branch: string): string[] {
   return git('ls-tree', '--name-only', '-r', branch).split('\n').filter(Boolean).sort()
 }
@@ -99,7 +131,7 @@ describe('work lands on a branch of its own', () => {
     const tasks = Array.from({ length: 8 }, (_, i) => ({ id: `t${i + 1}`, files: [`t${i + 1}.txt`] }))
     const result = await engine({ spec: spec(tasks, { concurrency: 8 }), adapter: stubAdapter(writesOwnFile) }).run()
 
-    expect(result.status).toBe('done')
+    expect(result.status, whyNotDone(result.convoyId)).toBe('done')
     expect(result.summary.done).toBe(8)
     expect(result.branch).toBe(defaultBranchName('Git Convoy', result.convoyId))
     expect(result.baseRef).toBe('main')
@@ -170,7 +202,7 @@ describe('merge conflicts', () => {
       ;(prompts[task.id] ??= []).push(task.prompt)
       // Neither declared shared.txt, so both run at once and both write it.
       writeFileSync(join(options.cwd!, 'shared.txt'), `from ${task.id}\n`)
-      if (task.id === 'b') await new Promise((r) => setTimeout(r, 50))
+      if (task.id === 'b' && prompts.b.length === 1) await mergedFirst('a')
       return { success: true, output: 'done', exitCode: 0 }
     })
     const result = await engine({ spec: spec([{ id: 'a' }, { id: 'b', max_retries: 1 }]), adapter }).run()
@@ -188,7 +220,7 @@ describe('merge conflicts', () => {
       writeFileSync(join(options.cwd!, 'shared.txt'), `from ${task.id}\n`)
       if (task.id === 'b') {
         writeFileSync(join(options.cwd!, 'b-only.txt'), 'b\n')
-        await new Promise((r) => setTimeout(r, 60))
+        await mergedFirst('a')
       }
       return { success: true, output: 'done', exitCode: 0 }
     })
@@ -283,10 +315,13 @@ describe('resume', () => {
 describe('interrupting a run', () => {
   it('kills running agents, requeues their tasks, releases the lock and resolves with 130', async () => {
     const controller = new AbortController()
+    // `slow` runs until it is killed. A fixed two seconds ran out first on a
+    // loaded machine, and the run then ended failed rather than interrupted.
+    let release: () => void = () => {}
+    const killed = new Promise<void>((r) => (release = r))
     const adapter = stubAdapter(async (task, options) => {
       if (task.id === 'slow') {
-        // Stays "running" until killed.
-        await new Promise((r) => setTimeout(r, 2_000))
+        await killed
         return { success: false, output: 'killed', exitCode: 143 }
       }
       writeFileSync(join(options.cwd!, `${task.id}.txt`), 'x\n')
@@ -297,6 +332,7 @@ describe('interrupting a run', () => {
       { id: 'slow', files: ['slow.txt'] },
       { id: 'later', files: ['later.txt'], depends_on: ['slow'] },
     ]
+    adapter.kill.mockImplementation(() => release())
     const run = engine({
       spec: spec(tasks, { concurrency: 2 }),
       adapter,
@@ -402,7 +438,7 @@ describe('kept branches', () => {
     mkdirSync(hookDir, { recursive: true })
     writeFileSync(join(hookDir, 'pre-merge-commit'), '#!/bin/sh\necho "merges are frozen" >&2\nexit 1\n', { mode: 0o755 })
     const adapter = stubAdapter(async (task, options) => {
-      if (task.id === 'second') await new Promise((r) => setTimeout(r, 80))
+      if (task.id === 'second') await mergedFirst('first')
       writeFileSync(join(options.cwd!, `${task.id}.txt`), `${task.id}\n`)
       return { success: true, output: 'done', exitCode: 0 }
     })
