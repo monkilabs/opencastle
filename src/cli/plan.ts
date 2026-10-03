@@ -49,6 +49,10 @@ export interface PromptStepResult {
   isValid?: boolean
   /** Set for `validation` when the verdict is invalid. */
   errors?: string
+  /** What the session spent, as the runtime reported it. */
+  tokens?: number
+  /** Undefined when the runtime reports no cost. */
+  costUsd?: number
 }
 
 const DEFAULT_STEP_TIMEOUT_MS = 10 * 60_000
@@ -326,10 +330,15 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
   }
 
   const rawOutput = execResult.output
+  const usage = execResult.usage
+  const spent: Pick<PromptStepResult, 'tokens' | 'costUsd'> = {
+    tokens: usage?.total_tokens ?? ((usage?.prompt_tokens ?? 0) + (usage?.completion_tokens ?? 0)),
+    ...(execResult.costUsd !== undefined ? { costUsd: execResult.costUsd } : {}),
+  }
 
   if (outputType === 'validation') {
     const { isValid, errors } = parseValidationResult(rawOutput)
-    return { outputPath: null, rawOutput, outputType, isValid, errors }
+    return { outputPath: null, rawOutput, outputType, isValid, errors, ...spent }
   }
 
   if (outputType === 'prd') {
@@ -342,8 +351,8 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
     }
     await mkdir(resolve(outputPath, '..'), { recursive: true })
     await writeFile(outputPath, content + '\n', 'utf8')
-    return { outputPath, rawOutput, outputType }
+    return { outputPath, rawOutput, outputType, ...spent }
   }
 
-  return { outputPath: null, rawOutput: extractJson(rawOutput), outputType: 'json' }
+  return { outputPath: null, rawOutput: extractJson(rawOutput), outputType: 'json', ...spent }
 }

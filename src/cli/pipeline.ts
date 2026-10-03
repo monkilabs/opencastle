@@ -366,6 +366,17 @@ export interface PlanOutcome {
   settings: SpecSettings
   /** What still fails the checks after every fix. A spec with any is written, not runnable. */
   problems: string[]
+  /** What planning took: sessions run, time, and spend as the runtime reported it. */
+  planning?: PlanningSpend
+}
+
+export interface PlanningSpend {
+  sessions: number
+  ms: number
+  tokens: number
+  costUsd: number
+  /** False when some session reported no cost, so `costUsd` is a lower bound. */
+  costComplete: boolean
 }
 
 type StepRunner = (template: string, inputs: Omit<PromptStepOptions, 'template' | 'adapter' | 'pkgRoot'>) => Promise<PromptStepResult>
@@ -450,8 +461,18 @@ async function fixPlan(step: StepRunner, plan: TaskPlan, problems: string): Prom
 export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   const root = req.projectRoot ?? process.cwd()
   const convoyDir = resolve(root, '.opencastle', 'convoys')
-  const step: StepRunner = (template, inputs) =>
-    runPromptStep({ template, adapter: req.adapter, pkgRoot: req.pkgRoot, cwd: root, verbose: req.verbose, ...inputs })
+  // Planning is agent sessions too, and the run's own total never counted them.
+  const started = Date.now()
+  const spend: PlanningSpend = { sessions: 0, ms: 0, tokens: 0, costUsd: 0, costComplete: true }
+  const step: StepRunner = async (template, inputs) => {
+    const r = await runPromptStep({ template, adapter: req.adapter, pkgRoot: req.pkgRoot, cwd: root, verbose: req.verbose, ...inputs })
+    spend.sessions++
+    spend.tokens += r.tokens ?? 0
+    if (r.costUsd === undefined) spend.costComplete = false
+    else spend.costUsd += r.costUsd
+    spend.ms = Date.now() - started
+    return r
+  }
 
   // ── The PRD ───────────────────────────────────────────────────────────────
   let prdPath: string
@@ -605,7 +626,7 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   }
 
   await writeFile(specPath, buildConvoyYaml(plan, settings), 'utf8')
-  return { prdPath, specPath, plan, settings, problems }
+  return { prdPath, specPath, plan, settings, problems, planning: spend }
 }
 
 // ── Showing the plan ────────────────────────────────────────────────────────
@@ -619,7 +640,7 @@ function fit(text: string, width: number): string {
  * The plan as a few lines a person can check before saying yes: who does what,
  * after what, touching which files.
  */
-export function renderPlan(outcome: Pick<PlanOutcome, 'plan' | 'settings' | 'specPath'>, columns = 100): string[] {
+export function renderPlan(outcome: Pick<PlanOutcome, 'plan' | 'settings' | 'specPath' | 'planning'>, columns = 100): string[] {
   const { plan, settings } = outcome
   const rows = plan.tasks.map((t) => ({
     id: t.id,
@@ -647,9 +668,18 @@ export function renderPlan(outcome: Pick<PlanOutcome, 'plan' | 'settings' | 'spe
     `  ${c.dim('Branch')} ${settings.branch} ${c.dim('· runtime')} ${settings.adapter}` +
       (settings.gates.length ? ` ${c.dim('· then once:')} ${settings.gates.join(', ')}` : ''),
     `  ${c.dim('Spec')}   ${relPath(outcome.specPath)}`,
+    ...(outcome.planning ? [`  ${c.dim('Planned')} ${describeSpend(outcome.planning)}`] : []),
     '',
   ]
   return out
+}
+
+function describeSpend(s: PlanningSpend): string {
+  const secs = Math.round(s.ms / 1000)
+  const time = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`
+  const tokens = s.tokens >= 1_000_000 ? `${(s.tokens / 1_000_000).toFixed(1)}M` : s.tokens >= 1000 ? `${Math.round(s.tokens / 1000)}K` : String(s.tokens)
+  const cost = s.costUsd > 0 || s.costComplete ? ` · $${s.costUsd.toFixed(2)}${s.costComplete ? '' : '+ (not every session reported a cost)'}` : ''
+  return `in ${time} · ${s.sessions} session${s.sessions === 1 ? '' : 's'} · ${tokens} tokens${cost}`
 }
 
 // ── The command ─────────────────────────────────────────────────────────────

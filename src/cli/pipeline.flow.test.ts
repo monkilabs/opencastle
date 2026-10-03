@@ -23,7 +23,7 @@ vi.mock('./prompt.js', async (importOriginal) => ({
   closePrompts: vi.fn(),
 }))
 
-const { planConvoy, hashPrd, deriveComplexityPath, planTask, default: pipeline } = await import('./pipeline.js')
+const { planConvoy, hashPrd, deriveComplexityPath, planTask, renderPlan, default: pipeline } = await import('./pipeline.js')
 const runModule = await import('./run.js')
 const adapters = await import('./run/adapters/index.js')
 const promptModule = await import('./prompt.js')
@@ -556,5 +556,29 @@ describe('convoy "<task>": show the plan, ask once', () => {
     }) as typeof process.exit)
     await expect(planTask({ args: ['--prd', 'my.prd.md'], pkgRoot }, 'x')).rejects.toThrow('exit 1')
     expect(stub.calls).toHaveLength(0)
+  })
+})
+
+describe('the plan says what planning spent', () => {
+  const base = {
+    plan: { name: 'Tags', tasks: [{ id: 'tags', agent: 'developer', files: ['src/notes.js'], prompt: 'x', depends_on: [] }] },
+    settings: { branch: 'convoy/tags', adapter: 'claude', gates: ['npm test'] },
+    specPath: join(tmpdir(), 'tags.convoy.yml'),
+  } as unknown as Parameters<typeof renderPlan>[0]
+
+  it('gives time, sessions, tokens and cost as the runtime reported them', () => {
+    const rows = renderPlan({ ...base, planning: { sessions: 4, ms: 161_000, tokens: 812_000, costUsd: 0.84, costComplete: true } })
+    expect(rows.join('\n')).toContain('in 2m 41s · 4 sessions · 812K tokens · $0.84')
+  })
+
+  it('marks the cost a lower bound when a session reported none', () => {
+    const rows = renderPlan({ ...base, planning: { sessions: 2, ms: 9_000, tokens: 1_200, costUsd: 0.1, costComplete: false } })
+    expect(rows.join('\n')).toContain('$0.10+ (not every session reported a cost)')
+  })
+
+  it('counts the sessions planConvoy ran', async () => {
+    const { adapter } = stubAdapter()
+    const outcome = await plan(adapter)
+    expect(outcome.planning?.sessions).toBe(4)
   })
 })
