@@ -289,10 +289,12 @@ TAPE
 generate_title_cards() {
   echo "🎨 Title cards..."
   local d
+  # No fade-in: the first frame is what a video player shows before play, and
+  # a fade made it black.
   d=$(echo "$(duration audio/01-intro.mp3) + 1" | bc)
   ffmpeg -y -loglevel error \
     -f lavfi -i "color=c=${BG_COLOR}:s=${WIDTH}x${HEIGHT}:d=${d}:r=30" -i "$LOGO_PATH" \
-    -filter_complex "[1:v]scale=400:-1[logo];[0:v][logo]overlay=(W-w)/2:(H-h)/2:format=auto,fade=t=in:st=0:d=0.6,format=yuv420p" \
+    -filter_complex "[1:v]scale=400:-1[logo];[0:v][logo]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p" \
     -c:v libx264 -preset fast -crf 18 -t "$d" clips/01-intro.mp4
 
   d=$(echo "$(duration audio/07-thanks.mp3) + 5" | bc)
