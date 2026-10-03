@@ -38,18 +38,19 @@ const sectionIcons: Record<string, string> = {
 /* The output below is real: it comes from a project that extends a baseline,
    run with the release this page documents. Long lists are trimmed with "…". */
 
-const baselineTree = `@acme/opencastle-baseline/
-├── package.json      "opencastle": { "baseline": "layer" }, "files": ["layer/"]
-└── layer/
+const baselineTree = `@acme/opencastle-baseline/     an Agent Plugin, and a baseline
+├── package.json               "opencastle": { "baseline": "." }
+├── plugin.json                the Agent Plugins manifest
+├── skills/
+│   └── secure-coding/
+│       └── SKILL.md
+└── dev.opencastle/            what the standard does not cover yet
     ├── config.json
-    ├── instructions/
-    │   ├── api-style.md
-    │   └── security.md
-    └── skills/
-        └── secure-coding/
-            └── SKILL.md`;
+    └── instructions/
+        ├── api-style.md
+        └── security.md`;
 
-const baselineConfig = `// layer/config.json
+const baselineConfig = `// dev.opencastle/config.json
 {
   // Acme's standard for every repository
   "policy": {
@@ -91,7 +92,7 @@ const syncOutput = `  ✓ Rebuilt MCP config
   ⚠  Environment variables still needed:
 
      ACME_DOCS_TOKEN
-     └ used by the internal-docs MCP server (@acme/opencastle-baseline/layer/config.json)
+     └ used by the internal-docs MCP server (@acme/opencastle-baseline/dev.opencastle/config.json)
 
      ACME_DB_URL
      └ used by the acme-db MCP server (.opencastle/config.json)`;
@@ -145,7 +146,7 @@ const explainOutput = `$ npx opencastle explain
     • Required everywhere: instructions/security, skills/secure-coding
 
   Your setup
-    ✗ ACME_DOCS_TOKEN — used by the internal-docs MCP server (@acme/opencastle-baseline/layer/config.json); set it in .env or your shell
+    ✗ ACME_DOCS_TOKEN — used by the internal-docs MCP server (@acme/opencastle-baseline/dev.opencastle/config.json); set it in .env or your shell
     ✗ ACME_DB_URL — used by the acme-db MCP server (.opencastle/config.json); set it in .env or your shell
     → Linear: your assistant opens a browser to sign in the first time it starts the server`;
 
@@ -468,7 +469,7 @@ $ npx opencastle baseline check opencastle-baseline
             <div class="architecture-card__flow">
               <div class="architecture-card__node">OpenCastle — its own agents, skills, instructions, prompts and workflows, and the integrations your stack uses</div>
               <div class="architecture-card__arrow">then each baseline in <code>extends</code>, in order</div>
-              <div class="architecture-card__node">@acme/opencastle-baseline — the package's <code>layer/</code></div>
+              <div class="architecture-card__node">@acme/opencastle-baseline — an Agent Plugin: its <code>skills/</code>, <code>mcp.json</code> and <code>dev.opencastle/</code></div>
               <div class="architecture-card__arrow">then the repository itself</div>
               <div class="architecture-card__node architecture-card__node--lead">This repository — <code>.opencastle/</code></div>
               <div class="architecture-card__arrow">compiled into every target</div>
@@ -500,10 +501,19 @@ $ npx opencastle baseline check opencastle-baseline
           </div>
           <p>
             In a repository the layer is <code>.opencastle/</code>. In a baseline it is the
-            directory the package names in its <code>package.json</code>:
-            <code>{'"opencastle": { "baseline": "layer" }'}</code>. Only <code>config.json</code>
+            directory the package names in its <code>package.json</code>, such as
+            <code>{'"opencastle": { "baseline": "." }'}</code>. Only <code>config.json</code>
             and the five content directories are read as a layer; the rest of
             <code>.opencastle/</code> — stack notes, lessons, the manifest — is not part of it.
+          </p>
+          <p>
+            A baseline that is an <a href="/docs/agent-plugins">Agent Plugin</a> — one with a
+            <code>plugin.json</code> at its root, as <code>baseline init</code> creates — keeps its skills in
+            the plugin's <code>skills/</code>, servers any assistant can start as they are in
+            <code>mcp.json</code>, and everything else, <code>config.json</code> included, in
+            <code>dev.opencastle/</code>. Assistants that read Agent Plugins can then install it as it is. Any
+            Agent Plugin on npm can be extended the same way, with no OpenCastle declaration. A baseline laid out
+            the earlier way, with the layer's directories at its root, still works.
           </p>
           <p>
             Items are named by kind and name: <code>skills/deploy-runbook</code>,
@@ -862,9 +872,10 @@ $ npx opencastle baseline check opencastle-baseline
           <pre><code>npx opencastle baseline &lt;init|check&gt; [dir] [--name &lt;pkg&gt;] [--json]</code></pre>
           <p>
             <code>init</code> scaffolds a baseline package in <code>./opencastle-baseline</code> or the directory you
-            name: a <code>package.json</code> that declares the layer and ships it in <code>"files"</code>, a
-            <code>layer/</code> with an example instruction, skill and policy, a README on publishing and adopting it,
-            and a CI workflow that runs <code>check</code>. It refuses a directory that already has a
+            name, laid out as an Agent Plugin: <code>plugin.json</code>, an example skill in <code>skills/</code>,
+            <code>mcp.json</code>, an example instruction and the policy in <code>dev.opencastle/</code>, Claude Code's
+            <code>.claude-plugin/plugin.json</code>, a <code>package.json</code> that declares the layer and ships all of it
+            in <code>"files"</code>, a README on publishing and adopting it, and a CI workflow that runs <code>check</code>. It refuses a directory that already has a
             <code>package.json</code>. <code>check</code> resolves the baseline exactly as a repository extending it
             would and reports what it contributes and how many tokens load up front. It fails — exit 1 — when the
             package does not declare <code>{'"opencastle": { "baseline": "<dir>" }'}</code>, when <code>"files"</code>
@@ -908,9 +919,9 @@ $ npx opencastle baseline check opencastle-baseline
           <ol class="steps">
             <li>
               <strong>Create the baseline.</strong> <code>npx opencastle baseline init --name @acme/opencastle-baseline</code>.
-              Move the rules every repository shares into <code>layer/instructions/</code> and keep them short — every
-              token there loads before every task in every repository. Put detail in <code>layer/skills/</code>, which
-              loads only when a task needs it. Set the policy in <code>layer/config.json</code>.
+              Move the rules every repository shares into <code>dev.opencastle/instructions/</code> and keep them short — every
+              token there loads before every task in every repository. Put detail in <code>skills/</code>, which
+              loads only when a task needs it. Set the policy in <code>dev.opencastle/config.json</code>.
             </li>
             <li>
               <strong>Check and publish.</strong> <code>npx opencastle baseline check</code> validates it the way every
