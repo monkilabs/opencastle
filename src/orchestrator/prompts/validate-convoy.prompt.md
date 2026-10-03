@@ -1,5 +1,5 @@
 ---
-description: 'Validate convoy task plan for semantic correctness. Outputs VALID or INVALID with specific errors.'
+description: 'Review a convoy spec for what code cannot check: missing dependencies, missing or redundant tasks. Answers with a JSON verdict.'
 agent: 'Reviewer'
 output: validation
 ---
@@ -8,47 +8,42 @@ output: validation
 
 # Validate Task Plan
 
-> **Note:** Schema validation (field types, YAML syntax, dependency cycles, glob patterns) already passed. Generator already enforces prompt quality, agent matching, file list completeness. Focus ONLY on structural and logical checks below.
+You are a senior technical reviewer. Review the convoy spec at the end of this prompt before agents run it.
 
-You are a senior technical reviewer. Validate the task plan below for **structural correctness**. Pass plan if structure is sound — do not fail for prompt wording, style, or verbosity.
+## What Happens to Your Verdict
 
-## Task Plan to Validate
+`opencastle convoy` asks for this review only when a plan will run without anyone reading it first (`--yes`). Otherwise the person who approves the plan is the reviewer.
 
-{{goal}}
+- `"valid": true` — the plan runs as it is.
+- `"valid": false` — your `issues` go to a fix step that patches the plan, once. The patched plan runs only if it still passes the code's checks; otherwise the original runs.
 
----
+Raise an issue only when the plan would fail, or produce the wrong result, without the fix.
 
-## Validation Checks
+The code has already checked the schema, that ids are unique, that every `depends_on` exists, that there are no cycles, that `files` hold no globs, and that no two tasks that can run at the same time claim the same file. Do not check those again. Do not judge wording, style or length. Everything outside `tasks` — branch, adapter, concurrency, on_failure, gates, defaults — is set by the code; leave it alone.
 
-> If spec contains `<!-- validation-pass: N -->`, this is pass N. On pass 2+, verify previous fixes were applied — do NOT invent new issues.
+This session is read-only. You may read the repository to confirm paths; answer in text.
 
-Evaluate checks below. If ALL pass, respond `VALID`. Only fail for checks marked BLOCKING.
+## Checks (all BLOCKING)
 
-### Partition Conflicts (BLOCKING)
+### Dependency Completeness
 
-Two tasks that can run in parallel (no direct or transitive `depends_on` edge between them) must not share any `files` entry.
+When a task's prompt imports, references or builds on a file, type or component that another task creates, the task depends on that one, directly or through other tasks.
 
-- [ ] For every pair of potentially-parallel tasks, confirm they share no file or directory path in their `files` lists
-- [ ] Transitive dependencies count: if A → B → C, then A and C are NOT parallel
+- [ ] Scan every prompt for references to other tasks' output
+- [ ] Each one is covered by a `depends_on` path
 
-### Dependency Completeness (BLOCKING)
+### Logical Soundness
 
-If task's prompt imports, references, or builds on files produced by another task, `depends_on` edge to that producing task must exist.
-
-- [ ] Scan every prompt for cross-task file references
-- [ ] Each such reference must be covered by `depends_on` edge
-
-### Logical Soundness (BLOCKING)
-
-- [ ] No redundant tasks doing same work
-- [ ] No obvious missing tasks that would leave goal unachievable
-- [ ] No tasks with empty or stub prompts (`...`, placeholder text)
+- [ ] No two tasks do the same work
+- [ ] No task the goal plainly needs is missing
+- [ ] No task has an empty or stub prompt (`...`, placeholder text)
+- [ ] No prompt tells its agent to change files outside the task's `files`
 
 ---
 
 ## Output Format
 
-Your entire response must be single fenced JSON block — no text before or after:
+Your whole answer is one fenced JSON block — nothing before or after it:
 
 ```json
 {
@@ -56,15 +51,21 @@ Your entire response must be single fenced JSON block — no text before or afte
 }
 ```
 
-Or if any check fails:
+Or, if any check fails:
 
 ```json
 {
   "valid": false,
   "issues": [
-    "[Section name]: [Specific problem] — Fix: [What to change]"
+    "[Task id or section]: [Specific problem] — Fix: [What to change]"
   ]
 }
 ```
 
-List only real failures in `issues`. Do not list items that passed.
+List only real failures in `issues`, not the checks that passed.
+
+---
+
+## Spec to Review
+
+{{goal}}

@@ -1,5 +1,5 @@
 ---
-description: 'Fix validation errors in convoy task plan by outputting targeted JSON patches.'
+description: 'Fix the problems found in a convoy task plan with targeted JSON patches. Goal is the plan as JSON, context is the list of problems.'
 agent: 'Team Lead (OpenCastle)'
 output: json
 ---
@@ -8,30 +8,27 @@ output: json
 
 # Fix Task Plan
 
-You are the Team Lead. Task plan below has validation errors. Fix every error by outputting targeted JSON patches.
+You are the Team Lead. The task plan at the end of this prompt has problems. Fix every one with targeted JSON patches.
 
-## Task Plan
+## What Happens to Your Answer
 
-```json
-{{goal}}
-```
+When `opencastle convoy` runs this step, your patches are applied to the plan, any glob in `files` is cut back to its directory, and the code checks the plan again:
 
-## Validation Errors
+- **Problems from the code's checks** come back to you if they remain — at most twice in all. After that, if two tasks still claim the same file, the later one is made to wait for the earlier; any other problem stops the plan from running.
+- **Problems from a reviewer** get one round, and your patches are kept only if the plan still passes the code's checks.
 
-{{context}}
-
----
+This session is read-only; answer in text.
 
 ## Instructions
 
-1. Read every error before writing patches.
-2. Fix ALL reported errors; do not partially fix.
-3. Preserve intent, agent assignments, task scope. Only fix what is broken.
-4. Each patch replaces ONE field on ONE task.
+1. Read every problem before writing patches.
+2. Fix ALL of them; do not fix some.
+3. Keep the plan's intent, agents and task scope. Change only what is broken.
+4. Each patch replaces ONE field of ONE task. You can change existing tasks, not add or remove them.
 
 ## Patch Format
 
-Output single `json` fenced code block with array of patches:
+One `json` fenced block holding an array of patches:
 
 ```json
 [
@@ -46,25 +43,42 @@ Output single `json` fenced code block with array of patches:
     "value": ["project-scaffold", "shared-ui-components"]
   },
   {
-    "task_id": "_plan",
-    "field": "concurrency",
-    "value": 2
+    "task_id": "a-third-task",
+    "field": "files",
+    "value": ["components/Hero.tsx"]
   }
 ]
 ```
 
-### Patch fields
-- `task_id`: Task ID to modify, or `"_plan"` for top-level plan fields (`name`, `branch`, `concurrency`, `on_failure`, `gates`, `gate_retries`)
-- `field`: Field name to replace (`prompt`, `files`, `depends_on`, `agent`, `timeout`, `description`, `max_retries`, `review`, `gates`)
-- `value`: Complete new value (replaces old value entirely)
+### Patch Fields
 
-### Common fixes
-- **Truncated prompt** → patch `field: "prompt"` with complete, self-contained prompt text
-- **Missing dependency** → patch `field: "depends_on"` with corrected array
-- **Partition conflict** → patch `field: "files"` to use specific paths, or patch `field: "depends_on"` to add sequencing
-- **Wrong agent** → patch `field: "agent"` with correct value from roster
-- **Vague prompt** → patch with detailed, file-specific prompt including acceptance criteria
+- `task_id`: The id of the task to change, or `"_plan"` to rename the plan (`field: "name"`).
+- `field`: `prompt`, `files`, `depends_on`, `agent`, `description`, `complexity` or `timeout`.
+- `value`: The complete new value. It replaces the old one entirely.
+
+### Common Fixes
+
+- **Two tasks claim the same file** → give each the specific files it changes (patch `files`), or patch `depends_on` so one runs after the other.
+- **A pattern in `files`** → patch `files` with the actual files or their directory.
+- **Unknown dependency** → patch `depends_on` with the right id, or without it.
+- **Dependency cycle** → patch `depends_on` to drop the edge that points backwards.
+- **Missing dependency** → patch `depends_on` to add it.
+- **Missing work** → fold it into the closest task's `prompt` and `files`.
+- **Truncated or vague prompt** → patch `prompt` with a complete, file-specific prompt that includes acceptance criteria.
+- **Wrong agent** → patch `agent` with the right role.
 
 ## Output
 
-Your entire response must be single `json` fenced code block with patches array. No text before or after.
+Your whole answer is one `json` fenced block holding the patch array. Nothing before or after it.
+
+---
+
+## Task Plan
+
+```json
+{{goal}}
+```
+
+## Problems to Fix
+
+{{context}}
