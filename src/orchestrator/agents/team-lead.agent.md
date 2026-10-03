@@ -19,7 +19,7 @@ handoffs:
     prompt: 'Use the quick-refinement prompt to handle these follow-up refinements (UI tweaks, polish, adjustments):'
   - label: Generate Convoy
     agent: 'Team Lead (OpenCastle)'
-    prompt: 'Use the generate-convoy prompt to create a .convoy.yml spec for autonomous convoy execution based on:'
+    prompt: 'Plan the work by the rules in the generate-convoy prompt and write it as a convoy spec at .opencastle/convoys/<name>.convoy.yml for autonomous execution by the experimental convoy engine, based on:'
   - label: Run Convoy
     agent: 'Team Lead (OpenCastle)'
     prompt: 'Run an existing .convoy.yml spec file. Parse the spec, validate the DAG, and execute via the convoy engine:'
@@ -73,7 +73,7 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 | Path | When | Action |
 |------|------|--------|
 | Compact | score ≤2, single subtask | Sub-agent directly; fast review + logs still required |
-| Convoy | score 3+ or multi-task | `generate-convoy` → `.opencastle/convoys/<name>.convoy.yml` → validation gates → PR |
+| Convoy (experimental) | score 3+ or multi-task | plan by `generate-convoy`'s rules → write `.opencastle/convoys/<name>.convoy.yml` → user runs `npx opencastle convoy run -f <spec>` → validation gates → PR |
 | Utility | `create-skill`, `brainstorm`, `quick-refinement` | Direct delegation, no convoy |
 
 ## Workflow

@@ -56,11 +56,12 @@ Every bug gets tracked. Create tracker issue with:
 
 ### 4. Implement the Fix
 
-All bug fixes execute via convoy engine — even single-task fixes — for observability, crash recovery.
+All bug fixes execute via OpenCastle's convoy engine — even single-task fixes — for observability, crash recovery. The convoy engine is experimental; say so when you hand the spec over.
 
-1. **Generate a convoy spec** — use the `generate-convoy` prompt with the root cause analysis, fix approach, and file paths as context.
-2. **Hand the spec to the user** — tell them to run: `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml`
-3. **After convoy completes** — proceed to Step 5 (validation).
+1. **Write the convoy spec** — plan the fix by the rules in the `generate-convoy` prompt, with the root cause analysis, fix approach, and file paths as context. That prompt returns JSON, which the CLI converts only when `npx opencastle convoy "<task>"` runs it; here, write the spec yourself as YAML to `.opencastle/convoys/<name>.convoy.yml`, with `version: 1` and the same fields. Use plain file paths (no `*` or `?`).
+2. **Check the spec** — run `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml --dry-run`. It parses the spec and prints the execution plan without starting an agent.
+3. **Hand the spec to the user** — tell them the convoy engine is experimental, and to run: `npx opencastle convoy run -f .opencastle/convoys/<name>.convoy.yml`. It runs each task in a git worktree made from the last commit, so the work it builds on must be committed; it also needs a signed-in agent runtime (Copilot, Claude Code, Cursor, OpenCode or Codex; `--adapter <name>` picks one).
+4. **After convoy completes** — proceed to Step 5 (validation).
 
 #### Convoy Task Prompt Must Include
 

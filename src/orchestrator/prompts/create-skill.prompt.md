@@ -15,42 +15,42 @@ Scaffold new skill for AI agent configuration. Skills encode domain-specific kno
 
 ---
 
-## Skill Types
+## Where Team Skills Live
 
-OpenCastle has two skill kinds with different locations, registration paths:
+A skill you create is a team skill: one source file, compiled for every assistant in the project.
 
-| Type | Location | Bound Via | Purpose |
-|------|----------|-----------|---------|
-| **Process skill** | `skills/<name>/SKILL.md` | `directSkills` in skill-matrix.json | Stack-agnostic methodology (testing workflow, self-improvement, validation gates) |
-| **Plugin skill** | `plugins/<plugin>/SKILL.md` | Capability slot in the skill matrix | Technology-specific knowledge (CMS queries, database patterns, deployment config) |
+| What | Where |
+|------|-------|
+| **The skill** | `.opencastle/skills/<name>/SKILL.md`, plus any companion files (e.g. `REFERENCE.md`) beside it |
+| **Compiled copies** | Written by `npx opencastle sync` into each assistant's skill directory, and listed in each assistant's skill index — never edit them; the next sync replaces them |
 
-> **Rule of thumb:** If skill would need rewriting when switching technologies (e.g., Supabase → Convex), it belongs in a **plugin**. If useful regardless of stack, it's a **process skill**.
+Agents load a skill when a task matches its `description`, so the description is what makes it found.
+
+> **Rule of thumb:** If skill would need rewriting when switching technologies (e.g., Supabase → Convex), it is **technology-specific**: name the technology in its name and description. If useful regardless of stack, it is a **process skill**: keep it stack-agnostic.
 
 ---
 
 ## Workflow
 
-### Step 1: Classify the Skill
+### Step 1: Check What Exists
 
-Determine the type:
-
-| Question | If Yes → | If No → |
-|----------|----------|---------|
-| Is this tied to a specific technology/tool? | Plugin skill | Process skill |
-| Would switching tech stacks invalidate this content? | Plugin skill | Process skill |
-| Does a plugin already exist for this tool in `plugins/`? | Add `SKILL.md` to existing plugin | Create new plugin or process skill |
+| Question | If Yes → |
+|----------|----------|
+| Does a compiled skill already cover this? (`npx opencastle explain` lists every skill) | Improve it instead of adding a second one. A team skill with the same name as one of OpenCastle's replaces it for every assistant — copy the compiled `SKILL.md` into `.opencastle/skills/<name>/` and edit it there |
+| Is it about a tool OpenCastle has an integration for? (`npx opencastle add --list`) | `npx opencastle add <pack>` installs that integration's skill; write a team skill only for what it lacks |
+| Is it tied to a specific technology? | Technology-specific skill |
+| Would switching tech stacks invalidate this content? | Technology-specific skill |
 
 ### Step 2: Name the Skill
 
-- Use `kebab-case`
-- **Process skills:** descriptive domain name (e.g., `testing-workflow`, `context-map`, `security-hardening`)
-- **Plugin skills:** `skillName` field in the plugin's `config.ts` (e.g., `sanity-cms`, `supabase-database`, `nx-workspace`)
-- Check existing skills in `skills/`, `plugins/` to avoid overlap
+- Use `kebab-case`; the directory name is the skill's name
+- **Process skills:** descriptive domain name (e.g., `deploy-runbook`, `release-checklist`, `incident-triage`)
+- **Technology-specific skills:** lead with the technology (e.g., `supabase-rls`, `stripe-webhooks`)
+- Check `.opencastle/skills/` and `npx opencastle explain` to avoid overlap
 
 ### Step 3: Create the Skill File
 
-**Process skill:** Create `skills/<skill-name>/SKILL.md`
-**Plugin skill:** Create `plugins/<plugin-name>/SKILL.md`
+Create `.opencastle/skills/<skill-name>/SKILL.md`.
 
 Use this template:
 
@@ -98,31 +98,21 @@ description: "<Verb1> X, <verb2> Y, and <verb3> Z. Use when <scenario1>, <scenar
 
 If skill has large code examples (>30 lines), schema tables, or verbose reference material, create companion `REFERENCE.md` in same directory; link to it from SKILL.md. Keep SKILL.md as lean operational overview. Companion files must start with backlink: `> Parent: [SKILL.md](./SKILL.md)`.
 
-### Step 4: Register the Skill
+### Step 4: Compile the Skill
 
-Registration differs by type:
-
-#### Process Skill
-
-1. **Add to skill matrix** — Add skill name to `directSkills` array of each relevant agent in `.opencastle/agents/skill-matrix.json`
-2. **Optional: reference in instructions** — If skill should load by default, add to appropriate `.github/instructions/` file
-
-#### Plugin Skill
-
-1. **Set `skillName` in plugin's `config.ts`** — Connects skill to plugin
-2. **Update skill matrix** — Add entry to matching capability slot's `entries` array in `.opencastle/agents/skill-matrix.json`
-3. **No agent changes** — Agents resolve plugin skills through capability slots automatically
+1. **Run `npx opencastle sync`** — compiles the skill for every assistant in the project and adds it to each skill index. It reports `Compiled this project's own sources`.
+2. **Optional: load it by default** — to have an agent load the skill for every task rather than when a task matches it, add the skill name to that agent's `directSkills` array in `.opencastle/agents/skill-matrix.json` (agents are keyed by display name, e.g. `"Developer"`). Sync keeps this edit.
+3. **Commit** `.opencastle/skills/<skill-name>/` with the compiled files, so teammates get the skill on clone.
 
 ### Step 5: Validate
 
-- [ ] File created at correct path (`skills/` or `plugins/`)
-- [ ] Frontmatter has `name` and `description` fields
+- [ ] File created at `.opencastle/skills/<skill-name>/SKILL.md`
+- [ ] Frontmatter has `name` and `description` fields; `name` equals the directory name
 - [ ] Description is single line (no line breaks)
 - [ ] Content follows template structure
 - [ ] No overlap with existing skills
-- [ ] Skill matrix updated (`directSkills` array or capability slot binding)
-- [ ] For process skills: at least one agent's `directSkills` array includes it in skill-matrix.json
-- [ ] For plugin skills: `config.ts` `skillName` matches `name` in frontmatter
+- [ ] `npx opencastle sync --check` passes — the compiled copies match the source
+- [ ] `npx opencastle doctor` passes — it checks that every script and path a team skill names exists
 - [ ] Run `npx tessl skill review <path>` — target 100 score (see Scoring Criteria below)
 
 ## Scoring Criteria

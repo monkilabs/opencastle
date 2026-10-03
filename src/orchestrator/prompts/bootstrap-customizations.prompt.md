@@ -23,39 +23,32 @@ Without customizations, agents operate blind — they don't know project's table
 
 ## Pre-Existing Setup
 
-### `.opencastle.json` — Detection Data
+### `.opencastle/manifest.json` — Detection Data
 
-The project root contains **`.opencastle.json`** with a `repoInfo` field populated by `opencastle init`. It merges two sources:
+`opencastle init` writes **`.opencastle/manifest.json`**. Two of its fields matter here:
 
-1. **Auto-detected tooling** — init command scanned config files, `package.json` dependencies, and directory structures
-2. **User-declared choices** — user selected CMS, database, project management, notifications via interactive questionnaire
+1. **`repoInfo`** — what init detected by scanning config files, `package.json` dependencies, and directory structures
+2. **`stack`** — the integrations installed: the ones init detected and the user confirmed, picked with `opencastle init --customize`, or added later with `opencastle add <pack>`
 
-Result: single unified view of project's tech stack:
+Example:
 
 ```json
 {
+  "stack": {
+    "ides": ["vscode"],
+    "techTools": ["nextjs", "supabase", "vitest", "chrome-devtools"],
+    "teamTools": ["linear", "slack"]
+  },
   "repoInfo": {
     "packageManager": "pnpm",
-    "monorepo": "nx",
     "language": "typescript",
-    "frameworks": ["next", "astro"],
-    "databases": ["prisma", "supabase"],
-    "cms": ["sanity"],
+    "frameworks": ["next"],
+    "databases": ["supabase"],
     "deployment": ["vercel"],
-    "testing": ["playwright", "vitest"],
-    "cicd": ["github-actions"],
-    "styling": ["css-modules", "tailwind"],
-    "auth": ["next-auth", "supabase-auth"],
-    "pm": ["linear"],
-    "notifications": ["slack"],
+    "testing": ["vitest", "chrome-devtools"],
+    "styling": ["tailwind"],
     "mcpConfig": true,
-    "configFiles": ["nx.json", "package.json", "tsconfig.json", "vercel.json"]
-  },
-  "stack": {
-    "cms": "sanity",
-    "db": "supabase",
-    "pm": "linear",
-    "notifications": "slack"
+    "configFiles": ["package.json", "tsconfig.json", "vercel.json", "vitest.config.ts"]
   }
 }
 ```
@@ -63,9 +56,8 @@ Result: single unified view of project's tech stack:
 **Use `repoInfo` to:**
 - Know which technologies are present — skip re-scanning, go straight to reading their config files
 - Identify `configFiles` to read for deep inspection
-- Know which `project/` config files to create if missing (e.g., if `repoInfo.pm` includes `"linear"`, ensure `project/linear-config.md` exists)
 
-**`stack` vs `repoInfo`:** The `stack` field holds the raw user questionnaire answers (used internally for MCP server filtering and skill selection). The `repoInfo` field is the combined view you should use — it includes everything from `stack` plus all auto-detected tooling.
+**Use `stack` to:** know which integrations are installed. If `stack.teamTools` or `repoInfo.pm` names a tracker (`linear`, `jira`, `trello`), ensure `project/<tracker>-config.md` exists — init creates it only for a tracker it knew about at the time; one added later with `opencastle add` has none yet.
 
 **Still inspect:** `repoInfo` detects presence, not configuration details. You still need to read the actual config files for schemas, IDs, routes, etc.
 
@@ -82,15 +74,17 @@ Programmatic bootstrap running during `opencastle init` already created, partial
 | `stack/deployment-config.md` | Deployment platforms and config file paths | Env var names, cron jobs, security headers, caching strategy |
 | `stack/<provider>-config.md` | Database provider name and config file paths (e.g., `supabase-config.md`) | Table/schema inventory, RLS policies, auth integration details |
 | `stack/<provider>-config.md` | CMS provider name and config file paths (e.g., `sanity-config.md`) | Content model inventory, query patterns, project IDs |
+| `stack/api-config.md` | Framework name and empty endpoint tables (only when init detected a framework) | Route handler and Server Action inventory |
+| `project/<tracker>-config.md` | Template (only when init knew about the tracker) | Team IDs, workflow states, labels |
+| `project/docs-structure.md` | The `.opencastle/` documentation files | The project's own docs directory |
+| `agents/agent-registry.md`, `agents/skill-matrix.json`, `agents/skill-matrix.md` | Agent tiers and skill bindings for the installed integrations | Nothing in most projects — verify bindings |
 | `README.md`, `LESSONS-LEARNED.md`, `AGENT-FAILURES.md`, `AGENT-PERFORMANCE.md` | Full template content | Nothing — these are complete, just verify |
 | `logs/README.md`, `logs/events.ndjson` | Schema docs + empty log file | Nothing — these are complete |
 
-**Files that DON'T exist yet** (because they can't be auto-populated and must be created by you):
-- `stack/api-config.md` — requires reading actual route handlers and Server Actions
-- `project/linear-config.md` (or other tracker) — requires reading docs or team IDs
-- `project/docs-structure.md` — requires mapping the docs directory
-- `stack/data-pipeline-config.md` — requires reading pipeline scripts
-- `agents/agent-registry.md`, `agents/skill-matrix.json`, `agents/skill-matrix.md` — if `.github/agents/` and `.github/skills/` exist
+**Files that may not exist yet** (create them only if the project needs them):
+- `stack/api-config.md` — if the project has API routes or Server Actions but init detected no framework
+- `project/<tracker>-config.md` — if a tracker is in use but has no config file (see `stack` above)
+- `stack/data-pipeline-config.md` — init never creates it; requires reading pipeline scripts
 
 Any template file for technology NOT detected (no DB, no CMS, etc.) already removed.
 
@@ -105,7 +99,7 @@ Programmatic bootstrap already detected tech stack. **Skip re-scanning** — foc
 - **First**: Read all existing `.opencastle/` files to understand what's already filled in
 - Read `.opencastle/project.instructions.md` to see current tech stack table, gaps
 - Read each `stack/*.md` file — note any `<!-- TODO: verify -->` markers and empty table rows
-- Read `.opencastle.json` for `repoInfo` and `configFiles` — use `configFiles` as your reading list
+- Read `.opencastle/manifest.json` for `repoInfo` and `configFiles` — use `configFiles` as your reading list
 - Note what's missing (empty sections, placeholders, TODO markers)
 
 #### 1.2 Deep Inspection
@@ -133,20 +127,20 @@ Target file structure for reference:
 ├── LESSONS-LEARNED.md         # Already created — verify
 ├── AGENT-FAILURES.md          # Already created — verify
 ├── AGENT-PERFORMANCE.md       # Already created — verify
-├── agents/                    # Create if .github/agents/ and .github/skills/ exist
+├── agents/                    # Already created — verify
 │   ├── agent-registry.md
 │   ├── skill-matrix.json
 │   └── skill-matrix.md
 ├── stack/                     # Partial — update existing, create missing
-│   ├── api-config.md          # Create — cannot be auto-populated
+│   ├── api-config.md          # Complete, or create if the project has API routes and it is missing
 │   ├── deployment-config.md   # Already created — complete missing sections
 │   ├── testing-config.md      # Already created — complete missing sections
 │   ├── <database>-config.md   # Already created — complete schema/RLS details
 │   ├── <cms>-config.md        # Already created — complete content model details
 │   └── data-pipeline-config.md  # Create if pipelines exist
-├── project/                   # Create files that don't yet exist
-│   ├── docs-structure.md      # Create if docs directory exists
-│   └── <tracker>-config.md    # Create if task tracker configured
+├── project/                   # Partial — update existing, create missing
+│   ├── docs-structure.md      # Already created — add the docs directory if one exists
+│   └── <tracker>-config.md    # Complete, or create if a tracker is in use and it is missing
 └── logs/                      # Already created — do not touch
     ├── README.md
     └── events.ndjson
@@ -164,21 +158,22 @@ Target file structure for reference:
 
 3. **`LESSONS-LEARNED.md`**, **`AGENT-FAILURES.md`**, **`AGENT-PERFORMANCE.md`** — Already exist as templates. Verify they look correct — no changes needed.
 
-#### `agents/` — Agent Framework Config (create if `.github/agents/` exists)
+#### `agents/` — Agent Framework Config (already created — verify)
 
-4. **`agents/agent-registry.md`** — If `.github/agents/` exists with agent definitions:
-   - List of agents with assigned model tiers
-   - Scope descriptions
-   - File partition examples
+`npx opencastle explain` lists the agents and skills compiled for this project, and where each assistant reads them.
 
-5. **`agents/skill-matrix.json`** — If `.github/skills/` exists with skill definitions:
-   - Capability slot bindings and `directSkills` per agent role (in JSON format)
-   - Which agents load which skills (slots for plugin skills, directSkills for process skills)
+4. **`agents/agent-registry.md`** — Already lists the agents with their tiers. **Complete**:
+   - Scope descriptions for this project
+   - File partition examples using this project's real paths
+
+5. **`agents/skill-matrix.json`** — Already holds capability slot bindings and `directSkills` per agent. **Verify**:
+   - Slot bindings point at skills that exist (`npx opencastle doctor` reports unresolved slots)
+   - Which agents load which skills (slots for integration skills, `directSkills` for process skills)
    - Note: `skill-matrix.md` is companion documentation file — JSON is source of truth
 
 #### `stack/` — Update Existing, Create Missing
 
-6. **`stack/api-config.md`** — **Create** (cannot be auto-populated). If the project has API routes or Server Actions:
+6. **`stack/api-config.md`** — **Complete** it, or **create** it if the project has API routes or Server Actions and init did not:
    - Route handler inventory with HTTP methods
    - Server Actions inventory
    - External API integrations
@@ -223,12 +218,12 @@ Target file structure for reference:
 
 #### `project/` — Project Management Config (create missing files)
 
-12. **`project/docs-structure.md`** — **Create** if a documentation directory exists:
+12. **`project/docs-structure.md`** — Already exists. **Complete** if the project has its own documentation directory:
     - Full directory tree
     - Purpose of each document
     - Documentation conventions
 
-13. **Task tracker config** in `project/` (e.g., `project/linear-config.md`, `project/jira-config.md`) — **Create** if task tracking is configured:
+13. **Task tracker config** in `project/` (e.g., `project/linear-config.md`, `project/jira-config.md`) — **Complete** it, or **create** it if task tracking is in use and it is missing:
     - Team / project IDs
     - Workflow state IDs
     - Label / category IDs
@@ -242,7 +237,7 @@ Target file structure for reference:
 
 After generating all files:
 
-1. **Check skill references** — For each skill in `.github/skills/`, verify it references the correct customization file (or note if a reference needs to be added)
+1. **Check skill references** — For each skill `npx opencastle explain` lists, verify it references the correct customization file (or note if a reference needs to be added)
 2. **Check for gaps** — Is there project-specific knowledge that doesn't fit any file? Create an appropriate new file
 3. **Check for staleness** — Does the generated content match the current state of the code? Flag anything uncertain with `<!-- TODO: verify -->`
 
@@ -265,7 +260,7 @@ Now that your `.opencastle/` configuration is complete, here's what you can do:
 2. **Implement a feature** — Use the **"Implement Feature"** prompt (`/oc:implement-feature` in Claude Code and Copilot) to have the Team Lead orchestrate a full feature build with task tracking, delegation, and verification
 3. **Fix a bug** — Use the **"Bug Fix"** prompt (`/oc:bug-fix`) for structured triage, root cause analysis, and fix with tracker tracking
 4. **Brainstorm first** — Not sure how to approach something? Use the **"Brainstorm"** prompt (`/oc:brainstorm`) to explore requirements and trade-offs before committing to a plan
-5. **Generate a convoy spec** — Use the **"Generate Convoy"** prompt (`/oc:generate-convoy`) to create a `.convoy.yml` spec for autonomous convoy execution with `npx opencastle convoy run --file <spec>` CLI command.
+5. **Plan a larger change with the convoy engine (experimental)** — `npx opencastle convoy "<task>"` writes a PRD and a convoy spec to `.opencastle/convoys/<name>.convoy.yml`, then asks before running it
 
 ## Guidelines
 
