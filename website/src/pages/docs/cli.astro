@@ -337,6 +337,30 @@ const commands = [
     ],
   },
   {
+    id: 'promote',
+    category: 'teams',
+    name: 'promote',
+    summary: 'Make a skill or memory from your own assistant the team\'s',
+    description: 'Knowledge starts personal: a skill one developer wrote for their own assistant, a correction Claude Code remembered on one laptop. <code>promote</code> moves it into the team\'s sources — this repository\'s <code>.opencastle/</code>, or a baseline every repository extends — where the next <code>sync</code> compiles it into every assistant. It lands as a change in your working tree; the pull request that commits it is where the team agrees.',
+    usage: 'npx opencastle promote <skill|memory> [name|path] [options]',
+    options: [
+      { flag: '--to <dir>', desc: 'skill: a baseline or Agent Plugin directory to put it in' },
+      { flag: '--from <dir>', desc: 'memory: read memory files from this directory instead' },
+      { flag: '--force', desc: 'skill: replace a team skill with the same name' },
+      { flag: '--dry-run', desc: 'Say what would be written, and write nothing' },
+      { flag: '--help, -h', desc: 'Show help' },
+    ],
+    details: [
+      { heading: 'skill', content: `<p>Finds the skill by name in <code>~/.claude/skills</code>, <code>~/.agents/skills</code>, <code>~/.codex/skills</code>, <code>~/.cursor/skills</code> or <code>~/.copilot/skills</code>, or takes a path. It is checked against the Agent Skills spec — a name that does not match its directory is refused, as assistants that follow the spec skip it — and every file is scanned for credentials. Then it is copied, with its scripts and references, to <code>.opencastle/skills/&lt;name&gt;/</code>, or with <code>--to</code> into a baseline's <code>skills/</code>.</p>` },
+      { heading: 'memory', content: `<p>Reads Claude Code's auto memory for this repository — <code>~/.claude/projects/&lt;repository&gt;/memory/</code>, or wherever <code>autoMemoryDirectory</code> points — and writes each correction (<code>feedback</code>) and project note as a lesson in <code>.opencastle/lessons/</code>. Memories about you, ones that hold a credential, and ones already promoted are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new.</p>` },
+    ],
+    examples: [
+      { cmd: 'npx opencastle promote skill deploy-runbook', desc: 'Your skill, in every teammate\'s assistant after the next sync' },
+      { cmd: 'npx opencastle promote skill deploy-runbook --to ../ai-standard', desc: 'Into the baseline every repository extends' },
+      { cmd: 'npx opencastle promote memory --dry-run', desc: 'See which of your assistant\'s memories would become lessons' },
+    ],
+  },
+  {
     id: 'fleet',
     category: 'teams',
     name: 'fleet',

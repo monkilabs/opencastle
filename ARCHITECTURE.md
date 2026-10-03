@@ -457,6 +457,7 @@ The [dashboard](src/dashboard/) provides a web UI for exploring convoy runs, tas
 | `ci` | Write a GitHub Actions workflow running `sync --check` and `review`, and optionally CODEOWNERS lines |
 | `baseline` | Scaffold (`init`) or validate (`check`) a baseline package — one `init` creates is also an Agent Plugin |
 | `plugin` | Check an Agent Plugin, build Claude Code's files from it (`build`), write marketplace files for a directory of them (`index`) |
+| `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or Claude Code's auto memory for this repository into lessons (`memory`) |
 | `fleet` | OpenCastle and baseline versions, and MCP server spread, across many repositories' locks |
 | `convoy` | Experimental: plan and run multi-step work |
 
