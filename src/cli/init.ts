@@ -444,6 +444,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
   const produced = new Set<string>()
   const removedByReinit: string[] = []
+  const previousIdes = new Set<string>(existing?.ides ?? (existing?.ide ? [existing.ide] : []))
   // Skipped means "was already there", and with several targets sharing
   // `.agents/skills/` the second one found the first one's output: a fresh
   // seven-target install reported "Left 205 existing files untouched".
@@ -487,9 +488,14 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       // failed the same way, and `remove --all` refused to uninstall what it had
       // just installed. Single-target installs write the root file first and so
       // throw before anything lands, which is why this only showed up with two.
+      // An assistant added by `init --customize` is a first install for that
+      // target. Recompiling it instead never wrote its MCP config — `update`
+      // leaves that to `sync`, and `sync` found nothing to do — so the new
+      // assistant ran with no servers while every check reported all clear.
+      const compiledBefore = isReinit && previousIdes.has(ide)
       let results: CopyResults
       try {
-        results = isReinit
+        results = compiledBefore
           ? await adapter.update(pkgRoot, projectRoot, stack, combinedRepoInfo, source)
           : await adapter.install(pkgRoot, projectRoot, stack, combinedRepoInfo, source)
       } catch (err) {
@@ -619,7 +625,15 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   if (existsSync(custSrcDir)) {
     const custDestDir = resolve(projectRoot, '.opencastle')
     const custTransform = getCustomizationsTransform(stack)
-    const sub = await copyDir(custSrcDir, custDestDir, { transform: custTransform })
+    // Over an existing `.opencastle/`, the templates bootstrap prunes or renames
+    // on the first run — `stack/`, the tracker config — stay as that run left
+    // them. Copying them again put back every one it had removed: a project
+    // with no CMS got `cms-config.md` and `sanity-config.md` on its second init.
+    const prunedOnce = (rel: string) => rel === 'stack' || rel.startsWith('stack/') || rel === 'project/tracker-config.md'
+    const sub = await copyDir(custSrcDir, custDestDir, {
+      transform: custTransform,
+      filter: (_name, srcPath) => !(alreadyScaffolded && prunedOnce(relative(custSrcDir, srcPath).split('\\').join('/'))),
+    })
     totalCreated += sub.created.length
     totalSkipped += sub.skipped.length
   }

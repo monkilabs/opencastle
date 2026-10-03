@@ -202,7 +202,8 @@ const commands = { ...VISIBLE, ...HIDDEN }
 // belongs to it too — `opencastle --json` is documented in the help text, in
 // status's own help, and on the website, and used to answer "Unknown command".
 if (!command || command.startsWith('-')) {
-  const bare = ['--json', '--help', '-h']
+  // `--debug` is global; alone it is the status command with stack traces on.
+  const bare = ['--json', '--help', '-h', '--debug']
   if (!command || bare.includes(command)) {
     if (command === '--help' || command === '-h') {
       console.log(HELP)

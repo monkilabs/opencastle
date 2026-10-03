@@ -30,14 +30,17 @@ import {
 import { cliVersionOf, requiredEnvVars } from './layers.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
+import { c } from './prompt.js';
 
 // ── Styled output helpers ─────────────────────────────────────
 
-const PASS = '\x1b[32m✓\x1b[0m';
-const FAIL = '\x1b[31m✗\x1b[0m';
-const WARN = '\x1b[33m!\x1b[0m';
-const DIM = (s: string) => `\x1b[2m${s}\x1b[0m`;
-const BOLD = (s: string) => `\x1b[1m${s}\x1b[0m`;
+// The shared helpers, so `NO_COLOR` holds here too; these were the one set of
+// colours written by hand.
+const PASS = c.green('✓');
+const FAIL = c.red('✗');
+const WARN = c.yellow('!');
+const DIM = c.dim;
+const BOLD = c.bold;
 
 interface CheckResult {
   ok: boolean;

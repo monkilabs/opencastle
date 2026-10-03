@@ -18,8 +18,9 @@ import type { CliContext } from './types.js'
  * workflow that installs the project's dependencies (baselines come from
  * there), runs the project's own OpenCastle version, fails on drift, and on a
  * pull request writes what the change does to the assistants beside it. With
- * `--owners`, CODEOWNERS routes every change to what assistants are given —
- * all of which moves `.opencastle/lock.json` — to the people who own it.
+ * `--owners`, CODEOWNERS routes every change the lock records — instructions,
+ * skills, agents, prompts, MCP servers, policy — to the people who own it.
+ * Lessons are not in the lock, and the comment it writes says so.
  */
 
 const HELP = `
@@ -218,8 +219,9 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string,
       path: existing ?? join(repoRoot, '.github', 'CODEOWNERS'),
       block: [
         '',
-        '# What every AI assistant is given (opencastle ci). Every change to it moves',
-        '# the lock, so these two lines route all of them to the owners.',
+        '# What every AI assistant is given (opencastle ci). A change to its instructions,',
+        '# skills, agents, prompts, MCP servers or policy moves the lock, so these two',
+        '# lines route all of them to the owners. Lessons (.opencastle/lessons/) do not.',
         `${at}${LOCK_REL} ${owners}`,
         `${at}${TEAM_CONFIG_REL} ${owners}`,
         '',

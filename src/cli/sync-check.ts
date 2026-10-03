@@ -718,7 +718,16 @@ function render(report: CheckReport): void {
   // The lock is not edited by anyone; when it differs, the sources moved and
   // nobody has synced. Filed under "edited in place" it told people they had
   // an edit to lose.
-  const lockDrift = [...changed, ...missing].filter((d) => d.path === LOCK_REL)
+  //
+  // The lessons index is the same kind of thing: compiled from
+  // `.opencastle/lessons/` and stale until `sync` runs. It was filed under "MCP
+  // servers sync would change", which it has nothing to do with.
+  const lessonsIndex = `.opencastle/${LESSONS_INDEX}`
+  const lockDrift = [
+    ...[...changed, ...missing].filter((d) => d.path === LOCK_REL),
+    ...outdated.filter((d) => d.path === lessonsIndex),
+  ]
+  const outdatedMcp = outdated.filter((d) => d.path !== lessonsIndex)
   const changedFiles = changed.filter((d) => d.path !== LOCK_REL)
   const missingFiles = missing.filter((d) => d.path !== LOCK_REL)
   if (lockDrift.length > 0) {
@@ -742,11 +751,11 @@ function render(report: CheckReport): void {
     console.log('')
   }
 
-  if (outdated.length > 0) {
+  if (outdatedMcp.length > 0) {
     console.log(
       `  ${c.bold('MCP servers sync would change')} ${c.dim('(integration defaults move forward, team servers are written as defined; entries you added or edited stay yours)')}`,
     )
-    for (const d of outdated) {
+    for (const d of outdatedMcp) {
       console.log(`    ${c.yellow('~')} ${d.path} ${c.dim(`(${d.ide})`)}`)
       if (d.detail) console.log(`      ${c.dim(d.detail)}`)
     }
