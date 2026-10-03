@@ -268,20 +268,6 @@ export interface TaskStepRecord {
   finished_at: string | null
 }
 
-export interface WatchTrigger {
-  type: 'file-change' | 'cron' | 'git-push'
-  glob?: string        // for file-change: glob pattern to watch
-  schedule?: string    // for cron: 5-field cron expression
-  branch?: string      // for git-push: branch name pattern
-  debounce_ms?: number // file-change debounce (default: 500ms)
-}
-
-export interface WatchConfig {
-  triggers: WatchTrigger[]
-  clear_scratchpad?: boolean // clear scratchpad on watch start
-  scratchpad_retention_days?: number // auto-clear scratchpad entries older than N days
-}
-
 export interface ScratchpadRecord {
   key: string
   value: string
@@ -365,10 +351,6 @@ export type ConvoyEventType =
     }
   | { type: 'ndjson_write_failed'; data?: { original_type?: string } }
   | { type: 'built_in_gate_result'; data?: { gate: string; passed: boolean; output?: string; level?: string } }
-  | { type: 'watch_started'; data?: { trigger_type?: string; pid?: number } }
-  | { type: 'watch_cycle_start'; data?: { cycle_number?: number; triggered_by?: string } }
-  | { type: 'watch_cycle_end'; data?: { cycle_number?: number; status?: string } }
-  | { type: 'watch_stopped'; data?: { reason?: string } }
   | { type: 'worker_killed'; data?: { reason?: string; worker_id?: string; task_id?: string } }
   | { type: 'contract_violation'; data?: { task_id?: string; agent?: string; missing?: string[]; warnings?: string[] } }
   | { type: 'partition_violation'; data?: { task_id?: string; allowed?: string[]; actual?: string[]; violations?: string[] } }
@@ -411,10 +393,6 @@ export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
   'secret_leak_prevented',
   'ndjson_write_failed',
   'built_in_gate_result',
-  'watch_started',
-  'watch_cycle_start',
-  'watch_cycle_end',
-  'watch_stopped',
   'worker_killed',
   'contract_violation',
   'partition_violation',

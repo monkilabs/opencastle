@@ -168,19 +168,6 @@ const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
     output: v.optional(v.string()),
     level: v.optional(v.string()),
   }),
-  watch_started: v.looseObject({
-    trigger_type: v.optional(v.string()),
-    pid: v.optional(v.number()),
-  }),
-  watch_cycle_start: v.looseObject({
-    cycle_number: v.optional(v.number()),
-    triggered_by: v.optional(v.string()),
-  }),
-  watch_cycle_end: v.looseObject({
-    cycle_number: v.optional(v.number()),
-    status: v.optional(v.string()),
-  }),
-  watch_stopped: v.looseObject({ reason: v.optional(v.string()) }),
   worker_killed: v.looseObject({
     reason: v.optional(v.string()),
     worker_id: v.optional(v.string()),

@@ -81,7 +81,6 @@ export interface ConvoyEngineOptions {
   dbPath?: string
   logsDir?: string
   verbose?: boolean
-  pipelineId?: string
   /** Where `.opencastle/` logs and ledgers go. Defaults to the main checkout of `basePath`'s repository. */
   repoRoot?: string
   /** Aborting it stops the run the way Ctrl+C does. */
@@ -98,8 +97,7 @@ export interface ConvoyEngineOptions {
    * The checkout merges land in.
    * - omitted: the engine creates (or reuses) a worktree of the convoy branch;
    * - a path: that directory, already on the convoy branch;
-   * - null: `basePath` itself, already on the branch — tests, and the pipeline,
-   *   which manages its own.
+   * - null: `basePath` itself, already on the branch (tests).
    */
   _convoyWorktreeDir?: string | null
   /** Replaces the default reviewer (tests). */
@@ -2185,8 +2183,8 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
 
   /**
    * The main checkout, where `.opencastle/` lives — never a worktree that is
-   * about to be removed. A caller that supplies its own checkout (tests, the
-   * pipeline) says where with `repoRoot`, or gets `basePath`.
+   * about to be removed. A caller that supplies its own checkout (tests) says
+   * where with `repoRoot`, or gets `basePath`.
    */
   async function resolveRepoRoot(): Promise<string> {
     if (options.repoRoot) return resolve(options.repoRoot)
@@ -2271,7 +2269,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       // `basePath` is the merge target here. That must never be the user's own
       // checkout — the main worktree — however the caller got there. (Tests
       // that inject `_ensureBranch` use a scratch directory and are spared the
-      // git call; the pipeline never passes it.)
+      // git call.)
       let main: string | undefined
       if (options._ensureBranch === undefined) {
         try {
@@ -2350,7 +2348,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         adapter: adapter.name,
         created_at: new Date().toISOString(),
         spec_yaml: specYaml,
-        pipeline_id: options.pipelineId ?? null,
+        pipeline_id: null,
       })
 
       const tasks = spec.tasks ?? []

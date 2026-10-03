@@ -384,7 +384,6 @@ describe('KNOWN_EVENT_TYPES', () => {
       'post_convoy_hook_failed',
       'session', 'delegation',
       'secret_leak_prevented', 'ndjson_write_failed', 'built_in_gate_result',
-      'watch_started', 'watch_cycle_start', 'watch_cycle_end', 'watch_stopped',
       'worker_killed',
     ]
     for (const type of canonical) {
@@ -392,10 +391,11 @@ describe('KNOWN_EVENT_TYPES', () => {
     }
   })
 
-  it('no longer declares the drift, injection and swarm events whose machinery is gone', () => {
+  it('no longer declares the drift, injection, swarm and watch events whose machinery is gone', () => {
     for (const gone of [
       'drift_check_result', 'drift_detected', 'file_injection_received',
       'swarm_concurrency_update', 'merge_conflict_failed', 'review_stage_completed',
+      'watch_started', 'watch_cycle_start', 'watch_cycle_end', 'watch_stopped',
     ]) {
       expect(KNOWN_EVENT_TYPES.has(gone)).toBe(false)
     }
@@ -439,7 +439,7 @@ describe('validateEventType', () => {
   it('returns true for known event types', () => {
     expect(validateEventType('convoy_started')).toBe(true)
     expect(validateEventType('task_done')).toBe(true)
-    expect(validateEventType('watch_stopped')).toBe(true)
+    expect(validateEventType('worker_killed')).toBe(true)
   })
 
   it('returns false for unknown event types', () => {

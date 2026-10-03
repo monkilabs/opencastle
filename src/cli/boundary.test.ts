@@ -67,7 +67,7 @@ describe('the compiler does not depend on the convoy engine', () => {
 
   it('only convoy commands reach the engine', () => {
     // These are the engine's own CLI surface, so they may import it.
-    const allowed = new Set(['convoy-cmd.ts', 'run.ts', 'plan.ts', 'pipeline.ts', 'watch.ts', 'dashboard.ts'])
+    const allowed = new Set(['convoy-cmd.ts', 'run.ts', 'plan.ts', 'pipeline.ts', 'dashboard.ts'])
     const unexpected: string[] = []
     for (const file of readdirSync(cliDir)) {
       if (!file.endsWith('.ts') || file.endsWith('.test.ts')) continue
