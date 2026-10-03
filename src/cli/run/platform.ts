@@ -149,12 +149,20 @@ function appendCapped(current: string, chunk: string): string {
  * Run a project command — a gate such as `npm test` — through the platform's
  * own shell (`/bin/sh` or cmd.exe). Gates were run with `sh -c`, which does not
  * exist on Windows.
+ *
+ * Aborting `signal` kills the command and everything it started. A gate runs in
+ * a process group of its own, so the terminal's Ctrl+C never reaches it: without
+ * this, an interrupted run waited for a ten-minute test suite to finish.
  */
 export function runShell(
   command: string,
-  opts: { cwd: string; env?: NodeJS.ProcessEnv; timeoutMs?: number },
+  opts: { cwd: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; signal?: AbortSignal },
 ): Promise<ShellResult> {
   return new Promise((resolvePromise) => {
+    if (opts.signal?.aborted) {
+      resolvePromise({ code: 130, stdout: '', stderr: 'Interrupted before it started', timedOut: false })
+      return
+    }
     const child = spawn(command, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
@@ -173,12 +181,15 @@ export function runShell(
           killTree(child.pid)
         }, opts.timeoutMs)
       : null
+    const onAbort = (): void => killTree(child.pid)
+    opts.signal?.addEventListener('abort', onAbort, { once: true })
     child.stdout?.on('data', (d) => (stdout = appendCapped(stdout, String(d))))
     child.stderr?.on('data', (d) => (stderr = appendCapped(stderr, String(d))))
     const finish = (code: number) => {
       if (settled) return
       settled = true
       if (timer) clearTimeout(timer)
+      opts.signal?.removeEventListener('abort', onAbort)
       resolvePromise({ code, stdout, stderr, timedOut })
     }
     child.on('error', (err) => {

@@ -309,8 +309,9 @@ export function runBlastRadiusGate(diff: string): {
 export async function runDependencyAuditGate(
   worktreePath: string,
   timeoutMs = 300_000,
+  signal?: AbortSignal,
 ): Promise<{ passed: boolean; output: string }> {
-  const shell = await runShell('npm audit --json', { cwd: worktreePath, timeoutMs })
+  const shell = await runShell('npm audit --json', { cwd: worktreePath, timeoutMs, signal })
   const result = { exitCode: shell.code, stdout: shell.stdout, stderr: shell.stderr }
   if (shell.timedOut) {
     return { passed: false, output: `Dependency audit timed out after ${Math.round(timeoutMs / 1000)}s` }
@@ -349,8 +350,9 @@ export async function runRegressionTestGate(
   worktreePath: string,
   testCommand = 'npm test',
   timeoutMs = 300_000,
+  signal?: AbortSignal,
 ): Promise<{ passed: boolean; output: string }> {
-  const result = await runShell(testCommand, { cwd: worktreePath, timeoutMs })
+  const result = await runShell(testCommand, { cwd: worktreePath, timeoutMs, signal })
   if (result.timedOut) {
     return { passed: false, output: `Regression test timed out after ${Math.round(timeoutMs / 1000)}s` }
   }

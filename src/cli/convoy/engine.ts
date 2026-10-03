@@ -537,6 +537,11 @@ interface RunControl {
   interrupted: string | null
   /** Resolves when the run is interrupted, so waits can be cut short. */
   interruptedPromise: Promise<void>
+  /**
+   * Aborts on interrupt. Gates and hooks run in a process group of their own,
+   * out of reach of the terminal's Ctrl+C, so they are stopped through this.
+   */
+  signal: AbortSignal
   interrupt(reason: string): void
   /** Kill hooks for every agent session in flight. */
   onInterrupt: Array<() => void>
@@ -544,10 +549,12 @@ interface RunControl {
 
 function createRunControl(): RunControl {
   let resolveInterrupt: () => void = () => {}
+  const abort = new AbortController()
   const ctl: RunControl = {
     stopDispatch: false,
     interrupted: null,
     interruptedPromise: new Promise<void>(r => { resolveInterrupt = r }),
+    signal: abort.signal,
     onInterrupt: [],
     interrupt(reason: string) {
       if (ctl.interrupted) return
@@ -556,6 +563,7 @@ function createRunControl(): RunControl {
       for (const fn of ctl.onInterrupt) {
         try { fn() } catch { /* best effort */ }
       }
+      abort.abort()
       resolveInterrupt()
     },
   }
@@ -832,7 +840,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     for (const hook of filtered) {
       if (hook.type === 'command' || hook.type === 'guard' || hook.type === 'validate') {
         if (!hook.command) continue
-        const r = await runShell(hook.command, { cwd: context.cwd, timeoutMs: 600_000 })
+        const r = await runShell(hook.command, { cwd: context.cwd, timeoutMs: 600_000, signal: ctl.signal })
         if (r.code !== 0) {
           return { passed: false, failedHook: hook, error: (r.stderr || r.stdout).trim() || `exit ${r.code}` }
         }
@@ -958,7 +966,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
 
       if (step.gates && step.gates.length > 0 && stepResult.success) {
         for (const command of step.gates) {
-          const r = await runShell(command, { cwd: worktreePath, timeoutMs: Math.max(1000, deadline - Date.now()) })
+          const r = await runShell(command, { cwd: worktreePath, timeoutMs: Math.max(1000, deadline - Date.now()), signal: ctl.signal })
           if (r.code !== 0) {
             const output = (r.stderr || r.stdout).trim()
             stepResult = { success: false, output: `Gate failed: ${command}\nExit code: ${r.code}\n${output}`, exitCode: r.code }
@@ -1302,9 +1310,10 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     // ── Per-task gates from the spec ────────────────────────────────────────
     const taskGates = parseJsonList(rec.gates)
     for (const command of taskGates) {
-      const r = await runShell(command, { cwd: wt, timeoutMs: (spec.defaults?.gate_timeout ?? 300) * 1000 })
-      events.emit('gate_result', { command, passed: r.code === 0, exit_code: r.code, scope: 'task' }, { convoy_id: convoyId, task_id: rec.id })
+      const r = await runShell(command, { cwd: wt, timeoutMs: (spec.defaults?.gate_timeout ?? 300) * 1000, signal: ctl.signal })
+      // A gate the interrupt killed did not fail; nothing is recorded for it.
       if (ctl.interrupted) return requeue()
+      events.emit('gate_result', { command, passed: r.code === 0, exit_code: r.code, scope: 'task' }, { convoy_id: convoyId, task_id: rec.id })
       if (r.code !== 0) {
         const output = [r.stderr, r.stdout].filter(Boolean).join('\n').trim() || '(no output)'
         return retryOrFail('gate-failed', `Gate "${command}" failed (exit ${r.code})`, {
@@ -1912,27 +1921,29 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     progress.line(`\n  ${c.bold(gateAttempt === 0 ? 'Gates:' : `Gates (fix ${gateAttempt}/${maxGateRetries}):`)}`)
 
     for (const command of spec.gates ?? []) {
-      const r = await runShell(command, { cwd: workRoot, timeoutMs: gateTimeoutMs })
+      const r = await runShell(command, { cwd: workRoot, timeoutMs: gateTimeoutMs, signal: ctl.signal })
+      // A gate the interrupt killed did not fail; nothing is recorded for it.
+      if (ctl.interrupted) break
       const output = [r.stderr, r.stdout].filter(Boolean).join('\n').trim()
       gateResults.push({ command, exitCode: r.code, passed: r.code === 0, ...(r.code !== 0 ? { output } : {}) })
       events.emit('gate_result', { command, passed: r.code === 0, exit_code: r.code, scope: 'convoy', ...(r.code !== 0 ? { output: output.slice(-2000) } : {}) }, { convoy_id: convoyId })
       progress.line(`  ${r.code === 0 ? c.green('✓') : c.red('✗')} ${c.dim(command)}${r.code !== 0 && output ? `: ${firstLine(output)}` : ''}`)
     }
-    if (runRegression) {
-      const reg = await runRegressionTestGate(workRoot, 'npm test', gateTimeoutMs)
+    if (runRegression && !ctl.interrupted) {
+      const reg = await runRegressionTestGate(workRoot, 'npm test', gateTimeoutMs, ctl.signal)
       gateResults.push({ command: 'npm test', exitCode: reg.passed ? 0 : 1, passed: reg.passed, ...(reg.passed ? {} : { output: reg.output }) })
       events.emit('built_in_gate_result', { gate: 'regression_test', passed: reg.passed, output: reg.output.slice(-2000) }, { convoy_id: convoyId })
       progress.line(`  ${reg.passed ? c.green('✓') : c.red('✗')} ${c.dim('npm test (regression_test)')}`)
     }
-    if (runAudit) {
-      const audit = await runDependencyAuditGate(workRoot, gateTimeoutMs)
+    if (runAudit && !ctl.interrupted) {
+      const audit = await runDependencyAuditGate(workRoot, gateTimeoutMs, ctl.signal)
       gateResults.push({ command: 'npm audit', exitCode: audit.passed ? 0 : 1, passed: audit.passed, ...(audit.passed ? {} : { output: audit.output }) })
       events.emit('built_in_gate_result', { gate: 'dependency_audit', passed: audit.passed, output: audit.output.slice(-2000) }, { convoy_id: convoyId })
       progress.line(`  ${audit.passed ? c.green('✓') : c.red('✗')} ${c.dim('npm audit (dependency_audit)')}`)
     }
 
     const failedGates = gateResults.filter(g => !g.passed)
-    if (failedGates.length === 0 || gateAttempt >= maxGateRetries) break
+    if (ctl.interrupted || failedGates.length === 0 || gateAttempt >= maxGateRetries) break
 
     gateAttempt++
     const failureSummary = failedGates

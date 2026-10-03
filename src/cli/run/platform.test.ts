@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync, chmodSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, afterEach } from 'vitest'
@@ -56,6 +56,32 @@ describe.skipIf(!posix)('running a gate through the platform shell', () => {
     const r = await runShell('sleep 30', { cwd: tmpdir(), timeoutMs: 200 })
     expect(r.timedOut).toBe(true)
     expect(Date.now() - started).toBeLessThan(10_000)
+  })
+
+  it('stops the command and its children when the signal aborts', async () => {
+    // A gate leads its own process group, so a terminal Ctrl+C never reaches
+    // it; an interrupted run used to wait for the whole command.
+    const marker = join(tmpdir(), `oc-abort-${process.pid}-${Date.now()}`)
+    const controller = new AbortController()
+    const started = Date.now()
+    const running = runShell(`sh -c 'sleep 2; touch "${marker}"' & wait`, { cwd: tmpdir(), signal: controller.signal })
+    setTimeout(() => controller.abort(), 200)
+    const r = await running
+    expect(r.code).not.toBe(0)
+    expect(r.timedOut).toBe(false)
+    expect(Date.now() - started).toBeLessThan(1_500)
+    // The grandchild was killed too: it never got to write its marker.
+    await new Promise((done) => setTimeout(done, 2_500))
+    expect(existsSync(marker)).toBe(false)
+  })
+
+  it('starts nothing when the signal has already aborted', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const marker = join(tmpdir(), `oc-aborted-${process.pid}-${Date.now()}`)
+    const r = await runShell(`touch "${marker}"`, { cwd: tmpdir(), signal: controller.signal })
+    expect(r.code).toBe(130)
+    expect(existsSync(marker)).toBe(false)
   })
 })
 
