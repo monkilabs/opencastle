@@ -28,7 +28,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-  rmSync(tmpDir, { recursive: true, force: true })
+  rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 // ── create ────────────────────────────────────────────────────────────────────
@@ -234,7 +234,7 @@ describe('ensureRootWorktree', () => {
   it('prunes a registration whose directory was deleted, then checks the branch out again', async () => {
     const { ensureRootWorktree } = await import('./worktree.js')
     const first = await ensureRootWorktree({ repoRoot: tmpDir, branch: 'convoy/x-3', base: 'HEAD', dirName: 'gone' })
-    rmSync(first, { recursive: true, force: true })
+    rmSync(first, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     const again = await ensureRootWorktree({ repoRoot: tmpDir, branch: 'convoy/x-3', base: 'HEAD', dirName: 'fresh' })
     expect(again).toBe(join(tmpDir, '.opencastle', 'worktrees', 'fresh'))
   })
@@ -262,7 +262,7 @@ describe('git under contention', () => {
       await git(['add', '-A'], dir)
       expect(await git(['diff', '--cached', '--name-only'], dir)).toContain('a.txt')
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
   })
 
@@ -275,7 +275,7 @@ describe('git under contention', () => {
       await expect(git(['checkout', 'no-such-branch'], dir)).rejects.toThrow()
       expect(Date.now() - started).toBeLessThan(1000)
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
   })
 })
@@ -295,7 +295,22 @@ describe('many tasks starting at once', () => {
       expect((await manager.list()).length).toBeGreaterThanOrEqual(12)
       await Promise.all(paths.map((p) => manager.remove(p)))
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    }
+  })
+})
+
+describe('the test environment', () => {
+  it('runs git without automatic housekeeping, which raced temporary repositories being removed', async () => {
+    // vitest.config.ts sets GIT_CONFIG_COUNT/KEY/VALUE for every git a test starts.
+    const { git } = await import('./worktree.js')
+    const dir = mkdtempSync(join(tmpdir(), 'oc-gitenv-'))
+    try {
+      await git(['init', '-q'], dir)
+      expect((await git(['config', '--get', 'gc.auto'], dir)).trim()).toBe('0')
+      expect((await git(['config', '--get', 'maintenance.auto'], dir)).trim()).toBe('false')
+    } finally {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
     }
   })
 })

@@ -141,15 +141,18 @@ jobs:
         if: steps.bump.outputs.type != 'none'
         run: npx tsc --noEmit
 
-      - name: Run tests
-        if: steps.bump.outputs.type != 'none'
-        run: npm test
-
       - name: Build
         if: steps.bump.outputs.type != 'none'
         # The CLI only. The dashboard is four files under src/cli/dashboard/ with
         # no build step, and it reads the user's own runs.
         run: npm run build
+
+      # After the build, as in ci.yml: the tests that run the CLI need dist/,
+      # and before it 9 files (90 tests) were skipped, so a release went out
+      # less tested than any pull request.
+      - name: Run tests
+        if: steps.bump.outputs.type != 'none'
+        run: npm test
 
       - name: Publish
         if: steps.bump.outputs.type != 'none'

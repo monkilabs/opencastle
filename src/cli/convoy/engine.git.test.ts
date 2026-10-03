@@ -37,7 +37,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  rmSync(repo, { recursive: true, force: true })
+  rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 type Behaviour = (task: Task, options: ExecuteOptions) => Promise<ExecuteResult> | ExecuteResult

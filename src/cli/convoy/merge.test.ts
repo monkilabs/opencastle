@@ -43,7 +43,7 @@ beforeEach(async () => {
 })
 
 afterEach(() => {
-  rmSync(repoPath, { recursive: true, force: true })
+  rmSync(repoPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 // ── successful merge ──────────────────────────────────────────────────────────

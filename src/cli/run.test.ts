@@ -148,7 +148,7 @@ afterEach(() => {
     if (v === undefined) delete process.env[k]
     else process.env[k] = v
   }
-  rmSync(root, { recursive: true, force: true })
+  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 
 const text = (): string => out.join('\n')
