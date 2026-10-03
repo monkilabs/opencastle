@@ -18,6 +18,13 @@ const plan: PlanEntry[] = [
 describe('buildSharedContext', () => {
   const shared = buildSharedContext({ convoyName: 'Auth', plan, artifactsDir: '/repo/.opencastle/artifacts/c1/' })
 
+  it('tells workers to leave .opencastle/ alone, though the project instructions ask them to write there', () => {
+    // A real worker recorded an issue in KNOWN-ISSUES.md, as the compiled
+    // CLAUDE.md asks; review blocked it as a change outside the task, and the
+    // task ran twice.
+    expect(shared).toMatch(/do not edit anything under `\.opencastle\/`/)
+  })
+
   it('lists the whole plan with dependencies and files', () => {
     expect(shared).toContain('# Convoy: Auth')
     expect(shared).toContain('- api [developer]: Build the API — files: src/api/')
