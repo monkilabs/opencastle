@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "nextjs",
+  "description": "Next.js skill and MCP server for AI coding assistants: React framework with App Router, Server Components, and MCP devtools.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#nextjs",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "framework"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Next.js",
+      "category": "tech",
+      "subCategory": "framework",
+      "authType": "none",
+      "officialDocs": "https://nextjs.org/docs"
+    }
+  }
+}

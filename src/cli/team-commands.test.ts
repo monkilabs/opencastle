@@ -219,7 +219,7 @@ describe.skipIf(!built)('a baseline package', () => {
   it('scaffolds one that passes its own check', () => {
     expect(run(dir, ['baseline', 'init', 'base', '--name', '@acme/base']).code).toBe(0)
     const pkg = JSON.parse(readFileSync(join(dir, 'base', 'package.json'), 'utf8'))
-    expect(pkg.opencastle).toEqual({ baseline: 'layer' })
+    expect(pkg.opencastle).toEqual({ baseline: '.' })
     const check = run(dir, ['baseline', 'check', 'base', '--json'])
     expect(check.code).toBe(0)
     const report = JSON.parse(check.out)
@@ -248,6 +248,6 @@ describe.skipIf(!built)('a baseline package', () => {
     writeFileSync(path, JSON.stringify(pkg))
     const check = run(dir, ['baseline', 'check', 'base'])
     expect(check.code).toBe(1)
-    expect(check.out).toContain('npm publish would ship a baseline with nothing in it')
+    expect(check.out).toContain('"files" does not include plugin.json, so npm publish would leave it out')
   })
 })

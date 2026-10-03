@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sanity",
+  "description": "Sanity skill and MCP server for AI coding assistants: GROQ queries, real-time collaboration.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#sanity",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "cms"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Sanity",
+      "category": "tech",
+      "subCategory": "cms",
+      "authType": "oauth",
+      "officialDocs": "https://www.sanity.io/docs"
+    }
+  }
+}

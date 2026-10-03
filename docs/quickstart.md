@@ -128,8 +128,9 @@ To share one standard across repositories, put it in a baseline package:
 opencastle baseline init --name @acme/opencastle-baseline
 ```
 
-Publish it, add it to each repository with `npm i -D @acme/opencastle-baseline`,
-and extend it:
+The package it creates is also an [Agent Plugin](https://www.opencastle.dev/docs/agent-plugins/),
+so assistants that read Agent Plugins can install it as it is. Publish it, add it
+to each repository with `npm i -D @acme/opencastle-baseline`, and extend it:
 
 ```jsonc
 // .opencastle/config.json

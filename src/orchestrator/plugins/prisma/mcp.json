@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "Prisma": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "--no",
+        "prisma",
+        "mcp"
+      ]
+    }
+  }
+}

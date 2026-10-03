@@ -66,7 +66,7 @@ const teamPoints = [
     icon: 'layers',
     title: 'One standard, every repository',
     description:
-      'Put your instructions, skills, agents, MCP servers and policy in a baseline package. Each repository installs it as a devDependency and extends it; your lockfile pins it and your upgrade bot rolls it out.',
+      'Put your instructions, skills, agents, MCP servers and policy in a baseline package — an Agent Plugin. Each repository installs it as a devDependency and extends it; your lockfile pins it and your upgrade bot rolls it out.',
   },
   {
     icon: 'policy',
@@ -100,6 +100,45 @@ const teamPoints = [
   },
 ];
 
+const standards = [
+  {
+    icon: 'plugin',
+    title: 'Agent Plugins 1.0',
+    description:
+      'Your baseline is an Agent Plugin: Copilot, VS Code, Cursor, Codex and Kiro install it as it is, and OpenCastle compiles it into the assistants that do not read plugins yet. Extend any Agent Plugin from npm the same way.',
+  },
+  {
+    icon: 'skills',
+    title: 'Agent Skills',
+    description:
+      'Every skill is a SKILL.md folder named as the skill, where each assistant looks for skills — .agents/skills/ for Codex and Antigravity, .claude/skills/ for Claude Code, .github/skills/ for Copilot.',
+  },
+  {
+    icon: 'workflows',
+    title: 'AGENTS.md',
+    description:
+      'Codex CLI and OpenCode read AGENTS.md; Claude Code, Copilot, Cursor, Windsurf and Antigravity each get their own root file with the same content.',
+  },
+  {
+    icon: 'orchestrator',
+    title: 'MCP',
+    description:
+      'Every server written where each assistant reads it, in its own syntax — JSON for six, [mcp_servers] tables in .codex/config.toml for Codex — with variables spelled the way each one expands them.',
+  },
+  {
+    icon: 'review',
+    title: 'Claude Code’s copies, compiled',
+    description:
+      'Claude Code reads its own plugin manifest. opencastle plugin build writes .claude-plugin/plugin.json and .mcp.json from the portable files, and check fails the pull request when they fall behind.',
+  },
+  {
+    icon: 'layers',
+    title: 'One marketplace, four assistants',
+    description:
+      'opencastle plugin index writes the marketplace file Claude Code and Copilot CLI read, Cursor’s team marketplace and Codex’s — so a repository of plugins is added once in each.',
+  },
+];
+
 const workflows = [
   { name: 'feature-implementation', description: 'Brainstorm → Research → Foundation → Integration → Validation → QA Gate' },
   { name: 'bug-fix', description: 'Triage & Reproduce → Root Cause Analysis → Fix → Verification' },
@@ -115,6 +154,7 @@ const workflows = [
 ];
 
 const featureIcons: Record<string, string> = {
+  plugin: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
   layers: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
   policy: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
   review: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
@@ -351,10 +391,53 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
         </div>
         <p class="tier-intro">
-          Open formats where they exist: Codex and OpenCode read <code>AGENTS.md</code>,
-          Claude Code skills are <code>SKILL.md</code> folders in the Agent Skills
-          format, and every assistant gets MCP. How the layers, policy and lock fit
-          together, with a worked example: <a href="/docs/teams">OpenCastle for Teams</a>.
+          How the layers, policy and lock fit together, with a worked example:
+          <a href="/docs/teams">OpenCastle for Teams</a>.
+        </p>
+      </div>
+    </section>
+
+    <!-- ==================== Open standards ==================== -->
+    <section class="section section--border-top" id="standards">
+      <div class="container">
+        <span class="section__label">Open standards</span>
+        <h2 class="section__title">
+          Agent Plugins in every assistant — even the ones that do not read them yet.
+        </h2>
+        <p class="section__subtitle">
+          The formats assistants read are converging on open standards: AGENTS.md, Agent
+          Skills, MCP, and Agent Plugins 1.0 to package them. OpenCastle writes each one
+          wherever an assistant reads it, and compiles what the standards do not cover yet —
+          agents, commands, policy — assistant by assistant.
+        </p>
+        <div class="features-grid">
+          {standards.map((f) => (
+            <div class="feature-card">
+              <div class="feature-card__icon" set:html={featureIcons[f.icon]} />
+              <h3 class="feature-card__title">{f.title}</h3>
+              <p class="feature-card__description">{f.description}</p>
+            </div>
+          ))}
+        </div>
+        <div class="code-block">
+          <div class="code-block__header">
+            <span class="code-block__dot" />
+            <span class="code-block__dot" />
+            <span class="code-block__dot" />
+          </div>
+          <div class="code-block__body">
+            <pre><span class="code-comment"># Your standard as an Agent Plugin, and an OpenCastle baseline</span>
+<span class="code-folder">$ npx opencastle baseline init --name @acme/ai-standard</span>
+<span class="code-comment"># Check it the way assistants load it, and write Claude Code's copies</span>
+<span class="code-folder">$ npx opencastle plugin check</span>
+<span class="code-folder">$ npx opencastle plugin build</span>
+<span class="code-comment"># A marketplace file for Claude Code, Copilot, Cursor and Codex</span>
+<span class="code-folder">$ npx opencastle plugin index</span></pre>
+          </div>
+        </div>
+        <p class="tier-intro">
+          What each standard covers, which assistants read Agent Plugins, and how to publish
+          and distribute one: <a href="/docs/agent-plugins">Agent Plugins &amp; open standards</a>.
         </p>
       </div>
     </section>

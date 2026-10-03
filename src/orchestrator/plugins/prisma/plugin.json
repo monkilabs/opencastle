@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "prisma",
+  "description": "Prisma skill and MCP server for AI coding assistants: Type-safe ORM, migrations, schema management.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#prisma",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "database"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Prisma",
+      "category": "tech",
+      "subCategory": "database",
+      "authType": "none",
+      "officialDocs": "https://www.prisma.io/docs"
+    }
+  }
+}
