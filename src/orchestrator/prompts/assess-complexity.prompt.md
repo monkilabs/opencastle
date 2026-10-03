@@ -8,11 +8,16 @@ output: json
 
 # Assess PRD Complexity
 
-Analyze the PRD at the end of this prompt and answer with a **single JSON object**.
+Analyze the PRD at the end of this prompt — or, before a PRD exists, the request itself — and answer with a **single JSON object**.
 
 ## What Happens to Your Answer
 
-When `opencastle convoy` runs this step (at the same time as the PRD review):
+`opencastle convoy` runs this step first on the request:
+
+- `"complexity": "low"` with `"recommended_strategy": "single"` means the plan is written straight from the request, with no PRD. Answer `low` only when one or two agents can do the whole change in a session each.
+- Otherwise a PRD is written, and your answer is used for it, unless you recommend `"chain"`: then the PRD is sized again, beside its review, so the groups can name its phases.
+
+What the answer drives:
 
 - The `task_complexity` scores go to the planner, which uses them to set each task's timeout, retries and review level.
 - With `"recommended_strategy": "chain"` and groups that pass the checks below, each group is planned in a session of its own, all at the same time, each seeing only its own phases of the PRD. The plans are then joined into one spec: a group's first tasks wait for the last tasks of every group in its `depends_on`, and groups that do not depend on each other run side by side.

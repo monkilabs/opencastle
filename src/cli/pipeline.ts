@@ -360,7 +360,8 @@ export interface PlanRequest {
 }
 
 export interface PlanOutcome {
-  prdPath: string
+  /** Null for a small change, planned straight from the request. */
+  prdPath: string | null
   specPath: string
   plan: TaskPlan
   settings: SpecSettings
@@ -458,6 +459,9 @@ async function fixPlan(step: StepRunner, plan: TaskPlan, problems: string): Prom
  * checks it was there for are done in code, and a person reads the plan
  * before it runs.
  */
+/** Where a PRD would go, for a change small enough to plan from the request alone. */
+const NO_PRD = 'There is no PRD: this is a small change, planned straight from the request. Read the code it touches before you plan.'
+
 export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   const root = req.projectRoot ?? process.cwd()
   const convoyDir = resolve(root, '.opencastle', 'convoys')
@@ -474,105 +478,126 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
     return r
   }
 
-  // ── The PRD ───────────────────────────────────────────────────────────────
-  let prdPath: string
-  if (req.prdPath) {
-    prdPath = resolve(root, req.prdPath)
-    done('PRD', relPath(prdPath))
-  } else {
-    const written = await step('generate-prd', { goalText: req.task ?? '' })
-    prdPath = written.outputPath!
-    done('PRD written', relPath(prdPath))
-  }
-  let prd = await readFile(prdPath, 'utf8')
-
-  // Both only read the PRD, so they run side by side. fix-prd is told to keep
-  // the PRD's phases, so the assessment of this draft still fits a fixed one;
-  // it is cached under this draft's text, which is the text it describes.
-  const cached = await readCachedComplexity(prdPath, prd)
-  const assessedFrom = prd
-  const [verdict, complexity] = await settleAll<PromptStepResult | ComplexityAssessment | null>([
-    step('validate-prd', { goalText: `<!-- validation-pass: 1 -->\n${prd}` }),
-    cached
-      ? Promise.resolve(cached)
-      : step('assess-complexity', { goalText: prd, contextText: req.task ?? '' })
-          .then((r) => parseComplexityAssessment(r.rawOutput))
-          .catch((err: unknown) => {
-            warn(`Could not size the work (${message(err)}) — planning it as one`)
-            return null
-          }),
-  ]) as [PromptStepResult, ComplexityAssessment | null]
-
-  if (complexity && !cached) await writeCachedComplexity(prdPath, assessedFrom, complexity)
-
-  if (verdict.isValid) {
-    done('PRD checked')
-  } else {
-    let issues = verdict.errors || verdict.rawOutput
-    let fixed = false
-    for (let round = 1; round <= MAX_FIX_ROUNDS && !fixed; round++) {
-      warn(`The PRD has issues — fixing (${round}/${MAX_FIX_ROUNDS})`)
-      console.log(indented(issues))
-      await step('fix-prd', { goalText: prd, contextText: issues, outputPath: prdPath })
-      prd = await readFile(prdPath, 'utf8')
-      const again = await step('validate-prd', { goalText: `<!-- validation-pass: ${round + 1} -->\n${prd}` })
-      fixed = again.isValid === true
-      if (!fixed) issues = again.errors || again.rawOutput
+  // ── A small change: no PRD ────────────────────────────────────────────────
+  // Sizing the request first is one short economy session. When it is small,
+  // the plan is written straight from it: a PRD, its review and its fixes were
+  // four or five sessions and most of the planning time — 7m 25s in a real
+  // run — for a change the request already described.
+  let prdPath: string | null = null
+  let plan: TaskPlan | null = null
+  let quick: ComplexityAssessment | null = null
+  if (!req.prdPath && req.task) {
+    quick = await step('assess-complexity', { goalText: req.task, contextText: req.task })
+      .then((r) => parseComplexityAssessment(r.rawOutput))
+      .catch(() => null)
+    if (quick?.complexity === 'low' && quick.recommended_strategy !== 'chain') {
+      done('Sized', 'low — planned straight from the request, without a PRD')
+      plan = await generatePlan(step, req.task, appendTaskComplexity(NO_PRD, quick.task_complexity), 'task', convoyDir)
+      done(`${plan.tasks.length} tasks planned`)
     }
-    if (fixed) done('PRD fixed and checked')
-    else warn(`The PRD still has issues after ${MAX_FIX_ROUNDS} fixes — planning from it anyway:\n${indented(issues)}`)
   }
 
-  if (complexity) {
-    done(cached ? 'Sized (cached for this PRD)' : 'Sized', `${complexity.complexity}, ${complexity.total_tasks} workstreams`)
-  }
+  if (!plan) {
+    // ── The PRD ───────────────────────────────────────────────────────────────
+    if (req.prdPath) {
+      prdPath = resolve(root, req.prdPath)
+      done('PRD', relPath(prdPath))
+    } else {
+      const written = await step('generate-prd', { goalText: req.task ?? '' })
+      prdPath = written.outputPath!
+      done('PRD written', relPath(prdPath))
+    }
+    let prd = await readFile(prdPath!, 'utf8')
 
-  // ── The tasks ─────────────────────────────────────────────────────────────
-  let groups: ConvoyGroup[] | null = null
-  if (complexity?.recommended_strategy === 'chain' && complexity.convoy_groups.length > 1) {
-    const check = validateComplexityGroups(complexity)
-    if (check.valid) groups = topologicalSortGroups(complexity.convoy_groups)
-    else warn(`Ignoring the suggested groups (${check.reason}) — planning it as one`)
-  }
+    // Both only read the PRD, so they run side by side. fix-prd is told to keep
+    // the PRD's phases, so the assessment of this draft still fits a fixed one;
+    // it is cached under this draft's text, which is the text it describes.
+    const cached = await readCachedComplexity(prdPath, prd)
+    const assessedFrom = prd
+    const [verdict, complexity] = await settleAll<PromptStepResult | ComplexityAssessment | null>([
+      step('validate-prd', { goalText: `<!-- validation-pass: 1 -->\n${prd}` }),
+      // The request was sized already. Only groups need sizing against the
+      // PRD, whose phases they name.
+      cached || (quick && quick.recommended_strategy !== 'chain')
+        ? Promise.resolve(cached ?? quick)
+        : step('assess-complexity', { goalText: prd, contextText: req.task ?? '' })
+            .then((r) => parseComplexityAssessment(r.rawOutput))
+            .catch((err: unknown) => {
+              warn(`Could not size the work (${message(err)}) — planning it as one`)
+              return null
+            }),
+    ]) as [PromptStepResult, ComplexityAssessment | null]
 
-  let plan: TaskPlan
-  if (groups) {
-    const featureName =
-      prd.match(/^# (.+?)\s*(?:—|-)?\s*PRD/m)?.[1].trim() ?? complexity?.original_prompt ?? 'Feature'
-    const request = req.task ?? complexity?.original_prompt ?? ''
-    const all = groups
-    const plans = await settleAll(
-      all.map((group) => {
-        const goal = [
-          request,
-          '',
-          '## Convoy Group Scope',
-          '',
-          `This is one of ${all.length} groups, all planned at the same time. Plan ONLY the phases listed here.`,
-          'The planner joins the group plans into one spec: tasks of the groups this one depends on are',
-          'finished before this group\'s first tasks start.',
-          '',
-          `- **Group name:** ${group.name}`,
-          `- **Description:** ${group.description}`,
-          `- **Phases to include:** ${group.phases.join(', ')}`,
-          group.depends_on.length ? `- **Depends on groups:** ${group.depends_on.join(', ')}` : '',
-        ].filter((line, i, lines) => line !== '' || lines[i - 1] !== '').join('\n')
-        const context = appendTaskComplexity(
-          extractRelevantPrdSections(prd, group.phases),
-          filterTaskComplexityByPhases(complexity?.task_complexity, group.phases),
-        )
-        return generatePlan(step, goal, context, group.name, convoyDir)
-      }),
-    )
-    plan = mergeGroupPlans(
-      featureName,
-      all.map((g, i) => ({ name: g.name, depends_on: g.depends_on, plan: plans[i] })),
-    )
-    done(`${plan.tasks.length} tasks planned`, `${all.length} groups, planned side by side`)
-  } else {
-    const goal = req.task ?? complexity?.original_prompt ?? 'Implement the PRD.'
-    plan = await generatePlan(step, goal, appendTaskComplexity(prd, complexity?.task_complexity), 'task', convoyDir)
-    done(`${plan.tasks.length} tasks planned`)
+    if (complexity && !cached && complexity !== quick) await writeCachedComplexity(prdPath, assessedFrom, complexity)
+
+    if (verdict.isValid) {
+      done('PRD checked')
+    } else {
+      let issues = verdict.errors || verdict.rawOutput
+      let fixed = false
+      for (let round = 1; round <= MAX_FIX_ROUNDS && !fixed; round++) {
+        warn(`The PRD has issues — fixing (${round}/${MAX_FIX_ROUNDS})`)
+        console.log(indented(issues))
+        await step('fix-prd', { goalText: prd, contextText: issues, outputPath: prdPath })
+        prd = await readFile(prdPath, 'utf8')
+        const again = await step('validate-prd', { goalText: `<!-- validation-pass: ${round + 1} -->\n${prd}` })
+        fixed = again.isValid === true
+        if (!fixed) issues = again.errors || again.rawOutput
+      }
+      if (fixed) done('PRD fixed and checked')
+      else warn(`The PRD still has issues after ${MAX_FIX_ROUNDS} fixes — planning from it anyway:\n${indented(issues)}`)
+    }
+
+    if (complexity) {
+      done(cached ? 'Sized (cached for this PRD)' : 'Sized', `${complexity.complexity}, ${complexity.total_tasks} workstreams`)
+    }
+
+    // ── The tasks ─────────────────────────────────────────────────────────────
+    let groups: ConvoyGroup[] | null = null
+    if (complexity?.recommended_strategy === 'chain' && complexity.convoy_groups.length > 1) {
+      const check = validateComplexityGroups(complexity)
+      if (check.valid) groups = topologicalSortGroups(complexity.convoy_groups)
+      else warn(`Ignoring the suggested groups (${check.reason}) — planning it as one`)
+    }
+
+    if (groups) {
+      const featureName =
+        prd.match(/^# (.+?)\s*(?:—|-)?\s*PRD/m)?.[1].trim() ?? complexity?.original_prompt ?? 'Feature'
+      const request = req.task ?? complexity?.original_prompt ?? ''
+      const all = groups
+      const plans = await settleAll(
+        all.map((group) => {
+          const goal = [
+            request,
+            '',
+            '## Convoy Group Scope',
+            '',
+            `This is one of ${all.length} groups, all planned at the same time. Plan ONLY the phases listed here.`,
+            'The planner joins the group plans into one spec: tasks of the groups this one depends on are',
+            'finished before this group\'s first tasks start.',
+            '',
+            `- **Group name:** ${group.name}`,
+            `- **Description:** ${group.description}`,
+            `- **Phases to include:** ${group.phases.join(', ')}`,
+            group.depends_on.length ? `- **Depends on groups:** ${group.depends_on.join(', ')}` : '',
+          ].filter((line, i, lines) => line !== '' || lines[i - 1] !== '').join('\n')
+          const context = appendTaskComplexity(
+            extractRelevantPrdSections(prd, group.phases),
+            filterTaskComplexityByPhases(complexity?.task_complexity, group.phases),
+          )
+          return generatePlan(step, goal, context, group.name, convoyDir)
+        }),
+      )
+      plan = mergeGroupPlans(
+        featureName,
+        all.map((g, i) => ({ name: g.name, depends_on: g.depends_on, plan: plans[i] })),
+      )
+      done(`${plan.tasks.length} tasks planned`, `${all.length} groups, planned side by side`)
+    } else {
+      const goal = req.task ?? complexity?.original_prompt ?? 'Implement the PRD.'
+      plan = await generatePlan(step, goal, appendTaskComplexity(prd, complexity?.task_complexity), 'task', convoyDir)
+      done(`${plan.tasks.length} tasks planned`)
+    }
   }
 
   const normalized = normalizePlanFiles(plan)

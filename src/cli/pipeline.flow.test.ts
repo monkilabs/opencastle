@@ -61,7 +61,7 @@ const SINGLE = {
   total_tasks: 2,
   total_phases: 2,
   domains: ['frontend'],
-  complexity: 'low',
+  complexity: 'medium',
   recommended_strategy: 'single',
   convoy_groups: [{ name: 'all', description: 'All', phases: [1, 2], depends_on: [] }],
   task_complexity: [{ workstream: 'Tokens', phase: 1, complexity: 2, rationale: 'small' }],
@@ -182,19 +182,21 @@ describe('planConvoy: sessions', () => {
     expect(prompt).not.toMatch(/\{\{(goal|context)\}\}/)
   })
 
-  it('runs validate-prd and assess-complexity side by side', async () => {
-    let inFlight = 0
-    let most = 0
-    const slow = (answer: string) => async () => {
-      inFlight++
-      most = Math.max(most, inFlight)
-      await new Promise((r) => setTimeout(r, 20))
-      inFlight--
-      return answer
-    }
-    const { adapter } = stubAdapter({ 'validate-prd': slow(fence({ valid: true })), 'assess-complexity': slow(fence(SINGLE)) })
+  it('plans a small change straight from the request, with no PRD', async () => {
+    const { adapter, calls } = stubAdapter({ 'assess-complexity': fence({ ...SINGLE, complexity: 'low' }) })
+    const outcome = await plan(adapter)
+    expect(templates(calls)).toEqual(['assess-complexity', 'generate-convoy'])
+    expect(outcome.prdPath).toBeNull()
+    expect(existsSync(join(root, '.opencastle', 'prds'))).toBe(false)
+    expect(calls[1].prompt).toContain('There is no PRD: this is a small change')
+    expect(outcome.problems).toEqual([])
+  })
+
+  it('sizes a larger request once, and does not size its PRD again', async () => {
+    const { adapter, calls } = stubAdapter()
     await plan(adapter)
-    expect(most).toBe(2)
+    expect(count(calls, 'assess-complexity')).toBe(1)
+    expect(templates(calls)[0]).toBe('assess-complexity')
   })
 
   it('fixes an invalid PRD at most twice, then plans from it anyway', async () => {
@@ -315,13 +317,34 @@ describe('planConvoy: groups', () => {
     return { answer, most: () => most }
   }
 
+  it('sizes the PRD beside its review when the work is planned in groups', async () => {
+    let inFlight = 0
+    let most = 0
+    const slow = (answer: string) => async () => {
+      inFlight++
+      most = Math.max(most, inFlight)
+      await new Promise((r) => setTimeout(r, 20))
+      inFlight--
+      return answer
+    }
+    const groups = groupAnswers()
+    const { adapter } = stubAdapter({
+      'validate-prd': slow(fence({ valid: true })),
+      'assess-complexity': slow(fence(CHAIN)),
+      'generate-convoy': groups.answer,
+    })
+    await plan(adapter)
+    expect(most).toBe(2)
+  })
+
   it('plans every group at the same time, from its own part of the PRD', async () => {
     const groups = groupAnswers()
     const { adapter, calls } = stubAdapter({ 'assess-complexity': fence(CHAIN), 'generate-convoy': groups.answer })
     await plan(adapter)
     expect(groups.most()).toBe(3)
     expect(count(calls, 'generate-convoy')).toBe(3)
-    expect(calls).toHaveLength(6)
+    // The request is sized, then the PRD again: groups name the PRD's phases.
+    expect(calls).toHaveLength(7)
     const docs = calls.find((c) => c.template === 'generate-convoy' && c.prompt.includes('**Group name:** docs'))!
     expect(docs.prompt).not.toContain('Phase 1 — Theme')
   })
