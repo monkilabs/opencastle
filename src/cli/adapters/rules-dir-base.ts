@@ -1,7 +1,8 @@
-import { resolve, join, basename } from 'node:path'
+import { resolve, join, basename, dirname } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rename } from 'node:fs/promises'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, rmdirSync } from 'node:fs'
 import { withSource, type CompileSource } from '../layers.js'
+import { copyDir, mergeCopyResults } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { splitFrontmatter, parseFrontmatterString } from './frontmatter.js'
@@ -14,7 +15,8 @@ import { writeManagedBlock, recordMerge } from '../managed-block.js'
  *   copilot-instructions.md → <rootRulesFile>
  *   instructions/*.md       → <configDir>/rules/*<ruleExt>          (always applies)
  *   agents/*.agent.md       → <configDir>/rules/agents/*<ruleExt>
- *   skills/{star}/SKILL.md  → <configDir>/rules/skills/*<ruleExt>
+ *   skills/{star}/SKILL.md  → <skillsDir>/<name>/SKILL.md, as Agent Skills, when
+ *                             the IDE reads them; otherwise <configDir>/rules/skills/*<ruleExt>
  *   agent-workflows/*.md    → <configDir>/rules/agent-workflows/*<ruleExt>
  *   prompts/*.prompt.md     → <configDir>/rules/prompts/*<ruleExt>
  *
@@ -50,6 +52,14 @@ export interface RulesDirConfig {
   ruleExt: string
   /** Renders the YAML frontmatter lines (without the `---` fences). */
   renderFrontmatter(scope: RuleScope): string[]
+  /**
+   * Where the IDE reads Agent Skills, relative to the project root, if it does.
+   *
+   * Cursor reads `SKILL.md` folders natively now. Flattened into rules, a skill
+   * lost its scripts and assets, could not be invoked by name, and was matched
+   * on its description as a rule instead of loaded as a skill.
+   */
+  skillsDir?: string
 }
 
 export interface RulesDirAdapter {
@@ -101,7 +111,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   const rootIntro = [
     '# Project Instructions',
     '',
-    `All conventions, architecture, and project context live in \`${rulesPrefix}/\`. Read those files before making changes.`,
+    `All conventions, architecture, and project context live in \`${rulesPrefix}/\`. Read those files before making changes.` +
+      (config.skillsDir ? ` Skills are in \`${config.skillsDir}/\` — load one when a task matches its description.` : ''),
     '',
   ].join('\n')
 
@@ -301,6 +312,18 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     }
   }
 
+  /** Skills as Agent Skills: each `<name>/` folder, every file in it, frontmatter kept. */
+  async function copySkills(srcRoot: string, projectRoot: string, results: CopyResults, overwrite: boolean): Promise<void> {
+    const skillsDir = resolve(srcRoot, 'skills')
+    if (!config.skillsDir || !existsSync(skillsDir)) return
+    const dest = resolve(projectRoot, config.skillsDir)
+    await mkdir(dest, { recursive: true })
+    for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !existsSync(resolve(skillsDir, entry.name, 'SKILL.md'))) continue
+      mergeCopyResults(results, await copyDir(resolve(skillsDir, entry.name), resolve(dest, entry.name), { overwrite }))
+    }
+  }
+
   async function install(
     pkgRoot: string,
     projectRoot: string,
@@ -336,7 +359,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       descriptionPrefix: 'Agent: ',
       removeExt: '.agent.md',
     })
-    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, false)
+    if (config.skillsDir) await copySkills(srcRoot, projectRoot, results, false)
+    else await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, false)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
       descriptionPrefix: 'Workflow: ',
       excludeFiles: new Set(['README.md']),
@@ -380,10 +404,12 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // Note what is here, so the sweep below can name what it removes. A file
     // disappearing with no line of output is not a warning the user saw.
     const beforeSweep = new Map<string, string>()
-    if (existsSync(rulesRoot)) {
-      for (const rel of filesUnderDir(rulesRoot)) {
-        beforeSweep.set(resolve(rulesRoot, rel), `${configDir}/rules/${rel}`)
-      }
+    for (const [root, label] of [
+      [rulesRoot, `${configDir}/rules`],
+      ...(config.skillsDir ? [[resolve(projectRoot, config.skillsDir), config.skillsDir]] : []),
+    ]) {
+      if (!existsSync(root)) continue
+      for (const rel of filesUnderDir(root)) beforeSweep.set(resolve(root, rel), `${label}/${rel}`)
     }
 
     await convertDir(srcRoot, 'instructions', rulesRoot, results, {
@@ -395,7 +421,8 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       removeExt: '.agent.md',
       overwrite: true,
     })
-    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, true)
+    if (config.skillsDir) await copySkills(srcRoot, projectRoot, results, true)
+    else await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, true)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
       descriptionPrefix: 'Workflow: ',
       overwrite: true,
@@ -417,10 +444,25 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // reported as a stray first and removed here. That is what makes
     // `sync --check` clearable.
     const visited = new Set(results.visited ?? [])
+    const emptied = new Set<string>()
     for (const [abs, rel] of beforeSweep) {
       if (await reconcileCase(abs, visited)) continue
       await unlink(abs)
       ;(results.deleted ??= []).push(rel)
+      emptied.add(dirname(abs))
+    }
+    // Folders this sweep emptied — a skill moved out of `rules/skills/`, or one
+    // with no source left — go too; the roots themselves stay.
+    const roots = [rulesRoot, ...(config.skillsDir ? [resolve(projectRoot, config.skillsDir)] : [])]
+    for (const start of [...emptied].sort((a, b) => b.length - a.length)) {
+      for (let dir = start; !roots.includes(dir) && roots.some((r) => dir.startsWith(r)); dir = dirname(dir)) {
+        try {
+          if (readdirSync(dir).length > 0) break
+          rmdirSync(dir)
+        } catch {
+          break
+        }
+      }
     }
 
     // Customizations are NEVER overwritten.
@@ -438,7 +480,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       // `.cursor/rules/team-conventions.mdc` and reported "all clear" moments
       // before `sync` removed it. This is Cursor's documented place for project
       // rules, so that file is one people really do write.
-      framework: [`${rulesPrefix}/`],
+      framework: [`${rulesPrefix}/`, ...(config.skillsDir ? [`${config.skillsDir}/`] : [])],
       customizable: ['.opencastle/', mcpPath],
     }
   }
@@ -448,7 +490,9 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       { label: `${ideLabel} rules file`, path: rootRulesFile, type: 'file' },
       { label: 'Instruction rules', path: `${rulesPrefix}/`, type: 'dir', countContents: true, countFilter: ruleExt },
       { label: 'Agent rules', path: `${rulesPrefix}/agents/`, type: 'dir', countContents: true, countFilter: ruleExt },
-      { label: 'Skill rules', path: `${rulesPrefix}/skills/`, type: 'dir', countContents: true, countFilter: ruleExt },
+      config.skillsDir
+        ? { label: 'Skills directory', path: `${config.skillsDir}/`, type: 'dir', countContents: true }
+        : { label: 'Skill rules', path: `${rulesPrefix}/skills/`, type: 'dir', countContents: true, countFilter: ruleExt },
       { label: 'Workflow rules', path: `${rulesPrefix}/agent-workflows/`, type: 'dir', countContents: true },
       { label: 'Prompt rules', path: `${rulesPrefix}/prompts/`, type: 'dir', countContents: true },
     ]

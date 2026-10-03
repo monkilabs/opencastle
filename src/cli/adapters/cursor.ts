@@ -1,10 +1,16 @@
 import { createRulesDirAdapter } from './rules-dir-base.js'
 
 /**
- * Cursor adapter — a rules-directory IDE writing `.mdc` files.
+ * Cursor adapter — a rules-directory IDE writing `.mdc` files, and skills as
+ * Agent Skills.
  *
  * Cursor expresses scoping with an `alwaysApply` boolean plus an optional
  * `globs` array; a rule with neither is matched on its description.
+ *
+ * Skills go to `.agents/skills/`, the cross-assistant location Cursor reads
+ * beside `.cursor/skills/` — so with Codex or Antigravity also selected, all
+ * three read one copy. Releases before this one flattened each skill into
+ * `.cursor/rules/skills/<name>.mdc`; `sync` removes those.
  */
 const adapter = createRulesDirAdapter({
   ideId: 'cursor',
@@ -12,6 +18,7 @@ const adapter = createRulesDirAdapter({
   rootRulesFile: '.cursorrules',
   configDir: '.cursor',
   ruleExt: '.mdc',
+  skillsDir: '.agents/skills',
   renderFrontmatter({ description, applyTo, alwaysApply, tier }) {
     const lines: string[] = []
     if (description) lines.push(`description: "${description}"`)

@@ -221,7 +221,7 @@ still open: **[docs/teams.md](docs/teams.md)**.
 |-----------|-------------|
 | **Claude Code** | `CLAUDE.md` + `.claude/` — commands as `/oc:<name>` |
 | **GitHub Copilot** | `.github/` — agents, skills, prompts as `/oc:<name>` |
-| **Cursor** | `.cursorrules` + `.cursor/rules/*.mdc` |
+| **Cursor** | `.cursorrules` + `.cursor/rules/*.mdc` + `.agents/skills/` |
 | **Windsurf** | `.windsurfrules` + `.windsurf/rules/*.md` |
 | **OpenCode** | `AGENTS.md` + `.opencode/` + `opencode.json` |
 | **Codex CLI** | `AGENTS.md` + `.agents/skills/` + `.codex/` (MCP in `config.toml`) |

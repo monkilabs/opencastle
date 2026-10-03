@@ -50,6 +50,7 @@ describe.each([
     ext: '.mdc',
     configDir: '.cursor',
     rootFile: '.cursorrules',
+    skillsDir: '.agents/skills' as string | undefined,
   },
   {
     name: 'windsurf',
@@ -57,8 +58,9 @@ describe.each([
     ext: '.md',
     configDir: '.windsurf',
     rootFile: '.windsurfrules',
+    skillsDir: undefined as string | undefined,
   },
-])('$name adapter', ({ adapter, ext, configDir, rootFile }) => {
+])('$name adapter', ({ adapter, ext, configDir, rootFile, skillsDir }) => {
   let pkgRoot: string
   let projectRoot: string
 
@@ -73,6 +75,8 @@ describe.each([
   })
 
   const rules = () => join(projectRoot, configDir, 'rules')
+  /** Where the demo skill's main file lands: an Agent Skill, or a rule. */
+  const skillFile = () => (skillsDir ? join(projectRoot, skillsDir, 'demo-skill', 'SKILL.md') : join(rules(), 'skills', `demo-skill${ext}`))
 
   it('writes the root rules file pointing at the rules directory', async () => {
     await adapter.install(pkgRoot, projectRoot)
@@ -105,12 +109,32 @@ describe.each([
     await adapter.install(pkgRoot, projectRoot)
     expect(existsSync(join(rules(), `general${ext}`))).toBe(true)
     expect(existsSync(join(rules(), 'agents', `developer${ext}`))).toBe(true)
-    expect(existsSync(join(rules(), 'skills', `demo-skill${ext}`))).toBe(true)
+    expect(existsSync(skillFile())).toBe(true)
     expect(existsSync(join(rules(), 'agent-workflows', `bug-fix${ext}`))).toBe(true)
     expect(existsSync(join(rules(), 'prompts', `generate${ext}`))).toBe(true)
   })
 
-  it('points a skill at where its sibling actually lands', async () => {
+  it.skipIf(!skillsDir)('writes skills as Agent Skills, with every file and no rule copy', async () => {
+    await adapter.install(pkgRoot, projectRoot)
+    const dir = join(projectRoot, skillsDir!, 'demo-skill')
+    expect(readdirSync(dir).sort()).toEqual(['REFERENCE.md', 'SKILL.md'])
+    // Copied as written: the sibling sits beside it, so its pointer is right as it is.
+    expect(readFileSync(join(dir, 'SKILL.md'), 'utf8')).toContain('[REFERENCE.md](./REFERENCE.md)')
+    expect(existsSync(join(rules(), 'skills'))).toBe(false)
+    expect(readFileSync(join(projectRoot, rootFile), 'utf8')).toContain(`Skills are in \`${skillsDir}/\``)
+  })
+
+  it.skipIf(!skillsDir)('moves skills an earlier release wrote as rules, and leaves no empty folder', async () => {
+    mkdirSync(join(rules(), 'skills', 'demo-skill'), { recursive: true })
+    writeFileSync(join(rules(), 'skills', `demo-skill${ext}`), 'old rule')
+    writeFileSync(join(rules(), 'skills', 'demo-skill', `REFERENCE${ext}`), 'old sibling')
+    const result = await adapter.update(pkgRoot, projectRoot)
+    expect(existsSync(join(rules(), 'skills'))).toBe(false)
+    expect(result.deleted).toContain(`${configDir}/rules/skills/demo-skill${ext}`)
+    expect(existsSync(skillFile())).toBe(true)
+  })
+
+  it.skipIf(Boolean(skillsDir))('points a skill at where its sibling actually lands', async () => {
     // The sibling is written to `skills/<skill>/REFERENCE<ext>` while the skill
     // itself is `skills/<skill><ext>`, so the source's own `./REFERENCE.md` is
     // wrong in both directory and extension. Fourteen shipped skills point at a
@@ -146,7 +170,7 @@ describe.each([
 
   it('preserves the body after the frontmatter', async () => {
     await adapter.install(pkgRoot, projectRoot)
-    expect(readFileSync(join(rules(), 'skills', `demo-skill${ext}`), 'utf8')).toContain('Skill body.')
+    expect(readFileSync(skillFile(), 'utf8')).toContain('Skill body.')
   })
 
   it('skips existing files on install but overwrites them on update', async () => {
@@ -199,8 +223,9 @@ describe.each([
     expect(managed.framework).not.toContain(rootFile)
     expect(managed.customizable).toContain(`${configDir}/mcp.json`)
     for (const check of adapter.getDoctorChecks()) {
-      expect(check.path === rootFile || check.path.startsWith(`${configDir}/`)).toBe(true)
+      expect(check.path === rootFile || check.path.startsWith(`${configDir}/`) || check.path === `${skillsDir}/`).toBe(true)
     }
+    if (skillsDir) expect(managed.framework).toContain(`${skillsDir}/`)
   })
 
   it('generates only files with the IDE extension in the rules root', async () => {

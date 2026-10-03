@@ -660,24 +660,28 @@ describe('Cursor adapter install', () => {
     expect(agents).toContain('content-engineer.mdc')
   })
 
-  it('converts skills to .mdc in skills/ subdirectory', async () => {
+  it('writes skills as Agent Skills in .agents/skills/, which Cursor reads', async () => {
     const adapter = await IDE_ADAPTERS['cursor']()
     await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
 
-    const skillsDir = join(tempDir, '.cursor', 'rules', 'skills')
+    const skillsDir = join(tempDir, '.agents', 'skills')
     const skills = await readdir(skillsDir)
 
     // Core skills should be present
-    expect(skills).toContain('self-improvement.mdc')
-    expect(skills).toContain('testing-workflow.mdc')
+    expect(skills).toContain('self-improvement')
+    expect(skills).toContain('testing-workflow')
+    expect(existsSync(join(skillsDir, 'testing-workflow', 'SKILL.md'))).toBe(true)
 
-    // Selected plugin skills as .mdc
-    expect(skills).toContain('sanity-cms.mdc')
-    expect(skills).toContain('linear-task-management.mdc')
+    // Selected plugin skills
+    expect(skills).toContain('sanity-cms')
+    expect(skills).toContain('linear-task-management')
 
     // Unselected plugin skills should not be present
-    expect(skills).not.toContain('supabase-database.mdc')
-    expect(skills).not.toContain('slack-notifications.mdc')
+    expect(skills).not.toContain('supabase-database')
+    expect(skills).not.toContain('slack-notifications')
+
+    // Not as rules any more
+    expect(existsSync(join(tempDir, '.cursor', 'rules', 'skills'))).toBe(false)
   })
 
   it('generates Cursor MCP config with mcpServers format', async () => {

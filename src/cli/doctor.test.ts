@@ -193,7 +193,7 @@ describe('cursor adapter getDoctorChecks', () => {
     expect(checks.length).toBeGreaterThan(0)
     expect(checks.find((c) => c.path === '.cursorrules')?.type).toBe('file')
     expect(checks.find((c) => c.path === '.cursor/rules/agents/')?.countFilter).toBe('.mdc')
-    expect(checks.find((c) => c.path === '.cursor/rules/skills/')?.countFilter).toBe('.mdc')
+    expect(checks.find((c) => c.path === '.agents/skills/')?.type).toBe('dir')
   })
 })
 
