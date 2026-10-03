@@ -1,245 +1,136 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, realpathSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { mkdirSync, symlinkSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
-import { EventEmitter } from 'node:events'
 import type { Task } from '../../convoy/spec-types.js'
+import { installStubCli, type StubCli } from './stub-cli.test-helper.js'
+import { execute, isAvailable, cursorCommand, parseCursorOutput } from './cursor.js'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const posix = process.platform !== 'win32'
 
-function makeTask(): Task {
+function makeTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: 'test-task',
-    agent: 'developer',
-    prompt: 'Do something',
-    files: [],
-    timeout: '5m',
-    depends_on: [],
-    description: 'test task',
-    max_retries: 0,
-  } as unknown as Task
-}
-
-function makeMockProc(exitCode = 0, stdoutData = '{"result":"ok"}') {
-  const proc = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter
-    stderr: EventEmitter
-    killed: boolean
-    kill: ReturnType<typeof vi.fn>
+    id: 'test-task', agent: 'developer', prompt: 'Do something', files: [], timeout: '5m',
+    depends_on: [], description: 'test task', max_retries: 0, ...overrides,
   }
-  proc.stdout = new EventEmitter()
-  proc.stderr = new EventEmitter()
-  proc.killed = false
-  proc.kill = vi.fn()
-  process.nextTick(() => {
-    if (stdoutData) proc.stdout.emit('data', Buffer.from(stdoutData))
-    proc.emit('close', exitCode)
-  })
-  return proc
 }
 
-// ── CLI mode ──────────────────────────────────────────────────────────────────
+/** The terminal object from Cursor's output-format docs, verbatim. */
+const DOCS_RESULT = '{"type":"result","subtype":"success","duration_ms":5234,"duration_api_ms":5234,"is_error":false,"result":"I\'ll read the README.md fileBased on the README, I\'ll create a summaryDone! I\'ve created the summary in summary.txt","session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff","request_id":"10e11780-df2f-45dc-a1ff-4540af32e9c0"}'
 
-describe('cursor adapter — MCP support', () => {
-  let tmpDir: string
-  let mockSpawn: ReturnType<typeof vi.fn>
+/** The same, as recent releases print it: with `usage` summed over turns, input excluding the cache. */
+const RESULT_WITH_USAGE = JSON.stringify({
+  type: 'result', subtype: 'success', is_error: false, duration_ms: 5234, duration_api_ms: 5234,
+  result: 'Done.', session_id: 'c6b62c6f-7ead-4fd6-9922-e952131177ff', request_id: '10e11780-df2f-45dc-a1ff-4540af32e9c0',
+  usage: { inputTokens: 812, outputTokens: 240, cacheReadTokens: 15360, cacheWriteTokens: 1024 },
+})
+
+describe('parseCursorOutput', () => {
+  it('reads the result text, and no usage when there is none', () => {
+    const parsed = parseCursorOutput(DOCS_RESULT)
+    expect(parsed.text).toContain('created the summary in summary.txt')
+    expect(parsed.usage).toBeUndefined()
+    expect(parsed.isError).toBeUndefined()
+  })
+
+  it('reads usage when the result carries it', () => {
+    expect(parseCursorOutput(RESULT_WITH_USAGE).usage).toEqual({
+      prompt_tokens: 812 + 15360 + 1024,
+      completion_tokens: 240,
+      total_tokens: 812 + 15360 + 1024 + 240,
+      cache_read_tokens: 15360,
+      cache_write_tokens: 1024,
+    })
+  })
+
+  it('finds the result line in a stream-json transcript', () => {
+    const stream = '{"type":"system","subtype":"init","model":"Claude 4 Sonnet"}\n' + DOCS_RESULT
+    expect(parseCursorOutput(stream).text).toContain('summary.txt')
+  })
+})
+
+describe.skipIf(!posix)('finding Cursor\'s agent CLI', () => {
+  let stub: StubCli
+  afterEach(() => stub.restore())
+
+  it('prefers `cursor-agent`', () => {
+    stub = installStubCli('cursor-agent', 'agent')
+    expect(cursorCommand()).toBe('cursor-agent')
+  })
+
+  it('does not take an unrelated `agent` for Cursor', async () => {
+    stub = installStubCli('agent')
+    expect(cursorCommand()).toBeNull()
+    expect(await isAvailable()).toBe(false)
+  })
+
+  it('accepts a lone `agent` that resolves into Cursor\'s install', async () => {
+    stub = installStubCli('agent')
+    // The installer's layout: ~/.local/bin/agent -> ~/.local/share/cursor-agent/versions/<v>/cursor-agent
+    const versions = join(stub.log, 'share', 'cursor-agent', 'versions', '2026.10.01')
+    mkdirSync(versions, { recursive: true })
+    renameSync(join(stub.bin, 'agent'), join(versions, 'cursor-agent'))
+    symlinkSync(join(versions, 'cursor-agent'), join(stub.bin, 'agent'))
+    expect(cursorCommand()).toBe('agent')
+    expect(await isAvailable()).toBe(true)
+  })
+})
+
+describe.skipIf(!posix)('cursor adapter — against a stub `cursor-agent`', () => {
+  let stub: StubCli
 
   beforeEach(() => {
-    vi.resetModules()
-    tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'cursor-test-')))
+    stub = installStubCli('cursor-agent')
+    stub.respond(RESULT_WITH_USAGE)
+  })
+  afterEach(() => stub.restore())
 
-    mockSpawn = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, '{"result":"ok"}')
-    })
-    vi.doMock('node:child_process', () => ({ spawn: mockSpawn }))
+  it('sends the prompt on stdin and runs in the task directory', async () => {
+    const task = makeTask()
+    const result = await execute(task, { cwd: stub.work })
+    expect(result.success).toBe(true)
+    expect(result.output).toBe('Done.')
+    expect(result.usage?.cache_read_tokens).toBe(15360)
+    expect(result.costUsd).toBeUndefined()
+    expect(stub.stdin()).toBe(task.prompt)
+    expect(stub.cwd()).toBe(stub.work)
+    expect(stub.argv().slice(0, 3)).toEqual(['-p', '--output-format', 'json'])
+    expect(stub.argv()).not.toContain(task.prompt)
   })
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
-    vi.restoreAllMocks()
+  it('applies edits with --force by default, and stays read-only in plan', async () => {
+    await execute(makeTask(), { cwd: stub.work })
+    expect(stub.argv()).toContain('--force')
+
+    await execute(makeTask(), { cwd: stub.work, permissionMode: 'plan' })
+    const argv = stub.argv()
+    expect(argv).not.toContain('--force')
+    expect(argv[argv.indexOf('--mode') + 1]).toBe('ask')
+    // A headless run in an untrusted workspace — a new worktree — exits at once without it.
+    expect(argv).toContain('--trust')
   })
 
-  it('writes mcp.json to cwd with correct format when mcpServers provided', async () => {
-    let capturedContent: string | null = null
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      const mcpPath = join(tmpDir, 'mcp.json')
-      if (existsSync(mcpPath)) {
-        capturedContent = readFileSync(mcpPath, 'utf8')
-      }
-      return makeMockProc(0, '{}')
-    })
-
-    const { execute } = await import('./cursor.js')
-    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
-
-    expect(capturedContent).not.toBeNull()
-    expect(JSON.parse(capturedContent!)).toEqual({
-      mcpServers: { 'my-mcp': { command: 'node', args: ['server.js'] } },
-    })
+  it('passes --model only when one is set, and never an MCP flag', async () => {
+    await execute(makeTask(), { cwd: stub.work, mcpServers: [{ name: 'x', type: 'stdio', command: 'x' }], mcp_approve_all: true })
+    expect(stub.argv()).not.toContain('--model')
+    expect(stub.argv()).not.toContain('--mcp-config')
+    expect(stub.argv()).not.toContain('--approve-mcps')
+    await execute(makeTask(), { cwd: stub.work, model: 'sonnet-4.5' })
+    const argv = stub.argv()
+    expect(argv[argv.indexOf('--model') + 1]).toBe('sonnet-4.5')
   })
 
-  it('passes --mcp-config flag pointing to mcp.json path', async () => {
-    const capturedArgs: string[] = []
-    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      capturedArgs.push(...args)
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./cursor.js')
-    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
-
-    const idx = capturedArgs.indexOf('--mcp-config')
-    expect(idx).toBeGreaterThanOrEqual(0)
-    expect(capturedArgs[idx + 1]).toBe(join(tmpDir, 'mcp.json'))
+  it('reports stderr when Cursor fails, as it prints no JSON then', async () => {
+    process.env.STUB_EXIT = '1'
+    stub.respond('', 'Workspace Trust Required')
+    const result = await execute(makeTask(), { cwd: stub.work })
+    expect(result.success).toBe(false)
+    expect(result.output).toContain('Workspace Trust Required')
   })
 
-  it('passes --approve-mcps when mcp_approve_all is true', async () => {
-    const capturedArgs: string[] = []
-    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      capturedArgs.push(...args)
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./cursor.js')
-    await execute(makeTask(), { mcp_approve_all: true, cwd: tmpDir })
-    expect(capturedArgs).toContain('--approve-mcps')
-  })
-
-  it('cleans up mcp.json after successful execution', async () => {
-    const { execute } = await import('./cursor.js')
-    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
-    expect(existsSync(join(tmpDir, 'mcp.json'))).toBe(false)
-  })
-
-  it('cleans up mcp.json after failed execution (non-zero exit)', async () => {
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(1, '')
-    })
-    const { execute } = await import('./cursor.js')
-    const mcpServers = [{ name: 'err-mcp', type: 'local', command: 'node', args: [] }]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
-    expect(existsSync(join(tmpDir, 'mcp.json'))).toBe(false)
-  })
-
-  it('does NOT write mcp.json when mcpServers not configured', async () => {
-    const { execute } = await import('./cursor.js')
-    await execute(makeTask(), { cwd: tmpDir })
-    expect(existsSync(join(tmpDir, 'mcp.json'))).toBe(false)
-  })
-
-  it('does NOT add --approve-mcps when mcp_approve_all is not set', async () => {
-    const capturedArgs: string[] = []
-    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      capturedArgs.push(...args)
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./cursor.js')
-    await execute(makeTask(), { cwd: tmpDir })
-    expect(capturedArgs).not.toContain('--approve-mcps')
-  })
-
-  it('includes --approve-mcps when mcp_approve_all is true (no mcpServers)', async () => {
-    const capturedArgs: string[] = []
-    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      capturedArgs.push(...args)
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./cursor.js')
-    await execute(makeTask(), { mcp_approve_all: true, cwd: tmpDir })
-    expect(capturedArgs).toContain('--approve-mcps')
-    expect(existsSync(join(tmpDir, 'mcp.json'))).toBe(false)
-  })
-
-  it('extracts result from single-line JSON output', async () => {
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, '{"result":"# My PRD\\n\\nThe actual content"}')
-    })
-    const { execute } = await import('./cursor.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# My PRD\n\nThe actual content')
-  })
-
-  it('extracts result from JSONL output (last line has result)', async () => {
-    const jsonl = [
-      '{"type":"progress","content":"thinking..."}',
-      '{"type":"tool_use","tool":"read_file","args":{}}',
-      '{"type":"result","result":"# My PRD\\n\\nThe actual markdown content","usage":{"input_tokens":500,"output_tokens":1000}}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./cursor.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# My PRD\n\nThe actual markdown content')
-    expect(result.usage?.prompt_tokens).toBe(500)
-    expect(result.usage?.completion_tokens).toBe(1000)
-  })
-
-  it('scans JSONL and finds result line among non-result lines', async () => {
-    const jsonl = [
-      '{"type":"progress","content":"thinking..."}',
-      '{"type":"tool_use","tool":"edit","args":{}}',
-      '{"type":"result","result":"# Final Content","usage":{"input_tokens":100,"output_tokens":200}}',
-      '{"type":"done"}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./cursor.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# Final Content')
-  })
-
-  it('extracts content from Copilot-style assistant.message JSONL', async () => {
-    const jsonl = [
-      '{"type":"session.tools_updated","data":{"model":"claude-sonnet-4.6"}}',
-      '{"type":"user.message","data":{"content":"Generate a PRD"}}',
-      '{"type":"assistant.message","data":{"content":"# My PRD\\n\\nThe generated content","outputTokens":50}}',
-      '{"type":"assistant.turn_end","data":{"turnId":"0"}}',
-      '{"type":"result","sessionId":"abc","exitCode":0,"usage":{"premiumRequests":1}}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./cursor.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# My PRD\n\nThe generated content')
-  })
-
-  it('uses last assistant.message when multiple turns exist', async () => {
-    const jsonl = [
-      '{"type":"assistant.message","data":{"content":"Let me check..."}}',
-      '{"type":"assistant.message","data":{"content":"# Final PRD\\n\\nComplete document"}}',
-      '{"type":"result","sessionId":"abc","exitCode":0}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./cursor.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# Final PRD\n\nComplete document')
-  })
-
-  it('falls back to raw output when JSON has no result field', async () => {
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, '{"status":"ok","data":"something"}')
-    })
-    const { execute } = await import('./cursor.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('{"status":"ok","data":"something"}')
+  it('times out with success false', async () => {
+    process.env.STUB_SLEEP = '30'
+    const result = await execute(makeTask({ timeout: '300ms' }), { cwd: stub.work })
+    expect(result.success).toBe(false)
+    expect(result._timedOut).toBe(true)
   })
 })

@@ -1,179 +1,128 @@
-import { spawn } from 'node:child_process'
-import { writeFileSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
+import { realpathSync } from 'node:fs'
 import type { Task, ExecuteOptions, ExecuteResult, TokenUsage } from '../../convoy/spec-types.js'
+import { resolveCommand } from '../platform.js'
+import { cursorPermissionArgs } from './permission-modes.js'
+import { runAgent, stopTask, promptOf, interruptedMessage, OUTPUT_LIMIT } from './agent-process.js'
 
-/** Adapter name */
+/**
+ * Cursor Agent CLI, run headless: `cursor-agent -p --output-format json`.
+ *
+ * With `-p` and no prompt argument the agent reads its prompt from stdin.
+ * The JSON result has no cost and does not name the model; recent releases add
+ * a `usage` object, which is read when it is there.
+ */
+
 export const name = 'cursor'
 
 export function supportsSessionContinuity(): boolean { return false }
-/**
- * Check if the Cursor CLI (`agent`) is available on the system PATH.
- */
-export async function isAvailable(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const proc = spawn('which', ['agent'], { stdio: 'pipe' })
-    proc.on('close', (code) => resolve(code === 0))
-    proc.on('error', () => resolve(false))
-  })
-}
 
 /**
- * Execute a task by invoking the Cursor CLI in non-interactive print mode.
+ * The Cursor Agent command on PATH.
+ *
+ * Cursor's installer puts both `agent` and `cursor-agent` on PATH, and its
+ * docs now lead with `agent`. `agent` is a name any tool could have, so it was
+ * mistaken for Cursor: `cursor-agent` is preferred, and a lone `agent` counts
+ * only when it resolves into Cursor's own install
+ * (`~/.local/share/cursor-agent/…`, `%LOCALAPPDATA%\cursor-agent\agent.cmd`).
  */
-export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  let prompt = `You are a ${task.agent}. ${task.prompt}`
-
-  if (task.files && task.files.length > 0) {
-    prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
-  }
-
-  const args = [
-    '-p',
-    prompt,
-    '--force',
-    '--output-format',
-    'json',
-  ]
-
-  const cwd = options?.cwd ?? process.cwd()
-  const mcpJsonPath = join(cwd, 'mcp.json')
-  let wroteJson = false
-
-  if (options.mcpServers?.length) {
-    const mcpJson: Record<string, Record<string, unknown>> = {}
-    for (const server of options.mcpServers) {
-      const entry: Record<string, unknown> = {}
-      if (server.command) entry.command = server.command
-      if (server.args) entry.args = server.args
-      if (server.url) entry.url = server.url
-      if (server.config) Object.assign(entry, server.config)
-      mcpJson[server.name] = entry
-    }
-    writeFileSync(mcpJsonPath, JSON.stringify({ mcpServers: mcpJson }, null, 2), 'utf8')
-    args.push('--mcp-config', mcpJsonPath)
-    wroteJson = true
-  }
-
-  if (options.mcp_approve_all) {
-    args.push('--approve-mcps')
-  }
-
+export function cursorCommand(env: NodeJS.ProcessEnv = process.env): string | null {
+  if (resolveCommand('cursor-agent', env)) return 'cursor-agent'
+  const agent = resolveCommand('agent', env)
+  if (!agent) return null
+  let real = agent
   try {
-  return await new Promise<ExecuteResult>((resolve) => {
-    const proc = spawn('agent', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
-      cwd,
-    })
+    real = realpathSync(agent)
+  } catch { /* keep the PATH entry */ }
+  return /cursor/i.test(real) ? 'agent' : null
+}
 
-    let stdout = ''
-    let stderr = ''
+export async function isAvailable(): Promise<boolean> {
+  return cursorCommand() !== null
+}
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString()
-      if (options.verbose) {
-        process.stdout.write(chunk)
-      }
-    })
+export interface ParsedCursor {
+  text?: string
+  isError?: boolean
+  usage?: TokenUsage
+}
 
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-      if (options.verbose) {
-        process.stderr.write(chunk)
-      }
-    })
+const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
-    proc.on('close', (code) => {
-      let textOutput = [stdout, stderr].filter(Boolean).join('\n')
-      let usage: TokenUsage | undefined
+/**
+ * Read `cursor-agent -p --output-format json` output: one `result` object.
+ * Its `usage.inputTokens` excludes the cache reads and writes, which are added
+ * to `prompt_tokens` and also kept apart.
+ */
+export function parseCursorOutput(stdout: string): ParsedCursor {
+  let obj: Record<string, unknown> | null = null
+  try {
+    obj = JSON.parse(stdout) as Record<string, unknown>
+  } catch {
+    // stream-json, or noise before the result: take the last result line.
+    for (const line of stdout.split('\n').reverse()) {
+      if (!line.trim().startsWith('{')) continue
       try {
-        // Try single JSON object first (claude CLI)
-        const parsed = JSON.parse(stdout) as Record<string, unknown>
-        if (typeof parsed.result === 'string') {
-          textOutput = parsed.result
+        const candidate = JSON.parse(line) as Record<string, unknown>
+        if (candidate.type === 'result') {
+          obj = candidate
+          break
         }
-        const u = parsed?.usage as Record<string, number> | undefined
-        if (u) {
-          const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
-          const completionTokens = (u.output_tokens ?? u.completion_tokens) as number | undefined
-          const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
-          usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
-        }
-      } catch {
-        // Fallback: parse JSONL (one JSON object per line)
-        // Claude CLI uses {"result": "text"}, Copilot CLI uses
-        // {"type":"assistant.message","data":{"content":"text"}} for the AI
-        // response and a separate {"type":"result"} line for session metadata.
-        const lines = stdout.split('\n')
-        let lastAssistantContent: string | undefined
-        for (const rawLine of lines) {
-          const line = rawLine.trim()
-          if (!line) continue
-          try {
-            const parsed = JSON.parse(line) as Record<string, unknown>
-            // Claude-style: result text in the result line
-            if (typeof parsed.result === 'string' && parsed.result) {
-              textOutput = parsed.result
-              const u = parsed?.usage as Record<string, number> | undefined
-              if (u) {
-                const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
-                const completionTokens = (u.output_tokens ?? u.completion_tokens) as number | undefined
-                const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
-                usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
-              }
-              lastAssistantContent = undefined // prefer explicit result field
-              break
-            }
-            // Copilot-style: AI response in assistant.message events
-            if (parsed.type === 'assistant.message') {
-              const data = parsed.data as Record<string, unknown> | undefined
-              if (data && typeof data.content === 'string') {
-                lastAssistantContent = data.content
-              }
-            }
-          } catch { /* skip non-JSON lines */ }
-        }
-        if (lastAssistantContent !== undefined) {
-          textOutput = lastAssistantContent
-        }
-      }
-      resolve({
-        success: code === 0,
-        output: textOutput.slice(0, 500_000),
-        exitCode: code ?? -1,
-        usage,
-      })
-    })
-
-    proc.on('error', (err) => {
-      resolve({
-        success: false,
-        output: `Failed to spawn cursor agent CLI: ${err.message}`,
-        exitCode: -1,
-      })
-    })
-
-    // Store process ref for potential timeout kill
-    task._process = proc
-  })
-  } finally {
-    if (wroteJson) {
-      try { unlinkSync(mcpJsonPath) } catch { /* ignore */ }
+      } catch { /* not JSON */ }
     }
+  }
+  if (!obj || typeof obj !== 'object') return {}
+  const parsed: ParsedCursor = {}
+  if (typeof obj.result === 'string') parsed.text = obj.result
+  if (obj.is_error === true) parsed.isError = true
+  const u = obj.usage as Record<string, unknown> | undefined
+  if (u && typeof u === 'object') {
+    const input = num(u.inputTokens)
+    const output = num(u.outputTokens)
+    if (input !== undefined || output !== undefined) {
+      const cacheRead = num(u.cacheReadTokens)
+      const cacheWrite = num(u.cacheWriteTokens)
+      const prompt = (input ?? 0) + (cacheRead ?? 0) + (cacheWrite ?? 0)
+      parsed.usage = {
+        prompt_tokens: prompt,
+        completion_tokens: output ?? 0,
+        total_tokens: prompt + (output ?? 0),
+        ...(cacheRead !== undefined ? { cache_read_tokens: cacheRead } : {}),
+        ...(cacheWrite !== undefined ? { cache_write_tokens: cacheWrite } : {}),
+      }
+    }
+  }
+  return parsed
+}
+
+export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
+  const command = cursorCommand() ?? 'cursor-agent'
+  const args = ['-p', '--output-format', 'json', ...cursorPermissionArgs(options.permissionMode)]
+  if (options.model) args.push('--model', options.model)
+
+  const exit = await runAgent(task, {
+    command,
+    args,
+    input: promptOf(task),
+    cwd: options.cwd ?? process.cwd(),
+    verbose: options.verbose,
+  })
+
+  const parsed = parseCursorOutput(exit.stdout)
+  const interrupted = interruptedMessage(command, task, exit)
+  const success = !interrupted && exit.code === 0 && !parsed.isError
+  // On failure Cursor prints no JSON, only a message on stderr.
+  const output = success
+    ? parsed.text ?? exit.stdout
+    : [interrupted, parsed.text, exit.stderr.trim() || exit.stdout.trim()].filter(Boolean).join('\n')
+  return {
+    success,
+    output: output.slice(0, OUTPUT_LIMIT),
+    exitCode: exit.code,
+    ...(exit.timedOut ? { _timedOut: true } : {}),
+    ...(parsed.usage ? { usage: parsed.usage } : {}),
   }
 }
 
-/**
- * Kill the process associated with a task (used by timeout enforcement).
- */
 export function kill(task: Task): void {
-  if (task._process && !task._process.killed) {
-    task._process.kill('SIGTERM')
-    setTimeout(() => {
-      if (task._process && !task._process.killed) {
-        task._process.kill('SIGKILL')
-      }
-    }, 5000)
-  }
+  stopTask(task)
 }

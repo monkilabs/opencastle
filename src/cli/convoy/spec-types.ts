@@ -182,7 +182,17 @@ export interface RunSummary {
 export interface AgentAdapter {
   name: string;
   isAvailable(): Promise<boolean>;
+  /**
+   * Run the task's prompt in `options.cwd` and settle once the agent is done.
+   * It enforces `task.timeout` itself, and a run that timed out or was killed
+   * resolves with `success: false`.
+   */
   execute(_task: Task, _options?: ExecuteOptions): Promise<ExecuteResult>;
+  /**
+   * Stop whatever is running for this task id — including a step running under
+   * a copy of the task — and every process it started. Does nothing when
+   * nothing is running.
+   */
   kill?(_task: Task): void;
   /** Whether the adapter supports reusing sessions across multi-step task steps. Defaults to false. */
   supportsSessionContinuity?(): boolean;
@@ -216,9 +226,18 @@ export interface ExecuteOptions {
   mcp_approve_all?: boolean;
 }
 
-/** Token usage data from adapter execution. */
+/**
+ * Token usage data from adapter execution, as the runtime reported it. A field
+ * the runtime did not report is left unset rather than estimated.
+ */
 export interface TokenUsage {
+  /**
+   * Every input token, cached or not: cache reads and writes are included here
+   * and also given apart below. Claude Code, Cursor and OpenCode report them
+   * separately, so their adapters add them in; Codex already includes them.
+   */
   prompt_tokens?: number;
+  /** Output tokens, reasoning included. */
   completion_tokens?: number;
   total_tokens?: number;
   /** Input tokens read from the runtime's prompt cache. */
