@@ -70,18 +70,19 @@ shipped is on the website; this is the record of decisions and gaps.
 | **Windsurf, now Devin Desktop**: MCP servers go to `.devin/mcp_config.json`, the project file its default agent (Devin Local) reads; `sync` takes our servers out of `.windsurf/mcp.json` | Nothing read `.windsurf/mcp.json` — the legacy Cascade agent reads one global file — so no integration or team server reached Windsurf |
 | **Antigravity**: remote servers as `serverUrl`, the field its MCP docs require; an `env` entry that only forwards `${NAME}` left out | Antigravity expands no variables, so the forwarded `${NAME}` replaced the value the server would have inherited with literal text. `doctor` names any other reference |
 | `explain` says whether Codex trusts the project, reading Codex's own config | Codex loads `.codex/config.toml` — every server written for it — only in a trusted project |
+| With Codex or OpenCode also selected, Antigravity's `GEMINI.md` points to `AGENTS.md` instead of repeating it | Antigravity reads both files, cumulatively, so it loaded every instruction and both indexes twice — about 5,000 tokens before each task in a stock project |
 
 ## Next, in order of leverage
 
 ### 1. Instructions loaded once per assistant
 
-Several assistants read `AGENTS.md` beside their own root file: Antigravity
-reads `AGENTS.md` and `GEMINI.md` cumulatively, VS Code reads `AGENTS.md` beside
-`copilot-instructions.md`, Cursor and Devin Desktop read it too. With Codex or
-OpenCode also selected — they own `AGENTS.md` — those assistants load the same
-instructions twice. Compiling `AGENTS.md` once and leaving the other root files
-a pointer to it, where an assistant reads both, halves the always-loaded
-context for those combinations.
+Antigravity documents that it reads `AGENTS.md` and `GEMINI.md` together, so
+with Codex or OpenCode also selected it loaded every instruction twice;
+`GEMINI.md` now points to `AGENTS.md` in that case (see Shipped). VS Code,
+Cursor and Devin Desktop also support `AGENTS.md`; whether each reads it beside
+its own root file by default — and so loads the same instructions twice when
+both exist — needs checking against each one's docs before their root files
+get the same treatment.
 
 ### 2. VS Code's newer formats
 

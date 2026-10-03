@@ -30,6 +30,8 @@ const { install, update, getManagedPaths, getDoctorChecks } = createSingleFileAd
   workflowsDir: 'workflows',
   workflowPrefix: '',
   frameworkDirs: ['agents', 'skills', 'prompts', 'workflows'],
+  // Antigravity reads AGENTS.md as well as GEMINI.md, cumulatively.
+  alsoReads: { rootFile: 'AGENTS.md', writtenBy: ['codex', 'opencode'] },
 })
 
 export { install, update, getManagedPaths, getDoctorChecks }

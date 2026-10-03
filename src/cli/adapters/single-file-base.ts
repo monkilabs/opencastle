@@ -39,6 +39,14 @@ export interface SingleFileAdapterConfig {
    */
   skillsDir?: string
   /**
+   * Another root file this assistant also reads, and the targets that write
+   * it. With one of them selected the instructions are already in context
+   * through that file, so this one says where they are instead of repeating
+   * them: Antigravity reads `AGENTS.md` and `GEMINI.md` together, and with
+   * Codex or OpenCode also selected it loaded every instruction twice.
+   */
+  alsoReads?: { rootFile: string; writtenBy: IdeChoice[] }
+  /**
    * Output an earlier release wrote outside today's framework directories,
    * present on disk now, relative to the project root. Removed on update.
    */
@@ -325,7 +333,14 @@ export function createSingleFileAdapter(
         sections.push(skillLines.join('\n'))
       }
 
-      const merge = await writeManagedBlock(rootPath, sections.join('\n'))
+      const deferTo = config.alsoReads && stack?.ides.some((i) => config.alsoReads!.writtenBy.includes(i)) ? config.alsoReads.rootFile : null
+      const body = deferTo
+        ? '# Project Instructions\n\n' +
+          `This project's instructions, agent index and skill index are in \`${deferTo}\`, which this assistant also reads — ` +
+          'they are not repeated here, so they load once. ' +
+          `Skills are in \`${skillsDirOf(config)}/\`; agent definitions are in \`${config.dotDir}/agents/\`.`
+        : sections.join('\n')
+      const merge = await writeManagedBlock(rootPath, body)
       recordMerge(results, rootPath, merge)
     }
 

@@ -1161,6 +1161,20 @@ describe('Antigravity adapter install', () => {
     expect(content).toContain('.agents/')
   })
 
+  it('points GEMINI.md at AGENTS.md when Codex or OpenCode writes it, so instructions load once', async () => {
+    const both: StackConfig = { ...STACK_SANITY_LINEAR, ides: ['antigravity', 'codex'] }
+    for (const ide of ['antigravity', 'codex'] as const) await (await IDE_ADAPTERS[ide]()).install(PKG_ROOT, tmpDir, both)
+    const gemini = await readFile(join(tmpDir, 'GEMINI.md'), 'utf8')
+    expect(gemini).toContain('are in `AGENTS.md`, which this assistant also reads')
+    expect(gemini).not.toContain('## Available Skills')
+    expect(await readFile(join(tmpDir, 'AGENTS.md'), 'utf8')).toContain('## Available Skills')
+
+    // Alone, it carries everything itself.
+    await rm(join(tmpDir, 'GEMINI.md'))
+    await (await IDE_ADAPTERS['antigravity']()).install(PKG_ROOT, tmpDir, { ...both, ides: ['antigravity'] })
+    expect(await readFile(join(tmpDir, 'GEMINI.md'), 'utf8')).toContain('## Available Skills')
+  })
+
   it('creates files in .agents/ directory structure', async () => {
     const adapter = await IDE_ADAPTERS['antigravity']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
