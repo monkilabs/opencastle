@@ -101,22 +101,24 @@ describe('the engine is presented as experimental', () => {
 })
 
 describe('the release does not depend on the engine schema', () => {
-  it('builds without generating demo data', () => {
+  it('builds the CLI and nothing else', () => {
     const pkg = JSON.parse(readFileSync(resolve(cliDir, '..', '..', 'package.json'), 'utf8')) as {
       scripts: Record<string, string>
     }
-    // The demo generator writes through the convoy store, so a schema change
-    // there must not be able to break publishing.
-    expect(pkg.scripts.build).not.toMatch(/generate-demo-db/)
+    // The old dashboard's demo generator and ETL wrote through the convoy store,
+    // so a schema change there could break publishing. The viewer that replaced
+    // it has no build step, so nothing in the release reads the engine schema.
+    expect(pkg.scripts.build).toBe('npm run cli:build')
     expect(pkg.scripts.prepublishOnly).toBe('npm run build')
+    expect(Object.keys(pkg.scripts).filter((s) => s.startsWith('dashboard:'))).toEqual([])
   })
 
-  it('keeps the demo generator out of the publish workflow', () => {
+  it('keeps generated demo data out of the publish workflow', () => {
     const workflow = readFileSync(
       resolve(cliDir, '..', '..', '.github', 'workflows', 'publish.yml'),
       'utf8',
     )
-    expect(workflow).not.toMatch(/npm run dashboard:generate-demo-db/)
+    expect(workflow).not.toMatch(/npm run dashboard:/)
   })
 })
 
