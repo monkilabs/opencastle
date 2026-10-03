@@ -58,10 +58,10 @@ const pages = [
   {
     href: '/docs/use-cases',
     title: 'Use Cases',
-    description: 'Convoy runs, end to end, with real output: plan and run a feature, stop and resume a run, and run a spec you wrote. Each with its time and cost.',
+    description: 'Real convoy runs, end to end: plan and run a feature from one sentence, and write a spec, stop its run and resume it. Each with its time and cost.',
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>`,
     sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>`,
-    badge: '3 recipes',
+    badge: '2 recipes',
   },
 ];
 ---
@@ -284,7 +284,7 @@ const pages = [
                       <div class="quickstart__substeps">
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">1</span>
-                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add tags to notes, and reject a note without a title"</code>. Planning changes no code: it writes a PRD and a spec to <code class="quickstart__code">.opencastle/</code>, shows the plan as a table, and asks <em>&ldquo;Run it? [Y/n]&rdquo;</em>. Answer <em>n</em> to edit the spec first and run it later with <code class="quickstart__code">npx opencastle convoy run</code>.</p>
+                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add tags to notes, and reject a note without a title"</code>. Planning changes no code: it sizes the request, writes a PRD first only when the work is not small, writes a spec to <code class="quickstart__code">.opencastle/convoys/</code>, shows the plan as a table, and asks <em>&ldquo;Run it? [Y/n]&rdquo;</em>. Answer <em>n</em> to edit the spec first and run it later with <code class="quickstart__code">npx opencastle convoy run</code>.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">2</span>

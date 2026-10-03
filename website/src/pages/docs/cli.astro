@@ -210,7 +210,7 @@ const commands = [
         </tbody>
       </table>
 <p>Each subcommand has its own help: <code>opencastle convoy run --help</code>.</p>` },
-      { heading: 'Plan, ask, run', content: `<p><code>opencastle convoy "&lt;task&gt;"</code> writes a PRD to <code>.opencastle/prds/</code> and a spec to <code>.opencastle/convoys/</code>. Its agent sessions read the repository and change nothing. It prints the plan as a table — each task, its agent, what it waits for and the files it may change — with the branch, the runtime, the checks that run at the end, and what planning spent. Then it asks <code>Run it? [Y/n]</code>.</p>
+      { heading: 'Plan, ask, run', content: `<p><code>opencastle convoy "&lt;task&gt;"</code> sizes the request first. A small change is planned straight from it; larger work gets a PRD in <code>.opencastle/prds/</code> first, which is reviewed and, if needed, fixed. The spec goes to <code>.opencastle/convoys/</code>. The agent sessions read the repository and change nothing, and a task that only writes tests for another task is folded into it. It prints the plan as a table — each task, its agent, what it waits for and the files it may change — with the branch, the runtime, the checks that run at the end, and what planning spent. Then it asks <code>Run it? [Y/n]</code>.</p>
 <ul>
   <li><code>--yes</code> runs it without asking, after one more agent session reviews the plan.</li>
   <li>No answer — stdin closed, as in a script — means no: nothing runs, and the command to run it later is printed.</li>
