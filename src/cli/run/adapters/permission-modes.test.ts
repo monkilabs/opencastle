@@ -4,12 +4,17 @@
  * The defect: `--permission-mode` was validated against the enum, stored on the
  * spec, threaded through four call sites in the engine, handed to the adapter —
  * and read by one of the five. A run told to hold its workers to `plan` wrote
- * files anyway, on `codex`, `cursor`, `opencode` and `copilot` alike.
+ * files anyway, on `codex`, `cursor`, `opencode` and `copilot` alike. Each CLI
+ * now has a mapping; these tests pin what each mode becomes.
  */
 import { describe, it, expect } from 'vitest'
 import {
   ADAPTER_PERMISSION_MODES,
+  meaningOf,
   codexSandboxFor,
+  copilotPermissionArgs,
+  opencodePermission,
+  cursorPermissionArgs,
   supportsPermissionMode,
   permissionModeError,
 } from './permission-modes.js'
@@ -30,24 +35,28 @@ describe('the capability table', () => {
     }
   })
 
-  it('lets claude and codex carry the whole enum', () => {
-    expect([...ADAPTER_PERMISSION_MODES.claude].sort()).toEqual([...PERMISSION_MODES].sort())
-    expect([...ADAPTER_PERMISSION_MODES.codex].sort()).toEqual([...PERMISSION_MODES].sort())
-  })
-
-  it('does not claim read-only or bypass for the runtimes that have no such flag', () => {
-    for (const name of ['cursor', 'opencode', 'copilot']) {
-      expect(ADAPTER_PERMISSION_MODES[name]).not.toContain('plan')
-      expect(ADAPTER_PERMISSION_MODES[name]).not.toContain('default')
-      expect(ADAPTER_PERMISSION_MODES[name]).not.toContain('bypassPermissions')
+  it('lets every runtime run read-only, so the planner can use any of them', () => {
+    for (const name of ['claude', 'codex', 'cursor', 'opencode', 'copilot']) {
+      expect(supportsPermissionMode(name, 'plan'), name).toBe(true)
     }
+  })
+})
+
+describe('meaningOf', () => {
+  it('reduces the modes to read-only, edits and everything', () => {
+    expect(meaningOf('plan')).toBe('read-only')
+    // In a headless run `default` can only refuse what it would have asked about.
+    expect(meaningOf('default')).toBe('read-only')
+    expect(meaningOf(undefined)).toBe('edits')
+    expect(meaningOf('acceptEdits')).toBe('edits')
+    expect(meaningOf('auto')).toBe('edits')
+    expect(meaningOf('dontAsk')).toBe('edits')
+    expect(meaningOf('bypassPermissions')).toBe('everything')
   })
 })
 
 describe('codexSandboxFor', () => {
   it('leaves the default run exactly as it was', () => {
-    // acceptEdits is the default mode, and workspace-write is what the adapter
-    // has always passed. This fix must not change an unconfigured run.
     expect(codexSandboxFor(undefined)).toBe('workspace-write')
     expect(codexSandboxFor('acceptEdits')).toBe('workspace-write')
   })
@@ -60,36 +69,57 @@ describe('codexSandboxFor', () => {
   it('widens the sandbox only when explicitly asked', () => {
     expect(codexSandboxFor('bypassPermissions')).toBe('danger-full-access')
   })
+})
 
-  it('treats the do-not-ask modes as ordinary edit access', () => {
-    expect(codexSandboxFor('auto')).toBe('workspace-write')
-    expect(codexSandboxFor('dontAsk')).toBe('workspace-write')
+describe('copilotPermissionArgs', () => {
+  it('denies writes and commands for read-only — denials beat any allow, even COPILOT_ALLOW_ALL', () => {
+    expect(copilotPermissionArgs('plan')).toEqual(['--deny-tool=write', '--deny-tool=shell'])
   })
 
-  it('never returns the same sandbox for plan and bypassPermissions', () => {
-    // The shipped behaviour: both were workspace-write, because the value was
-    // hardcoded and the mode never read.
-    expect(codexSandboxFor('plan')).not.toBe(codexSandboxFor('bypassPermissions'))
+  it('allows file edits by default, and no longer approves everything', () => {
+    expect(copilotPermissionArgs(undefined)).toEqual(['--allow-tool=write'])
+    expect(copilotPermissionArgs('acceptEdits')).not.toContain('--allow-all')
+  })
+
+  it('allows everything only for bypassPermissions', () => {
+    expect(copilotPermissionArgs('bypassPermissions')).toEqual(['--allow-all'])
+  })
+})
+
+describe('opencodePermission', () => {
+  it('denies the edit and bash tools for read-only', () => {
+    expect(opencodePermission('plan')).toEqual({ args: [], permission: { edit: 'deny', bash: 'deny' } })
+  })
+
+  it('keeps `opencode run` as it is for edits, and approves questions only for everything', () => {
+    expect(opencodePermission('acceptEdits')).toEqual({ args: [] })
+    expect(opencodePermission('bypassPermissions')).toEqual({ args: ['--auto'] })
+  })
+})
+
+describe('cursorPermissionArgs', () => {
+  it('applies edits only with --force', () => {
+    expect(cursorPermissionArgs('acceptEdits')).toEqual(['--force'])
+    expect(cursorPermissionArgs('plan')).not.toContain('--force')
+  })
+
+  it('trusts the worktree and asks only questions for read-only', () => {
+    expect(cursorPermissionArgs('plan')).toEqual(['--trust', '--mode', 'ask'])
+  })
+
+  it('turns the sandbox off only for bypassPermissions', () => {
+    expect(cursorPermissionArgs('bypassPermissions')).toEqual(['--force', '--sandbox', 'disabled', '--approve-mcps'])
+    expect(cursorPermissionArgs('acceptEdits')).not.toContain('--sandbox')
   })
 })
 
 describe('supportsPermissionMode', () => {
-  it('accepts every mode on the adapters that map them all', () => {
+  it('accepts every mode on every adapter that maps them all', () => {
     for (const mode of PERMISSION_MODES) {
-      expect(supportsPermissionMode('claude', mode)).toBe(true)
-      expect(supportsPermissionMode('codex', mode)).toBe(true)
+      for (const name of ['claude', 'codex', 'cursor', 'opencode', 'copilot']) {
+        expect(supportsPermissionMode(name, mode)).toBe(true)
+      }
     }
-  })
-
-  it('refuses a mode the runtime cannot express', () => {
-    expect(supportsPermissionMode('cursor', 'plan')).toBe(false)
-    expect(supportsPermissionMode('opencode', 'default')).toBe(false)
-    expect(supportsPermissionMode('copilot', 'bypassPermissions')).toBe(false)
-  })
-
-  it('accepts what those runtimes actually do', () => {
-    expect(supportsPermissionMode('cursor', 'acceptEdits')).toBe(true)
-    expect(supportsPermissionMode('opencode', 'dontAsk')).toBe(true)
   })
 
   it('does not second-guess an adapter it has never heard of', () => {
@@ -100,15 +130,7 @@ describe('supportsPermissionMode', () => {
 describe('permissionModeError', () => {
   it('is null when the mode can be honoured', () => {
     expect(permissionModeError('claude', 'plan')).toBeNull()
+    expect(permissionModeError('cursor', 'plan')).toBeNull()
     expect(permissionModeError('codex', 'bypassPermissions')).toBeNull()
-  })
-
-  it('names the adapter, the mode, and a way forward', () => {
-    const msg = permissionModeError('cursor', 'plan')!
-    expect(msg).toContain('cursor')
-    expect(msg).toContain('plan')
-    expect(msg).toContain('acceptEdits')
-    // A refusal with no alternative is just a wall.
-    expect(msg).toMatch(/claude|codex/)
   })
 })
