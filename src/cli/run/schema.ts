@@ -62,8 +62,9 @@ interface RawSpec {
   gates?: string[]
   gate_retries?: number
   branch?: string
-  depends_on_convoy?: string[]
+  depends_on_convoy?: unknown
   guard?: unknown
+  watch?: unknown
 }
 
 interface RawTask {
@@ -80,6 +81,7 @@ interface RawTask {
   built_in_gates?: unknown
   browser_test?: unknown
   review?: string
+  detect_drift?: unknown
 }
 
 /**
@@ -120,20 +122,34 @@ function validateBrowserTestConfig(value: unknown, prefix: string, errors: strin
 }
 
 /**
- * Validate a parsed spec object.
- */
-/**
  * Keys an earlier build honoured and this one does not.
  *
  * Silently accepting them is worse than rejecting them: the spec looks valid, the
  * run proceeds, and the behaviour the author asked for never happens. Rejecting
- * them outright would break specs that are otherwise fine, so they warn.
+ * them outright would break specs that are otherwise fine, so they warn, and the
+ * warning names the key and says why it does nothing.
  */
 const RETIRED_DEFAULTS: Record<string, string> = {
   compaction: 'context compaction was removed; the adapter manages its own context',
   inject_lessons: 'lessons are read from .opencastle/LESSONS-LEARNED.md by the agent itself',
   snippets: 'snippets were folded into skills',
+  detect_drift: 'drift detection was removed; reviews and gates check the work instead',
+  review_stages: 'the two-stage review was removed; `review` picks one fast review or a panel',
+  mcp_approve_all: 'agents use the MCP servers and approvals in the project\'s own config, which `opencastle sync` writes',
 }
+
+/** Top-level and per-task keys retired the same way. */
+const RETIRED_SPEC_KEYS: Record<string, string> = {
+  watch: 'watch mode was removed; run the spec again, or `opencastle convoy resume` to continue one',
+}
+const RETIRED_TASK_KEYS: Record<string, string> = {
+  detect_drift: 'drift detection was removed; reviews and gates check the work instead',
+}
+
+/** What a version 2 (chained) spec is told to do instead. */
+const CHAIN_REPLACEMENT =
+  'put every task in one version 1 spec and let `depends_on` order them — tasks that do not ' +
+  'depend on each other run in parallel. `opencastle convoy "<task>"` plans large work that way.'
 
 /**
  * Every key under `defaults` that something reads.
@@ -153,11 +169,9 @@ const KNOWN_DEFAULTS = new Set([
   'browser_test',
   'built_in_gates',
   'circuit_breaker',
-  'detect_drift',
   'max_concurrent_reviews',
   'max_retries',
   'max_swarm_concurrency',
-  'mcp_approve_all',
   'mcp_server_approval_timeout',
   'mcp_servers',
   'model',
@@ -167,7 +181,6 @@ const KNOWN_DEFAULTS = new Set([
   'review',
   'review_budget',
   'review_heuristics',
-  'review_stages',
   'reviewer_model',
   'timeout',
   ...Object.keys(RETIRED_DEFAULTS),
@@ -192,6 +205,7 @@ const KNOWN_BUILT_IN_GATES = new Set([
   'gate_timeout',
 ])
 
+/** Validate a parsed spec object. */
 export function validateSpec(spec: unknown): ValidationResult {
   const errors: string[] = []
   const warnings: string[] = []
@@ -233,21 +247,19 @@ export function validateSpec(spec: unknown): ValidationResult {
     errors.push('`adapter` must be a string')
   }
 
-  // version
-  if (s.version !== undefined) {
-    if (typeof s.version !== 'number' || !Number.isInteger(s.version) || (s.version !== 1 && s.version !== 2)) {
-      errors.push('`version` must be 1 or 2')
-    }
+  // version. A spec without one is a convoy spec, version 1: there is one
+  // executor now. Version 2 chained whole specs one after another; the planner
+  // writes one spec in which independent work runs side by side instead.
+  if (s.version === 2 || s.depends_on_convoy !== undefined) {
+    errors.push(`A chain of convoy specs (\`version: 2\` with \`depends_on_convoy\`) is no longer supported: ${CHAIN_REPLACEMENT}`)
+    // The rest of a chain spec is a list of other specs, so nothing below applies.
+    return { valid: false, errors, warnings }
+  } else if (s.version !== undefined && s.version !== 1) {
+    errors.push('`version` must be 1, or left out')
   }
 
-  // depends_on_convoy
-  if (s.depends_on_convoy !== undefined) {
-    if (
-      !Array.isArray(s.depends_on_convoy) ||
-      !(s.depends_on_convoy as unknown[]).every((c) => typeof c === 'string')
-    ) {
-      errors.push('`depends_on_convoy` must be an array of strings')
-    }
+  for (const [key, why] of Object.entries(RETIRED_SPEC_KEYS)) {
+    if ((s as Record<string, unknown>)[key] !== undefined) warnings.push(`\`${key}\` is ignored — ${why}`)
   }
 
   // defaults
@@ -327,11 +339,6 @@ export function validateSpec(spec: unknown): ValidationResult {
         }
       }
 
-      // mcp_approve_all validation
-      if (d.mcp_approve_all !== undefined && typeof d.mcp_approve_all !== 'boolean') {
-        errors.push('`defaults.mcp_approve_all` must be a boolean')
-      }
-
       // mcp_server_approval_timeout validation
       if (d.mcp_server_approval_timeout !== undefined) {
         const t = Number(d.mcp_server_approval_timeout)
@@ -383,11 +390,6 @@ export function validateSpec(spec: unknown): ValidationResult {
       // browser_test config validation
       if (d.browser_test !== undefined) {
         validateBrowserTestConfig(d.browser_test, 'defaults.browser_test', errors)
-      }
-
-      // review_stages validation (Phase 40 — two-stage review toggle)
-      if (d.review_stages !== undefined && typeof d.review_stages !== 'boolean') {
-        errors.push('`defaults.review_stages` must be a boolean')
       }
 
       // review validation
@@ -526,26 +528,9 @@ export function validateSpec(spec: unknown): ValidationResult {
     }
   }
 
-  // Tasks: required unless this is a version:2 pipeline spec with depends_on_convoy
-  const isPipeline =
-    s.version === 2 &&
-    Array.isArray(s.depends_on_convoy) &&
-    (s.depends_on_convoy as unknown[]).length > 0
-
-  if (!isPipeline) {
-    if (!s.tasks || !Array.isArray(s.tasks) || s.tasks.length === 0) {
-      errors.push('`tasks` is required and must be a non-empty array')
-      return { valid: false, errors, warnings }
-    }
-  } else if (s.tasks !== undefined && (!Array.isArray(s.tasks) || s.tasks.length === 0)) {
-    // Pipeline spec may omit tasks entirely, but if present they must be non-empty
-    errors.push('`tasks`, when provided, must be a non-empty array')
+  if (!s.tasks || !Array.isArray(s.tasks) || s.tasks.length === 0) {
+    errors.push('`tasks` is required and must be a non-empty array')
     return { valid: false, errors, warnings }
-  }
-
-  // Skip per-task validation when pipeline spec has no tasks
-  if (isPipeline && !s.tasks) {
-    return { valid: errors.length === 0, errors, warnings }
   }
 
   const taskIds = new Set<string>()
@@ -558,6 +543,10 @@ export function validateSpec(spec: unknown): ValidationResult {
       if (!task || typeof task !== 'object') {
         errors.push(`${prefix}: must be an object`)
       continue
+    }
+
+    for (const [key, why] of Object.entries(RETIRED_TASK_KEYS)) {
+      if ((task as Record<string, unknown>)[key] !== undefined) warnings.push(`\`${prefix}.${key}\` is ignored — ${why}`)
     }
 
     // id
@@ -713,20 +702,23 @@ function detectCycles(tasks: Array<{ id: string; depends_on?: string[] }>): stri
 
 /**
  * Apply default values to a parsed spec.
+ *
+ * Every spec is a convoy spec, version 1, whether or not it says so; a spec
+ * without `version` used to go to a second, older executor that ignored
+ * `defaults` altogether. Concurrency left out is `auto`, which lets the engine
+ * pick (`defaults.max_swarm_concurrency`, else 4) rather than one at a time.
  */
 export function applyDefaults(spec: Record<string, unknown>): TaskSpec {
   const s = spec as Record<string, unknown>
-  s.concurrency = s.concurrency === 'auto' ? 'auto' : (s.concurrency !== undefined ? Number(s.concurrency) : 1)
+  s.version = 1
+  s.concurrency = s.concurrency === 'auto' || s.concurrency === undefined ? 'auto' : Number(s.concurrency)
   s.on_failure = (s.on_failure as string) || 'continue'
-  // Leave adapter empty so run.ts can auto-detect the best available CLI
+  // Empty means "not chosen": the caller resolves the runtime with resolveAdapter.
   s.adapter = (s.adapter as string) || ''
   s.gate_retries = s.gate_retries !== undefined ? Number(s.gate_retries) : 0
 
   const tasks = (s.tasks as Array<Record<string, unknown>> | undefined) ?? []
-  const d =
-    s.version === 1 && s.defaults
-      ? (s.defaults as Record<string, unknown>)
-      : {}
+  const d = s.defaults && typeof s.defaults === 'object' ? (s.defaults as Record<string, unknown>) : {}
   for (const task of tasks) {
     task.agent =
       (task.agent as string) || (d.agent as string | undefined) || 'developer'
@@ -757,28 +749,6 @@ export function applyDefaults(spec: Record<string, unknown>): TaskSpec {
   }
 
   return s as unknown as TaskSpec
-}
-
-/**
- * Returns true if the spec uses the Convoy Engine enhanced format (version: 1 or 2).
- */
-export function isConvoySpec(spec: unknown): boolean {
-  if (!spec || typeof spec !== 'object') return false
-  const v = (spec as Record<string, unknown>).version
-  return v === 1 || v === 2
-}
-
-/**
- * Returns true if the spec is a pipeline spec (version: 2 + non-empty depends_on_convoy).
- */
-export function isPipelineSpec(spec: unknown): boolean {
-  if (!spec || typeof spec !== 'object') return false
-  const s = spec as Record<string, unknown>
-  return (
-    s.version === 2 &&
-    Array.isArray(s.depends_on_convoy) &&
-    (s.depends_on_convoy as unknown[]).length > 0
-  )
 }
 
 /**

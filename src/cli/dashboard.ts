@@ -149,14 +149,6 @@ async function listen(server: Server, port: number): Promise<number> {
   }
 }
 
-async function serve(opts: ViewerOptions): Promise<{ server: Server; url: string }> {
-  const server = createServer(handler(opts.projectRoot, viewerPage()))
-  const port = await listen(server, opts.port ?? DEFAULT_PORT)
-  const url = `http://127.0.0.1:${port}`
-  if (opts.open) openUrl(url)
-  return { server, url }
-}
-
 function closer(server: Server): () => Promise<void> {
   return () =>
     new Promise((done) => {
@@ -168,23 +160,11 @@ function closer(server: Server): () => Promise<void> {
 
 /** Start the viewer for one project. Resolves once it is listening. */
 export async function startViewer(opts: ViewerOptions): Promise<ViewerHandle> {
-  const { server, url } = await serve(opts)
+  const server = createServer(handler(opts.projectRoot, viewerPage()))
+  const port = await listen(server, opts.port ?? DEFAULT_PORT)
+  const url = `http://127.0.0.1:${port}`
+  if (opts.open) openUrl(url)
   return { url, close: closer(server) }
-}
-
-/**
- * @deprecated For the five call sites in run.ts until they move to `startViewer`.
- * Same server; the project root is found from the working directory.
- */
-export async function startDashboardServer(options: {
-  port?: number
-  openBrowser?: boolean
-  pkgRoot?: string
-  convoyId?: string
-}): Promise<{ server: Server; port: number; url: string }> {
-  const projectRoot = findProjectRoot(process.cwd()) ?? process.cwd()
-  const { server, url } = await serve({ projectRoot, port: options.port, open: options.openBrowser })
-  return { server, port: (server.address() as AddressInfo).port, url }
 }
 
 // ── command ───────────────────────────────────────────────────────────────────

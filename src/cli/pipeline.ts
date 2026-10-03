@@ -5,7 +5,8 @@ import { resolve, relative, basename } from 'node:path'
 import { c, confirm, closePrompts } from './prompt.js'
 import { runPromptStep, freePath } from './plan.js'
 import type { PromptStepOptions, PromptStepResult } from './plan.js'
-import { detectAdapter, getAdapter, cleanupAdapters } from './run/adapters/index.js'
+import { resolveAdapter, cleanupAdapters, type ResolvedAdapter } from './run/adapters/index.js'
+import { findProjectRoot } from './convoy/read-model.js'
 import type { AgentAdapter } from './convoy/spec-types.js'
 import type { CliContext } from './types.js'
 import {
@@ -660,30 +661,32 @@ const HELP = `
   written as a spec; you see the plan and are asked before it runs.
 
   Options:
-    --prd <file>           The PRD to plan from (opencastle convoy "<task>" writes
-                           them to .opencastle/prds/)
-    --yes, -y              Run the plan without asking
-    --dry-run              Plan and write the spec, but do not run it
-    --adapter, -a <name>   Agent runtime to plan and run with
-    --verbose              Show each planning session's output
-    --help, -h             Show this help
+    --prd <file>             The PRD to plan from (opencastle convoy "<task>" writes
+                             them to .opencastle/prds/)
+    --yes, -y                Run the plan without asking
+    --dry-run                Plan and write the spec, but do not run it
+    --adapter, -a <name>     Agent runtime to plan and run with
+    --concurrency, -c <n>    Tasks at once when it runs
+    --verbose                Show each planning session's output
+    --help, -h               Show this help
 `
 
 interface CliOptions {
-  task: string | null
   prd: string | null
   yes: boolean
   dryRun: boolean
   adapter: string | null
+  concurrency: number | null
   verbose: boolean
   help: boolean
 }
 
-function parseArgs(args: string[]): CliOptions {
-  const opts: CliOptions = { task: null, prd: null, yes: false, dryRun: false, adapter: null, verbose: false, help: false }
+/** Flags `convoy "<task>"` and `convoy plan` share; `--prd` is plan's alone. */
+function parseArgs(args: string[], allowPrd: boolean): CliOptions {
+  const opts: CliOptions = { prd: null, yes: false, dryRun: false, adapter: null, concurrency: null, verbose: false, help: false }
   const value = (i: number, flag: string): string => {
     const v = args[i + 1]
-    if (v === undefined || !v.trim()) {
+    if (v === undefined || !v.trim() || v.startsWith('-')) {
       console.error(`  ✗ ${flag} needs a value`)
       process.exit(1)
     }
@@ -696,12 +699,11 @@ function parseArgs(args: string[]): CliOptions {
       case '-h':
         opts.help = true
         break
-      // How `opencastle convoy "<task>"` hands over the task. Not documented:
-      // nobody types it, and `convoy plan` exists for planning from a PRD.
-      case '--text':
-        opts.task = value(i++, arg)
-        break
       case '--prd':
+        if (!allowPrd) {
+          console.error(`  ✗ --prd belongs to \`opencastle convoy plan\`: plan from a task or from a PRD, not both.`)
+          process.exit(1)
+        }
         opts.prd = value(i++, arg)
         break
       case '--yes':
@@ -715,101 +717,62 @@ function parseArgs(args: string[]): CliOptions {
       case '-a':
         opts.adapter = value(i++, arg)
         break
+      case '--concurrency':
+      case '-c': {
+        const raw = value(i++, arg)
+        const n = Number(raw)
+        if (!/^\d+$/.test(raw) || n < 1 || n > 50) {
+          console.error(`  ✗ --concurrency must be a whole number from 1 to 50, not "${raw}"`)
+          process.exit(1)
+        }
+        opts.concurrency = n
+        break
+      }
       case '--verbose':
         opts.verbose = true
         break
       default:
         console.error(`  ✗ Unknown option: ${arg}`)
-        console.error(`  ${c.dim('Accepts:')} --yes --dry-run --adapter --verbose --help (and --prd for convoy plan)`)
+        console.error(`  ${c.dim('Accepts:')} --yes --dry-run --adapter --concurrency --verbose --help${allowPrd ? ' --prd' : ''}`)
         process.exit(1)
     }
   }
   return opts
 }
 
-function printAdapterError(detectionFailed: boolean, adapterName: string): void {
-  if (detectionFailed) {
-    console.error(
-      `  ✗ No agent CLI found on your PATH.\n` +
-        `    Install one of these, or name one with --adapter <name>:\n` +
-        `    • claude     — npm install -g @anthropic-ai/claude-code\n` +
-        `    • codex      — npm install -g @openai/codex\n` +
-        `    • cursor     — https://cursor.com (Cursor > Install CLI)\n` +
-        `    • opencode   — https://opencode.ai\n` +
-        `    • copilot    — https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli`,
-    )
-    return
-  }
-  const cliName = adapterName === 'cursor' ? 'agent' : adapterName
-  console.error(
-    `  ✗ Adapter "${adapterName}" is not available.\n` +
-      `    Make sure the "${cliName}" CLI is installed and on your PATH.`,
-  )
-}
-
 /**
- * The runtime for the whole plan, chosen once.
- *
- * Detection stands in until `resolveAdapter` lands, which also reads what
- * `opencastle init` configured; the call site is the only thing that changes.
+ * The runtime for the whole plan, and the run after it, chosen once by the
+ * rule `resolveAdapter` owns: `--adapter`, else what `opencastle init` set up,
+ * else what is on PATH.
  */
-async function chooseAdapter(explicit: string | null): Promise<{ name: string; adapter: AgentAdapter; how: string }> {
-  const name = explicit ?? (await detectAdapter())
-  if (!name) {
-    printAdapterError(true, '')
-    process.exit(1)
-  }
-  let adapter: AgentAdapter
+async function chooseRuntime(projectRoot: string, explicit: string | null): Promise<ResolvedAdapter> {
   try {
-    adapter = await getAdapter(name)
+    return await resolveAdapter({ projectRoot, explicit })
   } catch (err) {
-    console.error(`  ✗ ${message(err)}`)
+    console.error(`  ${c.red('✗')} ${message(err)}`)
     process.exit(1)
   }
-  if (!(await adapter.isAvailable())) {
-    printAdapterError(false, name)
-    process.exit(1)
-  }
-  return { name, adapter, how: explicit ? '--adapter' : 'detected' }
 }
 
 /**
- * `opencastle convoy "<task>"` and `opencastle convoy plan --prd <file>`:
- * plan, show the plan once, ask once, run.
+ * Plan, show the plan once, ask once, run.
  *
  * Nothing runs without a yes. A closed stdin is not one: piped into a script,
  * the old prompt's default-yes started a full convoy nobody had agreed to.
  */
-export default async function pipeline({ args, pkgRoot }: CliContext): Promise<void> {
-  const opts = parseArgs(args)
-  if (opts.help) {
-    console.log(HELP)
-    return
-  }
-  if (opts.task !== null && opts.prd !== null) {
-    console.error('  ✗ Plan from a task or from a PRD, not both.')
-    process.exit(1)
-  }
-  if (opts.task === null && opts.prd === null) {
-    console.error('  ✗ Name the PRD to plan from: opencastle convoy plan --prd <file>')
-    console.log(HELP)
-    process.exit(1)
-  }
-  if (opts.prd !== null && !existsSync(resolve(process.cwd(), opts.prd))) {
-    console.error(`  ✗ PRD not found: ${opts.prd}`)
-    process.exit(1)
-  }
-
-  const { name, adapter, how } = await chooseAdapter(opts.adapter)
-  console.log(`\n  ${c.bold('opencastle convoy')} ${c.dim(`— planning with ${name} (${how}), read-only`)}\n`)
+async function planThenRun(source: { task: string } | { prd: string }, opts: CliOptions, pkgRoot: string): Promise<void> {
+  const projectRoot = process.cwd()
+  const runtime = await chooseRuntime(findProjectRoot(projectRoot) ?? projectRoot, opts.adapter)
+  console.log(`\n  ${c.bold('opencastle convoy')} ${c.dim('— planning, read-only')}`)
+  console.log(`  ${c.dim('Runtime:')} ${runtime.detail}\n`)
 
   let outcome: PlanOutcome
   try {
     outcome = await planConvoy({
-      task: opts.task ?? undefined,
-      prdPath: opts.prd ?? undefined,
-      adapter,
-      adapterName: name,
+      task: 'task' in source ? source.task : undefined,
+      prdPath: 'prd' in source ? source.prd : undefined,
+      adapter: runtime.adapter,
+      adapterName: runtime.name,
       pkgRoot,
       verbose: opts.verbose,
       critic: opts.yes && !opts.dryRun,
@@ -845,14 +808,43 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
     return
   }
 
+  // The run takes the spec by its path, as `convoy run <spec>` does, on the
+  // runtime already chosen and printed above.
+  const { runSpec, exitWith } = await import('./run.js')
+  let code = 1
   try {
-    const runModule = await import('./run.js')
-    const runArgs = ['-f', outcome.specPath]
-    if (opts.adapter) runArgs.push('-a', opts.adapter)
-    if (opts.verbose) runArgs.push('--verbose')
-    await runModule.default({ args: runArgs, pkgRoot })
+    code = await runSpec(
+      { spec: outcome.specPath, dryRun: false, adapter: opts.adapter, concurrency: opts.concurrency, verbose: opts.verbose, help: false },
+      { runtime },
+    )
   } finally {
     closePrompts()
     await cleanupAdapters()
   }
+  exitWith(code)
+}
+
+/** `opencastle convoy "<task>"`: the task comes from the words typed, the flags from `args`. */
+export async function planTask({ args, pkgRoot }: CliContext, task: string): Promise<void> {
+  const opts = parseArgs(args, false)
+  await planThenRun({ task }, opts, pkgRoot)
+}
+
+/** `opencastle convoy plan --prd <file>`. */
+export default async function pipeline({ args, pkgRoot }: CliContext): Promise<void> {
+  const opts = parseArgs(args, true)
+  if (opts.help) {
+    console.log(HELP)
+    return
+  }
+  if (opts.prd === null) {
+    console.error('  ✗ Name the PRD to plan from: opencastle convoy plan --prd <file>')
+    console.log(HELP)
+    process.exit(1)
+  }
+  if (!existsSync(resolve(process.cwd(), opts.prd))) {
+    console.error(`  ✗ PRD not found: ${opts.prd}`)
+    process.exit(1)
+  }
+  await planThenRun({ prd: opts.prd }, opts, pkgRoot)
 }

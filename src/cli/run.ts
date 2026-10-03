@@ -1,1258 +1,457 @@
+/**
+ * `opencastle convoy run <spec.yml>` and `opencastle convoy resume`.
+ *
+ * Two things, and only two: start a spec, or continue the newest run that is
+ * not done. This file used to be a 1,250-line parser in front of three
+ * executors — the convoy engine, a legacy executor and a pipeline orchestrator —
+ * with watch mode, formulas, a dead-letter queue and a status report bolted on.
+ * Each path finished a run in its own way, so the summary printed twice and a
+ * finished run could sit waiting for Ctrl+C. The engine now does the work and
+ * prints its own summary; this file picks the runtime, shows the live view,
+ * and exits with the engine's code.
+ */
 import { readFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { stringify as yamlStringify } from 'yaml'
-import { parseTaskSpecText, isConvoySpec, isPipelineSpec } from './run/schema.js'
-import { createExecutor, buildPhases } from './run/executor.js'
-import { getAdapter, detectAdapter } from './run/adapters/index.js'
+import { parseTaskSpecText } from './run/schema.js'
+import { resolveAdapter, cleanupAdapters, type ResolvedAdapter } from './run/adapters/index.js'
 import { permissionModeError } from './run/adapters/permission-modes.js'
-import { createReporter, printExecutionPlan } from './run/reporter.js'
-import { c } from './prompt.js'
-import type { CliContext } from './types.js'
-import { PERMISSION_MODES } from './convoy/spec-types.js'
-import type { RunOptions, PermissionMode, TaskSpec } from './convoy/spec-types.js'
-import type { ConvoyResult } from './convoy/engine.js'
-import type { PipelineResult } from './convoy/pipeline.js'
+import { findProjectRoot, isRunAlive, readRun, readRunSpec, readRuns, type RunSummary } from './convoy/read-model.js'
+import { checkConvoyPlan, createConvoyEngine, RESUME_RESET_STATUSES, type ConvoyResult } from './convoy/engine.js'
 import { EngineAlreadyRunningError } from './convoy/lock.js'
+import { startViewer, type ViewerHandle } from './dashboard.js'
+import { nearest } from './nearest.js'
+import { c } from './prompt.js'
+import type { TaskSpec } from './convoy/spec-types.js'
+import type { CliContext } from './types.js'
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
+const RUN_HELP = `
+  opencastle convoy run <spec.yml> [options]
 
-const HELP = `
-  opencastle convoy run [options]
-
-  Process a task queue from a spec file, delegating to AI agents autonomously.
-  Version 1 specs use the Convoy Engine; legacy specs use the standard executor.
+  Run a convoy spec: one you wrote, or one opencastle convoy "<task>" wrote to
+  .opencastle/convoys/. The work lands on a branch of its own (the spec's
+  branch, or convoy/<name>-<id>); your checkout is never touched.
 
   Options:
-    --file, -f <path>        Task spec file
-    --formula <path>         Use a formula template (alternative to --file)
-    --set key=value          Set a formula variable (repeatable)
-    --dry-run                Show execution plan without running; with --resume
-                             or --retry-failed, list the tasks that would run
-    --concurrency, -c <n>    Override max parallel tasks
-    --adapter, -a <name>     Override agent runtime adapter
-    --report-dir <path>      Where to write run reports, for legacy specs only
-                             (default: .opencastle/runs). Convoy specs record to
-                             .opencastle/convoy.db and .opencastle/logs instead
-    --permission-mode <m>    How much a worker may do unattended: default,
-                             acceptEdits (the default), auto, dontAsk,
-                             bypassPermissions, plan
-    --verbose                Show full agent output
-    --resume                 Resume the last interrupted convoy from .opencastle/convoy.db
-    --retry-failed [task-id] Retry failed/gate-failed/timed-out tasks from the last convoy
-    --status                 Print the current convoy state from .opencastle/convoy.db
-    --dlq-list               List dead letter queue entries
-    --dlq-resolve <id>       Resolve a DLQ entry (requires --resolution)
-    --dlq-retry <id>         Reset a DLQ task to pending for retry
-    --convoy <id>            Filter by convoy ID (used with --dlq-list)
-    --resolution <text>      Resolution text (used with --dlq-resolve)
-    --watch                  Keep running, re-triggering on file changes, cron,
-                             or git push (convoy specs only)
-    --watch-config <p>       Path to watch configuration file (overrides spec
-                             watch config)
-    --clear-scratchpad       Clear scratchpad data at watch start
+    --dry-run                Check the spec and show what would run; start nothing
+    --adapter, -a <name>     Agent runtime: claude, codex, cursor, opencode or copilot
+                             (default: the spec's, else the one opencastle init set up)
+    --concurrency, -c <n>    Tasks at once (default: the spec's, else 4)
+    --verbose                Stream agent output
     --help, -h               Show this help
 `
 
-/**
- * CLI flags win over whatever the spec says.
- *
- * Four entry points build a spec — a fresh run, a retry, a convoy resume and a
- * pipeline resume — and each used to repeat this by hand, which is how a flag
- * comes to work on one of them and not the others.
- */
-function applyCliOverrides(spec: TaskSpec, opts: RunOptions): void {
-  if (opts.concurrency !== null) spec.concurrency = opts.concurrency
-  if (opts.adapter !== null) spec.adapter = opts.adapter
-  if (opts.permissionMode !== null) {
-    spec.defaults = { ...spec.defaults, permission_mode: opts.permissionMode }
-  }
-  if (opts.verbose) spec._verbose = true
+const RESUME_HELP = `
+  opencastle convoy resume [options]
+
+  Continue the newest run that is not done. Failed, timed-out and interrupted
+  tasks run again, and so do the tasks a failure skipped; finished tasks are
+  kept. It runs on the branch and runtime the run started with.
+
+  Options:
+    --dry-run                List the tasks that would run; start nothing
+    --adapter, -a <name>     Run on another agent runtime instead
+    --concurrency, -c <n>    Tasks at once
+    --verbose                Stream agent output
+    --help, -h               Show this help
+`
+
+// ── Arguments ─────────────────────────────────────────────────────────────────
+
+export interface RunArgs {
+  /** The spec path, as typed. Null for resume, or when it is missing. */
+  spec: string | null
+  dryRun: boolean
+  adapter: string | null
+  concurrency: number | null
+  verbose: boolean
+  help: boolean
 }
 
-export interface DashboardHandle {
-  server: { close(): void }
-  url: string
-}
+const KNOWN_FLAGS = ['--dry-run', '--adapter', '-a', '--concurrency', '-c', '--verbose', '--help', '-h']
 
 /**
- * End the run: say where the results went, keep the dashboard up if there is
- * one, and stop.
- *
- * Five paths finish a run — a fresh convoy, a fresh pipeline, a retry, a convoy
- * resume and a pipeline resume — and each wrote this out by hand. The no-dashboard
- * half ended in `process.exit`, so it stopped whether or not anyone remembered to
- * say so; the dashboard half only registered a SIGINT handler, and four of the
- * five then carried straight on into the next block. With the dashboard running,
- * `convoy run` executed the whole spec on the engine and then ran it a second time
- * on the legacy executor, and `--retry-failed` followed its retry with a full fresh
- * run — every task done twice, and paid for twice, visible only when a dashboard
- * was up.
- *
- * One copy, and it either exits or hands control back for the caller to `return`.
+ * Flags this command used to take, and what to do instead. Named one by one,
+ * because "unknown option" is the wrong answer to a flag our own docs taught.
  */
-export function finishRun(
-  dashboard: DashboardHandle | null,
-  failed: boolean,
-  retryHint?: string,
-): void {
-  const exitCode = failed ? 1 : 0
-  const printRetryHint = (): void => {
-    if (failed && retryHint) console.log(`\n  ${c.dim('Retry failed:')} ${retryHint}`)
-  }
-
-  if (dashboard) {
-    console.log(`\n  ${c.dim('Results saved to .opencastle/convoy.db')}`)
-    console.log(`  ${c.dim('Dashboard:')} ${dashboard.url}`)
-    console.log(`\n  Press Ctrl+C to stop`)
-    printRetryHint()
-    process.on('SIGINT', () => {
-      console.log('\n  Dashboard stopped.\n')
-      dashboard.server.close()
-      process.exit(exitCode)
-    })
-    return
-  }
-
-  printRetryHint()
-  process.exit(exitCode)
+export const REMOVED_FLAGS: Record<string, string> = {
+  '--resume': 'Use: opencastle convoy resume',
+  '--retry-failed': 'Use: opencastle convoy resume — it re-runs failed tasks too',
+  '--status': 'Use: opencastle convoy — it shows the last run and what to do next',
+  '--dlq-list': 'Failed tasks are listed by opencastle convoy, and re-run by opencastle convoy resume',
+  '--dlq-resolve': 'Failed tasks are listed by opencastle convoy, and re-run by opencastle convoy resume',
+  '--dlq-retry': 'Use: opencastle convoy resume',
+  '--formula': 'Formulas are gone: write the spec out, or plan it with opencastle convoy "<task>"',
+  '--set': 'Formulas are gone: write the spec out, or plan it with opencastle convoy "<task>"',
+  '--watch': 'Watch mode is gone: run the spec again when you want it run',
+  '--watch-config': 'Watch mode is gone: run the spec again when you want it run',
+  '--clear-scratchpad': 'Watch mode is gone: run the spec again when you want it run',
+  '--report-dir': 'Runs are recorded in .opencastle/convoy.db. See them with opencastle convoy dashboard',
+  '--permission-mode': 'Set defaults.permission_mode in the spec instead',
 }
 
 /**
- * The statuses `engine.retryFailed` reopens, and the ones `engine.resume` picks
- * up. Named here so the `--dry-run` preview and the engine cannot drift about
- * which tasks a run would touch.
- */
-export const RETRYABLE_TASK_STATUSES = [
-  'failed',
-  'gate-failed',
-  'timed-out',
-  'review-blocked',
-  'disputed',
-] as const
-export const RESUMABLE_TASK_STATUSES = ['pending', 'assigned', 'running'] as const
-
-/**
- * What `--resume` or `--retry-failed` would do, without doing it.
+ * Read `convoy run` or `convoy resume` arguments.
  *
- * `--dry-run` was read only on the fresh-run path, so combining it with either
- * of those flags spawned agents against the user's repository for real. The flag
- * a person reaches for to find out what will happen was the one flag that did
- * not change what happened.
+ * The spec is positional; `-f`/`--file` still names it, quietly, because
+ * every spec written before this change says `convoy run -f <spec>`.
  */
-export function printRunDryRun(
-  verb: 'resume' | 'retry',
-  runLabel: string,
-  runName: string,
-  tasks: Array<{ id: string; agent: string; status: string }>,
-  statuses: readonly string[],
-): void {
-  const selected = tasks.filter((t) => statuses.includes(t.status))
-
-  console.log(`\n  🏰 ${runLabel}: ${runName}`)
-  console.log(c.dim(`  [dry-run] Nothing will be executed.\n`))
-
-  if (selected.length === 0) {
-    console.log(
-      verb === 'retry'
-        ? '  No failed tasks to retry.'
-        : '  No unfinished tasks — nothing to resume.',
-    )
-    console.log(c.dim(`  (matching: ${statuses.join(', ')})\n`))
-    return
+export function parseRunArgs(args: string[], command: 'run' | 'resume'): RunArgs | { error: string } {
+  const out: RunArgs = { spec: null, dryRun: false, adapter: null, concurrency: null, verbose: false, help: false }
+  const value = (i: number, flag: string): string | { error: string } => {
+    const v = args[i + 1]
+    if (v === undefined || v.startsWith('-') || !v.trim()) return { error: `${flag} needs a value` }
+    return v
   }
-
-  console.log(
-    `  Would ${verb === 'retry' ? 're-run' : 'run'} ${selected.length} of ${tasks.length} task(s):`,
-  )
-  for (const t of selected) {
-    console.log(`    ${t.id} ${c.dim(`— ${t.agent} [${t.status}]`)}`)
-  }
-  console.log()
-}
-
-/**
- * Parse CLI arguments for the run command.
- */
-function parseArgs(args: string[]): RunOptions {
-  const opts: RunOptions = {
-    file: 'convoy.yml',
-    dryRun: false,
-    concurrency: null,
-    adapter: null,
-    reportDir: null,
-    permissionMode: null,
-    verbose: false,
-    help: false,
-    resume: false,
-    status: false,
-    retryFailed: false,
-    retryFailedTaskIds: undefined,
-    dlqList: false,
-    dlqResolve: false,
-    dlqResolveId: undefined,
-    dlqResolveText: undefined,
-    dlqRetry: false,
-    dlqRetryId: undefined,
-    dlqConvoyFilter: undefined,
-    formula: null,
-    setVars: {},
-    watch: false,
-    watchConfig: null,
-    clearScratchpad: false,
-  }
-
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     switch (arg) {
       case '--help':
       case '-h':
-        opts.help = true
+        out.help = true
         break
-      case '--file':
-      case '-f':
-        if (i + 1 >= args.length) { console.error('  \u2717 --file requires a path'); process.exit(1) }
-        opts.file = args[++i]
-        if (!opts.file.trim()) { console.error('  ✗ --file cannot be empty'); process.exit(1) }
-        break
-      case '--dryRun':
       case '--dry-run':
-        opts.dryRun = true
+        out.dryRun = true
         break
+      case '--verbose':
+        out.verbose = true
+        break
+      case '--adapter':
+      case '-a': {
+        const v = value(i++, arg)
+        if (typeof v !== 'string') return v
+        out.adapter = v
+        break
+      }
       case '--concurrency':
       case '-c': {
-        if (i + 1 >= args.length) { console.error('  \u2717 --concurrency requires a number'); process.exit(1) }
-        const val = parseInt(args[++i], 10)
-        if (!Number.isFinite(val) || val < 1) {
-          console.error(`  ✗ --concurrency must be an integer >= 1`)
-          process.exit(1)
-        }
-        opts.concurrency = val
+        const v = value(i++, arg)
+        if (typeof v !== 'string') return v
+        const n = Number(v)
+        if (!/^\d+$/.test(v) || n < 1 || n > 50) return { error: `--concurrency must be a whole number from 1 to 50, not "${v}"` }
+        out.concurrency = n
         break
       }
-      case '--adapter':
-      case '-a':
-        if (i + 1 >= args.length) { console.error('  \u2717 --adapter requires a name'); process.exit(1) }
-        opts.adapter = args[++i]
-        if (!opts.adapter.trim()) { console.error('  ✗ --adapter cannot be empty'); process.exit(1) }
-        break
-      case '--report-dir':
-        if (i + 1 >= args.length) { console.error('  \u2717 --report-dir requires a path'); process.exit(1) }
-        opts.reportDir = args[++i]
-        if (!opts.reportDir.trim()) { console.error('  ✗ --report-dir cannot be empty'); process.exit(1) }
-        break
-      case '--permission-mode': {
-        if (i + 1 >= args.length) { console.error('  ✗ --permission-mode requires a mode'); process.exit(1) }
-        const mode = args[++i]
-        if (!PERMISSION_MODES.includes(mode as PermissionMode)) {
-          console.error(`  ✗ --permission-mode must be one of: ${PERMISSION_MODES.join(', ')}`)
-          process.exit(1)
-        }
-        opts.permissionMode = mode as PermissionMode
+      case '--file':
+      case '-f': {
+        if (command !== 'run') return { error: `${arg} belongs to opencastle convoy run` }
+        const v = value(i++, arg)
+        if (typeof v !== 'string') return v
+        if (out.spec !== null) return { error: `Two specs given: ${out.spec} and ${v}. Run one at a time.` }
+        out.spec = v
         break
       }
-      case '--verbose':
-        opts.verbose = true
-        break
-      case '--resume':
-        opts.resume = true
-        break
-      case '--retry-failed':
-        opts.retryFailed = true
-        if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
-          opts.retryFailedTaskIds = [args[++i]]
+      default: {
+        if (arg in REMOVED_FLAGS) return { error: `${arg} was removed. ${REMOVED_FLAGS[arg]}.` }
+        if (arg.startsWith('-')) {
+          const near = nearest(arg, KNOWN_FLAGS)
+          return { error: `Unknown option ${arg}. ${near ? `Did you mean ${near}?` : `It accepts ${KNOWN_FLAGS.join(', ')}.`}` }
         }
-        break
-      case '--status':
-        opts.status = true
-        break
-      case '--dlq-list':
-        opts.dlqList = true
-        break
-      case '--dlq-resolve':
-        opts.dlqResolve = true
-        if (i + 1 < args.length && !args[i + 1].startsWith('--')) opts.dlqResolveId = args[++i]
-        break
-      case '--dlq-retry':
-        opts.dlqRetry = true
-        if (i + 1 < args.length && !args[i + 1].startsWith('--')) opts.dlqRetryId = args[++i]
-        break
-      case '--resolution':
-        if (i + 1 >= args.length) { console.error('  ✗ --resolution requires text'); process.exit(1) }
-        opts.dlqResolveText = args[++i]
-        if (!opts.dlqResolveText.trim()) { console.error('  ✗ --resolution cannot be empty'); process.exit(1) }
-        break
-      case '--convoy':
-        if (i + 1 >= args.length) { console.error('  ✗ --convoy requires an ID'); process.exit(1) }
-        opts.dlqConvoyFilter = args[++i]
-        if (!opts.dlqConvoyFilter.trim()) { console.error('  ✗ --convoy cannot be empty'); process.exit(1) }
-        break
-      case '--formula':
-        if (i + 1 >= args.length) { console.error('  ✗ --formula requires a path'); process.exit(1) }
-        opts.formula = args[++i]
-        if (!opts.formula.trim()) { console.error('  ✗ --formula cannot be empty'); process.exit(1) }
-        break
-      case '--set': {
-        if (i + 1 >= args.length) { console.error('  ✗ --set requires key=value'); process.exit(1) }
-        const pair = args[++i]
-        const eqIdx = pair.indexOf('=')
-        if (eqIdx < 1) {
-          console.error(`  ✗ --set value must be in key=value format, got: ${pair}`)
-          process.exit(1)
+        if (command === 'resume') {
+          return { error: `Unexpected argument "${arg}". resume continues the newest run that is not done, and takes no name.` }
         }
-        opts.setVars[pair.slice(0, eqIdx)] = pair.slice(eqIdx + 1)
-        break
+        if (out.spec !== null) return { error: `Two specs given: ${out.spec} and ${arg}. Run one at a time.` }
+        out.spec = arg
       }
-      case '--watch':
-        opts.watch = true
-        break
-      case '--watch-config':
-        if (i + 1 >= args.length) { console.error('  ✗ --watch-config requires a path'); process.exit(1) }
-        opts.watchConfig = args[++i]
-        if (!opts.watchConfig.trim()) { console.error('  ✗ --watch-config cannot be empty'); process.exit(1) }
-        break
-      case '--clear-scratchpad':
-        opts.clearScratchpad = true
-        break
-      default:
-        console.error(`  ✗ Unknown option: ${arg}. Run with --help to see available options.`)
-        console.log(HELP)
-        process.exit(1)
     }
   }
+  return out
+}
 
-  return opts
+// ── Shared pieces ─────────────────────────────────────────────────────────────
+
+/** Where `.opencastle/` is: the nearest one at or above the current directory, else here. */
+function projectRootHere(): string {
+  return findProjectRoot(process.cwd()) ?? process.cwd()
+}
+
+function fail(message: string): number {
+  console.error(`  ${c.red('✗')} ${message}`)
+  return 1
 }
 
 /**
- * Which executor a spec will run on, and therefore which flags mean anything.
+ * Pick the runtime, once, with the rule `resolveAdapter` owns. On resume the
+ * runtime the run recorded comes before the spec's own `adapter:`, so a run
+ * that started on the configured runtime continues on it.
+ */
+async function chooseRuntime(projectRoot: string, explicit: string | null, spec: TaskSpec, recorded?: string | null): Promise<ResolvedAdapter> {
+  const fromRecord = !explicit && Boolean(recorded)
+  const why = (text: string): string =>
+    fromRecord ? text.replace(/adapter: \S+ in the spec/, 'the runtime this run started on') : text
+  try {
+    const resolved = await resolveAdapter({ projectRoot, explicit, specAdapter: recorded || spec.adapter || null })
+    return { ...resolved, detail: why(resolved.detail) }
+  } catch (err) {
+    throw new Error(why((err as Error).message))
+  }
+}
+
+/** The run's own settings, after the command line has had its say. */
+function applyArgs(spec: TaskSpec, args: RunArgs, runtime: string): void {
+  // Written into the spec the engine gets, so the run, its resume and its
+  // record all name the same runtime.
+  spec.adapter = runtime
+  if (args.concurrency !== null) spec.concurrency = args.concurrency
+  if (args.verbose) spec._verbose = true
+}
+
+function concurrencyOf(spec: TaskSpec): number {
+  return typeof spec.concurrency === 'number' ? spec.concurrency : (spec.defaults?.max_swarm_concurrency ?? 4)
+}
+
+/**
+ * The live viewer, on a terminal and outside CI. A run in a pipeline has nobody
+ * to look at it, and a port held open there is a port held for nothing.
+ */
+async function maybeStartViewer(projectRoot: string): Promise<ViewerHandle | null> {
+  if (!process.stdout.isTTY || process.env.CI) return null
+  try {
+    return await startViewer({ projectRoot, port: 4300, open: false })
+  } catch {
+    // A busy port or a missing page must not stop the run itself.
+    return null
+  }
+}
+
+/**
+ * Run the engine, then let go of everything: the viewer's server, any agent an
+ * adapter still holds. Whatever happens, the caller gets an exit code back and
+ * nothing is left keeping the process alive.
+ */
+async function drive(work: () => Promise<ConvoyResult>, projectRoot: string): Promise<number> {
+  const viewer = await maybeStartViewer(projectRoot)
+  if (viewer) console.log(`  ${c.dim('Live view:')} ${viewer.url}`)
+  console.log('')
+  try {
+    const result = await work()
+    return result.exitCode ?? (result.status === 'done' ? 0 : 1)
+  } catch (err) {
+    if (err instanceof EngineAlreadyRunningError) {
+      return fail(`${err.message}\n    Watch it with: opencastle convoy dashboard`)
+    }
+    return fail((err as Error).message)
+  } finally {
+    await viewer?.close()
+    await cleanupAdapters()
+  }
+}
+
+// ── convoy run <spec.yml> ─────────────────────────────────────────────────────
+
+function fit(text: string, width: number): string {
+  return text.length <= width ? text.padEnd(width) : text.slice(0, Math.max(0, width - 1)) + '…'
+}
+
+/** What a run would do: the tasks and their order, where the work lands, and on what. */
+function describePlan(spec: TaskSpec, runtime: string): string[] {
+  const tasks = spec.tasks ?? []
+  const rows = tasks.map((t) => ({
+    id: t.id,
+    agent: t.agent,
+    deps: t.depends_on.length ? t.depends_on.join(', ') : '–',
+    files: t.files.length ? t.files.join(', ') : '(any)',
+  }))
+  const width = (pick: (r: (typeof rows)[number]) => string, header: string, cap: number): number =>
+    Math.min(cap, Math.max(header.length, ...rows.map((r) => pick(r).length)))
+  const idW = width((r) => r.id, 'TASK', 32)
+  const agentW = width((r) => r.agent, 'AGENT', 18)
+  const depsW = width((r) => r.deps, 'WAITS FOR', 30)
+  const line = (a: string, b: string, d: string, f: string): string =>
+    `    ${fit(a, idW)}  ${fit(b, agentW)}  ${fit(d, depsW)}  ${f}`
+  return [
+    `  ${c.bold(`Convoy: ${spec.name}`)} ${c.dim(`— ${tasks.length} task${tasks.length === 1 ? '' : 's'}, up to ${concurrencyOf(spec)} at once`)}`,
+    '',
+    c.dim(line('TASK', 'AGENT', 'WAITS FOR', 'FILES')),
+    ...rows.map((r) => line(r.id, r.agent, r.deps, r.files)),
+    '',
+    `  ${c.dim('Runtime')} ${runtime}`,
+    `  ${c.dim('Branch')}  ${spec.branch ?? 'convoy/<name>-<id>, created when it runs'}`,
+    ...(spec.gates?.length ? [`  ${c.dim('Gates')}   ${spec.gates.join(', ')} ${c.dim('(once, after the tasks)')}`] : []),
+  ]
+}
+
+/**
+ * `convoy run <spec>`: the exit code it should end with.
  *
- * Three exist — the pipeline orchestrator for `version: 2`, the convoy engine
- * for `version: 1`, and the legacy executor for everything else — and several
- * flags are wired into exactly one of them:
- *
- * `--report-dir` is read where `createReporter` is called, which is the legacy
- * path alone. For a `version: 1` spec, which is what every generated spec is,
- * it was parsed, resolved against cwd, and never passed to the engine; the
- * engine writes to SQLite and NDJSON and has no report directory at all. The
- * flag was accepted, documented as "where to write run reports", and did
- * nothing on the path nearly every user is on.
- *
- * `--watch` and its two companions are the mirror image: they live inside the
- * convoy-engine branch, so a legacy or pipeline spec accepted them and ran
- * once.
+ * `runtime` is for the planner, which has already chosen the runtime and said
+ * which; the run uses it rather than choosing, and saying, a second time.
  */
-export function specExecutor(spec: TaskSpec): 'pipeline' | 'engine' | 'legacy' {
-  if (isPipelineSpec(spec)) return 'pipeline'
-  if (isConvoySpec(spec)) return 'engine'
-  return 'legacy'
-}
-
-/** Flags that only one executor reads, and the one that reads each. */
-const EXECUTOR_ONLY_FLAGS: Array<{
-  flag: string
-  executor: 'pipeline' | 'engine' | 'legacy'
-  set: (_o: RunOptions) => boolean
-  why: string
-}> = [
-  {
-    flag: '--report-dir',
-    executor: 'legacy',
-    set: (o) => o.reportDir !== null,
-    why: 'the convoy engine records runs in .opencastle/convoy.db and .opencastle/logs, not as report files',
-  },
-  {
-    flag: '--watch',
-    executor: 'engine',
-    set: (o) => o.watch,
-    why: 'only the convoy engine has a watch loop',
-  },
-  {
-    flag: '--watch-config',
-    executor: 'engine',
-    set: (o) => o.watchConfig !== null,
-    why: 'only the convoy engine has a watch loop',
-  },
-  {
-    flag: '--clear-scratchpad',
-    executor: 'engine',
-    set: (o) => o.clearScratchpad,
-    why: 'only the convoy engine has a watch loop',
-  },
-]
-
-/**
- * Refuse a flag the spec's executor will never read.
- *
- * Same rule as everywhere else on this command: a flag is honoured or refused,
- * never accepted and dropped. Silence here meant `--report-dir ./out` on an
- * ordinary convoy spec exited 0 with `./out` empty.
- */
-function assertFlagsApplyToSpec(spec: TaskSpec, opts: RunOptions): void {
-  const executor = specExecutor(spec)
-  for (const entry of EXECUTOR_ONLY_FLAGS) {
-    if (!entry.set(opts) || entry.executor === executor) continue
-    const kind =
-      executor === 'pipeline'
-        ? 'a pipeline spec (version: 2)'
-        : executor === 'engine'
-          ? 'a convoy spec (version: 1)'
-          : 'a legacy spec (no version)'
-    console.error(`  ✗ ${entry.flag} does nothing for ${kind}.`)
-    console.error(`    ${entry.why}.`)
-    process.exit(1)
-  }
-}
-
-/**
- * Refuse a permission mode the chosen adapter cannot honour, before it runs.
- *
- * Every entry point resolves its own adapter, so every one of them calls this.
- * Until now the mode simply evaporated on four of the five adapters: a run told
- * to hold its workers to `plan` went ahead and wrote files, and said nothing
- * about it. Refusing is the only honest answer left once a mode cannot be
- * carried out, and it has to happen here — before a worker starts, while the
- * user can still change the flag.
- */
-function assertPermissionModeSupported(adapterName: string, spec: TaskSpec): void {
-  const mode = spec.defaults?.permission_mode
-  if (!mode) return
-  const problem = permissionModeError(adapterName, mode)
-  if (problem) {
-    console.error(`  ✗ ${problem}`)
-    process.exit(1)
-  }
-}
-
-/**
- * Print a user-friendly adapter unavailable error.
- */
-function printAdapterError(detectionFailed: boolean, adapterName: string): void {
-  if (detectionFailed) {
-    console.error(
-      `  ✗ No agent CLI found on your PATH.\n` +
-        `    Install one of the following adapters:\n` +
-        `    • copilot    — https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli\n` +
-        `    • claude     — npm install -g @anthropic-ai/claude-code\n` +
-        `    • cursor     — https://cursor.com (Cursor > Install CLI)\n` +
-        `    • opencode   — https://opencode.ai\n` +
-        `    • codex      — npm install -g @openai/codex\n` +
-        `\n` +
-        `    Or specify an adapter explicitly: opencastle convoy run --adapter <name>`
-    )
-  } else {
-    const hints: Record<string, string> = {
-      'claude':
-        '    Install: npm install -g @anthropic-ai/claude-code\n' +
-        '    Docs:    https://docs.anthropic.com/en/docs/claude-code',
-      copilot:
-        '    Requires the Copilot CLI installed and authenticated:\n' +
-        '    https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli\n' +
-        '    Docs:    https://docs.github.com/en/copilot',
-      cursor:
-        '    The Cursor agent CLI ships with the Cursor editor.\n' +
-        '    Install Cursor from https://cursor.com and ensure the\n' +
-        '    "agent" command is on your PATH (Cursor > Install CLI).',
-      opencode:
-        '    Install OpenCode from https://opencode.ai\n' +
-        '    Ensure the "opencode" command is on your PATH.',
-      codex:
-        '    Install: npm install -g @openai/codex\n' +
-        '    Docs:    https://developers.openai.com/codex',
-    }
-    const cliName = adapterName === 'cursor' ? 'agent' : adapterName
-    const hint = hints[adapterName] ?? ''
-    console.error(
-      `  ✗ Adapter "${adapterName}" is not available.\n` +
-        `    Make sure the "${cliName}" CLI is installed and on your PATH.\n` +
-        hint
-    )
-  }
-}
-
-/**
- * Print a convoy result summary.
- */
-function printConvoyResult(result: ConvoyResult): void {
-  console.log(`\n  ──────────────────────────────────────`)
-  console.log(`  Convoy ${result.status}: ${result.duration}`)
-  console.log(
-    `  Tasks: ${result.summary.done}/${result.summary.total} done` +
-    (result.summary.failed > 0 ? ` | ${result.summary.failed} failed` : '') +
-    (result.summary.skipped > 0 ? ` | ${result.summary.skipped} skipped` : '') +
-    (result.summary.timedOut > 0 ? ` | ${result.summary.timedOut} timed out` : '')
-  )
-  if (result.gateResults) {
-    const gatesPassed = result.gateResults.filter(g => g.passed).length
-    const gatesFailed = result.gateResults.filter(g => !g.passed).length
-    console.log(`  Gates: ${gatesPassed}/${result.gateResults.length} passed${gatesFailed > 0 ? ` | ${gatesFailed} failed` : ''}`)
-    for (const g of result.gateResults) {
-      console.log(`    ${g.passed ? '✓' : '✗'} ${g.command}`)
-    }
-  }
-  if (result.cost) {
-    const parts = [`Tokens: ${formatTokens(result.cost.total_tokens)}`]
-    if (result.cost.total_cost_usd != null) {
-      parts.push(`Cost: $${result.cost.total_cost_usd.toFixed(2)}`)
-    }
-    console.log(`  ${parts.join(' | ')}`)
-  }
-}
-
-/**
- * Print a pipeline result summary.
- */
-function printPipelineResult(result: PipelineResult): void {
-  console.log(`\n  ──────────────────────────────────────`)
-  console.log(`  Pipeline ${result.status}: ${result.duration}`)
-  console.log(
-    `  Convoys: ${result.summary.completed}/${result.summary.totalConvoys} completed` +
-    (result.summary.failed > 0 ? ` | ${result.summary.failed} failed` : '') +
-    (result.summary.skipped > 0 ? ` | ${result.summary.skipped} skipped` : '')
-  )
-  for (const cr of result.convoyResults) {
-    const icon = cr.status === 'done' ? '✓' : cr.status === 'failed' ? '✗' : '⊘'
-    console.log(`    ${icon} ${cr.convoyId}: ${cr.status} (${cr.duration})`)
-  }
-  if (result.cost) {
-    const parts = [`Tokens: ${formatTokens(result.cost.total_tokens)}`]
-    if (result.cost.total_cost_usd != null) {
-      parts.push(`Cost: $${result.cost.total_cost_usd.toFixed(2)}`)
-    }
-    console.log(`  ${parts.join(' | ')}`)
-  }
-}
-
-/**
- * CLI entry point for the `run` command.
- */
-export default async function run({ args, pkgRoot }: CliContext): Promise<void> {
-  const opts = parseArgs(args)
-
-  if (opts.help) {
-    console.log(HELP)
-    return
+export async function runSpec(args: RunArgs, opts: { runtime?: ResolvedAdapter } = {}): Promise<number> {
+  if (!args.spec) {
+    console.error(`  ${c.red('✗')} Name the spec to run: opencastle convoy run <spec.yml>`)
+    console.error(`  ${c.dim('Specs the planner wrote are in .opencastle/convoys/.')}`)
+    return 1
   }
 
-  const dbPath = resolve(process.cwd(), '.opencastle', 'convoy.db')
+  let specText: string
+  try {
+    specText = await readFile(resolve(process.cwd(), args.spec), 'utf8')
+  } catch (err) {
+    const e = err as NodeJS.ErrnoException
+    return fail(e.code === 'ENOENT' ? `Spec not found: ${args.spec}` : `Cannot read ${args.spec}: ${e.message}`)
+  }
+  let spec: TaskSpec
+  try {
+    spec = parseTaskSpecText(specText)
+  } catch (err) {
+    return fail(`${args.spec}: ${(err as Error).message}`)
+  }
 
-  // ── --dlq-list flag ───────────────────────────────────────────
-  if (opts.dlqList) {
-    if (!existsSync(dbPath)) {
-      console.log('  No convoy database found at .opencastle/convoy.db')
-      return
-    }
-    const { createConvoyStore } = await import('./convoy/store.js')
-    const store = createConvoyStore(dbPath)
+  const projectRoot = projectRootHere()
+  let runtime: ResolvedAdapter | null = opts.runtime ?? null
+  let runtimeProblem: string | null = null
+  if (!runtime) {
     try {
-      const entries = store.listDlqEntries(opts.dlqConvoyFilter)
-      if (entries.length === 0) {
-        console.log('  No DLQ entries found.')
-        return
-      }
-      console.log(`\n  Dead Letter Queue (${entries.length} entries):\n`)
-      for (const e of entries) {
-        const status = e.resolved ? c.green('resolved') : c.red('unresolved')
-        console.log(`  ${e.id}  ${status}`)
-        console.log(`    Task: ${e.task_id} | Agent: ${e.agent} | Type: ${e.failure_type}`)
-        console.log(`    Attempts: ${e.attempts} | Created: ${e.created_at}`)
-        if (e.resolution) console.log(`    Resolution: ${e.resolution}`)
-        console.log()
-      }
-    } finally {
-      store.close()
-    }
-    return
-  }
-
-  // ── --dlq-resolve flag ────────────────────────────────────────
-  if (opts.dlqResolve) {
-    if (!opts.dlqResolveId) {
-      console.error('  \u2717 --dlq-resolve requires a DLQ entry ID')
-      process.exit(1)
-    }
-    if (!opts.dlqResolveText) {
-      console.error('  \u2717 --dlq-resolve requires --resolution "text"')
-      process.exit(1)
-    }
-    if (!existsSync(dbPath)) {
-      console.error('  \u2717 No convoy database found at .opencastle/convoy.db')
-      process.exit(1)
-    }
-    const { createConvoyStore } = await import('./convoy/store.js')
-    const store = createConvoyStore(dbPath)
-    try {
-      store.resolveDlqEntry(opts.dlqResolveId, opts.dlqResolveText)
-      console.log(`  \u2713 DLQ entry ${opts.dlqResolveId} resolved.`)
-    } finally {
-      store.close()
-    }
-    return
-  }
-
-  // ── --dlq-retry flag ──────────────────────────────────────────
-  if (opts.dlqRetry) {
-    if (!opts.dlqRetryId) {
-      console.error('  \u2717 --dlq-retry requires a DLQ entry ID')
-      process.exit(1)
-    }
-    if (!existsSync(dbPath)) {
-      console.error('  \u2717 No convoy database found at .opencastle/convoy.db')
-      process.exit(1)
-    }
-    const { createConvoyStore } = await import('./convoy/store.js')
-    const store = createConvoyStore(dbPath)
-    try {
-      const entries = store.listDlqEntries()
-      const entry = entries.find(e => e.id === opts.dlqRetryId)
-      if (!entry) {
-        console.error(`  \u2717 DLQ entry "${opts.dlqRetryId}" not found`)
-        process.exit(1)
-      }
-      // Reset the task to pending
-      store.updateTaskStatus(entry.task_id, entry.convoy_id, 'pending', {
-        worker_id: null,
-        worktree: null,
-        started_at: null,
-        finished_at: null,
-      })
-      store.resolveDlqEntry(entry.id, 'Retried via CLI')
-      // Reset convoy status to running if needed
-      const convoy = store.getConvoy(entry.convoy_id)
-      if (convoy && (convoy.status === 'failed' || convoy.status === 'done')) {
-        store.updateConvoyStatus(entry.convoy_id, 'running', {})
-      }
-      console.log(`  \u2713 Task ${entry.task_id} reset to pending. Run 'opencastle convoy run --resume' to execute.`)
-    } finally {
-      store.close()
-    }
-    return
-  }
-
-  // ── --status flag ─────────────────────────────────────────────
-  if (opts.status) {
-    if (!existsSync(dbPath)) {
-      console.log('  No convoy database found at .opencastle/convoy.db')
-      return
-    }
-    const { createConvoyStore } = await import('./convoy/store.js')
-    const store = createConvoyStore(dbPath)
-    try {
-      const pipeline = store.getLatestPipeline()
-      if (pipeline) {
-        const pipelineConvoys = store.getConvoysByPipeline(pipeline.id)
-        console.log(`\n  Pipeline: ${pipeline.name}`)
-        console.log(`  ID:       ${pipeline.id}`)
-        console.log(`  Status:   ${pipeline.status}`)
-        console.log(`  Branch:   ${pipeline.branch ?? '(none)'}`)
-        console.log(`  Created:  ${pipeline.created_at}`)
-        if (pipeline.started_at) console.log(`  Started:  ${pipeline.started_at}`)
-        if (pipeline.finished_at) console.log(`  Finished: ${pipeline.finished_at}`)
-        if (pipelineConvoys.length > 0) {
-          console.log(`\n  Convoys:`)
-          let totalTasks = 0
-          let totalDone = 0
-          let totalFailed = 0
-          let totalTokens = 0
-          for (const c of pipelineConvoys) {
-            const tasks = store.getTasksByConvoy(c.id)
-            const done = tasks.filter(t => t.status === 'done').length
-            const failed = tasks.filter(t => t.status === 'failed').length
-            totalTasks += tasks.length
-            totalDone += done
-            totalFailed += failed
-            totalTokens += tasks.reduce((sum, t) => sum + (t.total_tokens ?? 0), 0)
-            console.log(`    ${c.name} [${c.status}] — ${done}/${tasks.length} tasks done`)
-          }
-          console.log(`\n  Tasks: ${totalDone} done | ${totalFailed} failed | ${totalTasks} total`)
-          if (totalTokens > 0) console.log(`  Tokens: ${formatTokens(totalTokens)}`)
-        }
-        return
-      }
-
-      const convoy = store.getLatestConvoy()
-      if (!convoy) {
-        console.log('  No convoy records found.')
-        return
-      }
-      const tasks = store.getTasksByConvoy(convoy.id)
-      const byStatus = tasks.reduce((acc, t) => {
-        acc[t.status] = (acc[t.status] ?? 0) + 1
-        return acc
-      }, {} as Record<string, number>)
-      console.log(`\n  Convoy: ${convoy.name}`)
-      console.log(`  ID:     ${convoy.id}`)
-      console.log(`  Status: ${convoy.status}`)
-      console.log(`  Branch: ${convoy.branch ?? '(none)'}`)
-      console.log(`  Created: ${convoy.created_at}`)
-      if (convoy.started_at) console.log(`  Started: ${convoy.started_at}`)
-      if (convoy.finished_at) console.log(`  Finished: ${convoy.finished_at}`)
-      console.log(`\n  Tasks:`)
-      for (const [status, count] of Object.entries(byStatus)) {
-        console.log(`    ${status}: ${count}`)
-      }
-      console.log(`    total: ${tasks.length}`)
-      const totalTokens = tasks.reduce((sum, t) => sum + (t.total_tokens ?? 0), 0)
-      if (tasks.some(t => t.total_tokens != null)) {
-        console.log(`\n  Tokens: ${formatTokens(totalTokens)}`)
-        const tasksWithTokens = tasks.filter(t => t.total_tokens != null)
-        if (tasksWithTokens.length > 0) {
-          console.log(`\n  Token usage by task:`)
-          for (const t of tasksWithTokens) {
-            const parts = [formatTokens(t.total_tokens!)]
-            if (t.prompt_tokens != null) parts.push(`in: ${formatTokens(t.prompt_tokens)}`)
-            if (t.completion_tokens != null) parts.push(`out: ${formatTokens(t.completion_tokens)}`)
-            console.log(`    ${t.id}: ${parts.join(' | ')}`)
-          }
-        }
-      }
-    } finally {
-      store.close()
-    }
-    return
-  }
-
-  // ── --retry-failed flag ───────────────────────────────────────
-  if (opts.retryFailed) {
-    if (!existsSync(dbPath)) {
-      console.error('  ✗ No convoy database found at .opencastle/convoy.db')
-      console.error('    Run a convoy spec first: opencastle convoy run -f convoy.yml')
-      process.exit(1)
-    }
-    const { createConvoyStore } = await import('./convoy/store.js')
-    const store = createConvoyStore(dbPath)
-    const convoy = store.getLatestConvoy()
-    const retryTasks = convoy ? store.getTasksByConvoy(convoy.id) : []
-    store.close()
-    if (!convoy) {
-      console.error('  ✗ No convoy records found in .opencastle/convoy.db')
-      process.exit(1)
-    }
-
-    // Before adapter detection: a preview should not require an agent CLI to be
-    // installed, and it must return before anything is executed.
-    if (opts.dryRun) {
-      printRunDryRun(
-        'retry',
-        'OpenCastle Convoy (Retry Failed)',
-        convoy.name,
-        opts.retryFailedTaskIds?.length
-          ? retryTasks.filter((t) => opts.retryFailedTaskIds!.includes(t.id))
-          : retryTasks,
-        RETRYABLE_TASK_STATUSES,
-      )
-      return
-    }
-
-    const retrySpec = parseTaskSpecText(convoy.spec_yaml)
-    applyCliOverrides(retrySpec, opts)
-
-    let retryDetectionFailed = false
-    if (!retrySpec.adapter) {
-      const detected = await detectAdapter()
-      if (detected) {
-        retrySpec.adapter = detected
-        console.log(`  ℹ Auto-detected adapter: ${detected}`)
-      } else {
-        retryDetectionFailed = true
-        retrySpec.adapter = 'claude'
-      }
-    }
-
-    const retryAdapter = await getAdapter(retrySpec.adapter)
-    const retryAvailable = await retryAdapter.isAvailable()
-    if (!retryAvailable) {
-      printAdapterError(retryDetectionFailed, retrySpec.adapter)
-      process.exit(1)
-    }
-    assertPermissionModeSupported(retrySpec.adapter, retrySpec)
-
-    console.log(`\n  🏰 OpenCastle Convoy (Retry Failed): ${convoy.name}`)
-    console.log(`  Convoy ID: ${convoy.id}`)
-
-    const { startDashboardServer } = await import('./dashboard.js')
-    let retryDashboardResult: { server: import('node:http').Server; port: number; url: string } | null = null
-    try {
-      retryDashboardResult = await startDashboardServer({
-        pkgRoot,
-        openBrowser: true,
-        convoyId: 'active',
-      })
-    } catch {
-      // Dashboard failure must not block convoy
-    }
-    if (retryDashboardResult) {
-      console.log(`  ${c.dim('Dashboard:')} ${retryDashboardResult.url}`)
-    }
-
-    const { createConvoyEngine } = await import('./convoy/engine.js')
-    const retryEngine = createConvoyEngine({
-      spec: retrySpec,
-      specYaml: convoy.spec_yaml,
-      adapter: retryAdapter,
-      verbose: opts.verbose,
-    })
-    await retryEngine.retryFailed(convoy.id, opts.retryFailedTaskIds)
-    let retryResult: ConvoyResult
-    try {
-      retryResult = await retryEngine.resume(convoy.id)
+      runtime = await chooseRuntime(projectRoot, args.adapter, spec)
     } catch (err) {
-      if (err instanceof EngineAlreadyRunningError) {
-        console.error(`  ✗ ${err.message}`)
-        process.exit(1)
-      }
-      throw err
+      runtimeProblem = (err as Error).message
     }
-    printConvoyResult(retryResult)
-    return finishRun(retryDashboardResult, retryResult.status !== 'done')
   }
 
-  // ── --resume flag ─────────────────────────────────────────────
-  if (opts.resume) {
-    if (!existsSync(dbPath)) {
-      console.error('  ✗ No convoy database found at .opencastle/convoy.db')
-      console.error('    Run a convoy spec first: opencastle convoy run -f convoy.yml')
-      process.exit(1)
-    }
-    const { createConvoyStore } = await import('./convoy/store.js')
-    const store = createConvoyStore(dbPath)
-    const { selectResumableRun } = await import('./convoy/last-run.js')
-    const selected = selectResumableRun(store)
-
-    if (!selected) {
-      store.close()
-      console.error('  ✗ No convoy records found in .opencastle/convoy.db')
-      process.exit(1)
-    }
-
-    // Whichever run was started most recently, and only if it can be continued.
-    // Preferring pipelines unconditionally meant a standalone convoy could never
-    // be resumed once the project had run one, and the status screen — which
-    // reads the same selector — named a different run than this command resumed.
-    if (!selected.resumable) {
-      store.close()
-      const { kind, record } = selected.run
-      console.error(
-        `  ✗ Last ${kind} "${record.name}" already finished with status: ${record.status}`,
-      )
-      console.error(
-        kind === 'pipeline'
-          ? '    Only interrupted (running/pending/failed) pipelines can be resumed.'
-          : '    Only interrupted (running/pending) convoys can be resumed.',
-      )
-      if (kind === 'convoy' && record.status === 'failed') {
-        console.error(`\n    To re-run its failed tasks: opencastle convoy retry`)
-      }
-      process.exit(1)
-    }
-
-    // Before adapter detection, and before either orchestrator is constructed.
-    if (opts.dryRun) {
-      const previewIds =
-        selected.run.kind === 'pipeline'
-          ? store.getConvoysByPipeline(selected.run.record.id).map((c) => c.id)
-          : [selected.run.record.id]
-      const previewTasks = previewIds.flatMap((id) => store.getTasksByConvoy(id))
-      store.close()
-      printRunDryRun(
-        'resume',
-        selected.run.kind === 'pipeline'
-          ? 'OpenCastle Pipeline (Resume)'
-          : 'OpenCastle Convoy (Resume)',
-        selected.run.record.name,
-        previewTasks,
-        RESUMABLE_TASK_STATUSES,
-      )
-      return
-    }
-
-    const latestPipeline = selected.run.kind === 'pipeline' ? selected.run.record : null
-
-    // ── Pipeline resume (pending / running / failed) ────────────
-    if (latestPipeline) {
-      store.close()
-      const resumePipelineSpec = parseTaskSpecText(latestPipeline.spec_yaml)
-      applyCliOverrides(resumePipelineSpec, opts)
-
-      let resumePipelineDetectionFailed = false
-      if (!resumePipelineSpec.adapter) {
-        const detected = await detectAdapter()
-        if (detected) {
-          resumePipelineSpec.adapter = detected
-          console.log(`  ℹ Auto-detected adapter: ${detected}`)
-        } else {
-          resumePipelineDetectionFailed = true
-          resumePipelineSpec.adapter = 'claude'
-        }
-      }
-
-      const resumePipelineAdapter = await getAdapter(resumePipelineSpec.adapter)
-      const resumePipelineAvailable = await resumePipelineAdapter.isAvailable()
-      if (!resumePipelineAvailable) {
-        printAdapterError(resumePipelineDetectionFailed, resumePipelineSpec.adapter)
-        process.exit(1)
-      }
-      assertPermissionModeSupported(resumePipelineSpec.adapter, resumePipelineSpec)
-
-      console.log(`\n  🏰 OpenCastle Pipeline (Resume): ${latestPipeline.name}`)
-      console.log(`  Pipeline ID: ${latestPipeline.id}`)
-
-      const { startDashboardServer } = await import('./dashboard.js')
-      let resumePipelineDashResult: { server: import('node:http').Server; port: number; url: string } | null = null
-      try {
-        resumePipelineDashResult = await startDashboardServer({
-          pkgRoot,
-          openBrowser: true,
-          convoyId: 'active',
-        })
-      } catch {
-        // Dashboard failure must not block pipeline
-      }
-      if (resumePipelineDashResult) {
-        console.log(`  ${c.dim('Dashboard:')} ${resumePipelineDashResult.url}`)
-      }
-
-      const { createPipelineOrchestrator } = await import('./convoy/pipeline.js')
-      const resumePipelineOrchestrator = createPipelineOrchestrator({
-        spec: resumePipelineSpec,
-        specYaml: latestPipeline.spec_yaml,
-        adapter: resumePipelineAdapter,
-        verbose: opts.verbose,
-      })
-      const resumePipelineResult = await resumePipelineOrchestrator.resume(latestPipeline.id)
-      printPipelineResult(resumePipelineResult)
-      return finishRun(resumePipelineDashResult, resumePipelineResult.status !== 'done')
-    }
-
-    // ── Standalone convoy resume ────────────────────────────────
-    // Selection and the finished-run refusal both happened above, against the
-    // one selector. This branch only executes what was chosen.
-    const convoy = selected.run.record as import('./convoy/types.js').ConvoyRecord
-    store.close()
-
-    const resumeSpec = parseTaskSpecText(convoy.spec_yaml)
-    applyCliOverrides(resumeSpec, opts)
-
-    let resumeDetectionFailed = false
-    if (!resumeSpec.adapter) {
-      const detected = await detectAdapter()
-      if (detected) {
-        resumeSpec.adapter = detected
-        console.log(`  ℹ Auto-detected adapter: ${detected}`)
-      } else {
-        resumeDetectionFailed = true
-        resumeSpec.adapter = 'claude'
-      }
-    }
-
-    const resumeAdapter = await getAdapter(resumeSpec.adapter)
-    const resumeAvailable = await resumeAdapter.isAvailable()
-    if (!resumeAvailable) {
-      printAdapterError(resumeDetectionFailed, resumeSpec.adapter)
-      process.exit(1)
-    }
-    assertPermissionModeSupported(resumeSpec.adapter, resumeSpec)
-
-    console.log(`\n  \uD83C\uDFF0 OpenCastle Convoy (Resume): ${convoy.name}`)
-    console.log(`  Convoy ID: ${convoy.id}`)
-
-    const { startDashboardServer } = await import('./dashboard.js')
-    let resumeDashResult: { server: import('node:http').Server; port: number; url: string } | null = null
+  if (args.dryRun) {
+    // The engine's own check, so a dry run refuses exactly what a run refuses.
+    // Nothing is started and nothing is written to the database.
     try {
-      resumeDashResult = await startDashboardServer({
-        pkgRoot,
-        openBrowser: true,
-        convoyId: 'active',
-      })
-    } catch {
-      // Dashboard failure must not block convoy
-    }
-    if (resumeDashResult) {
-      console.log(`  ${c.dim('Dashboard:')} ${resumeDashResult.url}`)
-    }
-
-    const { createConvoyEngine } = await import('./convoy/engine.js')
-    const resumeEngine = createConvoyEngine({
-      spec: resumeSpec,
-      specYaml: convoy.spec_yaml,
-      adapter: resumeAdapter,
-      verbose: opts.verbose,
-    })
-    let resumeResult: ConvoyResult
-    try {
-      resumeResult = await resumeEngine.resume(convoy.id)
+      await checkConvoyPlan(spec, runtime?.name ?? (spec.adapter || 'auto'))
     } catch (err) {
-      if (err instanceof EngineAlreadyRunningError) {
-        console.error(`  ✗ ${err.message}`)
-        process.exit(1)
-      }
-      throw err
+      return fail((err as Error).message)
     }
-    printConvoyResult(resumeResult)
-    return finishRun(resumeDashResult, resumeResult.status !== 'done')
+    if (runtime) applyArgs(spec, args, runtime.name)
+    else if (args.concurrency !== null) spec.concurrency = args.concurrency
+    console.log('')
+    for (const l of describePlan(spec, runtime?.detail ?? c.red('none usable — see below'))) console.log(l)
+    console.log('')
+    if (runtimeProblem) return fail(runtimeProblem)
+    const problem = spec.defaults?.permission_mode ? permissionModeError(runtime!.name, spec.defaults.permission_mode) : null
+    if (problem) return fail(problem)
+    console.log(`  ${c.dim('Dry run — nothing started, nothing recorded. To run it:')} opencastle convoy run ${args.spec}`)
+    console.log('')
+    return 0
   }
 
-  // ── Formula template resolution / Read and validate spec ─────
-  let specText = ''
-  let spec: ReturnType<typeof parseTaskSpecText>
+  if (!runtime) return fail(runtimeProblem!)
+  const problem = spec.defaults?.permission_mode ? permissionModeError(runtime.name, spec.defaults.permission_mode) : null
+  if (problem) return fail(problem)
+  applyArgs(spec, args, runtime.name)
 
-  if (opts.formula) {
-    const { parseFormula, substituteVariables, validateTemplate } = await import('./convoy/formula.js')
-    const formulaPath = resolve(process.cwd(), opts.formula)
-    let template
-    try {
-      template = parseFormula(formulaPath)
-    } catch (err: unknown) {
-      console.error(`  ✗ ${(err as Error).message}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run --formula ${opts.formula}`)
-      process.exit(1)
-    }
+  console.log('')
+  console.log(`  ${c.bold(`Convoy: ${spec.name}`)} ${c.dim(`— ${spec.tasks?.length ?? 0} tasks`)}`)
+  if (!opts.runtime) console.log(`  ${c.dim('Runtime:')} ${runtime.detail}`)
+  const engine = createConvoyEngine({ spec, specYaml: specText, adapter: runtime.adapter, verbose: args.verbose, basePath: projectRoot })
+  return drive(() => engine.run(), projectRoot)
+}
 
-    const validation = validateTemplate(template)
-    if (!validation.valid) {
-      console.error(`  ✗ Invalid formula template:\n  • ${validation.errors.join('\n  • ')}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run --formula ${opts.formula}`)
-      process.exit(1)
-    }
+// ── convoy resume ─────────────────────────────────────────────────────────────
 
-    if (opts.dryRun) {
-      console.log(`\n  📋 Formula: ${template.name}`)
-      if (template.description) console.log(`  ${template.description}`)
-      console.log(`  Variables:`)
-      for (const [key, val] of Object.entries(opts.setVars)) {
-        console.log(`    ${key} = ${val}`)
-      }
-      for (const [key, def] of Object.entries(template.variables)) {
-        if (!(key in opts.setVars) && !def.required && def.default) {
-          console.log(`    ${key} = ${def.default} (default)`)
-        }
-      }
-    }
+/** Not done: a status other than done, or a task that did not finish (older runs ended "done" with tasks skipped). */
+function unfinished(run: RunSummary): boolean {
+  return run.status !== 'done' || run.tasks_done < run.tasks_total
+}
 
-    try {
-      spec = substituteVariables(template, opts.setVars)
-    } catch (err: unknown) {
-      console.error(`  ✗ ${(err as Error).message}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run --formula ${opts.formula}`)
-      process.exit(1)
-    }
-    specText = yamlStringify(spec)
-  } else {
-    // ── Read and validate spec ──────────────────────────────────
-    const specPath = resolve(process.cwd(), opts.file)
-    try {
-      specText = await readFile(specPath, 'utf8')
-    } catch (err: unknown) {
-      const e = err as Error & { code?: string }
-      if (e.code === 'ENOENT') {
-        console.error(`  ✗ Task spec file not found: ${opts.file}`)
-      } else {
-        console.error(`  ✗ Cannot read task spec file: ${e.message}`)
-      }
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
-      process.exit(1)
-    }
-
-    try {
-      spec = parseTaskSpecText(specText)
-    } catch (err: unknown) {
-      console.error(`  ✗ ${(err as Error).message}`)
-      console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
-      process.exit(1)
-    }
+/** `convoy resume`: the exit code it should end with. */
+export async function resumeLast(args: RunArgs): Promise<number> {
+  const projectRoot = projectRootHere()
+  const runs = readRuns(projectRoot, 200)
+  if (runs.length === 0) {
+    console.error(`  ${c.red('✗')} No convoy runs in this project yet.`)
+    console.error(`  ${c.dim('Start one:')} opencastle convoy "<task>"`)
+    return 1
+  }
+  const target = runs.find(unfinished)
+  if (!target) {
+    const last = runs[0]
+    console.log(`  Nothing to resume: the last run, ${c.bold(last.name)}, finished with all ${last.tasks_total} tasks done.`)
+    console.log(`  ${c.dim('Start another:')} opencastle convoy "<task>"`)
+    return 0
+  }
+  if (isRunAlive(projectRoot, target.id)) {
+    console.error(`  ${c.red('✗')} ${target.name} (${target.id}) is still running in another process.`)
+    console.error(`  ${c.dim('Watch it:')} opencastle convoy dashboard`)
+    return 1
   }
 
-  // Apply CLI overrides
-  applyCliOverrides(spec, opts)
+  const recorded = readRunSpec(projectRoot, target.id)
+  if (!recorded) return fail(`The spec ${target.id} was started with is not in .opencastle/convoy.db.`)
+  let spec: TaskSpec
+  try {
+    spec = parseTaskSpecText(recorded.specYaml)
+  } catch (err) {
+    return fail(`The spec ${target.name} was recorded with no longer reads: ${(err as Error).message}`)
+  }
 
-  // Refuse the flags this spec's executor cannot act on, before anything runs.
-  assertFlagsApplyToSpec(spec, opts)
+  const done = `${target.tasks_done}/${target.tasks_total} tasks done`
+  console.log('')
+  console.log(`  ${c.bold(`Resuming ${target.name}`)} ${c.dim(`(${target.id}) — ${target.status}, ${done}`)}`)
+  if (target !== runs[0]) {
+    console.log(`  ${c.dim(`The newest run, ${runs[0].name}, finished; this is the newest one that did not.`)}`)
+  }
 
-  // ── Auto-detect adapter if not specified ─────────────────────
-  let detectionFailed = false
-  if (!spec.adapter) {
-    const detected = await detectAdapter()
-    if (detected) {
-      spec.adapter = detected
-      console.log(`  ℹ Auto-detected adapter: ${detected}`)
+  if (args.dryRun) {
+    // Read from the read model: a preview opens nothing that could migrate or write.
+    const tasks = readRun(projectRoot, target.id)?.tasks ?? []
+    const again = new Set<string>(['pending', ...RESUME_RESET_STATUSES])
+    const selected = tasks.filter((t) => again.has(t.status))
+    console.log('')
+    if (selected.length === 0) {
+      console.log('  No task would run: every task is done.')
     } else {
-      detectionFailed = true
-      spec.adapter = 'claude' // fallback for availability check below
+      console.log(`  Would run ${selected.length} of ${tasks.length} task(s):`)
+      for (const t of selected) console.log(`    ${t.id} ${c.dim(`— ${t.agent} [${t.status}]`)}`)
     }
+    console.log('')
+    console.log(`  ${c.dim('Dry run — nothing started, nothing recorded.')}`)
+    console.log('')
+    return 0
   }
 
-  // ── Dry run ──────────────────────────────────────────────────
-  if (opts.dryRun) {
-    if (isPipelineSpec(spec)) {
-      console.log(`\n  🏰 Pipeline Plan: ${spec.name}`)
-      console.log(`  Convoy chain: ${(spec.depends_on_convoy as string[]).join(' → ')}`)
-      if (spec.tasks?.length) {
-        console.log(`  Plus ${spec.tasks.length} local tasks after chain completes`)
-      }
-      if (spec.branch) console.log(`  Branch: ${spec.branch}`)
-      if (spec.gates?.length) console.log(`  Gates: ${spec.gates.length} validation commands`)
-      if (!spec.tasks?.length) return
-    } else if (isConvoySpec(spec)) {
-      console.log(`\n  \uD83C\uDFF0 Convoy Plan: ${spec.name}`)
-      console.log(
-        `  Adapter: ${spec.adapter} | Concurrency: ${spec.concurrency} | Tasks: ${spec.tasks!.length}`
-      )
-      if (spec.branch) console.log(`  Branch: ${spec.branch}`)
-      if (spec.gates?.length) console.log(`  Gates: ${spec.gates.length} validation commands`)
-    }
-    const phases = buildPhases(spec.tasks!)
-    printExecutionPlan(spec, phases)
+  let runtime: ResolvedAdapter
+  try {
+    runtime = await chooseRuntime(projectRoot, args.adapter, spec, recorded.adapter)
+  } catch (err) {
+    return fail((err as Error).message)
+  }
+  const problem = spec.defaults?.permission_mode ? permissionModeError(runtime.name, spec.defaults.permission_mode) : null
+  if (problem) return fail(problem)
+  applyArgs(spec, args, runtime.name)
+  console.log(`  ${c.dim('Runtime:')} ${runtime.detail}`)
+
+  const engine = createConvoyEngine({ spec, specYaml: recorded.specYaml, adapter: runtime.adapter, verbose: args.verbose, basePath: projectRoot })
+  return drive(() => engine.resume(target.id), projectRoot)
+}
+
+// ── Entry points ──────────────────────────────────────────────────────────────
+
+/**
+ * Exit once what was written has reached the terminal or the pipe. Exiting is
+ * deliberate: a finished run must never sit waiting for Ctrl+C because some
+ * handle — a socket, a timer, an agent's pipe — was left open.
+ */
+export function exitWith(code: number): void {
+  process.exitCode = code
+  process.stdout.write('', () => process.stderr.write('', () => process.exit(code)))
+}
+
+async function main(args: string[], command: 'run' | 'resume'): Promise<void> {
+  const parsed = parseRunArgs(args, command)
+  if ('error' in parsed) {
+    console.error(`  ${c.red('✗')} ${parsed.error}`)
+    console.error(`  Run "opencastle convoy ${command} --help" for usage.`)
+    exitWith(1)
     return
   }
-
-  // ── Check adapter ────────────────────────────────────────────
-  const adapter = await getAdapter(spec.adapter)
-  const available = await adapter.isAvailable()
-  if (!available) {
-    printAdapterError(detectionFailed, spec.adapter)
-    console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file}`)
-    process.exit(1)
+  if (parsed.help) {
+    console.log(command === 'run' ? RUN_HELP : RESUME_HELP)
+    return
   }
-  assertPermissionModeSupported(spec.adapter, spec)
+  exitWith(command === 'run' ? await runSpec(parsed) : await resumeLast(parsed))
+}
 
-  // ── Pipeline orchestrator path (version: 2 specs with depends_on_convoy) ──
-  if (isPipelineSpec(spec)) {
-    const { createPipelineOrchestrator } = await import('./convoy/pipeline.js')
-    console.log(`\n  🏰 OpenCastle Pipeline: ${spec.name}`)
-    console.log(`  Convoy chain: ${(spec.depends_on_convoy as string[]).join(' → ')}`)
-    if (spec.branch) console.log(`  Branch: ${spec.branch}`)
-    if (spec.gates?.length) console.log(`  Gates: ${spec.gates.length} validation commands`)
+/** `opencastle convoy run <spec.yml>`. */
+export default async function run({ args }: CliContext): Promise<void> {
+  await main(args, 'run')
+}
 
-    const { startDashboardServer } = await import('./dashboard.js')
-    let pipelineDashboardResult: { server: import('node:http').Server; port: number; url: string } | null = null
-    try {
-      pipelineDashboardResult = await startDashboardServer({
-        pkgRoot,
-        openBrowser: true,
-        convoyId: 'active',
-      })
-    } catch {
-      // Dashboard failure must not block pipeline
-    }
-    if (pipelineDashboardResult) {
-      console.log(`  ${c.dim('Dashboard:')} ${pipelineDashboardResult.url}`)
-    }
-
-    const pipelineOrchestrator = createPipelineOrchestrator({
-      spec,
-      specYaml: specText,
-      adapter,
-      verbose: opts.verbose,
-    })
-
-    let pipelineResult: PipelineResult
-    try {
-      pipelineResult = await pipelineOrchestrator.run()
-    } catch (err) {
-      if (err instanceof EngineAlreadyRunningError) {
-        console.error(`  ✗ ${err.message}`)
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file} --resume`)
-        process.exit(1)
-      }
-      throw err
-    }
-    printPipelineResult(pipelineResult)
-    return finishRun(
-      pipelineDashboardResult,
-      pipelineResult.status !== 'done',
-      `npx opencastle convoy run -f ${opts.file} --retry-failed`,
-    )
-  }
-
-  // ── Convoy engine path (version: 1 specs) ────────────────────
-  if (isConvoySpec(spec)) {
-    const { createConvoyEngine } = await import('./convoy/engine.js')
-    console.log(`\n  \uD83C\uDFF0 OpenCastle Convoy: ${spec.name}`)
-    console.log(
-      `  Adapter: ${adapter.name} | Concurrency: ${spec.concurrency} | Tasks: ${spec.tasks!.length}`
-    )
-    if (spec.branch) console.log(`  Branch: ${spec.branch}`)
-    if (spec.gates?.length) console.log(`  Gates: ${spec.gates.length} validation commands`)
-
-    const { startDashboardServer } = await import('./dashboard.js')
-    let dashboardResult: { server: import('node:http').Server; port: number; url: string } | null = null
-    try {
-      dashboardResult = await startDashboardServer({
-        pkgRoot,
-        openBrowser: true,
-        convoyId: 'active',
-      })
-    } catch {
-      // Dashboard failure must not block convoy
-    }
-    if (dashboardResult) {
-      console.log(`  ${c.dim('Dashboard:')} ${dashboardResult.url}`)
-    }
-
-    const engine = createConvoyEngine({
-      spec,
-      specYaml: specText,
-      adapter,
-      verbose: opts.verbose,
-    })
-
-    if (opts.watch) {
-      const pidPath = resolve(process.cwd(), '.opencastle', 'watch.pid')
-      const { watchLoop } = await import('./watch.js')
-      await watchLoop({
-        spec,
-        specText,
-        specPath: resolve(process.cwd(), opts.file),
-        adapter,
-        verbose: opts.verbose,
-        pidPath,
-        clearScratchpad: opts.clearScratchpad,
-        watchConfigPath: opts.watchConfig ? resolve(process.cwd(), opts.watchConfig) : null,
-        printResult: printConvoyResult,
-      })
-      return
-    }
-
-    let result: ConvoyResult
-    try {
-      result = await engine.run()
-    } catch (err) {
-      if (err instanceof EngineAlreadyRunningError) {
-        console.error(`  ✗ ${err.message}`)
-        console.log(`\n  ${c.dim('Resume:')} npx opencastle convoy run -f ${opts.file} --resume`)
-        process.exit(1)
-      }
-      throw err
-    }
-    printConvoyResult(result)
-    return finishRun(
-      dashboardResult,
-      result.status !== 'done',
-      `npx opencastle convoy run -f ${opts.file} --retry-failed`,
-    )
-  }
-
-  // ── Legacy executor path ──────────────────────────────────────
-  console.log(`\n  \uD83C\uDFF0 OpenCastle Run: ${spec.name}`)
-  console.log(
-    `  Adapter: ${adapter.name} | Concurrency: ${spec.concurrency} | Tasks: ${spec.tasks!.length}`
-  )
-
-  const reporter = createReporter(spec, {
-    reportDir: opts.reportDir
-      ? resolve(process.cwd(), opts.reportDir)
-      : undefined,
-    verbose: opts.verbose,
-  })
-
-  const executor = createExecutor(spec, adapter, reporter)
-  const report = await executor.run()
-
-  // ── Exit code ────────────────────────────────────────────────
-  const hasFailures = report.summary.failed > 0 || report.summary['timed-out'] > 0
-  process.exit(hasFailures ? 1 : 0)
+/** `opencastle convoy resume`, and its hidden alias `retry`. */
+export async function resume({ args }: CliContext): Promise<void> {
+  await main(args, 'resume')
 }

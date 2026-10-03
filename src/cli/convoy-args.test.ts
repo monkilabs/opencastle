@@ -60,12 +60,12 @@ describe('positionalWords', () => {
   })
 
   it('treats a value that looks like a word as a value, not a task word', () => {
-    expect(positionalWords(['--permission-mode', 'plan', 'do', 'work'])).toEqual(['do', 'work'])
+    expect(positionalWords(['--concurrency', '3', 'do', 'work'])).toEqual(['do', 'work'])
   })
 })
 
 describe('the task the planner is given', () => {
-  /** What the dispatcher passes to `pipeline` as `--text`. */
+  /** What the dispatcher hands the planner as the task. */
   const taskText = (args: string[]): string => positionalWords(args).join(' ')
 
   it('reassembles an unquoted request in order', () => {
@@ -83,30 +83,6 @@ describe('the task the planner is given', () => {
     expect(taskText(['refactor', 'the', 'auth', 'module', '--verbose'])).toBe(want)
     expect(taskText(['--verbose', 'refactor', 'the', 'auth', 'module'])).toBe(want)
     expect(taskText(['refactor', '--verbose', 'the', 'auth', 'module'])).toBe(want)
-  })
-})
-
-describe('status words stay a status query', () => {
-  /** The dispatcher's rule: a status word alone, with no other words after it. */
-  const STATUS_WORDS = ['status', 'state', 'info', 'ls', 'list']
-  const isStatusQuery = (args: string[]): boolean => {
-    const words = positionalWords(args)
-    return words.length === 1 && STATUS_WORDS.includes(words[0])
-  }
-
-  it('treats a bare status word as a status query', () => {
-    for (const w of STATUS_WORDS) expect(isStatusQuery([w])).toBe(true)
-  })
-
-  it('still does so when flags accompany it', () => {
-    expect(isStatusQuery(['status', '--json'])).toBe(true)
-  })
-
-  it('treats a status word that opens a sentence as a task', () => {
-    // "status" alone means "where do things stand"; "status page for the admin"
-    // is a feature, and planning it must not be hijacked.
-    expect(isStatusQuery(['status', 'page', 'for', 'the', 'admin'])).toBe(false)
-    expect(isStatusQuery(['list', 'all', 'users', 'in', 'the', 'dashboard'])).toBe(false)
   })
 })
 
@@ -138,15 +114,19 @@ describe('splitTaskFlags', () => {
     expect(splitTaskFlags(['add', 'caching', '--adaptr', 'codex']).unknown).toEqual(['--adaptr'])
   })
 
-  it('does not mistake an unknown flag value for another unknown flag', () => {
-    expect(splitTaskFlags(['x', '--report-dir', 'out']).unknown).toEqual(['--report-dir'])
+  it('reports a removed flag rather than forwarding it', () => {
+    expect(splitTaskFlags(['x', '--skip-validation']).unknown).toEqual(['--skip-validation'])
+  })
+
+  it('does not mistake a flag value for another unknown flag', () => {
+    expect(splitTaskFlags(['x', '--prd', 'out', '--nope']).unknown).toEqual(['--prd', '--nope'])
   })
 
   it('forwards several flags at once, keeping order', () => {
     const { forward, unknown } = splitTaskFlags([
-      'build', 'it', '--verbose', '--adapter', 'codex', '--skip-validation',
+      'build', 'it', '--verbose', '--adapter', 'codex', '--yes', '-c', '2',
     ])
-    expect(forward).toEqual(['--verbose', '--adapter', 'codex', '--skip-validation'])
+    expect(forward).toEqual(['--verbose', '--adapter', 'codex', '--yes', '-c', '2'])
     expect(unknown).toEqual([])
   })
 

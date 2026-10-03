@@ -131,7 +131,7 @@ const HELP = `
     fleet       Versions and drift across many repositories
 
   Experimental:
-    convoy      Run multi-step work through the convoy engine
+    convoy      Plan multi-step work and run it with agents in parallel
 
   Options:
     --dry-run        Preview changes without writing files

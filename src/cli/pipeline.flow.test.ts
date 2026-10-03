@@ -12,10 +12,9 @@ import type { AgentAdapter, ExecuteOptions, Task } from './convoy/spec-types.js'
  * prompt and run module are replaced.
  */
 
-vi.mock('./run.js', () => ({ default: vi.fn(async () => {}) }))
+vi.mock('./run.js', () => ({ runSpec: vi.fn(async () => 0), exitWith: vi.fn() }))
 vi.mock('./run/adapters/index.js', () => ({
-  detectAdapter: vi.fn(),
-  getAdapter: vi.fn(),
+  resolveAdapter: vi.fn(),
   cleanupAdapters: vi.fn(async () => {}),
 }))
 vi.mock('./prompt.js', async (importOriginal) => ({
@@ -24,7 +23,7 @@ vi.mock('./prompt.js', async (importOriginal) => ({
   closePrompts: vi.fn(),
 }))
 
-const { planConvoy, hashPrd, deriveComplexityPath, default: pipeline } = await import('./pipeline.js')
+const { planConvoy, hashPrd, deriveComplexityPath, planTask, default: pipeline } = await import('./pipeline.js')
 const runModule = await import('./run.js')
 const adapters = await import('./run/adapters/index.js')
 const promptModule = await import('./prompt.js')
@@ -145,7 +144,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
-  vi.mocked(runModule.default).mockClear()
+  vi.mocked(runModule.runSpec).mockClear()
+  vi.mocked(runModule.exitWith).mockClear()
   vi.mocked(promptModule.confirm).mockReset()
   rmSync(root, { recursive: true, force: true })
 })
@@ -421,10 +421,16 @@ describe('convoy "<task>": show the plan, ask once', () => {
   let stub: ReturnType<typeof stubAdapter>
   let output: string[]
 
+  const resolved = (adapter: AgentAdapter) => ({
+    name: 'claude',
+    adapter,
+    source: 'configured' as const,
+    detail: 'Claude Code — configured by opencastle init',
+  })
+
   beforeEach(() => {
     stub = stubAdapter()
-    vi.mocked(adapters.getAdapter).mockReset().mockResolvedValue(stub.adapter)
-    vi.mocked(adapters.detectAdapter).mockReset().mockResolvedValue('claude')
+    vi.mocked(adapters.resolveAdapter).mockReset().mockResolvedValue(resolved(stub.adapter))
     vi.spyOn(process, 'cwd').mockReturnValue(root)
     output = []
     vi.mocked(console.log).mockImplementation((...args: unknown[]) => void output.push(args.join(' ')))
@@ -433,6 +439,9 @@ describe('convoy "<task>": show the plan, ask once', () => {
 
   const text = (): string => output.join('\n')
   const specFile = (): string => join(root, '.opencastle', 'convoys', 'dark-mode.convoy.yml')
+  const runArgs = (extra: Record<string, unknown> = {}) => ({
+    spec: specFile(), dryRun: false, adapter: null, concurrency: null, verbose: false, help: false, ...extra,
+  })
 
   it('prints the plan as a table, then the spec, then asks', async () => {
     vi.mocked(promptModule.confirm).mockImplementation(async () => {
@@ -442,42 +451,71 @@ describe('convoy "<task>": show the plan, ask once', () => {
       expect(text()).toContain('.opencastle/convoys/dark-mode.convoy.yml')
       return true
     })
-    await pipeline({ args: ['--text', 'add dark mode', '--adapter', 'claude'], pkgRoot })
+    await planTask({ args: ['--adapter', 'claude'], pkgRoot }, 'add dark mode')
     expect(promptModule.confirm).toHaveBeenCalledWith('Run it?', true, 'refuse')
-    expect(runModule.default).toHaveBeenCalledWith({ args: ['-f', specFile(), '-a', 'claude'], pkgRoot })
+    // The run gets the spec by its path, on the runtime the planner chose.
+    expect(runModule.runSpec).toHaveBeenCalledWith(runArgs({ adapter: 'claude' }), { runtime: resolved(stub.adapter) })
+    expect(runModule.exitWith).toHaveBeenCalledWith(0)
+  })
+
+  it('says which runtime it plans on, once, and why', async () => {
+    vi.mocked(promptModule.confirm).mockResolvedValue(false)
+    await planTask({ args: [], pkgRoot }, 'add dark mode')
+    expect(text().match(/Claude Code — configured by opencastle init/g)).toHaveLength(1)
   })
 
   it('runs without asking with --yes, after the review', async () => {
-    await pipeline({ args: ['--text', 'add dark mode', '--yes'], pkgRoot })
+    await planTask({ args: ['--yes'], pkgRoot }, 'add dark mode')
     expect(promptModule.confirm).not.toHaveBeenCalled()
-    expect(runModule.default).toHaveBeenCalledWith({ args: ['-f', specFile()], pkgRoot })
+    expect(runModule.runSpec).toHaveBeenCalledWith(runArgs(), { runtime: resolved(stub.adapter) })
     expect(count(stub.calls, 'validate-convoy')).toBe(1)
+  })
+
+  it('carries --concurrency through to the run', async () => {
+    await planTask({ args: ['-y', '-c', '2'], pkgRoot }, 'add dark mode')
+    expect(runModule.runSpec).toHaveBeenCalledWith(runArgs({ concurrency: 2 }), { runtime: resolved(stub.adapter) })
+  })
+
+  it('exits with the code the run ended with', async () => {
+    vi.mocked(runModule.runSpec).mockResolvedValueOnce(130)
+    await planTask({ args: ['--yes'], pkgRoot }, 'add dark mode')
+    expect(runModule.exitWith).toHaveBeenCalledWith(130)
   })
 
   it('does not run when nobody answers, and says how to run it later', async () => {
     // What confirm(…, 'refuse') returns on a closed stdin.
     vi.mocked(promptModule.confirm).mockResolvedValue(false)
-    await pipeline({ args: ['--text', 'add dark mode'], pkgRoot })
-    expect(runModule.default).not.toHaveBeenCalled()
+    await planTask({ args: [], pkgRoot }, 'add dark mode')
+    expect(runModule.runSpec).not.toHaveBeenCalled()
     expect(text()).toContain('opencastle convoy run .opencastle/convoys/dark-mode.convoy.yml')
   })
 
   it('plans, shows and writes the spec with --dry-run, and does not run or ask', async () => {
-    await pipeline({ args: ['--text', 'add dark mode', '--dry-run', '--yes'], pkgRoot })
+    await planTask({ args: ['--dry-run', '--yes'], pkgRoot }, 'add dark mode')
     expect(existsSync(specFile())).toBe(true)
     expect(text()).toMatch(/TASK\s+AGENT/)
     expect(promptModule.confirm).not.toHaveBeenCalled()
-    expect(runModule.default).not.toHaveBeenCalled()
+    expect(runModule.runSpec).not.toHaveBeenCalled()
     expect(count(stub.calls, 'validate-convoy')).toBe(0)
     expect(text()).toContain('opencastle convoy run .opencastle/convoys/dark-mode.convoy.yml')
   })
 
-  it('resolves the adapter once for the whole plan', async () => {
+  it('resolves the runtime once for the whole plan', async () => {
     vi.mocked(promptModule.confirm).mockResolvedValue(false)
-    await pipeline({ args: ['--text', 'add dark mode'], pkgRoot })
-    expect(adapters.detectAdapter).toHaveBeenCalledTimes(1)
-    expect(adapters.getAdapter).toHaveBeenCalledTimes(1)
+    await planTask({ args: [], pkgRoot }, 'add dark mode')
+    expect(adapters.resolveAdapter).toHaveBeenCalledTimes(1)
+    expect(adapters.resolveAdapter).toHaveBeenCalledWith({ projectRoot: root, explicit: null })
     expect(stub.calls.length).toBe(4)
+  })
+
+  it('stops before planning when no runtime can be found', async () => {
+    vi.mocked(adapters.resolveAdapter).mockRejectedValue(new Error('No agent CLI found on PATH.'))
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`)
+    }) as typeof process.exit)
+    await expect(planTask({ args: [], pkgRoot }, 'add dark mode')).rejects.toThrow('exit 1')
+    expect(text()).toContain('No agent CLI found on PATH.')
+    expect(stub.calls).toHaveLength(0)
   })
 
   it('re-plans from a PRD with convoy plan --prd, without writing a new one', async () => {
@@ -492,23 +530,31 @@ describe('convoy "<task>": show the plan, ask once', () => {
   it('does not offer to run a plan that fails its checks', async () => {
     const bad = { ...PLAN, tasks: [PLAN.tasks[0], { ...PLAN.tasks[1], timeout: 'soon' }] }
     stub = stubAdapter({ 'generate-convoy': fence(bad) })
-    vi.mocked(adapters.getAdapter).mockResolvedValue(stub.adapter)
+    vi.mocked(adapters.resolveAdapter).mockResolvedValue(resolved(stub.adapter))
     const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
       throw new Error(`exit ${code}`)
     }) as typeof process.exit)
-    await expect(pipeline({ args: ['--text', 'add dark mode', '--yes'], pkgRoot })).rejects.toThrow('exit 1')
+    await expect(planTask({ args: ['--yes'], pkgRoot }, 'add dark mode')).rejects.toThrow('exit 1')
     expect(exit).toHaveBeenCalledWith(1)
-    expect(runModule.default).not.toHaveBeenCalled()
+    expect(runModule.runSpec).not.toHaveBeenCalled()
   })
 
-  it.each([['--skip-validation'], ['--complexity'], ['--output-prd'], ['--output-spec'], ['--dryRun'], ['-t']])(
+  it.each([['--skip-validation'], ['--complexity'], ['--output-prd'], ['--output-spec'], ['--dryRun'], ['-t'], ['--text']])(
     'no longer accepts %s',
     async (flag) => {
       vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
         throw new Error(`exit ${code}`)
       }) as typeof process.exit)
-      await expect(pipeline({ args: ['--text', 'x', flag, 'value'], pkgRoot })).rejects.toThrow('exit 1')
+      await expect(planTask({ args: [flag, 'value'], pkgRoot }, 'x')).rejects.toThrow('exit 1')
       expect(stub.calls).toHaveLength(0)
     },
   )
+
+  it('keeps --prd for convoy plan, and refuses it beside a task', async () => {
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`exit ${code}`)
+    }) as typeof process.exit)
+    await expect(planTask({ args: ['--prd', 'my.prd.md'], pkgRoot }, 'x')).rejects.toThrow('exit 1')
+    expect(stub.calls).toHaveLength(0)
+  })
 })
