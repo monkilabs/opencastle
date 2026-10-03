@@ -16,6 +16,7 @@ import {
   isRunAlive,
   readEventsSince,
   readRun,
+  readRunSpec,
   readRuns,
   readSessions,
 } from './read-model.js'
@@ -119,8 +120,8 @@ describe('runs', () => {
     // Still running, so no run total yet: the sum of what tasks have recorded.
     expect(current.tokens).toBe(45_827)
     expect(current.cost_usd).toBeCloseTo(0.1244)
-    // This store has no estimate flag, so the read model does not claim either way.
-    expect(current.cost_estimated).toBeUndefined()
+    // This store records whether each cost is an estimate, and none of these is.
+    expect(current.cost_estimated).toBe(false)
     expect(old).toMatchObject({ status: 'done', tokens: 100, cost_usd: 0.01, duration_ms: 65_000 })
   })
 
@@ -152,6 +153,22 @@ describe('runs', () => {
     expect(readRun(root, 'nope')).toBeNull()
   })
 
+  it('reports a skipped review as skipped, never as a pass', () => {
+    seed()
+    const store = createConvoyStore(dbPath)
+    store.updateTaskReview('a', 'new', { review_level: 'fast', review_verdict: 'skipped', review_tokens: 0, review_model: null })
+    store.close()
+    const [a, b] = readRun(root, 'new')!.tasks
+    expect(a).toMatchObject({ review_verdict: 'skipped', review_level: 'fast' })
+    expect(b.review_verdict).toBeNull()
+  })
+
+  it('reads the spec and runtime a run was started with, for resume', () => {
+    seed()
+    expect(readRunSpec(root, 'new')).toEqual({ specYaml: 'x', adapter: null })
+    expect(readRunSpec(root, 'nope')).toBeNull()
+  })
+
   it('does not write to the database it reads', () => {
     seed()
     const db = new DatabaseSync(dbPath)
@@ -170,17 +187,52 @@ describe('runs', () => {
   })
 })
 
+/**
+ * A database in the shape of store schema 4: no cost_usd_num, no cost flag, no
+ * cache counts, no adapter or review columns, no dlq or artifact tables. Written
+ * by hand, because the store migrates anything it opens to the current schema.
+ */
+function oldShapeDb(): DatabaseSync {
+  const db = new DatabaseSync(dbPath)
+  db.exec(`
+    CREATE TABLE convoy (id TEXT PRIMARY KEY, name TEXT NOT NULL, spec_hash TEXT NOT NULL, status TEXT NOT NULL,
+      branch TEXT, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, spec_yaml TEXT NOT NULL,
+      total_tokens INTEGER, total_cost_usd TEXT, pipeline_id TEXT);
+    CREATE TABLE task (id TEXT NOT NULL, convoy_id TEXT NOT NULL, phase INTEGER NOT NULL, prompt TEXT NOT NULL,
+      agent TEXT NOT NULL, adapter TEXT, model TEXT, timeout_ms INTEGER, status TEXT NOT NULL, worker_id TEXT,
+      worktree TEXT, output TEXT, exit_code INTEGER, started_at TEXT, finished_at TEXT, retries INTEGER NOT NULL DEFAULT 0,
+      max_retries INTEGER NOT NULL DEFAULT 1, files TEXT, depends_on TEXT, prompt_tokens INTEGER,
+      completion_tokens INTEGER, total_tokens INTEGER, cost_usd TEXT, PRIMARY KEY (id, convoy_id));
+    CREATE TABLE worker (id TEXT PRIMARY KEY, task_id TEXT, adapter TEXT, pid INTEGER, session_id TEXT,
+      status TEXT, worktree TEXT, created_at TEXT, finished_at TEXT);
+    CREATE TABLE event (id INTEGER PRIMARY KEY AUTOINCREMENT, convoy_id TEXT, task_id TEXT, worker_id TEXT,
+      type TEXT NOT NULL, data TEXT, created_at TEXT NOT NULL);
+    PRAGMA user_version = 4;
+  `)
+  return db
+}
+
 describe('schemas it did not write', () => {
   it('reads columns a newer engine added, and leaves absent ones undefined', () => {
-    seed()
-    const db = new DatabaseSync(dbPath)
-    db.exec('ALTER TABLE task ADD COLUMN cost_estimated INTEGER')
-    db.exec('ALTER TABLE task ADD COLUMN cache_read_tokens INTEGER')
-    db.exec('ALTER TABLE convoy ADD COLUMN adapter TEXT')
-    db.exec("UPDATE task SET cost_estimated = 1 WHERE id = 'b'")
-    db.exec("UPDATE task SET cost_estimated = 0, cache_read_tokens = 40000 WHERE id = 'a'")
-    db.exec("UPDATE convoy SET adapter = 'codex', status = 'interrupted' WHERE id = 'new'")
+    const db = oldShapeDb()
+    db.exec(`INSERT INTO convoy (id, name, spec_hash, status, created_at, spec_yaml) VALUES ('new', 'New run', 'h', 'running', '${T1}', 'x')`)
+    db.exec(`INSERT INTO worker (id, task_id, adapter, status) VALUES ('w-a', 'a', 'claude', 'done')`)
+    db.exec(`INSERT INTO task (id, convoy_id, phase, prompt, agent, status, worker_id, total_tokens, cost_usd)
+             VALUES ('a', 'new', 0, 'p', 'developer', 'done', 'w-a', 10, '0.1'),
+                    ('b', 'new', 0, 'p', 'developer', 'failed', NULL, 5, '0.01')`)
+    // Before a newer engine adds anything, nothing claims a cost is or is not an estimate.
     db.close()
+    expect(readRun(root, 'new')!.cost_estimated).toBeUndefined()
+    expect(readRun(root, 'new')!.tasks[0].cost_estimated).toBeUndefined()
+
+    const later = new DatabaseSync(dbPath)
+    later.exec('ALTER TABLE task ADD COLUMN cost_estimated INTEGER')
+    later.exec('ALTER TABLE task ADD COLUMN cache_read_tokens INTEGER')
+    later.exec('ALTER TABLE convoy ADD COLUMN adapter TEXT')
+    later.exec("UPDATE task SET cost_estimated = 1 WHERE id = 'b'")
+    later.exec("UPDATE task SET cost_estimated = 0, cache_read_tokens = 40000 WHERE id = 'a'")
+    later.exec("UPDATE convoy SET adapter = 'codex', status = 'interrupted' WHERE id = 'new'")
+    later.close()
 
     const run = readRun(root, 'new')!
     expect(run.status).toBe('interrupted')
@@ -189,29 +241,19 @@ describe('schemas it did not write', () => {
     const [a, b] = run.tasks
     expect(a.cache_read_tokens).toBe(40_000)
     expect(a.cache_write_tokens).toBeUndefined()
+    expect(a.review_verdict).toBeUndefined()
     expect(a.cost_estimated).toBe(false)
     expect(b.cost_estimated).toBe(true)
     // An interrupted run is not alive, whatever the lock says.
+    const lockDb = new DatabaseSync(dbPath)
+    lockDb.exec('CREATE TABLE engine_lock (id INTEGER PRIMARY KEY, pid INTEGER, hostname TEXT, started_at TEXT, last_heartbeat TEXT)')
+    lockDb.close()
     lock(process.pid, hostname(), T0, new Date().toISOString())
     expect(isRunAlive(root, 'new')).toBe(false)
   })
 
   it('reads an old database without migrating it', () => {
-    // A v4 shape: no cost_usd_num, no review or drift columns, no dlq or artifact tables.
-    const db = new DatabaseSync(dbPath)
-    db.exec(`
-      CREATE TABLE convoy (id TEXT PRIMARY KEY, name TEXT NOT NULL, spec_hash TEXT NOT NULL, status TEXT NOT NULL,
-        branch TEXT, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, spec_yaml TEXT NOT NULL,
-        total_tokens INTEGER, total_cost_usd TEXT, pipeline_id TEXT);
-      CREATE TABLE task (id TEXT NOT NULL, convoy_id TEXT NOT NULL, phase INTEGER NOT NULL, prompt TEXT NOT NULL,
-        agent TEXT NOT NULL, adapter TEXT, model TEXT, timeout_ms INTEGER, status TEXT NOT NULL, worker_id TEXT,
-        worktree TEXT, output TEXT, exit_code INTEGER, started_at TEXT, finished_at TEXT, retries INTEGER NOT NULL DEFAULT 0,
-        max_retries INTEGER NOT NULL DEFAULT 1, files TEXT, depends_on TEXT, prompt_tokens INTEGER,
-        completion_tokens INTEGER, total_tokens INTEGER, cost_usd TEXT, PRIMARY KEY (id, convoy_id));
-      CREATE TABLE event (id INTEGER PRIMARY KEY AUTOINCREMENT, convoy_id TEXT, task_id TEXT, worker_id TEXT,
-        type TEXT NOT NULL, data TEXT, created_at TEXT NOT NULL);
-      PRAGMA user_version = 4;
-    `)
+    const db = oldShapeDb()
     db.exec(`INSERT INTO convoy VALUES ('v4', 'Legacy', 'h', 'done', NULL, '${T0}', '${T0}', '${T1}', 'x', 50, '0.5', NULL)`)
     db.exec(`INSERT INTO task (id, convoy_id, phase, prompt, agent, status, total_tokens, cost_usd)
              VALUES ('t', 'v4', 0, 'p', 'developer', 'done', 50, '0.5')`)
@@ -258,6 +300,19 @@ describe('events', () => {
     expect(uncategorised).toEqual([])
     const grouped = eventCategories()
     expect(Object.values(grouped).flat().sort()).toEqual([...KNOWN_EVENT_TYPES].sort())
+  })
+
+  it('files gate results with the checks', () => {
+    expect(eventCategory('gate_result')).toBe('check')
+    expect(isProblemEvent('gate_result', { command: 'npm test', passed: false })).toBe(true)
+    expect(isProblemEvent('gate_result', { command: 'npm test', passed: true })).toBe(false)
+  })
+
+  it('surfaces a review that blocked or reached no verdict, and not one that passed', () => {
+    expect(isProblemEvent('review_verdict', { level: 'fast', verdict: 'block' })).toBe(true)
+    expect(isProblemEvent('review_verdict', { level: 'fast', verdict: 'skipped' })).toBe(true)
+    expect(isProblemEvent('review_skipped', { level: 'fast', reason: 'no verdict' })).toBe(true)
+    expect(isProblemEvent('review_verdict', { level: 'auto-pass', verdict: 'pass' })).toBe(false)
   })
 
   it('places types by their prefix, so ones added later land somewhere sensible', () => {

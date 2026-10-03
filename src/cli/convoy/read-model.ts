@@ -88,11 +88,21 @@ export interface TaskRow {
   cache_write_tokens: number | null | undefined
   cost_usd: number | null
   cost_estimated: boolean | undefined
+  /**
+   * The review's verdict: `pass`, `block`, or `skipped` when a review was due
+   * and reached no verdict — which is not a pass. Null when none was recorded;
+   * undefined when the store has no review columns.
+   */
+  review_verdict: ReviewVerdict | null | undefined
+  /** `auto-pass`, `fast` or `panel`; auto-pass means no reviewer read it. */
+  review_level: string | null | undefined
   /** Why the engine says it failed (the `task_failed` reason), when it failed. */
   failure_reason: string | null
   /** The last lines of the failed attempt's output. */
   error_tail: string | null
 }
+
+export type ReviewVerdict = 'pass' | 'block' | 'skipped'
 
 export interface RunDetail extends RunSummary {
   adapters: string[]
@@ -399,6 +409,7 @@ const TASK_COLS = [
   'id', 'convoy_id', 'phase', 'agent', 'status', 'depends_on', 'adapter', 'model', 'retries', 'worker_id',
   'started_at', 'finished_at', 'prompt_tokens', 'completion_tokens', 'total_tokens',
   'cache_read_tokens', 'cache_write_tokens', 'cost_usd', 'cost_usd_num', 'cost_estimated',
+  'review_verdict', 'review_level',
 ] as const
 
 function failureReasons(r: Reader, convoyId: string): Map<string, string> {
@@ -451,6 +462,12 @@ function workerAdapters(r: Reader, convoyId: string): Map<string, string> {
   return out
 }
 
+function reviewVerdict(row: Row): ReviewVerdict | null | undefined {
+  if (!('review_verdict' in row)) return undefined
+  const v = str(row.review_verdict)
+  return v === 'pass' || v === 'block' || v === 'skipped' ? v : null
+}
+
 function toTask(t: Row, workers: Map<string, string>, reasons: Map<string, string>, tails: Map<string, string>): TaskRow {
   const id = String(t.id)
   const failed = FAILED_TASK_STATUSES.includes(String(t.status))
@@ -476,6 +493,8 @@ function toTask(t: Row, workers: Map<string, string>, reasons: Map<string, strin
     cache_write_tokens: optNum(t, 'cache_write_tokens'),
     cost_usd: costOf(t),
     cost_estimated: optFlag(t, 'cost_estimated'),
+    review_verdict: reviewVerdict(t),
+    review_level: 'review_level' in t ? str(t.review_level) : undefined,
     failure_reason: failed ? reasons.get(id) ?? null : null,
     error_tail: failed ? tails.get(id) ?? null : null,
   }
@@ -506,6 +525,20 @@ export function readRun(projectRoot: string, convoyId: string): RunDetail | null
   })
 }
 
+/**
+ * The spec a run was started from, and the runtime it recorded, for `resume`
+ * and its `--dry-run` preview. Read here so a preview never opens the store,
+ * which migrates.
+ */
+export function readRunSpec(projectRoot: string, convoyId: string): { specYaml: string; adapter: string | null } | null {
+  return withDb(projectRoot, null as { specYaml: string; adapter: string | null } | null, (r) => {
+    if (!r.hasTable('convoy')) return null
+    const row = r.get(`SELECT ${r.select('convoy', ['spec_yaml', 'adapter'])} FROM convoy WHERE id = ?`, convoyId)
+    if (!row || typeof row.spec_yaml !== 'string') return null
+    return { specYaml: row.spec_yaml, adapter: str(row.adapter) }
+  })
+}
+
 // ── Events ────────────────────────────────────────────────────────────────────
 
 /**
@@ -519,19 +552,26 @@ export function readRun(projectRoot: string, convoyId: string): RunDetail | null
 export function eventCategory(type: string): EventCategory {
   if (type.startsWith('merge_')) return 'merge'
   if (/^(review_|dispute_)/.test(type)) return 'review'
-  if (/^(built_in_gate|tdd_|drift_|contract_|partition_|file_partition_|secret_|circuit_breaker_)/.test(type)) return 'check'
+  if (/^(gate_|built_in_gate|tdd_|drift_|contract_|partition_|file_partition_|secret_|circuit_breaker_)/.test(type)) return 'check'
   if (/^(task_|worker_|dlq_|file_injection_|artifact|agent_identity_)|^(session|delegation)$/.test(type)) return 'task'
   if (/^(convoy_|post_convoy_|swarm_|watch_|ndjson_)/.test(type)) return 'run'
   return 'other'
 }
 
 const PROBLEM_TYPE =
-  /_failed$|violation|conflict|killed|tripped|blocked|rejected|leak|limit_reached|^dlq_|^drift_detected$|^task_skipped$|^task_retried$|interrupted|fallback/
+  /_failed$|violation|conflict|killed|tripped|blocked|rejected|leak|limit_reached|^dlq_|^drift_detected$|^task_skipped$|^task_retried$|^review_skipped$|interrupted|fallback/
 
-/** A failure or a warning: by type, or a check whose data says it did not pass. */
+/**
+ * A failure or a warning: by type, a check whose data says it did not pass, or
+ * a review that blocked. A review that reached no verdict is `review_skipped`:
+ * the work went unreviewed, which is worth seeing, not a pass.
+ */
 export function isProblemEvent(type: string, data: unknown): boolean {
   if (PROBLEM_TYPE.test(type)) return true
-  return typeof data === 'object' && data !== null && (data as Record<string, unknown>).passed === false
+  if (typeof data !== 'object' || data === null) return false
+  const d = data as Record<string, unknown>
+  if (type === 'review_verdict') return d.verdict === 'block' || d.verdict === 'skipped'
+  return d.passed === false
 }
 
 /** Every type the engine can emit, grouped as the feed groups them. */

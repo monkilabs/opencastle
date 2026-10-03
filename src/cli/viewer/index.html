@@ -360,10 +360,12 @@ function tasksHtml(run) {
     const model = t.model && run.models.length > 1 ? `<span class="sub">${esc(t.model)}</span>` : ''
     const retries = t.retries ? `<span class="sub">${t.retries} ${t.retries === 1 ? 'retry' : 'retries'}</span>` : ''
     const live = RUNNING.includes(t.status) && run.alive && t.started_at ? `<span class="sub">${fmtDuration(since(t.started_at))} so far</span>` : ''
+    // A review that reached no verdict is not a pass; say the work went unreviewed.
+    const review = t.review_verdict === 'skipped' ? '<span class="sub">review skipped</span>' : ''
     const row = `<tr>
       <td class="key"><code>${esc(t.id)}</code></td>
       <td data-label="Agent">${esc(t.agent)}${model}</td>
-      <td data-label="Status">${badge(t.status)}${retries}</td>
+      <td data-label="Status">${badge(t.status)}${retries}${review}</td>
       <td data-label="Depends on">${t.depends_on.length ? t.depends_on.map((d) => `<code>${esc(d)}</code>`).join(', ') : '<span class="muted">—</span>'}</td>
       <td data-label="Duration" class="num">${t.duration_ms != null ? fmtDuration(t.duration_ms) : live || '—'}</td>
       <td data-label="Tokens" class="num">${tokensCell(t)}</td>
