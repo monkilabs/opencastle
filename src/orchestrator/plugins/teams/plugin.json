@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "teams",
+  "description": "Microsoft Teams skill (its MCP server needs per-user setup) for AI coding assistants: Agent notifications via Teams channels.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#teams",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "team",
+    "notifications"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Microsoft Teams",
+      "category": "team",
+      "subCategory": "notifications",
+      "authType": "oauth",
+      "inputs": [
+        "tenant_id"
+      ],
+      "officialDocs": "https://learn.microsoft.com/en-us/microsoftteams/"
+    }
+  }
+}

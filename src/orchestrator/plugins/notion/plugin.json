@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "notion",
+  "description": "Notion skill and MCP server for AI coding assistants: Workspace knowledge base and documentation hub.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#notion",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "team",
+    "knowledge-management"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Notion",
+      "category": "team",
+      "subCategory": "knowledge-management",
+      "authType": "oauth",
+      "officialDocs": "https://developers.notion.com/docs/mcp"
+    }
+  }
+}

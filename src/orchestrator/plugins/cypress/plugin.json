@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "cypress",
+  "description": "Cypress skill for AI coding assistants: E2E and component testing in the browser.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#cypress",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "e2e-testing"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Cypress",
+      "category": "tech",
+      "subCategory": "e2e-testing",
+      "authType": "none",
+      "officialDocs": "https://docs.cypress.io"
+    }
+  }
+}

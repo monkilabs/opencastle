@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "linear",
+  "description": "Linear skill and MCP server for AI coding assistants: Issue tracking with MCP integration.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#linear",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "team",
+    "task-management"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Linear",
+      "category": "team",
+      "subCategory": "task-management",
+      "authType": "oauth",
+      "officialDocs": "https://linear.app/docs/mcp"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "supabase",
+  "description": "Supabase skill and MCP server for AI coding assistants: Postgres + Auth + RLS + Edge Functions.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#supabase",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "database"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Supabase",
+      "category": "tech",
+      "subCategory": "database",
+      "authType": "oauth",
+      "officialDocs": "https://supabase.com/docs"
+    }
+  }
+}

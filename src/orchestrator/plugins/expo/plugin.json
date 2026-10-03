@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "expo",
+  "description": "Expo skill and MCP server for AI coding assistants: React Native framework with EAS builds and OTA updates.",
+  "homepage": "https://www.opencastle.dev/docs/plugins",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "framework"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Expo",
+      "category": "tech",
+      "subCategory": "framework",
+      "authType": "oauth",
+      "officialDocs": "https://docs.expo.dev/"
+    }
+  }
+}

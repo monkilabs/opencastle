@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, readFile, readdir, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -449,12 +449,12 @@ describe('VS Code adapter install', () => {
     const skills = await readdir(skillsDir)
 
     // Selected plugin skills should be present
-    expect(skills).toContain('sanity')
-    expect(skills).toContain('linear')
+    expect(skills).toContain('sanity-cms')
+    expect(skills).toContain('linear-task-management')
     // Unselected plugin skills should NOT be present
-    expect(skills).not.toContain('supabase')
-    expect(skills).not.toContain('slack')
-    expect(skills).not.toContain('vercel')
+    expect(skills).not.toContain('supabase-database')
+    expect(skills).not.toContain('slack-notifications')
+    expect(skills).not.toContain('vercel-deployment')
 
     // Core skills (non-plugin) should always be present
     expect(skills).toContain('accessibility-standards')
@@ -470,9 +470,9 @@ describe('VS Code adapter install', () => {
     // Plugin-linked skill directories should be absent if tool not selected
     // (The core skills directory names don't match plugin IDs — they're separate)
     // But plugin SKILL.md dirs should not exist
-    expect(skills).not.toContain('sanity')
-    expect(skills).not.toContain('linear')
-    expect(skills).not.toContain('supabase')
+    expect(skills).not.toContain('sanity-cms')
+    expect(skills).not.toContain('linear-task-management')
+    expect(skills).not.toContain('supabase-database')
   })
 
   it('injects plugin tools into agent frontmatter', async () => {
@@ -672,12 +672,12 @@ describe('Cursor adapter install', () => {
     expect(skills).toContain('testing-workflow.mdc')
 
     // Selected plugin skills as .mdc
-    expect(skills).toContain('sanity.mdc')
-    expect(skills).toContain('linear.mdc')
+    expect(skills).toContain('sanity-cms.mdc')
+    expect(skills).toContain('linear-task-management.mdc')
 
     // Unselected plugin skills should not be present
-    expect(skills).not.toContain('supabase.mdc')
-    expect(skills).not.toContain('slack.mdc')
+    expect(skills).not.toContain('supabase-database.mdc')
+    expect(skills).not.toContain('slack-notifications.mdc')
   })
 
   it('generates Cursor MCP config with mcpServers format', async () => {
@@ -735,6 +735,19 @@ describe('Claude Code adapter install', () => {
     await rm(tempDir, { recursive: true, force: true })
   })
 
+  it('moves an integration skill from its old directory and leaves no empty folder behind', async () => {
+    const adapter = await IDE_ADAPTERS['claude-code']()
+    await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
+    // As releases before integration skills took their own names left it.
+    const skills = join(tempDir, '.claude', 'skills')
+    await rename(join(skills, 'sanity-cms'), join(skills, 'sanity'))
+    const result = await adapter.update(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
+    const entries = await readdir(skills)
+    expect(entries).toContain('sanity-cms')
+    expect(entries).not.toContain('sanity')
+    expect(result.deleted).toContain('.claude/skills/sanity/SKILL.md')
+  })
+
   it('creates CLAUDE.md with embedded instructions', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
@@ -778,10 +791,10 @@ describe('Claude Code adapter install', () => {
     const content = await readFile(join(tempDir, 'CLAUDE.md'), 'utf8')
     expect(content).toContain('## Available Skills')
     expect(content).toContain('**self-improvement**')
-    expect(content).toContain('**sanity**')
-    expect(content).toContain('**linear**')
+    expect(content).toContain('**sanity-cms**')
+    expect(content).toContain('**linear-task-management**')
     // Unselected plugin skills should NOT appear in skill index
-    expect(content).not.toMatch(/\*\*supabase\*\*/)
+    expect(content).not.toContain('**supabase-database**')
   })
 
   it('strips frontmatter from agent files in .claude/agents/', async () => {
@@ -810,9 +823,9 @@ describe('Claude Code adapter install', () => {
 
     // Skills are subdirectories (Anthropic's Claude Code Skills format)
     expect(entries).toContain('self-improvement')
-    expect(entries).toContain('sanity')
-    expect(entries).toContain('linear')
-    expect(entries).not.toContain('supabase')
+    expect(entries).toContain('sanity-cms')
+    expect(entries).toContain('linear-task-management')
+    expect(entries).not.toContain('supabase-database')
 
     // SKILL.md exists inside each skill subdirectory
     const skillContent = await readFile(
@@ -1332,11 +1345,11 @@ describe('full stack configuration', () => {
 
     // All 5 plugin skills should be installed
     const skills = await readdir(join(tempDir, '.github', 'skills'))
-    expect(skills).toContain('sanity')
-    expect(skills).toContain('supabase')
-    expect(skills).toContain('vercel')
-    expect(skills).toContain('linear')
-    expect(skills).toContain('slack')
+    expect(skills).toContain('sanity-cms')
+    expect(skills).toContain('supabase-database')
+    expect(skills).toContain('vercel-deployment')
+    expect(skills).toContain('linear-task-management')
+    expect(skills).toContain('slack-notifications')
 
     // MCP config should have all 5 servers
     const mcpConfig = await readJson<Record<string, unknown>>(

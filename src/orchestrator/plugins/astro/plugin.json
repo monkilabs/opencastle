@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "astro",
+  "description": "Astro skill and MCP server for AI coding assistants: Content-driven web framework with islands architecture and Docs MCP.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#astro",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "framework"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Astro",
+      "category": "tech",
+      "subCategory": "framework",
+      "authType": "none",
+      "officialDocs": "https://docs.astro.build"
+    }
+  }
+}

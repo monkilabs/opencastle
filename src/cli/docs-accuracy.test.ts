@@ -560,6 +560,7 @@ describe('declared flags are flags the parser reads', () => {
     explain: ['explain.ts'],
     ci: ['ci.ts'],
     baseline: ['baseline.ts'],
+    plugin: ['plugin.ts'],
     fleet: ['fleet.ts'],
   }
   // Read by the entrypoint for every command, not by the modules.

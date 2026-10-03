@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "stripe",
+  "description": "Stripe skill and MCP server for AI coding assistants: Payments, billing, and financial infrastructure.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#stripe",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "tech",
+    "payments"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "Stripe",
+      "category": "tech",
+      "subCategory": "payments",
+      "authType": "oauth",
+      "officialDocs": "https://docs.stripe.com/"
+    }
+  }
+}

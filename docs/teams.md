@@ -62,6 +62,9 @@ shipped is on the website; this is the record of decisions and gaps.
 | Integration servers' variables written as `${env:NAME}` for Cursor and Windsurf and `{env:NAME}` for OpenCode | Cursor and OpenCode passed the `${NAME}` written before to the server as literal text |
 | **Codex CLI** receives skills in `.agents/skills/` and MCP servers as `[mcp_servers.<name>]` tables in `.codex/config.toml`, changed table by table so the rest of the file stays the user's; variables as `env_vars`, `bearer_token_env_var` and `env_http_headers`. `sync` removes `.codex/skills/` and takes our servers out of `.codex/mcp.json` | Codex reads neither of the paths written before, so a Codex user got AGENTS.md and no skill, integration or team server at all |
 | **Lessons as files**: `opencastle lesson` writes `.opencastle/lessons/<date>-<title>.md`; `LESSONS-LEARNED.md` becomes an index compiled from them by `sync` and checked by `sync --check`. A lesson can `--cite` code; `doctor` names one whose cited file changed since it was verified (`lesson verify`, `lesson archive`). A credential in a lesson is refused. `sync` moves an old single-file log into files and keeps a backup | Every lesson was appended to one file and numbered one past the highest there, so two branches each adding one conflicted and both called theirs LES-042. And nothing said when a lesson's code had moved on |
+| **Agent Plugins 1.0**: a baseline can be an Agent Plugin — `plugin.json`, `skills/`, `mcp.json`, and OpenCastle's own content and policy in the `dev.opencastle/` extension directory — and `baseline init` creates one. `extends` takes any Agent Plugin, from npm or a path, with no OpenCastle declaration; its portable servers become team servers held to the policy | One package is the team's standard twice over: Copilot, VS Code, Cursor, Codex and Kiro install it natively, and OpenCastle compiles it — with what the standard does not cover — into all seven assistants. A team adopting an Agent Plugin someone else publishes gets it in every assistant, not only the ones that read plugins |
+| **`opencastle plugin`**: `check` loads a plugin as a conformant client must (closed manifest, Agent Skills names, MCP server variants, containment); `build` writes Claude Code's `.claude-plugin/plugin.json` and `.mcp.json` from the portable files; `index` writes the marketplace files Claude Code and Copilot CLI, Cursor and Codex read | The standard leaves Claude Code's manifest and each marketplace format to the client, which is three copies of one fact kept by hand — compiled and checked instead, like everything else |
+| Each integration is an Agent Plugin directory, checked against the spec in CI, and its skill compiles under the skill's own name (`supabase-database/`, not `supabase/`) | An assistant that follows the Agent Skills spec skips a skill whose name does not match its directory — every integration skill was one. An `exclude` naming the old directory still works, with a warning |
 
 ## Next, in order of leverage
 
@@ -116,10 +119,14 @@ lead actually asks.
 
 ### 7. Standards first
 
-Write `AGENTS.md` and Agent Skills for every assistant that reads them, and keep
-per-assistant dialects only where an assistant needs one. Fewer generated files
-means less to review and less to drift — and the lock already records what each
-assistant is given, so the reduction can be reviewed like any other change.
+Agent Plugins, Codex's `.agents/skills/` and integration skill names are done
+(see Shipped). What remains: write each skill once, to `.agents/skills/`, for
+every assistant that reads it there — Cursor and VS Code read it besides their
+own directories, so today a project targeting several assistants gives some of
+them the same skill twice. Keep per-assistant dialects only where an assistant
+needs one. Fewer generated files means less to review and less to drift — and
+the lock already records what each assistant is given, so the reduction can be
+reviewed like any other change.
 
 ## Open questions to verify
 
