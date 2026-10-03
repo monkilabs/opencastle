@@ -1737,6 +1737,39 @@ describe('cost tracking', () => {
     expect(adapter.execute.mock.calls[0][1]).toMatchObject({ model: 'gpt-4o' })
   })
 
+  it('runs each agent on the runtime\'s model for its tier when the spec names none', async () => {
+    const adapter = makeAdapter('claude')
+    ;(adapter as unknown as { tierModels: Record<string, string> }).tierModels = { premium: 'opus', standard: 'sonnet', economy: 'haiku' }
+    const engine = makeEngine({
+      spec: makeSpec({}, [
+        { id: 'build', agent: 'developer' },
+        { id: 'design', agent: 'architect' },
+        { id: 'docs', agent: 'writer' },
+        { id: 'pinned', agent: 'developer', model: 'opus' },
+      ]),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    await engine.run()
+    const modelFor = (id: string) =>
+      adapter.execute.mock.calls.find((c: unknown[]) => (c[0] as { id: string }).id === id)?.[1]?.model
+    expect(modelFor('build')).toBe('sonnet')
+    expect(modelFor('design')).toBe('opus')
+    expect(modelFor('docs')).toBe('haiku')
+    // A model the spec names always wins.
+    expect(modelFor('pinned')).toBe('opus')
+  })
+
+  it('passes no model at all when the runtime declares no tier models', async () => {
+    const adapter = makeAdapter('codex')
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'build', agent: 'developer' }]), specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    await engine.run()
+    expect(adapter.execute.mock.calls[0][1]).not.toHaveProperty('model')
+  })
+
   it('adds up every attempt, not only the last', async () => {
     const adapter = makeAdapter()
     adapter.execute

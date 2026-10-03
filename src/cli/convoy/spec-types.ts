@@ -135,6 +135,14 @@ export interface AgentAdapter {
   name: string;
   isAvailable(): Promise<boolean>;
   /**
+   * The runtime's own names for a model of each capability tier, used when a
+   * spec names no model. Only aliases the runtime keeps current (Claude Code's
+   * `opus`, `sonnet`, `haiku`) — never a dated model id, which would go stale.
+   * Without it the runtime's default model runs everything, and the default is
+   * often the most expensive one: a 30-line change cost $2 on it.
+   */
+  tierModels?: Partial<Record<'premium' | 'standard' | 'economy', string>>;
+  /**
    * Run the task's prompt in `options.cwd` and settle once the agent is done.
    * It enforces `task.timeout` itself, and a run that timed out or was killed
    * resolves with `success: false`.

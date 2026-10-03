@@ -337,8 +337,22 @@ export async function runSpec(args: RunArgs, opts: { runtime?: ResolvedAdapter }
   console.log('')
   console.log(`  ${c.bold(`Convoy: ${spec.name}`)} ${c.dim(`— ${spec.tasks?.length ?? 0} tasks`)}`)
   if (!opts.runtime) console.log(`  ${c.dim('Runtime:')} ${runtime.detail}`)
+  const models = describeModels(spec, runtime)
+  if (models) console.log(`  ${c.dim('Models:')} ${models}`)
   const engine = createConvoyEngine({ spec, specYaml: specText, adapter: runtime.adapter, verbose: args.verbose, basePath: projectRoot })
   return drive(() => engine.run(), projectRoot)
+}
+
+/**
+ * Which model the tasks run on, said once before they start: a run that picks
+ * models by tier spends far less than one on the runtime's default, and a
+ * person should be able to see which happened.
+ */
+function describeModels(spec: TaskSpec, runtime: ResolvedAdapter): string | null {
+  if (spec.defaults?.model) return `${spec.defaults.model} for every task (defaults.model)`
+  const t = runtime.adapter.tierModels
+  if (!t) return null
+  return `by agent tier — ${[t.premium && `premium ${t.premium}`, t.standard && `standard ${t.standard}`, t.economy && `economy ${t.economy} (and reviews)`].filter(Boolean).join(', ')}`
 }
 
 // ── convoy resume ─────────────────────────────────────────────────────────────
@@ -414,6 +428,8 @@ export async function resumeLast(args: RunArgs): Promise<number> {
   if (problem) return fail(problem)
   applyArgs(spec, args, runtime.name)
   console.log(`  ${c.dim('Runtime:')} ${runtime.detail}`)
+  const models = describeModels(spec, runtime)
+  if (models) console.log(`  ${c.dim('Models:')} ${models}`)
 
   const engine = createConvoyEngine({ spec, specYaml: recorded.specYaml, adapter: runtime.adapter, verbose: args.verbose, basePath: projectRoot })
   return drive(() => engine.resume(target.id), projectRoot)

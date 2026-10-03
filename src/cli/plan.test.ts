@@ -145,6 +145,21 @@ describe('runPromptStep', () => {
     expect(seen[0].task.prompt).toContain('# PRD')
   })
 
+  it('writes the plan on the standard tier and checks it on economy, when the runtime has tier models', async () => {
+    const { adapter, seen } = adapterAnswering('```json\n{"valid": true}\n```')
+    adapter.tierModels = { premium: 'opus', standard: 'sonnet', economy: 'haiku' }
+    await runPromptStep({ template: 'validate-prd', goalText: '# PRD', adapter, pkgRoot, cwd })
+    await runPromptStep({ template: 'generate-prd', goalText: 'add tags', adapter, pkgRoot, cwd })
+    expect(seen[0].options?.model).toBe('haiku')
+    expect(seen[1].options?.model).toBe('sonnet')
+  })
+
+  it('passes no model when the runtime has none for its tiers', async () => {
+    const { adapter, seen } = adapterAnswering('```json\n{"valid": true}\n```')
+    await runPromptStep({ template: 'validate-prd', goalText: '# PRD', adapter, pkgRoot, cwd })
+    expect(seen[0].options).not.toHaveProperty('model')
+  })
+
   it('names a Team Lead step by its slug', async () => {
     const { adapter, seen } = adapterAnswering('```json\n[]\n```')
     await runPromptStep({ template: 'fix-convoy', goalText: '{}', contextText: '- x', adapter, pkgRoot, cwd })

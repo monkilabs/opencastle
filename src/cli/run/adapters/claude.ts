@@ -16,6 +16,14 @@ export const name = 'claude'
 
 export function supportsSessionContinuity(): boolean { return false }
 
+/**
+ * Claude Code's model aliases, which always name the current model of each
+ * family. A convoy worker is headless, so without one it runs on the account's
+ * default — usually the largest model — for a docs edit as much as for a
+ * security review.
+ */
+export const tierModels = { premium: 'opus', standard: 'sonnet', economy: 'haiku' } as const
+
 export async function isAvailable(): Promise<boolean> {
   return commandExists('claude')
 }

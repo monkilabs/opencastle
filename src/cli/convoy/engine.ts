@@ -1252,10 +1252,13 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
 
     // ── The agent ───────────────────────────────────────────────────────────
     const deadline = taskStart + rec.timeout_ms
+    // The spec's model when it names one; otherwise the runtime's model for the
+    // agent's tier, so a writer does not run on the model an architect needs.
+    const model = rec.model ?? taskAdapter.tierModels?.[tierForAgent(rec.agent)]
     const execOptions: ExecuteOptions = {
       cwd: wt,
       permissionMode,
-      ...(rec.model ? { model: rec.model } : {}),
+      ...(model ? { model } : {}),
     }
     const steps = specTask?.steps
     let result: ExecuteResult
@@ -1477,6 +1480,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
           execute: (task, options) => runAgent(rec.id, taskAdapter, task, options, Math.min(rec.timeout_ms, 900_000)),
           canRunReadOnly: supportsPermissionMode(taskAdapter.name, 'plan'),
           timeoutMs: Math.min(rec.timeout_ms, 900_000),
+          defaultModel: taskAdapter.tierModels?.economy,
         }
         events.emit('review_started', { level, task_id: rec.id, model: reviewerModel }, { convoy_id: convoyId, task_id: rec.id })
         const reviews: ReviewResult[] = level === 'panel'

@@ -66,10 +66,24 @@ describe('defaultReviewer', () => {
     expect(result).toEqual({ verdict: 'pass', feedback: '', tokens: 840, model: 'claude-haiku-4-5', costUsd: 0.004 })
   })
 
-  it('passes no model when the spec names none', async () => {
+  it('passes no model when neither the spec nor the runtime names one', async () => {
     const c = ctx()
     await defaultReviewer(task, 'fast', 'default', c)
     expect(vi.mocked(c.execute).mock.calls[0][1]).toEqual({ cwd: '/work/tree', permissionMode: 'plan', model: undefined })
+  })
+
+  it('reviews on the runtime\'s economy model when the spec names none', async () => {
+    const c = ctx({ defaultModel: 'haiku' })
+    await defaultReviewer(task, 'fast', 'default', c)
+    expect(vi.mocked(c.execute).mock.calls[0][1]).toMatchObject({ model: 'haiku' })
+    // The spec's reviewer_model still wins.
+    const pinned = ctx({ defaultModel: 'haiku' })
+    await defaultReviewer(task, 'fast', 'sonnet', pinned)
+    expect(vi.mocked(pinned.execute).mock.calls[0][1]).toMatchObject({ model: 'sonnet' })
+  })
+
+  it('tells the reviewer the diff is the change, so it does not read the repository', () => {
+    expect(buildReviewPrompt(task, ctx())).toMatch(/The diff is the whole change/)
   })
 
   it('is skipped, never passed, when it cannot run read-only, fails, times out, or gives no verdict', async () => {

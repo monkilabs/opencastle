@@ -41,6 +41,8 @@ export interface ReviewContext {
   /** Whether the runtime can run without write access. */
   canRunReadOnly: boolean
   timeoutMs: number
+  /** The model to review with when the spec sets no `reviewer_model`: the runtime's economy tier. */
+  defaultModel?: string
 }
 
 export type ReviewRunner = (
@@ -110,6 +112,8 @@ export function buildReviewPrompt(task: Pick<TaskRecord, 'id' | 'agent'>, ctx: P
     diff || '(no changes)',
     '```',
     '',
+    'The diff is the whole change. Open a file only when the diff cannot answer a question, and do not explore the rest of the repository or run the test suite: the convoy runs the project\'s checks after merging. A review that read the repository cost more than the task it reviewed.',
+    '',
     '## What to check',
     '1. Does the change do what the task asked, completely?',
     '2. Are there bugs, missing error handling, or broken behaviour?',
@@ -172,7 +176,7 @@ export const defaultReviewer: ReviewRunner = async (task, _level, reviewerModel,
     result = await ctx.execute(reviewTask, {
       cwd: ctx.cwd,
       permissionMode: 'plan',
-      model: reviewerModel && reviewerModel !== 'default' ? reviewerModel : undefined,
+      model: reviewerModel && reviewerModel !== 'default' ? reviewerModel : ctx.defaultModel,
     })
   } catch (err) {
     return skipped(`the reviewer could not start: ${(err as Error).message}`)

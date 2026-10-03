@@ -253,6 +253,15 @@ function startProgress(templateName: string): () => void {
 // ── The step ────────────────────────────────────────────────────────────────
 
 /**
+ * Writing the PRD and the plan is the work the rest depends on, so it gets the
+ * standard tier; checking and sizing them is a short read, so it gets economy.
+ */
+function modelFor(adapter: AgentAdapter, template: string): string | undefined {
+  const tier = /^(validate-|assess-)/.test(template) ? 'economy' : 'standard'
+  return adapter.tierModels?.[tier]
+}
+
+/**
  * Run one planning template through the caller's adapter.
  *
  * Planning sessions run with `permissionMode: 'plan'`: they read the repository
@@ -294,6 +303,7 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
         verbose: opts.verbose ?? false,
         cwd: opts.cwd ?? process.cwd(),
         permissionMode: 'plan',
+        ...(modelFor(opts.adapter, opts.template) ? { model: modelFor(opts.adapter, opts.template) } : {}),
       }),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
