@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=1280">
 <title>OpenCastle OG Card</title>
 <style>
+  /* Inter, embedded by the generator, so the card renders the same on a Mac,
+     on Linux and in CI — system fonts differ, and so did the image. */
+  @font-face {
+    font-family: 'Inter Variable';
+    font-style: normal;
+    font-weight: 100 900;
+    src: url('{{FONT_DATA_URI}}') format('woff2');
+  }
+
   *, *::before, *::after {
     box-sizing: border-box;
     margin: 0;
@@ -15,7 +24,7 @@
     width: 1280px;
     height: 640px;
     overflow: hidden;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -86,29 +95,37 @@
   }
 
   /* ---- Logo ---- */
+  /* The logo and the tagline together fit a 4:1 band (1280×320), so the card
+     also crops cleanly to a profile or page banner. */
   .logo-img {
-    width: 420px;
+    width: 330px;
     height: auto;
-    margin-bottom: 20px;
+    margin-bottom: 18px;
   }
 
-  /* ---- Tagline ---- */
+  /* ---- Tagline: the homepage headline ---- */
   .tagline {
-    font-size: 22px;
-    font-weight: 400;
-    color: #8a8a9a;
-    line-height: 1.4;
+    font-size: 34px;
+    font-weight: 800;
+    color: #f0f0f5;
+    line-height: 1.18;
     text-align: center;
-    max-width: 620px;
-    margin-bottom: 40px;
-    letter-spacing: -0.2px;
+    margin-bottom: 46px;
+    letter-spacing: -1.1px;
+  }
+  .tagline-gradient {
+    display: block;
+    background: linear-gradient(135deg, #a78bfa 0%, #6366f1 50%, #3b82f6 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
   /* ---- Badges row ---- */
   .badges {
     display: flex;
     gap: 14px;
-    margin-bottom: 36px;
+    margin-bottom: 26px;
   }
   .badge {
     display: flex;
@@ -122,10 +139,6 @@
     font-weight: 500;
     color: #c8c8d4;
     letter-spacing: 0.1px;
-  }
-  .badge-icon {
-    font-size: 15px;
-    opacity: 0.7;
   }
   .badge-accent {
     background: linear-gradient(135deg, rgba(167, 139, 250, 0.1) 0%, rgba(99, 102, 241, 0.06) 100%);
@@ -208,28 +221,31 @@
   <div class="container">
     <img class="logo-img" src="{{LOGO_DATA_URI}}" alt="OpenCastle" />
 
-    <p class="tagline">Turn your AI coding assistant into a multi-agent team</p>
+    <p class="tagline">
+      Write your AI config once.
+      <span class="tagline-gradient">Every assistant. Every teammate.</span>
+    </p>
 
     <div class="badges">
-      <div class="badge badge-accent">
-        <span class="badge-icon">⚡</span> 19 Agents
-      </div>
-      <div class="badge">
-        <span class="badge-icon">🖥</span> 4 IDEs
-      </div>
-      <div class="badge">
-        <span class="badge-icon">⚖</span> BSL 1.1
-      </div>
+      <div class="badge badge-accent">One source, 7 assistants</div>
+      <div class="badge">Built for teams</div>
+      <div class="badge">Open source · MIT</div>
     </div>
 
     <div class="ides">
+      Claude Code
+      <span class="ide-sep">·</span>
       GitHub Copilot
       <span class="ide-sep">·</span>
       Cursor
       <span class="ide-sep">·</span>
-      Claude Code
+      Windsurf
       <span class="ide-sep">·</span>
       OpenCode
+      <span class="ide-sep">·</span>
+      Codex
+      <span class="ide-sep">·</span>
+      Antigravity
     </div>
   </div>
 
