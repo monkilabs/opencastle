@@ -471,6 +471,29 @@ export async function bootstrapCustomizations(
   await handleApiConfig(opencastleDir, repoInfo, result)
   await removeDataPipelineConfig(opencastleDir, result)
   await handleTrackerConfig(opencastleDir, repoInfo, stack, result)
+  await removeUnusedProviderTemplates(opencastleDir, repoInfo, result)
 
   return result
+}
+
+/**
+ * The provider templates shipped beside the generic ones — `supabase-config.md`,
+ * `sanity-config.md` — for a project that uses neither. The generic templates
+ * were removed when nothing was detected; these two stayed, so a project with
+ * no database and no CMS was given notes for both.
+ */
+async function removeUnusedProviderTemplates(
+  opencastleDir: string,
+  info: RepoInfo,
+  result: BootstrapResult,
+): Promise<void> {
+  const inUse = new Set<string>([...(info.databases ?? []), ...(info.cms ?? [])])
+  for (const provider of ['supabase', 'sanity']) {
+    if (inUse.has(provider)) continue
+    const rel = `stack/${provider}-config.md`
+    const abs = join(opencastleDir, rel)
+    if (!existsSync(abs)) continue
+    await unlink(abs)
+    result.removed.push(rel)
+  }
 }

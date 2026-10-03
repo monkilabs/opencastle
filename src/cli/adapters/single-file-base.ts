@@ -51,6 +51,27 @@ export interface SingleFileAdapterConfig {
    * present on disk now, relative to the project root. Removed on update.
    */
   legacyOutputs?: (_projectRoot: string) => string[]
+  /**
+   * Prompts and workflows become slash commands that list a description.
+   * Claude Code takes it from frontmatter and otherwise from the first line,
+   * which once frontmatter was stripped was the managed-file banner — every
+   * `/oc:` command described as "This file is managed by OpenCastle".
+   */
+  commandDescriptions?: boolean
+}
+
+/** The frontmatter `description`, or the first heading, as a command's one line. */
+function commandDescription(content: string): string | undefined {
+  const fromMeta = parseFrontmatterMeta(content).description
+  if (fromMeta) return fromMeta
+  return stripFrontmatter(content).match(/^#\s+(.+)$/m)?.[1]?.trim()
+}
+
+/** A command file: the body, under a description when the assistant lists one. */
+function commandFile(content: string, withDescription: boolean): string {
+  const body = stripFrontmatter(content) + '\n'
+  const description = withDescription ? commandDescription(content) : undefined
+  return description ? `---\ndescription: ${JSON.stringify(description)}\n---\n\n${body}` : body
 }
 
 /**
@@ -399,7 +420,7 @@ export function createSingleFileAdapter(
         const name = basename(file, '.prompt.md') || basename(file, '.md')
         const destPath = resolve(destPrompts, `${name}.md`)
         const content = await readFile(resolve(promptDir, file), 'utf8')
-        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, commandFile(content, config.commandDescriptions === true), overwrite, results)
       }
     }
 
@@ -414,7 +435,7 @@ export function createSingleFileAdapter(
         const name = basename(file, '.md')
         const destPath = resolve(destWf, `${config.workflowPrefix}${name}.md`)
         const content = await readFile(resolve(wfDir, file), 'utf8')
-        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, commandFile(content, config.commandDescriptions === true), overwrite, results)
       }
     }
 
@@ -595,7 +616,7 @@ function pruneEmptied(root: string, dirs: Set<string>): void {
 }
 
 /** Every file under a directory, relative to it. */
-function filesUnderDir(root: string): string[] {
+export function filesUnderDir(root: string): string[] {
   const out: string[] = []
   const walk = (dir: string, prefix: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {

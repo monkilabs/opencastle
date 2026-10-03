@@ -13,6 +13,7 @@ export const config: PluginConfig = {
     type: 'stdio',
     command: 'npx',
     args: ['@sentry/mcp-server@0.42.0'],
+    envFile: '${workspaceFolder}/.env',
   },
   authType: 'env-token',
   envVars: [
@@ -27,6 +28,18 @@ export const config: PluginConfig = {
   officialDocs: 'https://docs.sentry.io/',
   mcpPackage: '@sentry/mcp-server',
   previousMcpConfigs: [
+    // Without `envFile`, VS Code started the server with no token: the card
+    // said to put SENTRY_ACCESS_TOKEN in .env, and nothing read it from there.
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['@sentry/mcp-server@0.42.0'],
+      },
+      envVars: [
+        { name: 'SENTRY_ACCESS_TOKEN', hint: 'Create at Settings \u2192 Auth Tokens in sentry.io' },
+      ],
+    },
     {
       mcpConfig: {
         type: 'stdio',

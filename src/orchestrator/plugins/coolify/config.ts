@@ -13,6 +13,7 @@ export const config: PluginConfig = {
     type: 'stdio',
     command: 'npx',
     args: ['-y', '@masonator/coolify-mcp@3.7.0'],
+    envFile: '${workspaceFolder}/.env',
   },
   authType: 'env-token',
   envVars: [
@@ -27,6 +28,18 @@ export const config: PluginConfig = {
   officialDocs: 'https://coolify.io/docs',
   mcpPackage: '@masonator/coolify-mcp',
   previousMcpConfigs: [
+    // Without `envFile`, VS Code started the server with neither variable.
+    {
+      mcpConfig: {
+        type: 'stdio',
+        command: 'npx',
+        args: ['-y', '@masonator/coolify-mcp@3.7.0'],
+      },
+      envVars: [
+        { name: 'COOLIFY_ACCESS_TOKEN', hint: 'Generate in Coolify Settings → API' },
+        { name: 'COOLIFY_BASE_URL', hint: 'Your Coolify instance URL (e.g. https://coolify.example.com)' },
+      ],
+    },
     {
       mcpConfig: {
         type: 'stdio',

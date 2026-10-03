@@ -426,7 +426,7 @@ export default async function update({
     )
   } else {
     console.log(
-      `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'reconfigure'} ${c.dim(`v${pkg.version}`)}\n`
+      `\n  🏰 ${c.bold('OpenCastle')} ${dryRun ? 'dry-run' : 'sync'} ${c.dim(`v${pkg.version}`)}\n`
     )
   }
 

@@ -366,7 +366,13 @@ function renderTerminal(report: ReviewReport): void {
 export function lockAtRef(projectRoot: string, ref: string): Lock | null {
   let prefix: string
   try {
-    prefix = execFileSync('git', ['rev-parse', '--show-prefix'], { cwd: projectRoot, encoding: 'utf8' }).trim()
+    // Git's own "fatal: not a git repository" went to the terminal above the
+    // sentence below, which says the same thing in terms of this command.
+    prefix = execFileSync('git', ['rev-parse', '--show-prefix'], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
   } catch {
     throw new Error('this is not a git repository, so there is no base to compare with')
   }

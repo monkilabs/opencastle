@@ -60,12 +60,13 @@ const HELP = `
       --category terminal \\
       --severity medium \\
       --problem "Unquoted variables break on paths with spaces" \\
-      --wrong 'rm -rf \\$DIR/old' \\
-      --correct 'rm -rf "\\$DIR/old"' \\
+      --wrong 'rm -rf $DIR/old' \\
+      --correct 'rm -rf "$DIR/old"' \\
       --cite scripts/clean.sh:12
 
     opencastle lesson verify 2026-10-02-always-quote-shell-variables
-    opencastle lesson archive LES-004 --into .opencastle/skills/git-workflow/SKILL.md
+    opencastle lesson archive 2026-10-02-always-quote-shell-variables \\
+      --into .opencastle/skills/git-workflow/SKILL.md
 `
 
 /** The `.opencastle/` this lesson belongs to: the override, or the nearest one up from here. */
@@ -219,7 +220,7 @@ async function add(dir: string, projectRoot: string, p: Parsed): Promise<void> {
 
 async function verify(dir: string, projectRoot: string, p: Parsed): Promise<void> {
   const [ref] = p.positional
-  if (!ref) fail('verify needs the id of a lesson, e.g. opencastle lesson verify LES-004')
+  if (!ref) fail('verify needs the id of a lesson, e.g. opencastle lesson verify 2026-10-02-always-quote-shell-variables')
   checkCitations(projectRoot, p.cites)
   if (!p.dryRun) reindex(dir)
   const { lessons } = readLessons(dir)
@@ -240,7 +241,7 @@ async function verify(dir: string, projectRoot: string, p: Parsed): Promise<void
 async function archive(dir: string, projectRoot: string, p: Parsed): Promise<void> {
   const [ref] = p.positional
   const into = p.values.get('--into')
-  if (!ref) fail('archive needs the id of a lesson, e.g. opencastle lesson archive LES-004 --into <file>')
+  if (!ref) fail('archive needs the id of a lesson, e.g. opencastle lesson archive 2026-10-02-always-quote-shell-variables --into <file>')
   if (!into) fail('archive needs --into <file>: the skill or instruction file the lesson was merged into')
   const problem = citationProblem(projectRoot, into)
   if (problem) fail(`--into: ${problem}`)

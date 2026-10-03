@@ -529,7 +529,7 @@ const DOCTOR_HELP = `
 
   Validate your OpenCastle setup — checks manifest, customizations, skills,
   logs, MCP configuration, and IDE-specific rules. MCP servers are audited too:
-  a package run without an exact version, one that no longer exists on npm, a
+  a package run without an exact version, one OpenCastle knows is not on npm, a
   remote server Claude Code cannot load, a credential written into the file, or
   a server the team's policy does not allow.
 

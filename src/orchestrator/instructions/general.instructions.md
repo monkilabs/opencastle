@@ -53,7 +53,7 @@ See [ai-optimization.instructions.md](ai-optimization.instructions.md).
 
 ## Project Context
 
-See [project.instructions.md](../.opencastle/project.instructions.md).
+Read `.opencastle/project.instructions.md` — apps, stack, commands, ports — before planning.
 
 ## Git Workflow
 

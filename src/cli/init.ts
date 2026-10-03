@@ -11,6 +11,7 @@ import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
 import type { PluginConfig } from '../orchestrator/plugins/types.js'
 import { detectRepoInfo, mergeStackIntoRepoInfo, formatRepoInfo, buildDetectedToolsSet, detectCurrentIde, detectAssistantConfigs } from './detect.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
+import { filesUnderDir } from './adapters/single-file-base.js'
 import { IDE_LABELS } from './types.js'
 import type { CliContext, CopyResults, IdeAdapter, IdeChoice, TechTool, TeamTool, StackConfig } from './types.js'
 import { bootstrapCustomizations } from './bootstrap.js'
@@ -423,6 +424,32 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
 
   // ── Run adapters for each selected IDE ──────────────────────────
+  // Files already in the directories the chosen targets generate. A target is
+  // often detected *because* of one — `.cursor/rules/team.mdc` is what made
+  // Cursor a target — and the directory is the target's own, so the next `sync`
+  // removes it as output with no source. `init` said nothing about it; the
+  // first anyone heard was `sync` naming a file it had just deleted.
+  const inGeneratedDirs = new Set<string>()
+  for (const ide of ides) {
+    const adapter = await IDE_ADAPTERS[ide]()
+    for (const dir of adapter.getManagedPaths().framework) {
+      if (!dir.endsWith('/')) continue
+      for (const rel of filesUnderDir(resolve(projectRoot, dir))) {
+        // A prompt of yours beside ours in `.github/prompts/` stays; only what a
+        // target claims is at risk.
+        if (adapter.ownsFile && !adapter.ownsFile(`${dir}${rel}`, projectRoot)) continue
+        inGeneratedDirs.add(resolve(projectRoot, dir, rel))
+      }
+    }
+  }
+  const produced = new Set<string>()
+  const removedByReinit: string[] = []
+  // Skipped means "was already there", and with several targets sharing
+  // `.agents/skills/` the second one found the first one's output: a fresh
+  // seven-target install reported "Left 205 existing files untouched".
+  const createdThisRun = new Set<string>()
+  const leftAlone = new Set<string>()
+
   let totalCreated = 0
   let totalSkipped = 0
   const skippedPaths: string[] = []
@@ -470,8 +497,16 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
         continue
       }
       totalCreated += results.created.length
-      totalSkipped += results.skipped.length
-      skippedPaths.push(...results.skipped)
+      for (const p of results.skipped) {
+        if (createdThisRun.has(resolve(projectRoot, p))) continue
+        leftAlone.add(resolve(projectRoot, p))
+        skippedPaths.push(p)
+      }
+      for (const p of results.created) createdThisRun.add(resolve(projectRoot, p))
+      for (const abs of [...results.created, ...results.copied, ...results.skipped, ...(results.visited ?? [])]) {
+        produced.add(resolve(projectRoot, abs))
+      }
+      removedByReinit.push(...(results.deleted ?? []))
       for (const file of results.unreadable ?? []) {
         noteUnreadable(unreadable, file)
       }
@@ -484,14 +519,23 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       tornRoots.push(...(results.tornRoots ?? []))
 
       const managed = adapter.getManagedPaths()
-      allManagedPaths.framework.push(...managed.framework)
-      allManagedPaths.customizable.push(...managed.customizable)
+      // Deduplicated like `merged` below: every target declares `.opencastle/`,
+      // so a four-target manifest listed it four times and the first `sync`
+      // rewrote the manifest to say it once.
+      for (const f of managed.framework) {
+        if (!allManagedPaths.framework.includes(f)) allManagedPaths.framework.push(f)
+      }
+      for (const f of managed.customizable) {
+        if (!allManagedPaths.customizable.includes(f)) allManagedPaths.customizable.push(f)
+      }
       // Deduplicated: opencode and codex share AGENTS.md, so a per-adapter push
       // listed it twice — "Merged into your existing …, AGENTS.md, AGENTS.md".
       for (const m of managed.merged ?? []) {
         if (!allManagedPaths.merged.includes(m)) allManagedPaths.merged.push(m)
       }
     }
+
+    totalSkipped = leftAlone.size
 
     // If all files were skipped (orphaned install — no manifest but files exist).
     //
@@ -546,6 +590,10 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
           // opposite of what happened, on the one path that exists to overwrite.
           totalCreated += results.created.length + results.copied.length
           totalSkipped += results.skipped.length
+          for (const abs of [...results.created, ...results.copied, ...results.skipped, ...(results.visited ?? [])]) {
+            produced.add(resolve(projectRoot, abs))
+          }
+          removedByReinit.push(...(results.deleted ?? []))
           for (const file of results.unreadable ?? []) {
             noteUnreadable(unreadable, file)
           }
@@ -694,6 +742,36 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   if (totalSkipped > 0) {
     const noun = totalSkipped === 1 ? 'file' : 'files'
     console.log(`  ${c.dim('→')} Left ${totalSkipped} existing ${noun} untouched`)
+  }
+
+  // Re-running `init` recompiles with `sync`'s sweep, and said nothing of what
+  // the sweep removed; `sync` names every file.
+  const removed = [...new Set(removedByReinit)].filter((rel) => !existsSync(resolve(projectRoot, rel)))
+  if (removed.length > 0) {
+    console.log(`\n  ${c.yellow('!')} Removed ${removed.length} file(s) no longer produced by any source:\n`)
+    for (const rel of removed.slice(0, 10)) console.log(`     ${c.dim(rel)}`)
+    if (removed.length > 10) console.log(`     ${c.dim(`… and ${removed.length - 10} more`)}`)
+  }
+
+  // Files of the user's in a directory a target now owns. Left in place, so the
+  // assistant keeps reading them today — but `sync` removes them, and
+  // `sync --check` fails on them, so say so now rather than at the deletion.
+  const theirs = [...inGeneratedDirs]
+    .filter((abs) => !produced.has(abs) && existsSync(abs))
+    .map((abs) => relative(projectRoot, abs).split('\\').join('/'))
+  if (theirs.length > 0) {
+    const one = theirs.length === 1
+    const it = one ? 'it' : 'them'
+    console.log(
+      `\n  ${c.yellow('⚠')}  ${theirs.length} ${one ? 'file of yours is' : 'files of yours are'} in a directory OpenCastle generates:\n`,
+    )
+    for (const rel of theirs.slice(0, 10)) console.log(`     ${c.bold(rel)}`)
+    if (theirs.length > 10) console.log(`     ${c.dim(`… and ${theirs.length - 10} more`)}`)
+    console.log(`\n     ${c.dim(`The next sync removes ${it}; until then sync --check reports ${it}.`)}`)
+    console.log(
+      `     ${c.dim(`To keep ${it}, move ${it} into .opencastle/ (instructions/, skills/<name>/ or agents/),`)}`,
+    )
+    console.log(`     ${c.dim('and the next sync compiles it for every assistant.')}`)
   }
 
   // Name the root files that already existed and were merged rather than replaced.
@@ -865,8 +943,13 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
         `${c.cyan(`/${COMMAND_NAMESPACE}:bootstrap-customizations`)} first on an existing codebase`,
     )
   }
+  // Everything, not only `.opencastle/`: the generated config is committed on
+  // purpose (the `.gitignore` block says so, and `doctor` checks it), and this
+  // line was the one place that told people to commit the sources alone.
   step++
-  console.log(`  ${step}. Commit the .opencastle/ folder to your repository`)
+  console.log(`  ${step}. Commit what this wrote, .opencastle/ included — teammates get the same setup on clone`)
+  step++
+  console.log(`  ${step}. ${c.cyan('opencastle ci')} — fail a pull request whose generated config no longer matches`)
 
   // Name the assistants not yet being compiled for — the reason to come back.
   const configured = new Set(ides)
