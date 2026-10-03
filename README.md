@@ -158,6 +158,13 @@ can share it across every repository it owns.
   credential written inline, is a compile error, and `doctor` and
   `sync --check` hold servers someone added to an MCP config by hand to the same
   policy.
+- **Team memory that merges and keeps current.** Agents record lessons with
+  `opencastle lesson`, one file each in `.opencastle/lessons/`, citing the code
+  a lesson is about; `doctor` names a lesson whose code has changed since.
+  `opencastle promote` makes what one person's assistant learned the team's: a
+  personal skill into the team's sources or a baseline, and Claude Code's auto
+  memory for the repository into lessons — in the working tree, for the pull
+  request to review.
 - **A lock you can review.** `sync` writes `.opencastle/lock.json`: which layers
   at which versions, where every skill and instruction came from, which MCP
   servers every assistant can start, and how many tokens load up front.
@@ -198,6 +205,7 @@ opencastle explain                     # what a new teammate's assistant gets, a
 opencastle ci --owners @acme/platform  # CI check and review on every PR; owners for the lock
 opencastle baseline init               # start the organisation's baseline package (an Agent Plugin)
 opencastle plugin check                # check it the way every assistant loads it
+opencastle promote memory              # what your assistant learned here, as lessons for the team
 opencastle fleet ~/src/*               # which repositories run which baseline version
 ```
 
