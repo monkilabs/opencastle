@@ -1,321 +1,150 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, rmSync, existsSync, readFileSync, realpathSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { writeFileSync, readFileSync, chmodSync } from 'node:fs'
 import { join } from 'node:path'
-import { EventEmitter } from 'node:events'
 import type { Task } from '../../convoy/spec-types.js'
+import { installStubCli, type StubCli } from './stub-cli.test-helper.js'
+import { execute, isAvailable, parseCopilotOutput } from './copilot.js'
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const posix = process.platform !== 'win32'
 
-function makeTask(): Task {
+function makeTask(overrides: Partial<Task> = {}): Task {
   return {
-    id: 'test-task',
-    agent: 'developer',
-    prompt: 'Do something',
-    files: [],
-    timeout: '5m',
-    depends_on: [],
-    description: 'test task',
-    max_retries: 0,
-  } as unknown as Task
+    id: 'test-task', agent: 'developer', prompt: 'Do something', files: [], timeout: '5m',
+    depends_on: [], description: 'test task', max_retries: 0, ...overrides,
+  }
 }
 
-function makeMockProc(exitCode = 0, stdoutData = '{"result":"ok"}') {
-  const proc = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter
-    stderr: EventEmitter
-    killed: boolean
-    kill: ReturnType<typeof vi.fn>
-  }
-  proc.stdout = new EventEmitter()
-  proc.stderr = new EventEmitter()
-  proc.killed = false
-  proc.kill = vi.fn()
-  process.nextTick(() => {
-    if (stdoutData) proc.stdout.emit('data', Buffer.from(stdoutData))
-    proc.emit('close', exitCode)
-  })
-  return proc
-}
+const ev = (id: string, type: string, data: Record<string, unknown>) =>
+  JSON.stringify({ id, timestamp: '2026-10-03T11:00:00.000Z', parentId: null, type, data })
 
-// ── SDK mode ──────────────────────────────────────────────────────────────────
+/**
+ * `copilot --output-format json` stdout (Copilot CLI 1.0): session events, one
+ * per line, then the `result` line the CLI writes itself. The JSON writer
+ * drops `assistant.usage` and `session.shutdown`, so the only token figures
+ * left are the output tokens on each assistant message.
+ */
+const STREAM = [
+  ev('e1', 'session.start', {
+    sessionId: '0cb916db-26aa-40f2-86b5-1ba81b225fd2', version: 1, producer: 'copilot-agent',
+    copilotVersion: '1.0.22', startTime: '2026-10-03T11:00:00.000Z', selectedModel: 'claude-sonnet-4.5',
+    context: { cwd: '/work' },
+  }),
+  ev('e2', 'session.tools_updated', { model: 'claude-sonnet-4.5' }),
+  ev('e3', 'user.message', { content: 'Do something' }),
+  ev('e4', 'assistant.turn_start', { turnId: '0' }),
+  ev('e5', 'assistant.message', {
+    messageId: 'm1', content: '', outputTokens: 48, interactionId: 'i1',
+    toolRequests: [{ toolCallId: 'c1', name: 'task', arguments: { prompt: 'look around' } }],
+  }),
+  ev('e6', 'assistant.message', { messageId: 'm2', content: 'Sub-agent notes.', outputTokens: 30, parentToolCallId: 'c1' }),
+  ev('e7', 'tool.execution_complete', { toolCallId: 'c1', success: true }),
+  ev('e8', 'assistant.message', { messageId: 'm3', content: 'Updated src/a.ts to handle empty input.', outputTokens: 212, interactionId: 'i2' }),
+  ev('e9', 'assistant.turn_end', { turnId: '0' }),
+  JSON.stringify({
+    type: 'result', timestamp: '2026-10-03T11:00:09.876Z', sessionId: '0cb916db-26aa-40f2-86b5-1ba81b225fd2', exitCode: 0,
+    usage: { premiumRequests: 1, totalApiDurationMs: 8123, sessionDurationMs: 9876, codeChanges: { linesAdded: 4, linesRemoved: 1, filesModified: ['src/a.ts'] } },
+  }),
+].join('\n')
 
-describe('copilot adapter — SDK mode', () => {
-  let mockCreateSession: ReturnType<typeof vi.fn>
-  let mockSession: {
-    sendAndWait: ReturnType<typeof vi.fn>
-    on: ReturnType<typeof vi.fn>
-    destroy: ReturnType<typeof vi.fn>
-    abort: ReturnType<typeof vi.fn>
-  }
-
-  beforeEach(() => {
-    vi.resetModules()
-    mockSession = {
-      sendAndWait: vi.fn().mockResolvedValue({ data: { content: 'I did the task' } }),
-      on: vi.fn(),
-      destroy: vi.fn().mockResolvedValue(undefined),
-      abort: vi.fn().mockResolvedValue(undefined),
-    }
-    mockCreateSession = vi.fn().mockResolvedValue(mockSession)
-    vi.doMock('@github/copilot-sdk', () => {
-      // Must use a regular function (not arrow) so `new CopilotClient()` works
-      function MockCopilotClient(this: Record<string, unknown>) {
-        this.start = vi.fn().mockResolvedValue(undefined)
-        this.createSession = mockCreateSession
-      }
-      return {
-        CopilotClient: MockCopilotClient,
-        approveAll: vi.fn(),
-      }
-    })
+describe('parseCopilotOutput', () => {
+  it('reads the answer, the model and the output tokens Copilot reported', () => {
+    const parsed = parseCopilotOutput(STREAM)
+    // The last top-level message, not a sub-agent's.
+    expect(parsed.text).toBe('Updated src/a.ts to handle empty input.')
+    expect(parsed.model).toBe('claude-sonnet-4.5')
+    // Every message's output tokens, the sub-agent's included.
+    expect(parsed.completionTokens).toBe(48 + 30 + 212)
+    expect(parsed.resultExitCode).toBe(0)
   })
 
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('passes mcpServers to createSession when provided', async () => {
-    const { execute } = await import('./copilot.js')
-    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
-    await execute(makeTask(), { mcpServers })
-    expect(mockCreateSession).toHaveBeenCalledWith(
-      expect.objectContaining({ mcpServers }),
-    )
-  })
-
-  it('does NOT include mcpServers in createSession when not provided', async () => {
-    const { execute } = await import('./copilot.js')
-    await execute(makeTask(), {})
-    const callArg = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(callArg).not.toHaveProperty('mcpServers')
-  })
-
-  it('does NOT include mcpServers when mcpServers is empty array', async () => {
-    const { execute } = await import('./copilot.js')
-    await execute(makeTask(), { mcpServers: [] })
-    const callArg = mockCreateSession.mock.calls[0]?.[0] as Record<string, unknown>
-    expect(callArg).not.toHaveProperty('mcpServers')
+  it('collects session errors and the exit code the result recorded', () => {
+    const failed = [
+      ev('e1', 'session.error', { errorType: 'authentication', message: 'No authentication information found.' }),
+      JSON.stringify({ type: 'result', timestamp: 't', sessionId: 's', exitCode: 1, usage: { premiumRequests: 0 } }),
+    ].join('\n')
+    const parsed = parseCopilotOutput(failed)
+    expect(parsed.errors).toEqual(['No authentication information found.'])
+    expect(parsed.resultExitCode).toBe(1)
+    expect(parsed.completionTokens).toBeUndefined()
   })
 })
 
-// ── CLI mode ──────────────────────────────────────────────────────────────────
-
-describe('copilot adapter — CLI mode', () => {
-  let tmpDir: string
-  let mockSpawn: ReturnType<typeof vi.fn>
+describe.skipIf(!posix)('copilot adapter — against a stub `copilot`', () => {
+  let stub: StubCli
 
   beforeEach(() => {
-    vi.resetModules()
-    tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'copilot-test-')))
+    stub = installStubCli('copilot')
+    stub.respond(STREAM)
+  })
+  afterEach(() => stub.restore())
 
-    // Make SDK unavailable so the adapter falls through to CLI
-    vi.doMock('@github/copilot-sdk', () => {
-      throw new Error('Module not found: @github/copilot-sdk')
-    })
-
-    mockSpawn = vi.fn().mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, '{"result":"ok"}')
-    })
-    vi.doMock('node:child_process', () => ({ spawn: mockSpawn }))
+  it('is available only when the `copilot` CLI is on PATH — a bundled SDK does not count', async () => {
+    expect(await isAvailable()).toBe(true)
+    stub.restore()
+    stub = installStubCli()
+    expect(await isAvailable()).toBe(false)
   })
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
-    vi.restoreAllMocks()
+  it('sends the prompt on stdin, without -p, and runs in the task directory', async () => {
+    // Copilot's SDK session worked in this process's directory, so tasks edited
+    // the user's checkout; the CLI works where it is started.
+    const task = makeTask()
+    const result = await execute(task, { cwd: stub.work })
+    expect(result.success).toBe(true)
+    expect(result.output).toBe('Updated src/a.ts to handle empty input.')
+    expect(result.model).toBe('claude-sonnet-4.5')
+    expect(result.usage).toEqual({ completion_tokens: 290 })
+    expect(result.costUsd).toBeUndefined()
+    expect(stub.stdin()).toBe(task.prompt)
+    expect(stub.cwd()).toBe(stub.work)
+    const argv = stub.argv()
+    expect(argv).not.toContain('-p')
+    expect(argv).not.toContain(task.prompt)
+    expect(argv).toEqual(expect.arrayContaining(['--output-format', 'json', '--no-ask-user']))
   })
 
-  it('writes mcp.json to cwd with correct format when mcpServers provided', async () => {
-    let capturedContent: string | null = null
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      // mcp.json should exist at this point
-      const mcpPath = join(tmpDir, 'mcp.json')
-      if (existsSync(mcpPath)) {
-        capturedContent = readFileSync(mcpPath, 'utf8')
-      }
-      return makeMockProc(0, '{}')
-    })
+  it('honours the permission mode instead of approving everything', async () => {
+    await execute(makeTask(), { cwd: stub.work })
+    expect(stub.argv()).toContain('--allow-tool=write')
+    expect(stub.argv()).not.toContain('--allow-all')
 
-    const { execute } = await import('./copilot.js')
-    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
+    await execute(makeTask(), { cwd: stub.work, permissionMode: 'plan' })
+    expect(stub.argv()).toEqual(expect.arrayContaining(['--deny-tool=write', '--deny-tool=shell']))
+    expect(stub.argv()).not.toContain('--allow-tool=write')
 
-    expect(capturedContent).not.toBeNull()
-    expect(JSON.parse(capturedContent!)).toEqual({
-      mcpServers: { 'my-mcp': { command: 'node', args: ['server.js'] } },
-    })
+    await execute(makeTask(), { cwd: stub.work, permissionMode: 'bypassPermissions' })
+    expect(stub.argv()).toContain('--allow-all')
   })
 
-  it('cleans up mcp.json after successful execution', async () => {
-    const { execute } = await import('./copilot.js')
-    const mcpServers = [{ name: 'my-mcp', type: 'local', command: 'node', args: ['server.js'] }]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
-    expect(existsSync(join(tmpDir, 'mcp.json'))).toBe(false)
+  it('passes --model only when one is set', async () => {
+    await execute(makeTask(), { cwd: stub.work })
+    expect(stub.argv()).not.toContain('--model')
+    await execute(makeTask(), { cwd: stub.work, model: 'gpt-5.2' })
+    const argv = stub.argv()
+    expect(argv[argv.indexOf('--model') + 1]).toBe('gpt-5.2')
   })
 
-  it('cleans up mcp.json after failed execution (non-zero exit)', async () => {
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(1, '') // non-zero exit
-    })
-    const { execute } = await import('./copilot.js')
-    const mcpServers = [{ name: 'err-mcp', type: 'local', command: 'node', args: [] }]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
-    expect(existsSync(join(tmpDir, 'mcp.json'))).toBe(false)
+  it('lets Copilot load the project\'s MCP config from an untrusted worktree', async () => {
+    const script = join(stub.bin, 'copilot')
+    writeFileSync(script, readFileSync(script, 'utf8').replace('pwd > "$log/cwd"', 'pwd > "$log/cwd"; printf %s "$GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP" > "$log/mcp"'))
+    chmodSync(script, 0o755)
+    await execute(makeTask(), { cwd: stub.work, mcpServers: [{ name: 'x', type: 'stdio', command: 'x' }] })
+    expect(readFileSync(join(stub.log, 'mcp'), 'utf8')).toBe('true')
+    expect(stub.argv().join(' ')).not.toMatch(/mcp/i)
   })
 
-  it('includes --approve-mcps flag when mcp_approve_all is true', async () => {
-    const capturedArgs: string[] = []
-    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      capturedArgs.push(...args)
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./copilot.js')
-    await execute(makeTask(), { mcp_approve_all: true, cwd: tmpDir })
-    expect(capturedArgs).toContain('--approve-mcps')
+  it('fails when the result records a failure', async () => {
+    process.env.STUB_EXIT = '1'
+    stub.respond(ev('e1', 'session.error', { errorType: 'quota', message: 'Quota exceeded' }) + '\n', 'Error: quota')
+    const result = await execute(makeTask(), { cwd: stub.work })
+    expect(result.success).toBe(false)
+    expect(result.output).toContain('Quota exceeded')
   })
 
-  it('does NOT write mcp.json when mcpServers not configured', async () => {
-    const { execute } = await import('./copilot.js')
-    await execute(makeTask(), { cwd: tmpDir })
-    expect(existsSync(join(tmpDir, 'mcp.json'))).toBe(false)
-  })
-
-  it('does NOT add --approve-mcps when mcp_approve_all is not set', async () => {
-    const capturedArgs: string[] = []
-    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      capturedArgs.push(...args)
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./copilot.js')
-    await execute(makeTask(), { cwd: tmpDir })
-    expect(capturedArgs).not.toContain('--approve-mcps')
-  })
-
-  it('does NOT pass --max-turns to the copilot process', async () => {
-    const capturedArgs: string[] = []
-    mockSpawn.mockImplementation((cmd: string, args: string[]) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      capturedArgs.push(...args)
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./copilot.js')
-    await execute(makeTask(), { cwd: tmpDir })
-    expect(capturedArgs).not.toContain('--max-turns')
-  })
-
-  it('maps mcpServers with url and config into mcp.json', async () => {
-    let capturedContent: string | null = null
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      const mcpPath = join(tmpDir, 'mcp.json')
-      if (existsSync(mcpPath)) capturedContent = readFileSync(mcpPath, 'utf8')
-      return makeMockProc(0, '{}')
-    })
-    const { execute } = await import('./copilot.js')
-    const mcpServers = [
-      {
-        name: 'remote-mcp',
-        type: 'remote',
-        url: 'http://localhost:9000',
-        config: { token: 'abc' },
-      },
-    ]
-    await execute(makeTask(), { mcpServers, cwd: tmpDir })
-    expect(capturedContent).not.toBeNull()
-    const parsed = JSON.parse(capturedContent!) as { mcpServers: Record<string, Record<string, unknown>> }
-    expect(parsed.mcpServers['remote-mcp']).toMatchObject({
-      url: 'http://localhost:9000',
-      token: 'abc',
-    })
-  })
-
-  it('extracts result from single-line JSON output', async () => {
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, '{"result":"# My PRD\\n\\nThe actual content"}')
-    })
-    const { execute } = await import('./copilot.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# My PRD\n\nThe actual content')
-  })
-
-  it('extracts result from JSONL output (last line has result)', async () => {
-    const jsonl = [
-      '{"type":"progress","content":"thinking..."}',
-      '{"type":"tool_use","tool":"read_file","args":{}}',
-      '{"type":"result","result":"# My PRD\\n\\nThe actual markdown content","usage":{"input_tokens":500,"output_tokens":1000}}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./copilot.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# My PRD\n\nThe actual markdown content')
-    expect(result.usage?.prompt_tokens).toBe(500)
-    expect(result.usage?.completion_tokens).toBe(1000)
-  })
-
-  it('scans JSONL and finds result line among non-result lines', async () => {
-    const jsonl = [
-      '{"type":"progress","content":"thinking..."}',
-      '{"type":"tool_use","tool":"edit","args":{}}',
-      '{"type":"result","result":"# Final Content","usage":{"input_tokens":100,"output_tokens":200}}',
-      '{"type":"done"}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./copilot.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# Final Content')
-  })
-
-  it('extracts content from Copilot-style assistant.message JSONL', async () => {
-    const jsonl = [
-      '{"type":"session.tools_updated","data":{"model":"claude-sonnet-4.6"}}',
-      '{"type":"user.message","data":{"content":"Generate a PRD"}}',
-      '{"type":"assistant.message","data":{"content":"# My PRD\\n\\nThe generated content","outputTokens":50}}',
-      '{"type":"assistant.turn_end","data":{"turnId":"0"}}',
-      '{"type":"result","sessionId":"abc","exitCode":0,"usage":{"premiumRequests":1}}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./copilot.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# My PRD\n\nThe generated content')
-  })
-
-  it('uses last assistant.message when multiple turns exist', async () => {
-    const jsonl = [
-      '{"type":"assistant.message","data":{"content":"Let me check..."}}',
-      '{"type":"assistant.message","data":{"content":"# Final PRD\\n\\nComplete document"}}',
-      '{"type":"result","sessionId":"abc","exitCode":0}',
-    ].join('\n')
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, jsonl)
-    })
-    const { execute } = await import('./copilot.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('# Final PRD\n\nComplete document')
-  })
-
-  it('falls back to raw output when JSON has no result field', async () => {
-    mockSpawn.mockImplementation((cmd: string) => {
-      if (cmd === 'which') return makeMockProc(0, '')
-      return makeMockProc(0, '{"status":"ok","data":"something"}')
-    })
-    const { execute } = await import('./copilot.js')
-    const result = await execute(makeTask(), { cwd: tmpDir })
-    expect(result.output).toBe('{"status":"ok","data":"something"}')
+  it('times out with success false', async () => {
+    process.env.STUB_SLEEP = '30'
+    const result = await execute(makeTask({ timeout: '300ms' }), { cwd: stub.work })
+    expect(result.success).toBe(false)
+    expect(result._timedOut).toBe(true)
   })
 })

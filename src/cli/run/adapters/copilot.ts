@@ -1,297 +1,128 @@
+import type { Task, ExecuteOptions, ExecuteResult } from '../../convoy/spec-types.js'
+import { commandExists } from '../platform.js'
+import { copilotPermissionArgs } from './permission-modes.js'
+import { runAgent, stopTask, promptOf, interruptedMessage, OUTPUT_LIMIT } from './agent-process.js'
 
-import { spawn } from 'node:child_process'
-import { writeFileSync, unlinkSync } from 'node:fs'
-import { join } from 'node:path'
-import type { CopilotClient as CopilotClientType, CopilotSession, PermissionHandler, SessionConfig } from '@github/copilot-sdk'
-import { parseTimeout } from '../schema.js'
-import type { Task, ExecuteOptions, ExecuteResult, TokenUsage } from '../../convoy/spec-types.js'
+/**
+ * GitHub Copilot CLI, run headless: `copilot --output-format json`.
+ *
+ * This adapter used to prefer the Copilot SDK, which was a dependency of this
+ * package. That made Copilot "available" on every machine, whether or not
+ * anyone had installed or signed in to it, so it was detected ahead of the
+ * runtime the user had actually configured. The SDK also worked in this
+ * process's directory rather than the task's worktree, approved every tool
+ * request whatever the permission mode said, and was handed MCP servers in a
+ * shape it does not accept. It drives the same CLI anyway, so the CLI is used
+ * directly:
+ *
+ * - With stdin and stdout not a terminal and no `-p`, Copilot runs one prompt
+ *   read from stdin and exits.
+ * - It works in, and is confined to, its working directory: the worktree.
+ * - Tool rules come from the permission mode (`copilotPermissionArgs`);
+ *   `--no-ask-user` removes the question tool a headless run cannot answer.
+ * - `--output-format json` (Copilot CLI 1.0 or later) prints session events.
+ *   They name the model and count output tokens per message. Input tokens and
+ *   cost are not in that stream — Copilot bills in premium requests — so they
+ *   are left unset.
+ */
 
-// Adapter name
 export const name = 'copilot'
 
-export function supportsSessionContinuity(): boolean { return true }
-// --- Unified adapter: SDK first, fallback to CLI ---
-let mode: 'sdk' | 'cli' | null = null
+export function supportsSessionContinuity(): boolean { return false }
 
-// SDK check
-async function sdkAvailable(): Promise<boolean> {
-  try {
-    await import('@github/copilot-sdk')
-    return true
-  } catch {
-    return false
-  }
-}
-
-// CLI check
-async function cliAvailable(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const proc = spawn('which', ['copilot'], { stdio: 'pipe' })
-    proc.on('close', (code) => resolve(code === 0))
-    proc.on('error', () => resolve(false))
-  })
-}
-
+/** Available when the `copilot` CLI is on PATH; nothing bundled counts. */
 export async function isAvailable(): Promise<boolean> {
-  if (await sdkAvailable()) {
-    mode = 'sdk'
-    return true
-  }
-  if (await cliAvailable()) {
-    mode = 'cli'
-    return true
-  }
-  return false
+  return commandExists('copilot')
 }
 
-// --- SDK implementation (existing logic) ---
-let clientPromise: Promise<CopilotClientType> | null = null
-let cachedApproveAll: PermissionHandler | null = null
-const activeSessions = new Map<string, CopilotSession>()
-
-async function getClient(): Promise<CopilotClientType> {
-  if (!clientPromise) {
-    clientPromise = (async () => {
-      const { CopilotClient, approveAll } = await import('@github/copilot-sdk')
-      cachedApproveAll = approveAll
-      const client = new CopilotClient({
-        autoStart: false,
-        logLevel: 'error',
-      })
-      await client.start()
-      return client
-    })()
-  }
-  return clientPromise
+export interface ParsedCopilot {
+  /** The last top-level assistant message with any text. */
+  text?: string
+  /** Output tokens, summed over every assistant message, sub-agents' included. */
+  completionTokens?: number
+  model?: string
+  /** The exit code Copilot recorded in its final `result` event. */
+  resultExitCode?: number
+  errors: string[]
 }
 
-async function executeViaSdk(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  // NOTE: The Copilot SDK CopilotClient is a shared singleton. Per-task cwd
-  // isolation requires SDK support for per-session workingDirectory, which is
-  // not yet available. When running in convoy mode with worktrees, prefer
-  // subprocess-based adapters (cli mode) that support options.cwd natively.
-  let prompt = `You are a ${task.agent}. ${task.prompt}`
-  if (task.files && task.files.length > 0) {
-    prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
-  }
-  const client = await getClient()
-  const session = await client.createSession({
-    onPermissionRequest: cachedApproveAll!,
-    systemMessage: {
-      content: [
-        `You are a ${task.agent}.`,
-        'Work autonomously without asking questions.',
-        'Follow all instructions precisely.',
-      ].join(' '),
-    },
-    infiniteSessions: { enabled: false },
-    ...(options.verbose ? { streaming: true } : {}),
-    // mcpServers is forward-compatible: field will be recognised by future SDK versions
-    ...(options.mcpServers?.length ? { mcpServers: options.mcpServers } : {}),
-  } as SessionConfig)
-  activeSessions.set(task.id, session)
-  if (options.verbose) {
-    session.on('assistant.message_delta', (event: { data: { deltaContent: string } }) => {
-      process.stdout.write(event.data.deltaContent)
-    })
-  }
-  try {
-    const timeoutMs = parseTimeout(task.timeout)
-    const response = await session.sendAndWait({ prompt }, timeoutMs)
-    const output = response?.data?.content ?? ''
-    const rawUsage = (response?.data as Record<string, unknown> | undefined)?.usage ?? (response as Record<string, unknown> | undefined)?.usage
-    const u = rawUsage as Record<string, number> | undefined
-    const usageResult = u ? {
-      prompt_tokens: u.prompt_tokens ?? u.promptTokens,
-      completion_tokens: u.completion_tokens ?? u.completionTokens,
-      total_tokens: u.total_tokens ?? u.totalTokens,
-    } : undefined
-    return {
-      success: true,
-      output: output.slice(0, 500_000),
-      exitCode: 0,
-      usage: usageResult,
+/** Read `copilot --output-format json` output: one session event per line, then a `result` line. */
+export function parseCopilotOutput(stdout: string): ParsedCopilot {
+  const parsed: ParsedCopilot = { errors: [] }
+  let completion = 0
+  let sawTokens = false
+  for (const raw of stdout.split('\n')) {
+    const line = raw.trim()
+    if (!line.startsWith('{')) continue
+    let ev: Record<string, unknown>
+    try {
+      ev = JSON.parse(line) as Record<string, unknown>
+    } catch {
+      continue
     }
-  } catch (err: unknown) {
-    return {
-      success: false,
-      output: `Copilot SDK error: ${(err as Error).message}`,
-      exitCode: 1,
-    }
-  } finally {
-    activeSessions.delete(task.id)
-    await session.destroy().catch(() => {})
-  }
-}
-
-function killSdk(task: Task): void {
-  const session = activeSessions.get(task.id)
-  if (session) {
-    session.abort().catch(() => {})
-    session.destroy().catch(() => {})
-    activeSessions.delete(task.id)
-  }
-}
-
-// --- CLI implementation ---
-async function executeViaCli(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  // CLI supports --output-format json and respects cwd
-  let prompt = `You are a ${task.agent}. ${task.prompt}`
-  if (task.files && task.files.length > 0) {
-    prompt += `\n\nOnly modify files under: ${task.files.join(', ')}`
-  }
-  const args = [
-    '-p',
-    prompt,
-    '--output-format',
-    'json',
-  ]
-  const cwd = options?.cwd ?? process.cwd()
-  const mcpJsonPath = join(cwd, 'mcp.json')
-  let wroteJson = false
-  if (options.mcpServers?.length) {
-    const mcpJson: Record<string, Record<string, unknown>> = {}
-    for (const server of options.mcpServers) {
-      const entry: Record<string, unknown> = {}
-      if (server.command) entry.command = server.command
-      if (server.args) entry.args = server.args
-      if (server.url) entry.url = server.url
-      if (server.config) Object.assign(entry, server.config)
-      mcpJson[server.name] = entry
-    }
-    writeFileSync(mcpJsonPath, JSON.stringify({ mcpServers: mcpJson }, null, 2), 'utf8')
-    wroteJson = true
-  }
-  if (options.mcp_approve_all) {
-    args.push('--approve-mcps')
-  }
-  try {
-  return await new Promise<ExecuteResult>((resolve) => {
-    const proc = spawn('copilot', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
-      cwd,
-    })
-    let stdout = ''
-    let stderr = ''
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString()
-      if (options.verbose) {
-        process.stdout.write(chunk)
-      }
-    })
-    proc.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString()
-      if (options.verbose) {
-        process.stderr.write(chunk)
-      }
-    })
-    proc.on('close', (code) => {
-      let textOutput = [stdout, stderr].filter(Boolean).join('\n')
-      let usage: TokenUsage | undefined
-      try {
-        // Try single JSON object first (claude CLI)
-        const parsedJson = JSON.parse(stdout) as Record<string, unknown>
-        if (typeof parsedJson.result === 'string') {
-          textOutput = parsedJson.result
+    const data = (ev.data ?? {}) as Record<string, unknown>
+    switch (ev.type) {
+      case 'session.start':
+        if (typeof data.selectedModel === 'string' && !parsed.model) parsed.model = data.selectedModel
+        break
+      case 'session.tools_updated':
+        // Sent whenever the toolset is rebuilt for a model, so the last one names the model in use.
+        if (typeof data.model === 'string' && data.model) parsed.model = data.model
+        break
+      case 'assistant.message':
+        if (typeof data.outputTokens === 'number') {
+          completion += data.outputTokens
+          sawTokens = true
         }
-        const u = parsedJson?.usage as Record<string, number> | undefined
-        if (u) {
-          const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
-          const completionTokens = (u.output_tokens ?? u.completion_tokens) as number | undefined
-          const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
-          usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
-        }
-      } catch {
-        // Fallback: parse JSONL (one JSON object per line)
-        // Claude CLI uses {"result": "text"}, Copilot CLI uses
-        // {"type":"assistant.message","data":{"content":"text"}} for the AI
-        // response and a separate {"type":"result"} line for session metadata.
-        const lines = stdout.split('\n')
-        let lastAssistantContent: string | undefined
-        for (const rawLine of lines) {
-          const line = rawLine.trim()
-          if (!line) continue
-          try {
-            const parsed = JSON.parse(line) as Record<string, unknown>
-            // Claude-style: result text in the result line
-            if (typeof parsed.result === 'string' && parsed.result) {
-              textOutput = parsed.result
-              const u = parsed?.usage as Record<string, number> | undefined
-              if (u) {
-                const promptTokens = (u.input_tokens ?? u.prompt_tokens) as number | undefined
-                const completionTokens = (u.output_tokens ?? u.completion_tokens) as number | undefined
-                const total = ((promptTokens ?? 0) + (completionTokens ?? 0)) || undefined
-                usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: total }
-              }
-              lastAssistantContent = undefined // prefer explicit result field
-              break
-            }
-            // Copilot-style: AI response in assistant.message events
-            if (parsed.type === 'assistant.message') {
-              const data = parsed.data as Record<string, unknown> | undefined
-              if (data && typeof data.content === 'string') {
-                lastAssistantContent = data.content
-              }
-            }
-          } catch { /* skip non-JSON lines */ }
-        }
-        if (lastAssistantContent !== undefined) {
-          textOutput = lastAssistantContent
-        }
-      }
-      resolve({
-        success: code === 0,
-        output: textOutput.slice(0, 500_000),
-        exitCode: code ?? -1,
-        usage,
-      })
-    })
-    proc.on('error', (err) => {
-      resolve({
-        success: false,
-        output: `Failed to spawn copilot: ${err.message}`,
-        exitCode: -1,
-      })
-    })
-    task._process = proc
-  })
-  } finally {
-    if (wroteJson) {
-      try { unlinkSync(mcpJsonPath) } catch { /* ignore */ }
+        if (typeof data.content === 'string' && data.content.trim() && !data.parentToolCallId) parsed.text = data.content
+        break
+      case 'session.error':
+        if (typeof data.message === 'string') parsed.errors.push(data.message)
+        break
+      case 'result':
+        if (typeof ev.exitCode === 'number') parsed.resultExitCode = ev.exitCode
+        break
     }
   }
+  if (sawTokens) parsed.completionTokens = completion
+  return parsed
 }
 
-function killCli(task: Task): void {
-  if (task._process && !task._process.killed) {
-    task._process.kill('SIGTERM')
-    setTimeout(() => {
-      if (task._process && !task._process.killed) {
-        task._process.kill('SIGKILL')
-      }
-    }, 5000)
-  }
-}
-
-// --- Unified interface ---
 export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
-  if (!mode) await isAvailable()
-  if (mode === 'sdk') return executeViaSdk(task, options)
-  return executeViaCli(task, options)
+  const args = ['--output-format', 'json', '--no-ask-user', '--no-auto-update']
+  if (options.model) args.push('--model', options.model)
+  args.push(...copilotPermissionArgs(options.permissionMode))
+
+  const exit = await runAgent(task, {
+    command: 'copilot',
+    args,
+    input: promptOf(task),
+    cwd: options.cwd ?? process.cwd(),
+    // In prompt mode Copilot loads the workspace's MCP config only from a folder
+    // it already trusts, and a fresh worktree is not one. The project's config
+    // is the one opencastle compiled; load it unless the user said otherwise.
+    ...(process.env.GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP === undefined
+      ? { env: { GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP: 'true' } }
+      : {}),
+    verbose: options.verbose,
+  })
+
+  const parsed = parseCopilotOutput(exit.stdout)
+  const interrupted = interruptedMessage('copilot', task, exit)
+  const success = !interrupted && exit.code === 0 && (parsed.resultExitCode ?? 0) === 0
+  const output = success
+    ? parsed.text ?? exit.stdout
+    : [interrupted, parsed.text, ...parsed.errors, exit.stderr.trim()].filter(Boolean).join('\n')
+  return {
+    success,
+    output: output.slice(0, OUTPUT_LIMIT),
+    exitCode: exit.code,
+    ...(exit.timedOut ? { _timedOut: true } : {}),
+    ...(parsed.completionTokens !== undefined ? { usage: { completion_tokens: parsed.completionTokens } } : {}),
+    ...(parsed.model ? { model: parsed.model } : {}),
+  }
 }
 
 export function kill(task: Task): void {
-  if (mode === 'sdk') killSdk(task)
-  else killCli(task)
-}
-
-export async function cleanup(): Promise<void> {
-  if (clientPromise) {
-    try {
-      const client = await clientPromise
-      await client.stop()
-    } catch { /* ignore */ }
-    clientPromise = null
-  }
+  stopTask(task)
 }
