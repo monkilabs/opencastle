@@ -240,6 +240,22 @@ describe.skipIf(!built)('a baseline package', () => {
     expect(check.out).toContain('points outside the package')
   })
 
+  it('names each problem once, by the path it was given', () => {
+    run(dir, ['baseline', 'init', 'base', '--name', '@acme/base'])
+    writeFileSync(
+      join(dir, 'base', 'mcp.json'),
+      JSON.stringify({ $schema: 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json', mcpServers: { docs: { type: 'streamable-http', url: 'https://docs.acme.example/mcp' } } }),
+    )
+    run(dir, ['plugin', 'build', 'base'])
+    const check = run(dir, ['baseline', 'check', 'base'])
+    // eslint-disable-next-line no-control-regex
+    check.out = check.out.replace(/\x1b\[[0-9;]*m/g, '')
+    expect(check.code).toBe(1)
+    expect(check.out).toContain('✗ base/mcp.json: defines MCP server "docs", which @acme/base does not allow\n    → add it to policy.mcp.allow in @acme/base')
+    expect(check.out).not.toContain('✗ ✗')
+    expect(check.out).not.toContain(dir.replace(/^\//, ''))
+  })
+
   it('fails one that would publish empty', () => {
     run(dir, ['baseline', 'init', 'base', '--name', '@acme/base'])
     const path = join(dir, 'base', 'package.json')

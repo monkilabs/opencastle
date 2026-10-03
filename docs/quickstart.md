@@ -79,8 +79,9 @@ opencastle init --customize
 ```
 
 Pick the extra targets. Each gets that assistant's native format — Cursor's
-`.mdc` rule files with `alwaysApply`, Windsurf's `.md` rules with a `trigger`
-enum, Copilot's `.github/` layout — from the same source.
+`.mdc` rule files with `alwaysApply` and its skills as Agent Skills in
+`.agents/skills/`, Windsurf's `.md` rules with a `trigger` enum, Copilot's
+`.github/` layout — from the same source.
 
 ## 4. Keep it honest in CI
 

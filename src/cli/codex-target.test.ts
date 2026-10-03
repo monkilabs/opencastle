@@ -8,7 +8,7 @@
  * because each compared the project against the same wrong paths.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
@@ -167,6 +167,20 @@ describe.skipIf(!built)('Codex CLI as a target', () => {
     run(project, 'sync', '--yes', '--force')
     expect(readdirSync(join(project, '.agents/skills')).sort()).toEqual(skills)
     run(project, 'sync', '--check')
+  })
+
+  it('explain says whether Codex trusts the project, since it reads config.toml only then', () => {
+    run(project, 'init', '--yes')
+    const codexHome = join(project, '..', `${project.split('/').pop()}-codex-home`)
+    const explain = (): { setup: Array<{ need: string; ok: boolean }> } =>
+      JSON.parse(execFileSync('node', [cli, 'explain', '--json'], { cwd: project, encoding: 'utf8', env: { ...process.env, CODEX_HOME: codexHome } }))
+    try {
+      expect(explain().setup).toContainEqual(expect.objectContaining({ need: 'trust', ok: false }))
+      write(codexHome, { 'config.toml': `[projects.${JSON.stringify(realpathSync(project))}]\ntrust_level = "trusted"\n` })
+      expect(explain().setup).toContainEqual(expect.objectContaining({ need: 'trust', ok: true }))
+    } finally {
+      rmSync(codexHome, { recursive: true, force: true })
+    }
   })
 
   it('remove --all takes our servers out of config.toml and leaves the user’s setup', () => {

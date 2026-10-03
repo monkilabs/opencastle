@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { parse as parseToml } from 'smol-toml'
 import { readManifest } from './manifest.js'
 import { resolveStack, isEnvVarSatisfied } from './stack-config.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars, refuseOlderCli } from './layers.js'
@@ -92,8 +94,39 @@ async function build(pkgRoot: string, projectRoot: string): Promise<ExplainRepor
       setup.push({ server: key, need: 'sign-in', ok: true, how: 'your assistant opens a browser to sign in the first time it starts the server' })
     }
   }
+  // Codex loads a project's `.codex/config.toml` only once the user has
+  // trusted the project, so every server written there waits on that.
+  if (ides.includes('codex') && Object.keys(lock.mcp).length > 0) {
+    setup.push({
+      server: 'Codex CLI',
+      need: 'trust',
+      ok: codexTrusts(projectRoot),
+      how: 'Codex reads .codex/config.toml, and so every MCP server here, only in a project you trust — run codex in this directory and trust it when it asks',
+    })
+  }
   const notes = resolved.issues.filter((i) => i.level === 'warning').map((i) => `${i.where}: ${i.message}`)
   return { targets, lock, setup, notes }
+}
+
+/**
+ * Whether Codex has been told to trust this project: `trust_level = "trusted"`
+ * under `[projects."<path>"]` in its own config, `$CODEX_HOME/config.toml`.
+ */
+export function codexTrusts(projectRoot: string): boolean {
+  const file = join(process.env.CODEX_HOME || join(process.env.HOME || homedir(), '.codex'), 'config.toml')
+  let projects: Record<string, { trust_level?: unknown }>
+  try {
+    projects = ((parseToml(readFileSync(file, 'utf8')) as { projects?: Record<string, { trust_level?: unknown }> }).projects ?? {})
+  } catch {
+    return false
+  }
+  const spellings = new Set([projectRoot])
+  try {
+    spellings.add(realpathSync(projectRoot))
+  } catch {
+    // The path as given is the only spelling there is.
+  }
+  return [...spellings].some((p) => projects[p]?.trust_level === 'trusted')
 }
 
 function render(report: ExplainReport, all: boolean): void {
@@ -191,6 +224,7 @@ function render(report: ExplainReport, all: boolean): void {
   if (report.setup.length === 0) out(`    ${c.green('✓')} Nothing to set up — every server works without a variable or a sign-in.`)
   for (const s of report.setup) {
     if (s.need === 'sign-in') out(`    ${c.cyan('→')} ${s.server}: ${s.how}`)
+    else if (s.need === 'trust') out(`    ${s.ok ? c.green('✓') : c.red('✗')} ${s.ok ? 'Codex trusts this project' : 'Codex does not trust this project yet'} ${c.dim(`— ${s.how}`)}`)
     else out(`    ${s.ok ? c.green('✓') : c.red('✗')} ${s.need} ${c.dim(`— ${s.how}${s.ok ? '' : '; set it in .env or your shell'}`)}`)
   }
   out('')

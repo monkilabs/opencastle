@@ -39,6 +39,14 @@ export interface SingleFileAdapterConfig {
    */
   skillsDir?: string
   /**
+   * Another root file this assistant also reads, and the targets that write
+   * it. With one of them selected the instructions are already in context
+   * through that file, so this one says where they are instead of repeating
+   * them: Antigravity reads `AGENTS.md` and `GEMINI.md` together, and with
+   * Codex or OpenCode also selected it loaded every instruction twice.
+   */
+  alsoReads?: { rootFile: string; writtenBy: IdeChoice[] }
+  /**
    * Output an earlier release wrote outside today's framework directories,
    * present on disk now, relative to the project root. Removed on update.
    */
@@ -48,16 +56,17 @@ export interface SingleFileAdapterConfig {
 /**
  * Creates install/update/getManagedPaths functions from a config object.
  *
- * Both Claude Code and OpenCode share the same structure:
- * 1. A single root .md file with embedded instructions, agent index, and skill index
- * 2. Agent definitions stripped of frontmatter
- * 3. Skills stripped of frontmatter
- * 4. Prompts stripped of frontmatter
- * 5. Workflows stripped of frontmatter
- * 6. Customizations scaffolded once
- * 7. MCP config scaffolded once
+ * Claude Code, OpenCode, Codex CLI and Antigravity share one structure:
+ * 1. A single root .md file — a managed block with the instructions, the agent
+ *    index and the skill index
+ * 2. Agent definitions, frontmatter stripped
+ * 3. Skills as `<name>/SKILL.md` folders with their files, frontmatter kept —
+ *    assistants find a skill by its `name` and `description`
+ * 4. Prompts and workflows, frontmatter stripped
+ * 5. The MCP config, merged into whatever the file already holds
  *
- * The only differences are directory names and file naming conventions.
+ * The differences are directory names, the skills directory, and file naming.
+ * `.opencastle/` is scaffolded by `init`, not by an adapter.
  */
 /**
  * Targets that compile to the same root file, in resolution order.
@@ -72,7 +81,7 @@ export interface SingleFileAdapterConfig {
  */
 const SHARED_ROOT_OWNERS: Record<string, Array<{ ide: string; dotDir: string; skillsDir: string }>> = {
   'AGENTS.md': [
-    { ide: 'opencode', dotDir: '.opencode', skillsDir: '.opencode/skills' },
+    { ide: 'opencode', dotDir: '.opencode', skillsDir: '.agents/skills' },
     { ide: 'codex', dotDir: '.codex', skillsDir: '.agents/skills' },
   ],
 }
@@ -96,7 +105,9 @@ function referenceDir(config: SingleFileAdapterConfig, stack?: StackConfig): {
   const present = owners.filter((o) => selected.has(o.ide))
   if (present.length < 2) return { dir: config.dotDir, skills: skillsDirOf(config), sharedWith: [] }
   const [first, ...rest] = present
-  const elsewhere = rest.flatMap((o) => (o.skillsDir.startsWith(`${o.dotDir}/`) ? [o.dotDir] : [o.dotDir, o.skillsDir]))
+  const elsewhere = rest.flatMap((o) =>
+    o.skillsDir.startsWith(`${o.dotDir}/`) || o.skillsDir === first.skillsDir ? [o.dotDir] : [o.dotDir, o.skillsDir],
+  )
   return { dir: first.dotDir, skills: first.skillsDir, sharedWith: elsewhere }
 }
 
@@ -322,7 +333,14 @@ export function createSingleFileAdapter(
         sections.push(skillLines.join('\n'))
       }
 
-      const merge = await writeManagedBlock(rootPath, sections.join('\n'))
+      const deferTo = config.alsoReads && stack?.ides.some((i) => config.alsoReads!.writtenBy.includes(i)) ? config.alsoReads.rootFile : null
+      const body = deferTo
+        ? '# Project Instructions\n\n' +
+          `This project's instructions, agent index and skill index are in \`${deferTo}\`, which this assistant also reads — ` +
+          'they are not repeated here, so they load once. ' +
+          `Skills are in \`${skillsDirOf(config)}/\`; agent definitions are in \`${config.dotDir}/agents/\`.`
+        : sections.join('\n')
+      const merge = await writeManagedBlock(rootPath, body)
       recordMerge(results, rootPath, merge)
     }
 

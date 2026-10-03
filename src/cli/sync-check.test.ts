@@ -212,10 +212,11 @@ describe('two targets that share a root file', () => {
     }
     const text = readFileSync(join(projectRoot, 'AGENTS.md'), 'utf8')
     expect(text).toContain('shared by more than one assistant')
-    expect(text).toContain('.opencode/skills/')
-    expect(text).toContain('`.codex/`, `.agents/skills/`')
-    // Both assistants still get their own files.
-    expect(existsSync(join(projectRoot, '.opencode', 'skills'))).toBe(true)
+    expect(text).toContain('Skills are in `.agents/skills/`')
+    expect(text).toContain('also installed under `.codex/`.')
+    // Each keeps its own agents; both read the one skills directory.
+    expect(existsSync(join(projectRoot, '.opencode', 'agents'))).toBe(true)
+    expect(existsSync(join(projectRoot, '.codex', 'agents'))).toBe(true)
     expect(existsSync(join(projectRoot, '.agents', 'skills'))).toBe(true)
   })
 })

@@ -96,13 +96,24 @@ function transformMcpForIde(
     case 'windsurf':
     case 'antigravity': {
       // mcpServers format — no 'type' field
+      //
+      // Antigravity expands no variables in its MCP config: a `${NAME}` reaches
+      // the server as those characters. An entry that only forwards a variable
+      // under its own name therefore replaced the value the server would have
+      // inherited with literal text; it is left out, and the server reads the
+      // environment Antigravity was started in. Its MCP docs also require
+      // `serverUrl` for a remote server and call `url` a legacy field.
+      const antigravity = ide === 'antigravity' && !options.legacy;
       const mcpServers: Record<string, unknown> = {};
       for (const [name, server] of Object.entries(servers)) {
         if (server.type === 'stdio') {
+          const env = antigravity && server.env
+            ? Object.fromEntries(Object.entries(server.env).filter(([k, v]) => wholeReference(v) !== k))
+            : server.env;
           mcpServers[name] = {
             command: server.command,
             args: server.args,
-            ...(server.env && { env: server.env }),
+            ...(env && Object.keys(env).length > 0 && { env }),
           };
         } else if (server.type === 'http') {
           // Strip VS Code ${input:...} placeholders for non-VS Code IDEs
@@ -115,7 +126,11 @@ function transformMcpForIde(
           // other targets in this group take the bare `url`.
           const headers = server.headers && { headers: server.headers };
           mcpServers[name] =
-            ide === 'claude-code' && !options.legacy ? { type: 'http', url, ...headers } : { url, ...headers };
+            ide === 'claude-code' && !options.legacy
+              ? { type: 'http', url, ...headers }
+              : antigravity
+                ? { serverUrl: url, ...headers }
+                : { url, ...headers };
         }
       }
       return { mcpServers };
@@ -594,7 +609,7 @@ export function getMcpConfigRelPath(ide: IdeChoice): string {
     case 'opencode':
       return 'opencode.json';
     case 'windsurf':
-      return '.windsurf/mcp.json';
+      return '.devin/mcp_config.json';
     case 'codex':
       return '.codex/config.toml';
     case 'antigravity':
@@ -718,6 +733,10 @@ export async function stripManagedMcpServers(
  */
 export const LEGACY_MCP_CONFIGS: Partial<Record<IdeChoice, string>> = {
   codex: '.codex/mcp.json',
+  // Windsurf, now Devin Desktop, never read a project `.windsurf/mcp.json`:
+  // Cascade reads one global file, and the default Devin Local agent reads
+  // `.devin/mcp_config.json`.
+  windsurf: '.windsurf/mcp.json',
 };
 
 /**

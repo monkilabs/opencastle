@@ -1,7 +1,8 @@
-import { resolve, join, basename } from 'node:path'
+import { resolve, join, basename, dirname } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rename } from 'node:fs/promises'
-import { existsSync, readdirSync, realpathSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync, rmdirSync } from 'node:fs'
 import { withSource, type CompileSource } from '../layers.js'
+import { copyDir, mergeCopyResults } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { splitFrontmatter, parseFrontmatterString } from './frontmatter.js'
@@ -14,7 +15,7 @@ import { writeManagedBlock, recordMerge } from '../managed-block.js'
  *   copilot-instructions.md → <rootRulesFile>
  *   instructions/*.md       → <configDir>/rules/*<ruleExt>          (always applies)
  *   agents/*.agent.md       → <configDir>/rules/agents/*<ruleExt>
- *   skills/{star}/SKILL.md  → <configDir>/rules/skills/*<ruleExt>
+ *   skills/{star}/SKILL.md  → <skillsDir>/<name>/SKILL.md, as Agent Skills
  *   agent-workflows/*.md    → <configDir>/rules/agent-workflows/*<ruleExt>
  *   prompts/*.prompt.md     → <configDir>/rules/prompts/*<ruleExt>
  *
@@ -50,6 +51,17 @@ export interface RulesDirConfig {
   ruleExt: string
   /** Renders the YAML frontmatter lines (without the `---` fences). */
   renderFrontmatter(scope: RuleScope): string[]
+  /**
+   * Where the IDE reads Agent Skills, relative to the project root.
+   *
+   * Cursor and Windsurf both read `SKILL.md` folders natively now. Flattened
+   * into rules, as every release before this one did, a skill lost its scripts
+   * and assets, could not be invoked by name, and was matched on its
+   * description as a rule instead of loaded as a skill.
+   */
+  skillsDir: string
+  /** The project MCP config, when it is not `<configDir>/mcp.json`. */
+  mcpConfigPath?: string
 }
 
 export interface RulesDirAdapter {
@@ -96,12 +108,13 @@ async function reconcileCase(onDisk: string, visited: Set<string>): Promise<bool
 export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   const { ideId, ideLabel, rootRulesFile, configDir, ruleExt, renderFrontmatter } = config
   const rulesPrefix = `${configDir}/rules`
-  const mcpPath = `${configDir}/mcp.json`
+  const mcpPath = config.mcpConfigPath ?? `${configDir}/mcp.json`
 
   const rootIntro = [
     '# Project Instructions',
     '',
-    `All conventions, architecture, and project context live in \`${rulesPrefix}/\`. Read those files before making changes.`,
+    `All conventions, architecture, and project context live in \`${rulesPrefix}/\`. Read those files before making changes. ` +
+      `Skills are in \`${config.skillsDir}/\` — load one when a task matches its description.`,
     '',
   ].join('\n')
 
@@ -115,21 +128,11 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   interface ConvertFileOptions {
     alwaysApply?: boolean
     descriptionFallback?: string
-    /**
-     * Rewrites the body before the rule is assembled.
-     *
-     * A skill's siblings land at `skills/<skill>/<NAME><ruleExt>` while the skill
-     * itself is `skills/<skill><ruleExt>`, so a pointer the source writes as
-     * `REFERENCE.md` is wrong twice over here: wrong directory and wrong
-     * extension. Fourteen skills point at a sibling this way, and on Cursor and
-     * Windsurf every one of those pointers led nowhere.
-     */
-    rewriteBody?: (_body: string) => string
   }
 
   async function convertFile(
     srcPath: string,
-    { alwaysApply = false, descriptionFallback = '', rewriteBody }: ConvertFileOptions = {},
+    { alwaysApply = false, descriptionFallback = '' }: ConvertFileOptions = {},
   ): Promise<string> {
     const content = await readFile(srcPath, 'utf8')
     const { frontmatter, body } = splitFrontmatter(content)
@@ -147,7 +150,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       applyTo: meta['applyTo'],
       alwaysApply,
       tier: meta['tier'],
-    }), '---', '', (rewriteBody ? rewriteBody(body) : body).trim(), '']
+    }), '---', '', body.trim(), '']
     return lines.join('\n')
   }
 
@@ -230,74 +233,15 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     }
   }
 
-  /**
-   * Points a skill's sibling references at where this adapter actually puts them.
-   *
-   * `REFERENCE.md` and `./REFERENCE.md` both become `<skill>/REFERENCE<ruleExt>`,
-   * which covers the markdown links most skills use and the bare prose mentions
-   * a few of them use instead.
-   */
-  function retargetSiblings(body: string, skill: string, extras: string[]): string {
-    let out = body
-    for (const extra of extras) {
-      const target = `${skill}/${ruleName(extra)}`
-      // Escaped because sibling names carry dots, and one carries two
-      // (`panel-report.template.md`), each of which would otherwise match any
-      // character and retarget text that is not a path.
-      const escaped = extra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      out = out.replace(new RegExp(`(?<![\\w/-])(?:\\./)?${escaped}(?![\\w-])`, 'g'), target)
-    }
-    return out
-  }
-
-  async function convertSkills(
-    srcRoot: string,
-    destDir: string,
-    results: CopyResults,
-    overwrite = false,
-    excludedSkills?: Set<string>,
-  ): Promise<void> {
+  /** Skills as Agent Skills: each `<name>/` folder, every file in it, frontmatter kept. */
+  async function copySkills(srcRoot: string, projectRoot: string, results: CopyResults, overwrite: boolean): Promise<void> {
     const skillsDir = resolve(srcRoot, 'skills')
     if (!existsSync(skillsDir)) return
-
-    await mkdir(destDir, { recursive: true })
-
+    const dest = resolve(projectRoot, config.skillsDir)
+    await mkdir(dest, { recursive: true })
     for (const entry of await readdir(skillsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue
-      if (excludedSkills?.has(entry.name)) continue
-      const skillFile = resolve(skillsDir, entry.name, 'SKILL.md')
-      if (!existsSync(skillFile)) continue
-
-      // Extra files in the skill directory (e.g. templates). Resolved before the
-      // skill is written, because the skill's own pointers at them have to be
-      // rewritten to where they actually land.
-      const files = await readdir(resolve(skillsDir, entry.name))
-      const extras = files.filter((f) => f !== 'SKILL.md' && f.endsWith('.md'))
-
-      await writeConverted(
-        skillFile,
-        resolve(destDir, `${entry.name}${ruleExt}`),
-        {
-          descriptionFallback: `Skill: ${entry.name}`,
-          rewriteBody: (body) => retargetSiblings(body, entry.name, extras),
-        },
-        results,
-        overwrite,
-      )
-
-      if (extras.length > 0) {
-        const subDest = resolve(destDir, entry.name)
-        await mkdir(subDest, { recursive: true })
-        for (const file of extras) {
-          await writeConverted(
-            resolve(skillsDir, entry.name, file),
-            resolve(subDest, ruleName(file)),
-            { descriptionFallback: `${entry.name}: ${basename(file, '.md')}` },
-            results,
-            overwrite,
-          )
-        }
-      }
+      if (!entry.isDirectory() || !existsSync(resolve(skillsDir, entry.name, 'SKILL.md'))) continue
+      mergeCopyResults(results, await copyDir(resolve(skillsDir, entry.name), resolve(dest, entry.name), { overwrite }))
     }
   }
 
@@ -336,7 +280,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       descriptionPrefix: 'Agent: ',
       removeExt: '.agent.md',
     })
-    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, false)
+    await copySkills(srcRoot, projectRoot, results, false)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
       descriptionPrefix: 'Workflow: ',
       excludeFiles: new Set(['README.md']),
@@ -380,10 +324,12 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // Note what is here, so the sweep below can name what it removes. A file
     // disappearing with no line of output is not a warning the user saw.
     const beforeSweep = new Map<string, string>()
-    if (existsSync(rulesRoot)) {
-      for (const rel of filesUnderDir(rulesRoot)) {
-        beforeSweep.set(resolve(rulesRoot, rel), `${configDir}/rules/${rel}`)
-      }
+    for (const [root, label] of [
+      [rulesRoot, `${configDir}/rules`],
+      [resolve(projectRoot, config.skillsDir), config.skillsDir],
+    ]) {
+      if (!existsSync(root)) continue
+      for (const rel of filesUnderDir(root)) beforeSweep.set(resolve(root, rel), `${label}/${rel}`)
     }
 
     await convertDir(srcRoot, 'instructions', rulesRoot, results, {
@@ -395,7 +341,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       removeExt: '.agent.md',
       overwrite: true,
     })
-    await convertSkills(srcRoot, resolve(rulesRoot, 'skills'), results, true)
+    await copySkills(srcRoot, projectRoot, results, true)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
       descriptionPrefix: 'Workflow: ',
       overwrite: true,
@@ -417,10 +363,25 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     // reported as a stray first and removed here. That is what makes
     // `sync --check` clearable.
     const visited = new Set(results.visited ?? [])
+    const emptied = new Set<string>()
     for (const [abs, rel] of beforeSweep) {
       if (await reconcileCase(abs, visited)) continue
       await unlink(abs)
       ;(results.deleted ??= []).push(rel)
+      emptied.add(dirname(abs))
+    }
+    // Folders this sweep emptied — a skill moved out of `rules/skills/`, or one
+    // with no source left — go too; the roots themselves stay.
+    const roots = [rulesRoot, resolve(projectRoot, config.skillsDir)]
+    for (const start of [...emptied].sort((a, b) => b.length - a.length)) {
+      for (let dir = start; !roots.includes(dir) && roots.some((r) => dir.startsWith(r)); dir = dirname(dir)) {
+        try {
+          if (readdirSync(dir).length > 0) break
+          rmdirSync(dir)
+        } catch {
+          break
+        }
+      }
     }
 
     // Customizations are NEVER overwritten.
@@ -438,7 +399,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       // `.cursor/rules/team-conventions.mdc` and reported "all clear" moments
       // before `sync` removed it. This is Cursor's documented place for project
       // rules, so that file is one people really do write.
-      framework: [`${rulesPrefix}/`],
+      framework: [`${rulesPrefix}/`, `${config.skillsDir}/`],
       customizable: ['.opencastle/', mcpPath],
     }
   }
@@ -448,7 +409,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       { label: `${ideLabel} rules file`, path: rootRulesFile, type: 'file' },
       { label: 'Instruction rules', path: `${rulesPrefix}/`, type: 'dir', countContents: true, countFilter: ruleExt },
       { label: 'Agent rules', path: `${rulesPrefix}/agents/`, type: 'dir', countContents: true, countFilter: ruleExt },
-      { label: 'Skill rules', path: `${rulesPrefix}/skills/`, type: 'dir', countContents: true, countFilter: ruleExt },
+      { label: 'Skills directory', path: `${config.skillsDir}/`, type: 'dir', countContents: true },
       { label: 'Workflow rules', path: `${rulesPrefix}/agent-workflows/`, type: 'dir', countContents: true },
       { label: 'Prompt rules', path: `${rulesPrefix}/prompts/`, type: 'dir', countContents: true },
     ]

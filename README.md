@@ -221,11 +221,11 @@ still open: **[docs/teams.md](docs/teams.md)**.
 |-----------|-------------|
 | **Claude Code** | `CLAUDE.md` + `.claude/` — commands as `/oc:<name>` |
 | **GitHub Copilot** | `.github/` — agents, skills, prompts as `/oc:<name>` |
-| **Cursor** | `.cursorrules` + `.cursor/rules/*.mdc` |
-| **Windsurf** | `.windsurfrules` + `.windsurf/rules/*.md` |
-| **OpenCode** | `AGENTS.md` + `.opencode/` + `opencode.json` |
+| **Cursor** | `.cursorrules` + `.cursor/rules/*.mdc` + `.agents/skills/` |
+| **Windsurf** (Devin Desktop) | `.windsurfrules` + `.windsurf/rules/*.md` + `.agents/skills/` + `.devin/mcp_config.json` |
+| **OpenCode** | `AGENTS.md` + `.agents/skills/` + `.opencode/` + `opencode.json` |
 | **Codex CLI** | `AGENTS.md` + `.agents/skills/` + `.codex/` (MCP in `config.toml`) |
-| **Antigravity** | `GEMINI.md` + `.agents/` |
+| **Antigravity** | `GEMINI.md` + `.agents/` (skills in `.agents/skills/`) |
 
 Each target gets that assistant's native format, including its own frontmatter
 dialect for how a rule is scoped. MCP servers are configured per assistant too,

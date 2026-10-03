@@ -187,7 +187,7 @@ const pages = [
                     <p class="quickstart__desc">Open VS Code and reload the window (<code class="quickstart__code">Cmd+Shift+P</code> &rarr; <em>&ldquo;Developer: Reload Window&rdquo;</em>). This loads the OpenCastle agents, skills, and instructions.</p>
                   </div>
                   <div class="quickstart__panel" data-ide="cursor" role="tabpanel" hidden>
-                    <p class="quickstart__desc">Open Cursor &mdash; the rules will be loaded automatically from <code class="quickstart__code">.cursor/rules/</code>.</p>
+                    <p class="quickstart__desc">Open Cursor &mdash; the rules load from <code class="quickstart__code">.cursor/rules/</code>, and skills from <code class="quickstart__code">.agents/skills/</code> when a task matches or you type <code class="quickstart__code">/</code> and the skill's name.</p>
                   </div>
                   <div class="quickstart__panel" data-ide="claude-code" role="tabpanel" hidden>
                     <p class="quickstart__desc">Run <code class="quickstart__code">claude</code> in your terminal from the project root. CLAUDE.md will be auto-loaded.</p>
@@ -196,7 +196,7 @@ const pages = [
                     <p class="quickstart__desc">Run <code class="quickstart__code">opencode</code> in your terminal from the project root. AGENTS.md will be auto-loaded.</p>
                   </div>
                   <div class="quickstart__panel" data-ide="windsurf" role="tabpanel" hidden>
-                    <p class="quickstart__desc">Open Windsurf &mdash; the rules will be loaded automatically from <code class="quickstart__code">.windsurf/rules/</code>.</p>
+                    <p class="quickstart__desc">Open Windsurf (Devin Desktop) &mdash; rules load from <code class="quickstart__code">.windsurf/rules/</code>, skills from <code class="quickstart__code">.agents/skills/</code>, and the Devin Local agent starts the MCP servers in <code class="quickstart__code">.devin/mcp_config.json</code>.</p>
                   </div>
                   <div class="quickstart__panel" data-ide="codex" role="tabpanel" hidden>
                     <p class="quickstart__desc">Run <code class="quickstart__code">codex</code> in your terminal from the project root and trust the project when it asks. AGENTS.md is loaded, skills come from <code class="quickstart__code">.agents/skills/</code> and MCP servers from <code class="quickstart__code">.codex/config.toml</code>.</p>

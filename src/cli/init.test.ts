@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { existsSync } from 'node:fs'
@@ -660,24 +660,28 @@ describe('Cursor adapter install', () => {
     expect(agents).toContain('content-engineer.mdc')
   })
 
-  it('converts skills to .mdc in skills/ subdirectory', async () => {
+  it('writes skills as Agent Skills in .agents/skills/, which Cursor reads', async () => {
     const adapter = await IDE_ADAPTERS['cursor']()
     await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
 
-    const skillsDir = join(tempDir, '.cursor', 'rules', 'skills')
+    const skillsDir = join(tempDir, '.agents', 'skills')
     const skills = await readdir(skillsDir)
 
     // Core skills should be present
-    expect(skills).toContain('self-improvement.mdc')
-    expect(skills).toContain('testing-workflow.mdc')
+    expect(skills).toContain('self-improvement')
+    expect(skills).toContain('testing-workflow')
+    expect(existsSync(join(skillsDir, 'testing-workflow', 'SKILL.md'))).toBe(true)
 
-    // Selected plugin skills as .mdc
-    expect(skills).toContain('sanity-cms.mdc')
-    expect(skills).toContain('linear-task-management.mdc')
+    // Selected plugin skills
+    expect(skills).toContain('sanity-cms')
+    expect(skills).toContain('linear-task-management')
 
     // Unselected plugin skills should not be present
-    expect(skills).not.toContain('supabase-database.mdc')
-    expect(skills).not.toContain('slack-notifications.mdc')
+    expect(skills).not.toContain('supabase-database')
+    expect(skills).not.toContain('slack-notifications')
+
+    // Not as rules any more
+    expect(existsSync(join(tempDir, '.cursor', 'rules', 'skills'))).toBe(false)
   })
 
   it('generates Cursor MCP config with mcpServers format', async () => {
@@ -915,8 +919,18 @@ describe('OpenCode adapter install', () => {
 
     const content = await readFile(join(tempDir, 'AGENTS.md'), 'utf8')
     expect(content).toContain('# Project Instructions')
-    expect(content).toContain('.opencode/skills/')
+    expect(content).toContain('.agents/skills/')
     expect(content).toContain('.opencode/agents/')
+  })
+
+  it('removes the .opencode/skills/ an earlier release wrote', async () => {
+    const adapter = await IDE_ADAPTERS['opencode']()
+    await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
+    await mkdir(join(tempDir, '.opencode', 'skills', 'testing-workflow'), { recursive: true })
+    await writeFile(join(tempDir, '.opencode', 'skills', 'testing-workflow', 'SKILL.md'), 'old')
+    const result = await adapter.update(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
+    expect(existsSync(join(tempDir, '.opencode', 'skills'))).toBe(false)
+    expect(result.deleted).toContain('.opencode/skills/')
   })
 
   it('creates files in .opencode/ directory structure', async () => {
@@ -924,7 +938,8 @@ describe('OpenCode adapter install', () => {
     await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
 
     expect(existsSync(join(tempDir, '.opencode', 'agents'))).toBe(true)
-    expect(existsSync(join(tempDir, '.opencode', 'skills'))).toBe(true)
+    expect(existsSync(join(tempDir, '.agents', 'skills', 'sanity-cms', 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(tempDir, '.opencode', 'skills'))).toBe(false)
     expect(existsSync(join(tempDir, '.opencode', 'prompts'))).toBe(true)
     expect(existsSync(join(tempDir, '.opencode', 'workflows'))).toBe(true)
   })
@@ -977,7 +992,7 @@ describe('OpenCode adapter install', () => {
     expect(paths.merged).toContain('AGENTS.md')
     expect(paths.framework).not.toContain('AGENTS.md')
     expect(paths.framework).toContain('.opencode/agents/')
-    expect(paths.framework).toContain('.opencode/skills/')
+    expect(paths.framework).toContain('.agents/skills/')
     expect(paths.framework).toContain('.opencode/prompts/')
     expect(paths.framework).toContain('.opencode/workflows/')
 
@@ -1047,21 +1062,18 @@ describe('Windsurf adapter install', () => {
     expect(files.length).toBeGreaterThan(0)
   })
 
-  it('creates skill rules in .windsurf/rules/skills/', async () => {
+  it('writes skills as Agent Skills in .agents/skills/, which Devin Desktop reads', async () => {
     const adapter = await IDE_ADAPTERS['windsurf']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
-    const skillsDir = join(tmpDir, '.windsurf', 'rules', 'skills')
-    expect(existsSync(skillsDir)).toBe(true)
-    const files = (await readdir(skillsDir)).filter(f => f.endsWith('.md'))
-    expect(files.length).toBeGreaterThan(0)
+    expect(existsSync(join(tmpDir, '.agents', 'skills', 'sanity-cms', 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(tmpDir, '.windsurf', 'rules', 'skills'))).toBe(false)
   })
 
-  it('generates Windsurf MCP config with mcpServers format', async () => {
+  it('writes MCP servers to .devin/mcp_config.json, the project file Devin Local reads', async () => {
     const adapter = await IDE_ADAPTERS['windsurf']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
-    const mcpPath = join(tmpDir, '.windsurf', 'mcp.json')
-    expect(existsSync(mcpPath)).toBe(true)
-    const mcp = await readJson(mcpPath)
+    expect(existsSync(join(tmpDir, '.windsurf', 'mcp.json'))).toBe(false)
+    const mcp = await readJson(join(tmpDir, '.devin', 'mcp_config.json'))
     expect(mcp).toHaveProperty('mcpServers')
   })
 
@@ -1071,7 +1083,8 @@ describe('Windsurf adapter install', () => {
     expect(paths.merged).toContain('.windsurfrules')
     expect(paths.framework).not.toContain('.windsurfrules')
     expect(paths.framework.some(p => p.includes('.windsurf/rules/'))).toBe(true)
-    expect(paths.customizable).toContain('.windsurf/mcp.json')
+    expect(paths.customizable).toContain('.devin/mcp_config.json')
+    expect(paths.framework).toContain('.agents/skills/')
   })
 })
 
@@ -1146,6 +1159,20 @@ describe('Antigravity adapter install', () => {
     const content = await readFile(join(tmpDir, 'GEMINI.md'), 'utf8')
     expect(content).toContain('Project Instructions')
     expect(content).toContain('.agents/')
+  })
+
+  it('points GEMINI.md at AGENTS.md when Codex or OpenCode writes it, so instructions load once', async () => {
+    const both: StackConfig = { ...STACK_SANITY_LINEAR, ides: ['antigravity', 'codex'] }
+    for (const ide of ['antigravity', 'codex'] as const) await (await IDE_ADAPTERS[ide]()).install(PKG_ROOT, tmpDir, both)
+    const gemini = await readFile(join(tmpDir, 'GEMINI.md'), 'utf8')
+    expect(gemini).toContain('are in `AGENTS.md`, which this assistant also reads')
+    expect(gemini).not.toContain('## Available Skills')
+    expect(await readFile(join(tmpDir, 'AGENTS.md'), 'utf8')).toContain('## Available Skills')
+
+    // Alone, it carries everything itself.
+    await rm(join(tmpDir, 'GEMINI.md'))
+    await (await IDE_ADAPTERS['antigravity']()).install(PKG_ROOT, tmpDir, { ...both, ides: ['antigravity'] })
+    expect(await readFile(join(tmpDir, 'GEMINI.md'), 'utf8')).toContain('## Available Skills')
   })
 
   it('creates files in .agents/ directory structure', async () => {

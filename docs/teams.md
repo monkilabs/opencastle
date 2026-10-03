@@ -66,25 +66,41 @@ shipped is on the website; this is the record of decisions and gaps.
 | **`opencastle plugin`**: `check` loads a plugin as a conformant client must (closed manifest, Agent Skills names, MCP server variants, containment); `build` writes Claude Code's `.claude-plugin/plugin.json` and `.mcp.json` from the portable files; `index` writes the marketplace files Claude Code and Copilot CLI, Cursor and Codex read | The standard leaves Claude Code's manifest and each marketplace format to the client, which is three copies of one fact kept by hand — compiled and checked instead, like everything else |
 | Each integration is an Agent Plugin directory, checked against the spec in CI, and its skill compiles under the skill's own name (`supabase-database/`, not `supabase/`) | An assistant that follows the Agent Skills spec skips a skill whose name does not match its directory — every integration skill was one. An `exclude` naming the old directory still works, with a warning |
 | **`opencastle promote`**: `skill` copies a skill from a person's own skill directories (`~/.claude/skills`, `~/.agents/skills`, …) into `.opencastle/skills/` or, with `--to`, a baseline — checked against the Agent Skills spec and for credentials first. `memory` writes Claude Code's auto memory for the repository (`feedback` and `project` memories) as lessons, leaving out memories about the person, credentials and ones already promoted, and writing the home directory as `~` | Knowledge starts on one laptop: Claude Code's auto memory is machine-local by design, and a personal skill reaches one assistant. Promotion is the step from personal to team to organisation — Productboard's Spark draws the same line between personal and workspace skills — and the pull request that commits it is the review |
+| **Cursor and Windsurf get Agent Skills**, not rules: skills go to `.agents/skills/`, which both read natively, with their scripts and other files — as do OpenCode's, which used `.opencode/skills/`. `sync` removes what an earlier release wrote | Flattened into rules, a skill lost every non-Markdown file, could not be invoked by name, and was matched like a rule. Cursor's own `/migrate-to-skills` converts exactly those rules |
+| **Windsurf, now Devin Desktop**: MCP servers go to `.devin/mcp_config.json`, the project file its default agent (Devin Local) reads; `sync` takes our servers out of `.windsurf/mcp.json` | Nothing read `.windsurf/mcp.json` — the legacy Cascade agent reads one global file — so no integration or team server reached Windsurf |
+| **Antigravity**: remote servers as `serverUrl`, the field its MCP docs require; an `env` entry that only forwards `${NAME}` left out | Antigravity expands no variables, so the forwarded `${NAME}` replaced the value the server would have inherited with literal text. `doctor` names any other reference |
+| `explain` says whether Codex trusts the project, reading Codex's own config | Codex loads `.codex/config.toml` — every server written for it — only in a trusted project |
+| With Codex or OpenCode also selected, Antigravity's `GEMINI.md` points to `AGENTS.md` instead of repeating it | Antigravity reads both files, cumulatively, so it loaded every instruction and both indexes twice — about 5,000 tokens before each task in a stock project |
 
 ## Next, in order of leverage
 
-### 1. Team servers that reach Windsurf
+### 1. Instructions loaded once per assistant
 
-OpenCastle writes `.windsurf/mcp.json` for Windsurf, whose MCP config is
-documented as one global file in the user's home directory. Until it is
-compiled to where Windsurf reads it — or `explain` says what to add to the
-global file — a team server may not reach Windsurf at all. (Codex, the other
-assistant this used to name, now gets `.codex/config.toml`.)
+Antigravity documents that it reads `AGENTS.md` and `GEMINI.md` together, so
+with Codex or OpenCode also selected it loaded every instruction twice;
+`GEMINI.md` now points to `AGENTS.md` in that case (see Shipped). VS Code,
+Cursor and Devin Desktop also support `AGENTS.md`; whether each reads it beside
+its own root file by default — and so loads the same instructions twice when
+both exist — needs checking against each one's docs before their root files
+get the same treatment.
 
-### 2. VS Code without a prompt per variable
+### 2. VS Code's newer formats
+
+VS Code now labels `.vscode/mcp.json` deprecated in favour of a portable
+`.mcp.json` (`mcpServers`, `${VAR}`), and its Agent Host drops any server that
+uses `${input:…}` and does not load prompt files. Moving Copilot's servers to
+`.mcp.json` means sharing that file with Claude Code, whose entry shape differs
+(the Copilot CLI reference also lists `tools` as required); and `/oc:` commands
+cannot become skills as they are, since a skill name cannot hold `:` or `.`.
+
+### 3. VS Code without a prompt per variable
 
 A team server's `env` entry that only forwards a variable becomes VS Code's
 `envFile`; any other reference — a header, an argument — becomes a password
 input VS Code asks for once. If VS Code's `mcp.json` expands `${env:NAME}` in
 those fields, writing that instead would remove the prompts. Unverified.
 
-### 3. Pinning the whole dependency tree
+### 4. Pinning the whole dependency tree
 
 A pinned `npx` server pins the server's own version, not its dependency tree:
 npx resolves that per machine with no lockfile. A stricter policy — servers
@@ -92,20 +108,20 @@ installed as the project's devDependencies and launched with `npx --no`, or
 remote — would close the gap, and `requirePinned` is the natural place to
 offer it.
 
-### 4. CI beyond GitHub Actions
+### 5. CI beyond GitHub Actions
 
 `opencastle ci` writes a GitHub Actions workflow, and the annotations and job
 summary are GitHub's. `sync --check` and `review --markdown` run anywhere, but a
 GitLab CI template — and posting the review as a merge request or pull request
 comment rather than only a job summary — is still to do.
 
-### 5. A hosted fleet view
+### 6. A hosted fleet view
 
 `fleet` reads repositories you have checked out. An organisation-wide view
 would read each repository's committed lock through the forge's API, without
 cloning, and answer "who is behind on the baseline" continuously.
 
-### 6. Adoption signals without surveillance
+### 7. Adoption signals without surveillance
 
 Opt-in, team-level only, and never per person — individual metrics invite
 gaming ([DX](https://getdx.com/research/measuring-ai-code-assistants-and-agents/)).
@@ -118,31 +134,47 @@ removed because it wrote ledgers nobody read. This one ships only with a
 reader — the PR comment or the run summary — and only answers a question a team
 lead actually asks.
 
-### 7. Standards first
+### 8. Standards first
 
-Agent Plugins, Codex's `.agents/skills/` and integration skill names are done
-(see Shipped). What remains: write each skill once, to `.agents/skills/`, for
-every assistant that reads it there — Cursor and VS Code read it besides their
-own directories, so today a project targeting several assistants gives some of
-them the same skill twice. Keep per-assistant dialects only where an assistant
-needs one. Fewer generated files means less to review and less to drift — and
+Agent Plugins, integration skill names, and one shared `.agents/skills/` for
+Codex, Cursor, Windsurf, OpenCode and Antigravity are done (see Shipped). What
+remains: VS Code still gets `.github/skills/` although it reads `.agents/skills/`
+too — `.github/skills/` is also where Copilot's cloud agent looks, which needs
+checking first. Claude
+Code reads only `.claude/skills/`, so a project targeting it keeps a second copy
+(see the open question on duplicates). Keep per-assistant dialects only where
+an assistant needs one. Fewer generated files means less to review and less to drift — and
 the lock already records what each assistant is given, so the reduction can be
 reviewed like any other change.
 
 ## Open questions to verify
 
-- Windsurf's MCP config is documented as a global file. Whether the
-  `${env:NAME}` written into a team server's headers is honoured there — and
-  whether a project-level `.windsurf/mcp.json` is read at all — needs checking
-  against the current release.
-- Antigravity receives `${NAME}` for team and integration servers alike; its
-  variable syntax has not been confirmed. Codex's has: it expands none, and
-  reads variables only through `env_vars`, `bearer_token_env_var` and
-  `env_http_headers`, which is what it now gets. A reference in any other shape
-  — part of an argument, or a header that is not wholly one variable — still
-  reaches a Codex server as text, and `doctor` says so.
+- Devin Desktop's `.devin/mcp_config.json` reads `${env:NAME}` per the Cascade
+  docs; the Devin CLI docs, which define that file, document variables only for
+  OAuth fields. The legacy Cascade agent still reads only the global
+  `~/.config/devin/mcp_config.json`. Devin Local also imports `.mcp.json`,
+  `.cursor/mcp.json` and `opencode.json` by default, so with those targets
+  selected it may list a server twice.
+- Devin Desktop documents rules as `.windsurf/rules/*.md` (and `.devin/rules/`);
+  whether it scans the subdirectories agents, workflows and prompts are written
+  to is not documented.
+- Codex and Antigravity expand no variables. Codex reads them only through
+  `env_vars`, `bearer_token_env_var` and `env_http_headers`, which is what it
+  gets; Antigravity has no such field, so a local server inherits its variables
+  and a remote server's header that needs one can only be set in the person's
+  own global config. A reference in any other shape reaches the server as text,
+  and `doctor` says so. (Antigravity's is an open issue on its CLI, not a
+  documented rule.)
+- Skills a project writes to more than one directory: VS Code reads
+  `.github/skills/`, `.claude/skills/` and `.agents/skills/` and keeps the first
+  of each name; OpenCode keeps one copy unpredictably; Cursor lists both — its
+  "Include Third-Party Plugins, Skills, and Other Configs" setting turns off the
+  `.claude/skills/` copy. Claude Code reads only `.claude/skills/`, so a project
+  targeting it and any `.agents/skills/` reader has two copies.
 - Codex loads a project's `.codex/config.toml` only in a project the user has
-  marked as trusted. `explain` does not say so yet.
+  marked as trusted. `explain` checks Codex's own config for that and says so;
+  `doctor` does not, because trust is a per-person setting and `doctor` runs in
+  CI too.
 - How each assistant treats an unset variable in its own syntax — an empty
   string, the literal text, or a server that fails to start — and whether Claude
   Code's `${VAR:-default}` is the safer spelling there.
@@ -169,9 +201,6 @@ reviewed like any other change.
 - Figma's remote server lists the clients it supports; OpenCode, Windsurf and
   Antigravity are not on that list. Those targets may need Figma's desktop
   server (`http://127.0.0.1:3845/mcp`) instead, which needs a per-target config.
-- The Windsurf and Antigravity MCP outputs should be checked against each
-  vendor's current documentation, the way the Claude Code and Codex shapes
-  were: remote servers may need a different key there.
 
 ## How we will know it works
 

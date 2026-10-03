@@ -11,7 +11,6 @@ import { createSingleFileAdapter } from './single-file-base.js'
  *   agents/*.agent.md          -> .agents/agents/<name>.md
  *   agent-workflows/*.md       -> .agents/workflows/<name>.md
  *   prompts/*.prompt.md        -> .agents/prompts/<name>.md
- *   customizations/            -> .agents/customizations/  (scaffolded once)
  *   mcp.json                   -> .agents/mcp_config.json  (mcpServers format)
  *
  * Note: Antigravity's MCP integration officially reads ~/.gemini/antigravity/mcp_config.json
@@ -31,6 +30,8 @@ const { install, update, getManagedPaths, getDoctorChecks } = createSingleFileAd
   workflowsDir: 'workflows',
   workflowPrefix: '',
   frameworkDirs: ['agents', 'skills', 'prompts', 'workflows'],
+  // Antigravity reads AGENTS.md as well as GEMINI.md, cumulatively.
+  alsoReads: { rootFile: 'AGENTS.md', writtenBy: ['codex', 'opencode'] },
 })
 
 export { install, update, getManagedPaths, getDoctorChecks }

@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, writeFile, appendFile } from 'node:fs/promises'
-import { basename, dirname, join, relative, sep } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import { readManifest } from './manifest.js'
 import { cliVersionOf, resolveSources } from './layers.js'
 import { resolveStack } from './stack-config.js'
@@ -48,6 +48,21 @@ function git(cwd: string, args: string[]): string | null {
   }
 }
 
+/**
+ * The repository's root, spelled the way the project's path is.
+ *
+ * `--show-toplevel` follows links, so on macOS a project under `/var/…` had a
+ * root under `/private/var/…`: every path compared against the project's own
+ * spelling fell outside the repository, a baseline kept beside the project was
+ * left out of the workflow's paths, and the CODEOWNERS found was named by a
+ * path the user never typed. `--show-cdup` is the way up from the project,
+ * applied to the project's own path.
+ */
+function repoRootOf(projectRoot: string): string {
+  const up = git(projectRoot, ['rev-parse', '--show-cdup'])
+  return up === null ? projectRoot : resolve(projectRoot, up || '.')
+}
+
 function packageManagerOf(root: string): PackageManager {
   if (existsSync(join(root, 'pnpm-lock.yaml'))) return 'pnpm'
   if (existsSync(join(root, 'yarn.lock'))) return 'yarn'
@@ -79,7 +94,7 @@ function findUp(start: string, names: string[], stop: string): string | null {
  * baseline kept elsewhere in the repository, whose change must run it too.
  */
 export function planCi(projectRoot: string, cliVersion: string, owners?: string, extraPaths: string[] = []): Plan {
-  const repoRoot = git(projectRoot, ['rev-parse', '--show-toplevel']) ?? projectRoot
+  const repoRoot = repoRootOf(projectRoot)
   const prefix = (git(projectRoot, ['rev-parse', '--show-prefix']) ?? '').replace(/\/$/, '')
   const branch = (git(projectRoot, ['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']) ?? 'origin/main').replace(/^origin\//, '')
 
@@ -234,7 +249,7 @@ export default async function ci({ pkgRoot, args }: CliContext): Promise<void> {
   const manifest = await readManifest(projectRoot)
   const manifestVersion = manifest?.version
   // Baselines kept elsewhere in this repository: a change there must run the check.
-  const repoRoot = git(projectRoot, ['rev-parse', '--show-toplevel']) ?? projectRoot
+  const repoRoot = repoRootOf(projectRoot)
   const extra: string[] = []
   try {
     const resolved = resolveSources({ pkgRoot, projectRoot, stack: resolveStack(manifest!), repoInfo: manifest?.repoInfo })
@@ -247,7 +262,7 @@ export default async function ci({ pkgRoot, args }: CliContext): Promise<void> {
     // The workflow is still right without them; sync --check will name the problem.
   }
   const plan = planCi(projectRoot, manifestVersion ?? cliVersionOf(pkgRoot), owners, extra)
-  const rel = (p: string): string => p.slice((git(projectRoot, ['rev-parse', '--show-toplevel']) ?? projectRoot).length + 1)
+  const rel = (p: string): string => relative(repoRoot, p).split(sep).join('/')
 
   if (args.includes('--dry-run')) {
     console.log(`\n  ${c.dim(`[dry-run] ${rel(plan.workflowPath)}:`)}\n`)

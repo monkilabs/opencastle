@@ -484,6 +484,17 @@ describe('what review found, kept fixed (compiler and commands)', () => {
     expect(plan.codeowners?.block).toContain('/apps/web/.opencastle/lock.json @acme/platform')
   })
 
+  it('ci: names paths as the project spells them, through a linked checkout', () => {
+    const real = join(project, 'real')
+    write(real, { 'package.json': '{}', 'package-lock.json': '{}', CODEOWNERS: '* @acme/everyone\n' })
+    execFileSync('git', ['init', '-q'], { cwd: real })
+    const linked = join(project, 'linked')
+    symlinkSync(real, linked)
+    const plan = planCi(linked, '0.36.0', '@acme/platform')
+    expect(plan.codeowners?.path).toBe(join(linked, 'CODEOWNERS'))
+    expect(plan.workflowPath.startsWith(linked)).toBe(true)
+  })
+
   it('ci: gives pnpm a version when package.json does not name one', () => {
     write(project, { 'package.json': '{}', 'pnpm-lock.yaml': '' })
     expect(planCi(project, '0.36.0').workflow).toContain('version: 10')

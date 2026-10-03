@@ -2,7 +2,8 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, relative, resolve } from 'node:path'
-import { resolveSources, materialize, cliVersionOf, formatIssues, hasErrors } from './layers.js'
+import { resolveSources, materialize, cliVersionOf, hasErrors } from './layers.js'
+import type { TeamIssue } from './team-config.js'
 import { contentReport, tokensOf } from './lock.js'
 import { CONFIG_SCHEMA_URL } from './team-config.js'
 import { EXTENSION_NAMESPACE, claudeManifestFor, isAgentPlugin, mcpSchemaUrl, pluginNameFrom, pluginSchemaUrl, readAgentPlugin, type PluginManifest } from './agent-plugin.js'
@@ -303,9 +304,17 @@ function check(pkgRoot: string, dir: string): CheckReport {
       const spec = relative(join(project, '.opencastle'), layerRoot).split('\\').join('/')
       writeFileSync(join(project, '.opencastle', 'config.json'), JSON.stringify({ extends: [spec.startsWith('.') ? spec : `./${spec}`] }))
       const resolved = resolveSources({ pkgRoot, projectRoot: project, stack: { ides: [], techTools: [], teamTools: [] } })
-      const shown = (text: string): string => text.split(project).join('<repository>').replace(/(\.\.\/)+/g, '')
-      for (const line of formatIssues(resolved.issues.filter((i) => i.level === 'error'))) errors.push(shown(line))
-      for (const line of formatIssues(resolved.issues.filter((i) => i.level === 'warning'))) warnings.push(shown(line))
+      // The scratch project names the baseline by its path from there —
+      // `../../../../Users/ana/base` — and stripping the `../` left an absolute
+      // path with its leading slash gone. Named instead as it was given here.
+      const id = relative(project, layerRoot).split('\\').join('/') || '.'
+      const here = dir === '.' ? '' : `${dir.replace(/\/$/, '')}/`
+      const shown = (text: string): string =>
+        text.split(`${id}/`).join(here).split(id).join(name).split(project).join('<repository>')
+      // One string per problem, its remedy on the line below — not the icons
+      // `formatIssues` prints, which the report below adds again.
+      const said = (i: TeamIssue): string => shown(`${i.where}: ${i.message}${i.fix ? `\n→ ${i.fix}` : ''}`)
+      for (const i of resolved.issues) (i.level === 'error' ? errors : warnings).push(said(i))
       for (const item of resolved.items.values()) {
         if (item.layer !== 'opencastle') contributes[item.kind]++
       }
@@ -354,8 +363,9 @@ export default async function baseline({ pkgRoot, args }: CliContext): Promise<v
     const parts = Object.entries(k).filter(([, n]) => n > 0).map(([kind, n]) => `${n} ${kind === 'mcpServers' ? 'MCP server(s)' : kind}`)
     console.log(`  Contributes: ${parts.length > 0 ? parts.join(', ') : c.dim('nothing yet')}`)
     if (report.contextTokens) console.log(`  A repository extending it loads ~${report.contextTokens} tokens up front, with OpenCastle's own content`)
-    for (const e of report.errors) console.log(`  ${c.red('✗')} ${e}`)
-    for (const w of report.warnings) console.log(`  ${c.yellow('!')} ${c.dim(w)}`)
+    const indent = (text: string): string => text.split('\n').join('\n    ')
+    for (const e of report.errors) console.log(`  ${c.red('✗')} ${indent(e)}`)
+    for (const w of report.warnings) console.log(`  ${c.yellow('!')} ${c.dim(indent(w))}`)
     console.log(report.errors.length === 0 ? `\n  ${c.green('✓')} Ready to publish.\n` : `\n  ${c.red(`${report.errors.length} problem(s) to fix before publishing.`)}\n`)
   }
   if (report.errors.length > 0) process.exit(1)

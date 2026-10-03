@@ -11,7 +11,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, realpathSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { upgradeGeneratedServers, rebuildMcpConfig, scaffoldMcpConfig } from './mcp.js'
+import { upgradeGeneratedServers, rebuildMcpConfig, scaffoldMcpConfig, teamEntryFor } from './mcp.js'
+import { auditMcpConfig } from './mcp-audit.js'
 import type { StackConfig } from './types.js'
 
 describe('upgradeGeneratedServers', () => {
@@ -20,6 +21,30 @@ describe('upgradeGeneratedServers', () => {
     const upgraded = upgradeGeneratedServers(servers, 'claude-code', new Set(['Supabase']))
     expect(upgraded).toEqual(['Supabase'])
     expect(servers.Supabase).toEqual({ type: 'http', url: 'https://mcp.supabase.com/mcp' })
+  })
+
+  it('moves Antigravity entries to serverUrl, and drops a ${NAME} it would send as text', () => {
+    // As every release before this one wrote them into .agents/mcp_config.json.
+    const servers: Record<string, unknown> = {
+      Supabase: { url: 'https://mcp.supabase.com/mcp' },
+      Coolify: {
+        command: 'npx',
+        args: ['-y', '@masonator/coolify-mcp@3.7.0'],
+        env: { COOLIFY_ACCESS_TOKEN: '${COOLIFY_ACCESS_TOKEN}', COOLIFY_BASE_URL: '${COOLIFY_BASE_URL}' },
+      },
+    }
+    expect(upgradeGeneratedServers(servers, 'antigravity', new Set(['Supabase', 'Coolify'])).sort()).toEqual(['Coolify', 'Supabase'])
+    expect(servers.Supabase).toEqual({ serverUrl: 'https://mcp.supabase.com/mcp' })
+    expect(servers.Coolify).toEqual({ command: 'npx', args: ['-y', '@masonator/coolify-mcp@3.7.0'] })
+  })
+
+  it('writes a team server for Antigravity in its shape, and the audit names what it cannot expand', () => {
+    const remote = teamEntryFor('docs', { url: 'https://docs.acme.example/mcp', headers: { Authorization: 'Bearer ${DOCS_TOKEN}' } }, 'antigravity').entry
+    expect(remote).toEqual({ serverUrl: 'https://docs.acme.example/mcp', headers: { Authorization: 'Bearer ${DOCS_TOKEN}' } })
+    const local = teamEntryFor('db', { command: 'npx', args: ['-y', 'db-mcp@1.0.0'], env: { DB_URL: '${DB_URL}', MODE: 'ro' } }, 'antigravity').entry
+    expect(local).toEqual({ command: 'npx', args: ['-y', 'db-mcp@1.0.0'], env: { MODE: 'ro' } })
+    const audit = auditMcpConfig({ mcpServers: { docs: remote } }, 'antigravity')
+    expect(audit.findings.find((f) => f.problem === 'unexpanded-variable')?.subject).toContain('${DOCS_TOKEN} →')
   })
 
   it('moves a retired default to the current one, env vars and all', () => {
