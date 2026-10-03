@@ -50,19 +50,19 @@ const commands = [
     description: 'Reads the repository, proposes a complete setup, and asks once. Detects which assistants already have config, which framework, database, and test runner the project uses, then compiles the config for every assistant it found.',
     usage: 'npx opencastle init [options]',
     options: [
-      { flag: '--customize', desc: 'Choose IDEs and integrations manually instead of accepting detection' },
-      { flag: '--yes', desc: 'Accept the detected setup without the confirmation' },
+      { flag: '--customize, --reconfigure', desc: 'Choose IDEs and integrations manually instead of accepting detection' },
+      { flag: '--yes, -y', desc: 'Accept the detected setup without asking' },
       { flag: '--dry-run', desc: 'Preview what would be created without writing anything' },
       { flag: '--allow-downgrade', desc: 'Re-run with this OpenCastle even though a newer one compiled the project' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
       { heading: 'What it does', content: `<ol>
-        <li><strong>Finds your assistants</strong> — any of <code>CLAUDE.md</code>, <code>.cursor/rules</code>, <code>.github/copilot-instructions.md</code>, <code>.windsurfrules</code>, <code>GEMINI.md</code>, <code>AGENTS.md</code>, <code>.codex</code>, or <code>opencode.json</code> makes that assistant a compile target</li>
+        <li><strong>Finds your assistants</strong> — any of <code>CLAUDE.md</code> or <code>.claude/</code>, <code>.cursorrules</code> or <code>.cursor/rules</code>, <code>.github/copilot-instructions.md</code>, <code>.windsurfrules</code> or <code>.windsurf/rules</code>, <code>GEMINI.md</code>, <code>.codex</code>, or <code>opencode.json</code> makes that assistant a compile target. <code>AGENTS.md</code> counts, as Codex CLI, only when none of those is present.</li>
         <li><strong>Scans the stack</strong> — frameworks, databases, CMSes, deployment targets, test runners, monorepo tools</li>
         <li><strong>Shows the plan</strong> — what it found and what it will write</li>
-        <li><strong>Asks once</strong> — then compiles agents, skills, instructions, and MCP config for each target</li>
-        <li><strong>Leaves your files alone</strong> — existing config is never overwritten, and the summary names what it skipped</li>
+        <li><strong>Asks once</strong> — then compiles agents, skills, instructions, and MCP config for each target. On a project that is already set up it asks <code>Re-initialize? [y/N]</code> first.</li>
+        <li><strong>Leaves your writing alone</strong> — what you wrote in <code>CLAUDE.md</code>, <code>.cursorrules</code> and the other root files stays above a managed block. A file of yours inside a directory OpenCastle generates (<code>.cursor/rules/</code>, <code>.claude/agents/</code>, <code>.agents/skills/</code>, …) is named in the summary and removed by the next <code>sync</code>; move it into <code>.opencastle/</code> and it is compiled for every assistant.</li>
       </ol>` },
       { heading: 'If you would rather choose', content: `<p><code>--customize</code> restores the full selection: an IDE picker followed by a screen per plugin category. Most people do not need it — detection is pre-checked from the same signals you would be confirming by hand.</p>` },
     ],
@@ -83,22 +83,20 @@ const commands = [
       { flag: '--check', desc: 'Compare against a fresh compile and exit non-zero on drift; writes nothing' },
       { flag: '--json', desc: 'Machine-readable report (with --check)' },
       { flag: '--dry-run', desc: 'Preview what would change' },
-      { flag: '--force', desc: 'Sync even when versions match' },
+      { flag: '--force', desc: 'Recompile even when everything already matches its sources' },
       { flag: '--allow-downgrade', desc: 'Recompile with this OpenCastle even though a newer one compiled the project' },
-      { flag: '--reconfigure', desc: 'Re-run IDE and integration selection' },
+      { flag: '--reconfigure', desc: 'Choose the integrations again (tech and team tools); to change assistants, run init --customize' },
       { flag: '--yes', desc: 'Skip confirmation prompts' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'What is preserved', content: `<p>Your customizations in <code>.opencastle/</code> are never overwritten. Framework directories are regenerated wholesale so renamed or removed sources do not leave stale files behind.</p>` },
-      { heading: 'Team sources and the lock', content: `<p>When <code>.opencastle/config.json</code> exists, <code>sync</code> resolves it first: the baselines it extends, the project's own instructions, skills and agents, its MCP servers, and the policy. Any error — a baseline that is not installed, a server the policy refuses, a credential written inline — and nothing is written. Otherwise it compiles everything into every target and writes <code>.opencastle/lock.json</code>, the record of what every assistant is given; commit it. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
+      { heading: 'What is preserved', content: `<p>Your customizations in <code>.opencastle/</code> are never overwritten. Framework directories are regenerated wholesale so renamed or removed sources do not leave stale files behind — which also removes a file of yours placed in one. Keep those in <code>.opencastle/</code>.</p>` },
+      { heading: 'Team sources and the lock', content: `<p><code>sync</code> writes <code>.opencastle/lock.json</code> in every project, the record of what every assistant is given; commit it. When <code>.opencastle/config.json</code> exists, it is resolved first: the baselines it extends, the project's own instructions, skills and agents, its MCP servers, and the policy. Any error — a baseline that is not installed, a server the policy refuses, a credential written inline — and nothing is written. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
 <p>A project compiled by a newer OpenCastle than the one you are running is refused — it would replace newer output with older, and the next teammate's sync would put it back. Run the project's version, or pass <code>--allow-downgrade</code> to go back on purpose. The manifest is rewritten only when something it records changed.</p>` },
       { heading: 'In CI', content: `<p><code>sync --check</code> compiles to a scratch directory and compares, so a hand-edited rule file or a forgotten recompile fails the build. On GitHub Actions it also annotates each drifted file in the pull request with that file's own fix, and writes a table to the run's summary page — no configuration, it reads <code>GITHUB_ACTIONS</code>. With <code>--json</code> the annotations are left out so the output stays parseable.</p>
 <p>It reads MCP configs with the same audit <code>doctor</code> runs, so the two cannot disagree: a server entry still at an earlier OpenCastle default is drift that <code>sync</code> clears, and a broken server only a person can fix fails the check with its remedy. It also fails when the team's sources do not resolve or break the policy, and when <code>.opencastle/lock.json</code> is missing or stale.</p>
-<pre><code>- uses: actions/setup-node@v4
-  with: { node-version: 22 }
-- run: npx opencastle sync --check</code></pre>
-<p><a href="#ci"><code>opencastle ci</code></a> writes a complete workflow instead, with dependencies installed so baselines resolve and <code>review</code> on pull requests.</p>` },
+<p>On GitHub Actions, <a href="#ci"><code>opencastle ci</code></a> writes the whole workflow: dependencies installed so baselines resolve, this check, and <code>review</code> on pull requests. On any other CI, install dependencies — with <code>opencastle</code> as a devDependency — and run:</p>
+<pre><code>npx opencastle sync --check</code></pre>` },
       { heading: 'MCP servers move forward, edits stay', content: `<p>A server entry is left alone once it is in your config, because people tune them. An entry still exactly as an earlier release wrote it — a retired package, an <code>@latest</code>, a shape your assistant cannot load — is replaced with the current default, and the output names each one. Anything you edited stays yours.</p>` },
       { heading: 'Previously called update', content: `<p><code>opencastle update</code> still works as an alias. The operation is a compile-and-sync rather than a version bump, so the name follows what it does.</p>` },
     ],
@@ -134,7 +132,7 @@ const commands = [
     category: 'diagnostics',
     name: 'doctor',
     summary: 'Diagnose setup problems',
-    description: 'Checks the manifest, per-assistant generated files, the skill matrix, MCP configuration, and required environment variables, audits what each MCP config launches, and pairs each finding with the command that fixes it.',
+    description: 'Checks the manifest, per-assistant generated files, the skill matrix, MCP configuration, and required environment variables, audits what each MCP config launches, and says how to fix what it can.',
     usage: 'npx opencastle doctor [options]',
     options: [
       { flag: '--help, -h', desc: 'Show help' },
@@ -144,7 +142,7 @@ const commands = [
       { heading: 'What it checks in MCP configs', content: `<p>An MCP server is code your agents run with your credentials, so <code>doctor</code> reads every target's MCP config the way a supply-chain review would — including servers you added yourself:</p>
 <ul>
   <li><strong>Warning</strong> — a package launched without an exact version (<code>@latest</code>, a range, or none), so each machine runs whatever was published last. A failure instead when the team's policy sets <code>requirePinned</code>.</li>
-  <li><strong>Failure</strong> — a package that is not on npm, or a remote server in <code>.mcp.json</code> with no <code>"type"</code>, which Claude Code reads as a stdio server and never loads.</li>
+  <li><strong>Failure</strong> — a package OpenCastle knows is not on npm (one an earlier release wrote, or one since unpublished), or a remote server in <code>.mcp.json</code> with no <code>"type"</code>, which Claude Code reads as a stdio server and never loads.</li>
   <li><strong>Failure</strong> — a credential written into the file, or a server the team's policy does not allow, whether by name or by the host it connects to.</li>
 </ul>
 <p>Each finding names the fix that works for it: <code>opencastle sync</code> for entries still as OpenCastle wrote them, a fix by hand for everything else.</p>` },
@@ -152,7 +150,7 @@ const commands = [
   <li><strong>Team sources</strong> — <code>.opencastle/config.json</code> and the baselines it extends resolve, and what they contribute.</li>
   <li><strong>Always-loaded context</strong> — the tokens every assistant loads before a task (instructions plus the skill and agent index, estimated at four characters per token), against the budget a layer set; a warning past it, naming the three largest contributors.</li>
   <li><strong>Team instructions match this repository</strong> — <code>npm run</code> scripts named in team content that <code>package.json</code> does not define, and backticked paths in the project's own content that do not exist.</li>
-  <li><strong>OpenCastle version</strong> — a warning when you run an older release than the one that compiled the project.</li>
+  <li><strong>OpenCastle version</strong> — a failure when you run an older release than the one that compiled the project: <code>sync</code> refuses to run and <code>sync --check</code> compares nothing until you run the project's version.</li>
 </ul>` },
     ],
     examples: [
@@ -174,6 +172,7 @@ const commands = [
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
+      { heading: 'What --all keeps', content: `<p>A file that also holds your writing — <code>CLAUDE.md</code>, <code>.cursorrules</code>, <code>opencode.json</code> — loses only the OpenCastle block or servers. <code>.opencastle/</code> is moved to <code>.opencastle.removed/</code>, with your conventions and lessons, for you to delete when you are sure.</p>` },
       { heading: 'Replaces eject and destroy', content: `<p>Those two names gave no hint which one deleted your files. This asks, and the flags spell out the answer when you already know it: <code>--keep-files</code> is the old <code>eject</code>, <code>--all</code> is the old <code>destroy</code>.</p>` },
     ],
     examples: [
@@ -190,8 +189,10 @@ const commands = [
     description: 'Runs long multi-step work in dependency order across isolated git worktrees, with SQLite persistence so an interrupted run resumes rather than restarting. Give it a task description and it plans, executes, and runs your gates.',
     usage: 'npx opencastle convoy [task] [options]',
     options: [
-      { flag: '--dry-run', desc: 'Plan only; do not execute' },
+      { flag: '--dry-run', desc: 'With a task: print the first planning prompt and stop. With run: show the execution plan' },
       { flag: '--verbose', desc: 'Stream agent output' },
+      { flag: '--adapter, -a <name>', desc: 'Agent runtime to plan and run with: claude, copilot, cursor, opencode or codex' },
+      { flag: '--skip-validation', desc: 'Skip the PRD and spec validation passes' },
       { flag: '--json', desc: 'Machine-readable status' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
@@ -203,8 +204,9 @@ const commands = [
         <li><code>opencastle convoy retry</code> — re-run only the failed tasks</li>
         <li><code>opencastle convoy plan --prd &lt;path&gt;</code> — resume from a PRD the planner wrote earlier</li>
         <li><code>opencastle convoy run --file &lt;spec&gt;</code> — execute a spec you wrote by hand</li>
-        <li><code>opencastle convoy dashboard</code> — open the run viewer</li>
-      </ul>` },
+        <li><code>opencastle convoy dashboard</code> — open the run viewer (port 4300 by default)</li>
+      </ul>
+<p><code>run</code>, <code>plan</code> and <code>dashboard</code> take their own options: <code>opencastle convoy run --help</code>.</p>` },
       { heading: 'Experimental', content: `<p>This namespace may change or be removed. The compiler does not depend on it. Native background and cloud agents now cover much of what it was built for, so treat it as a research surface rather than a stable one.</p>` },
     ],
     examples: [
@@ -221,18 +223,24 @@ const commands = [
     description: 'Onboarding in one command. Resolves the project exactly as <code>sync</code> does and shows the layers, what every assistant loads before each task and what it costs, the team\'s skills, agents, prompts and workflows by where they come from, the MCP servers every assistant can start, the team\'s policy, and — under <em>Your setup</em> — the environment variables you have not set and the servers that will ask you to sign in.',
     usage: 'npx opencastle explain [options]',
     options: [
-      { flag: '--all', desc: 'List OpenCastle\'s own skills and agents too, not only the team\'s' },
+      { flag: '--all', desc: 'List OpenCastle\'s own skills, agents, commands and workflows one by one too, not only the team\'s' },
       { flag: '--json', desc: 'Machine-readable output' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'What it shows', content: `<pre><code>  Layers  OpenCastle 1.0.0 → @acme/opencastle-baseline 1.5.0 → this project
-  Always loaded — ~5518 tokens before every task: instructions ~1864, the skill and agent index ~3655
+      { heading: 'What it shows', content: `<pre><code>  🏰 What the AI assistants in this repository are given
+
+  Layers  OpenCastle 1.0.0 → @acme/opencastle-baseline 1.5.0 → this project  (later layers add to and override earlier ones)
+  Targets Claude Code, Cursor, VS Code, OpenCode
+
+  Always loaded — ~5580 tokens before every task: instructions ~1868, the skill and agent index ~3712
   …
   Your setup
+    ✗ ACME_DOCS_TOKEN — used by the internal-docs MCP server (@acme/opencastle-baseline/dev.opencastle/config.json); set it in .env or your shell
     ✗ ACME_DB_URL — used by the acme-db MCP server (.opencastle/config.json); set it in .env or your shell
-    → Linear: your assistant opens a browser to sign in the first time it starts the server</code></pre>
-<p>A variable counts as set when it is in your shell or in <code>.env</code> at the project root. Warnings about the team's sources are listed at the end. It exits 1, saying why, when the sources do not resolve.</p>` },
+    → Linear: your assistant opens a browser to sign in the first time it starts the server
+  …</code></pre>
+<p>The full run is in the <a href="/docs/teams#example">worked example</a>. A variable counts as set when it is in your shell or in <code>.env</code> at the project root. Warnings about the team's sources are listed at the end. It exits 1, saying why, when the sources do not resolve.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle explain', desc: 'What this repository gives every assistant' },
@@ -256,7 +264,7 @@ const commands = [
       { heading: 'What gets ⚠️', content: `<ul>
   <li>A baseline added or dropped, or one whose contents changed without a version change</li>
   <li>A new or changed always-loaded instruction, and a required item that moved or was removed</li>
-  <li>Every new MCP server, and one that now launches differently or reads different variables (a version bump of the same package is not marked)</li>
+  <li>Every new MCP server, and one that now launches differently, reads different variables, or has different environment values or headers (a version bump of the same package is not marked)</li>
   <li>An allowlist or host list widened or removed, pinning no longer required, an item no longer required, the context budget removed</li>
   <li>Always-loaded context up by more than 10%, or over the budget</li>
 </ul>` },
@@ -295,7 +303,7 @@ const commands = [
     category: 'teams',
     name: 'baseline',
     summary: 'Create or check a baseline many repositories extend',
-    description: 'A baseline is an npm package that carries an organisation\'s instructions, skills, agents, MCP servers and policy. Repositories install it as a devDependency and name it in <code>extends</code>. One <code>init</code> creates is also an <a href="/docs/agent-plugins">Agent Plugin</a>, so assistants that read Agent Plugins can install it as it is. <code>init</code> scaffolds one; <code>check</code> validates it the way every repository extending it will, and the way assistants load it.',
+    description: 'A baseline is an npm package that carries an organisation\'s instructions, skills, agents, MCP servers and policy. Repositories install it as a devDependency and name it in <code>extends</code>. One that <code>init</code> creates is also an <a href="/docs/agent-plugins">Agent Plugin</a>, so assistants that read Agent Plugins can install it as it is. <code>init</code> scaffolds one; <code>check</code> validates it the way every repository extending it will, and the way assistants load it.',
     usage: 'npx opencastle baseline <init|check> [dir] [options]',
     options: [
       { flag: '--name <pkg>', desc: 'Package name for init (default: @your-org/opencastle-baseline)' },
@@ -304,7 +312,7 @@ const commands = [
     ],
     details: [
       { heading: 'init', content: `<p>Creates <code>./opencastle-baseline</code>, or the directory you name, laid out as an Agent Plugin: <code>plugin.json</code>, an example skill in <code>skills/code-review/</code>, <code>mcp.json</code> for servers any assistant can start as they are, and in <code>dev.opencastle/</code> what the standard does not cover — an example instruction and the policy, in <code>config.json</code>. Also Claude Code's <code>.claude-plugin/plugin.json</code>, a <code>package.json</code> declaring <code>"opencastle": { "baseline": "." }</code>, a README on publishing and adopting it, and a workflow that runs <code>check</code>. It refuses a directory that already has a <code>package.json</code>.</p>` },
-      { heading: 'check', content: `<p>Resolves the baseline in a scratch project that extends it, and reports what it contributes and how many tokens a repository extending it loads up front. For an Agent Plugin it also checks the manifest, every skill against the Agent Skills spec and every portable server, as <code>plugin check</code> does. It exits 1 when <code>package.json</code> does not declare the layer, when <code>"files"</code> would leave part of it out of <code>npm publish</code>, when the layer directory is missing, when Claude Code's files are out of date, or when its config, content or policy has an error.</p>` },
+      { heading: 'check', content: `<p>Resolves the baseline in a scratch project that extends it, and reports what it contributes and how many tokens a repository extending it loads up front. For an Agent Plugin it also checks the manifest, every skill against the Agent Skills spec and every portable server, as <code>plugin check</code> does. It exits 1 when <code>package.json</code> does not declare the layer or declares one outside the package, when <code>"files"</code> would leave part of it out of <code>npm publish</code>, when the layer directory is missing, when the Agent Plugin check finds an error or Claude Code's files are out of date, or when its config, content or policy has an error.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle baseline init --name @acme/opencastle-baseline', desc: 'Scaffold the package' },
@@ -352,7 +360,7 @@ const commands = [
     ],
     details: [
       { heading: 'skill', content: `<p>Finds the skill by name in <code>~/.claude/skills</code>, <code>~/.agents/skills</code>, <code>~/.codex/skills</code>, <code>~/.cursor/skills</code> or <code>~/.copilot/skills</code>, or takes a path. It is checked against the Agent Skills spec — a name that does not match its directory is refused, as assistants that follow the spec skip it — and every file is scanned for credentials. Then it is copied, with its scripts and references, to <code>.opencastle/skills/&lt;name&gt;/</code>, or with <code>--to</code> into a baseline's <code>skills/</code>.</p>` },
-      { heading: 'memory', content: `<p>Reads Claude Code's auto memory for this repository — <code>~/.claude/projects/&lt;repository&gt;/memory/</code>, or wherever <code>autoMemoryDirectory</code> points — and writes each correction (<code>feedback</code>) and project note as a lesson in <code>.opencastle/lessons/</code>. Memories about you, ones that hold a credential, and ones already promoted are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new.</p>` },
+      { heading: 'memory', content: `<p>Reads Claude Code's auto memory for this repository — <code>~/.claude/projects/&lt;repository&gt;/memory/</code> (under <code>$CLAUDE_CONFIG_DIR</code> if you set it), or wherever <code>autoMemoryDirectory</code> points — and writes each correction (<code>feedback</code>), project note, and memory with no type as a lesson in <code>.opencastle/lessons/</code>. Memories of any other type (those about you, for one), ones that hold a credential, and ones already promoted are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle promote skill deploy-runbook', desc: 'Your skill, in every teammate\'s assistant after the next sync' },
@@ -372,13 +380,16 @@ const commands = [
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'What it shows', content: `<pre><code>  @acme/opencastle-baseline: 1.4.0 (1), 1.5.0 (1) — 1 behind 1.5.0: admin
+      { heading: 'What it shows', content: `<pre><code>  …
+  • shop        opencastle 1.0.0  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~5580 tokens up front
+  …
+  @acme/opencastle-baseline: 1.4.0 (1), 1.5.0 (1) — 1 behind 1.5.0: admin
 
   MCP servers running differently across repositories
     ~ acme-db
       npx -y @acme/db-mcp@2.2.0  — shop
       npx -y @acme/db-mcp@2.1.0  — admin</code></pre>
-<p>Directories without <code>.opencastle/</code> are skipped, one without a lock is listed as not yet synced by a release that writes one, and one whose lock this release cannot read is listed as such. Each repository is named by its <code>package.json</code> name, or else its directory.</p>` },
+<p>From the <a href="/docs/teams#example">worked example</a>. Directories without <code>.opencastle/</code> are skipped, one without a lock is listed as not yet synced by a release that writes one, and one whose lock this release cannot read is listed as such. Each repository is named by its <code>package.json</code> name, or else its directory.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle fleet ~/src/*', desc: 'Every checkout in a directory' },
@@ -451,7 +462,8 @@ const commands = [
       <main class="docs-main">
         <p class="docs-subtitle">
           All commands are run via <code>npx opencastle &lt;command&gt;</code>.
-          Every command supports <code>--help</code> for quick reference.
+          Every command supports <code>--help</code> for quick reference. Add <code>--debug</code> to a
+          command to see the stack trace of an unexpected error.
         </p>
 
         <div class="usage-block">
@@ -470,6 +482,8 @@ Teams:
   review      What a change does to the assistants (for pull requests)
   ci          Add the drift and policy check to GitHub Actions
   baseline    Create or check a baseline many repositories extend
+  plugin      Check an Agent Plugin, build Claude Code's files, index a marketplace
+  promote     Make a skill or memory from your own assistant the team's
   fleet       Versions and drift across many repositories
 
 Experimental:
@@ -1192,6 +1206,23 @@ Options:
         background: none;
         font-size: 0.8125rem;
         line-height: 1.5;
+      }
+      /* Output excerpts in a command's details arrive through set:html, which
+         scoped styles never reach; unstyled, a long line widened the page. */
+      .plugin-card :global(pre) {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 8px 0 16px;
+        overflow-x: auto;
+      }
+      .plugin-card :global(pre code) {
+        display: block;
+        padding: 16px;
+        background: none;
+        font-size: 0.8125rem;
+        line-height: 1.5;
+        white-space: pre;
       }
 
       /* ── Lists inside cards ── */

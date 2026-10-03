@@ -38,7 +38,7 @@ const sectionIcons: Record<string, string> = {
 
 /* ---------- Code and output shown on the page ---------- */
 /* The output below is real: it comes from a project that extends a baseline,
-   run with the release this page documents. Long lists are trimmed with "…". */
+   run with the release this page documents. Every line left out is marked "…". */
 
 /* From a run of this release; the memory directory's path is shortened. */
 const promoteOutput = `$ npx opencastle promote memory
@@ -69,6 +69,9 @@ Every migration in db/migrations/ ships with a down file.
 const baselineTree = `@acme/opencastle-baseline/     an Agent Plugin, and a baseline
 ├── package.json               "opencastle": { "baseline": "." }
 ├── plugin.json                the Agent Plugins manifest
+├── .claude-plugin/
+│   └── plugin.json            Claude Code's copy — opencastle plugin build writes it
+├── mcp.json                   servers any assistant can start as they are (none here)
 ├── skills/
 │   └── secure-coding/
 │       └── SKILL.md
@@ -113,9 +116,23 @@ const projectConfig = `// .opencastle/config.json
   }
 }`;
 
-const syncOutput = `  ✓ Rebuilt MCP config
+const syncOutput = `$ npx opencastle sync
+
+  🏰 OpenCastle sync v1.0.0
+  …
+  ✓ Rebuilt MCP config
+  ✓ Wrote the team's MCP server(s) as defined: acme-db, acme-flags, internal-docs
+  - Removed 1 MCP server(s) the team's layers retired or its policy does not allow: Slack
   ✓ Compiled @acme/opencastle-baseline 1.5.0 and this project's own sources (4 items)
   ✓ Updated .opencastle/lock.json (opencastle review explains the change)
+  - Left out 1 MCP server(s):
+     Slack — not on the MCP allowlist of @acme/opencastle-baseline
+
+  ! Removed 3 file(s) no longer produced by any source:
+
+     .claude/skills/seo-patterns/SKILL.md
+     .agents/skills/seo-patterns/SKILL.md
+     .github/skills/seo-patterns/SKILL.md
 
   ⚠  Environment variables still needed:
 
@@ -123,20 +140,21 @@ const syncOutput = `  ✓ Rebuilt MCP config
      └ used by the internal-docs MCP server (@acme/opencastle-baseline/dev.opencastle/config.json)
 
      ACME_DB_URL
-     └ used by the acme-db MCP server (.opencastle/config.json)`;
+     └ used by the acme-db MCP server (.opencastle/config.json)
+  …`;
 
 const explainOutput = `$ npx opencastle explain
 
-  What the AI assistants in this repository are given
+  🏰 What the AI assistants in this repository are given
 
   Layers  OpenCastle 1.0.0 → @acme/opencastle-baseline 1.5.0 → this project  (later layers add to and override earlier ones)
-  Targets VS Code, Claude Code, Cursor, OpenCode
+  Targets Claude Code, Cursor, VS Code, OpenCode
 
-  Always loaded — ~5518 tokens before every task: instructions ~1864, the skill and agent index ~3655
+  Always loaded — ~5580 tokens before every task: instructions ~1868, the skill and agent index ~3712
     • ai-optimization ~450 tokens (OpenCastle)
-    • api-style ~17 tokens (@acme/opencastle-baseline)
-    • general ~1381 tokens (OpenCastle)
-    • security ~17 tokens (@acme/opencastle-baseline, required)
+    • api-style ~15 tokens (@acme/opencastle-baseline)
+    • general ~1387 tokens (OpenCastle)
+    • security ~18 tokens (@acme/opencastle-baseline, required)
     budget: 12000 tokens
 
   Skills — loaded when a task matches the description (37)
@@ -147,22 +165,34 @@ const explainOutput = `$ npx opencastle explain
     …
     • and 30 from OpenCastle: accessibility-standards, agent-hooks, agent-memory, …
 
+  Agents — personas to delegate to (11)
+    • and 11 from OpenCastle: architect, developer, devops-expert, …
+
+  Commands — /oc:<name> in Claude Code and Copilot (14)
+    • and 14 from OpenCastle: assess-complexity, bootstrap-customizations, brainstorm, …
+
+  Workflows — /oc:workflow-<name> in Claude Code (9)
+    • and 9 from OpenCastle: bug-fix, data-pipeline, database-migration, …
+
   Left out
     • skills/seo-patterns (excluded by this project)
 
   MCP servers — tools every assistant can start (6)
     • Linear (linear integration)
       remote: https://mcp.linear.app/mcp
+      docs: https://linear.app/docs/mcp
     • acme-db (this project)
       runs: npx -y @acme/db-mcp@2.2.0
     • acme-flags (this project)
       remote: https://flags.acme.dev/mcp
     • chrome-devtools (chrome-devtools integration)
       runs: npx -y chrome-devtools-mcp@1.10.1
+      docs: https://developer.chrome.com/docs/devtools
     • internal-docs (@acme/opencastle-baseline)
       remote: https://docs-mcp.acme.dev/mcp
     • next-devtools (nextjs integration)
       runs: npx -y next-devtools-mcp@0.4.0
+      docs: https://nextjs.org/docs
     – Slack not written: not on the MCP allowlist of @acme/opencastle-baseline
 
   The team's policy
@@ -176,12 +206,13 @@ const explainOutput = `$ npx opencastle explain
   Your setup
     ✗ ACME_DOCS_TOKEN — used by the internal-docs MCP server (@acme/opencastle-baseline/dev.opencastle/config.json); set it in .env or your shell
     ✗ ACME_DB_URL — used by the acme-db MCP server (.opencastle/config.json); set it in .env or your shell
-    → Linear: your assistant opens a browser to sign in the first time it starts the server`;
+    → Linear: your assistant opens a browser to sign in the first time it starts the server
+  …`;
 
 const doctorOutput = `$ npx opencastle doctor
   …
   ✓ Team sources  extends @acme/opencastle-baseline@1.5.0; team content: 2 skills, 2 instructions; 3 team MCP server(s); MCP allowlist in force
-  ✓ Always-loaded context  ~5.5k tokens (instructions ~1.9k, skill and agent index ~3.7k); budget 12.0k (@acme/opencastle-baseline)
+  ✓ Always-loaded context  ~5.6k tokens (instructions ~1.9k, skill and agent index ~3.7k); budget 12.0k (@acme/opencastle-baseline)
   ! Team instructions match this repository  skills/deploy-runbook runs "npm run deploy:prod", which package.json does not define; skills/deploy-runbook names \`src/deploy/config.ts\`, which does not exist
   ✓ OpenCastle version  1.0.0, the version that compiled this project
   …
@@ -204,7 +235,9 @@ const handAddedOutput = `$ npx opencastle sync --check
   Needs a person (no command will change these)
     ! .mcp.json (claude-code)
       my-tool: not on the MCP allowlist of @acme/opencastle-baseline
-      → fix my-tool by hand in .mcp.json`;
+      → fix my-tool by hand in .mcp.json
+
+  Fix: by hand — see above, then run opencastle doctor`;
 
 const reviewOutput = `### OpenCastle — what this change does to the AI assistants
 
@@ -216,7 +249,7 @@ Compared with \`origin/main\`. **3 change(s) marked ⚠️ deserve a careful loo
 
 **What every assistant reads**
 
-- ⚠️ New always-loaded instruction **api-style** from @acme/opencastle-baseline (~17 tokens, loaded on every request)
+- ⚠️ New always-loaded instruction **api-style** from @acme/opencastle-baseline (~15 tokens, loaded on every request)
 - skill **secure-coding** changed — @acme/opencastle-baseline
 
 **MCP servers**
@@ -230,14 +263,14 @@ Compared with \`origin/main\`. **3 change(s) marked ⚠️ deserve a careful loo
 
 **Context**
 
-- Every assistant loads ~5518 tokens before the task (was ~5501, +0%)`;
+- Every assistant loads ~5580 tokens before the task (was ~5565, +0%)`;
 
 const fleetOutput = `$ npx opencastle fleet shop admin
 
-  Fleet — 2 repositories
+  🏰 Fleet — 2 repositories
 
-  • shop        opencastle 1.0.0  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~5518 tokens up front
-  • admin       opencastle 1.0.0  @acme/opencastle-baseline@1.4.0  4 target(s), 5 MCP server(s), ~5501 tokens up front
+  • shop        opencastle 1.0.0  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~5580 tokens up front
+  • admin       opencastle 1.0.0  @acme/opencastle-baseline@1.4.0  4 target(s), 5 MCP server(s), ~5565 tokens up front
 
   opencastle: 1.0.0 (2) — all on one version
   @acme/opencastle-baseline: 1.4.0 (1), 1.5.0 (1) — 1 behind 1.5.0: admin
@@ -286,23 +319,26 @@ const lockExcerpt = `{
   "layers": [
     { "id": "opencastle", "kind": "core", "version": "1.0.0" },
     { "id": "@acme/opencastle-baseline", "kind": "baseline", "version": "1.5.0",
-      "integrity": "sha256-sr5W5wAoB1BqPaAzA1az1Tc/GSHapmYSUEd9eCW8jtM=" },
+      "integrity": "sha256-9YAXToj7DMrgWtqU37WydtzSMztkW+KZA3tfdDtY2l8=" },
     { "id": "project", "kind": "project" }
   ],
   "content": {
-    "instructions/security": { "from": "@acme/opencastle-baseline", "sha": "48f1aafec3a5", "tokens": 17 },
-    "skills/deploy-runbook": { "from": "project", "sha": "82dc100b1d90",
+    …
+    "instructions/security": { "from": "@acme/opencastle-baseline", "sha": "eec78ee21df9", "tokens": 18 },
+    …
+    "skills/deploy-runbook": { "from": "project", "sha": "a30198f1e2ef",
       "description": "How this shop deploys. Use when releasing, rolling back, or touching the deploy pipeline." },
     …
   },
   "excluded": { "skills/seo-patterns": "project" },
   "mcp": {
-    "acme-db": { "from": "project", "transport": "stdio",
-      "launch": "npx -y @acme/db-mcp@2.2.0", "env": ["ACME_DB_URL"] },
-    "internal-docs": { "from": "@acme/opencastle-baseline", "transport": "http",
-      "launch": "https://docs-mcp.acme.dev/mcp", "env": ["ACME_DOCS_TOKEN"] },
     "Linear": { "from": "plugin:linear", "transport": "http",
       "launch": "https://mcp.linear.app/mcp", "auth": "oauth" },
+    "acme-db": { "from": "project", "transport": "stdio",
+      "launch": "npx -y @acme/db-mcp@2.2.0", "env": ["ACME_DB_URL"], "sha": "a1b56de5d5ac" },
+    …
+    "internal-docs": { "from": "@acme/opencastle-baseline", "transport": "http",
+      "launch": "https://docs-mcp.acme.dev/mcp", "env": ["ACME_DOCS_TOKEN"], "sha": "af0f819150cc" },
     …
   },
   "blocked": { "Slack": "not on the MCP allowlist of @acme/opencastle-baseline" },
@@ -313,11 +349,12 @@ const lockExcerpt = `{
     "require": ["instructions/security", "skills/secure-coding"],
     "contextBudget": 12000
   },
-  "context": { "tokens": 5518, "instructions": 1864, "index": 3655 }
+  "context": { "tokens": 5580, "instructions": 1868, "index": 3712 }
 }`;
 
-const codeowners = `# What every AI assistant is given (opencastle ci). Every change to it moves
-# the lock, so these two lines route all of them to the owners.
+const codeowners = `# What every AI assistant is given (opencastle ci). A change to its instructions,
+# skills, agents, prompts, MCP servers or policy moves the lock, so these two
+# lines route all of them to the owners. Lessons (.opencastle/lessons/) do not.
 /.opencastle/lock.json @acme/platform
 /.opencastle/config.json @acme/platform`;
 
@@ -345,7 +382,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+      - run: npm ci
       - name: Generated config matches its sources and policy
         run: npx -y opencastle@1.0.0 sync --check
       - name: What this pull request changes
@@ -355,13 +392,16 @@ jobs:
 const baselineCheckOutput = `$ npx opencastle baseline init --name @acme/opencastle-baseline
 
   ✓ Created the baseline @acme/opencastle-baseline in opencastle-baseline/
+  It is an Agent Plugin too: skills/ and mcp.json are portable; the rest of the layer is in dev.opencastle/
+  Next: edit it, run npx opencastle baseline check opencastle-baseline, then publish it.
+  Repositories adopt it with npm i -D @acme/opencastle-baseline and "extends": ["@acme/opencastle-baseline"]
 
 $ npx opencastle baseline check opencastle-baseline
 
-  Baseline @acme/opencastle-baseline 0.1.0
+  🏰 Baseline @acme/opencastle-baseline 0.1.0
 
   Contributes: 1 skills, 1 instructions
-  A repository extending it loads ~5254 tokens up front, with OpenCastle's own content
+  A repository extending it loads ~5293 tokens up front, with OpenCastle's own content
 
   ✓ Ready to publish.`;
 ---
@@ -573,7 +613,7 @@ $ npx opencastle baseline check opencastle-baseline
           <p>
             Acme publishes a baseline, <code>@acme/opencastle-baseline</code>. A repository called
             <em>shop</em> extends it, adds a skill of its own and two MCP servers. The output below
-            comes from that setup, with long lists trimmed.
+            comes from that setup; <code>…</code> marks lines left out.
           </p>
 
           <h4 class="arch-subheading">1. The baseline package</h4>
@@ -620,8 +660,7 @@ $ npx opencastle baseline check opencastle-baseline
             For <code>acme-db</code>, whose <code>env</code> only passes <code>ACME_DB_URL</code> through,
             VS Code gets <code>{'"envFile": "${workspaceFolder}/.env"'}</code> instead of a prompt. Editor
             variables are not environment variables: VS Code and Cursor get <code>{'${workspaceFolder}'}</code> and
-            <code>{'${userHome}'}</code> as written; Claude Code, OpenCode and Windsurf, which start a project's
-            servers in the project directory and document no editor variables, get <code>.</code> and their own
+            <code>{'${userHome}'}</code> as written; every other assistant gets <code>.</code> and its own
             spelling of <code>HOME</code>.
           </p>
 
@@ -818,14 +857,14 @@ $ npx opencastle baseline check opencastle-baseline
         <section class="docs-section" id="lock">
           <h3 class="section-title">The Lock File</h3>
           <p>
-            <code>sync</code> writes <code>.opencastle/lock.json</code>. Commit it. One change to a baseline
+            <code>init</code> and every <code>sync</code> write <code>.opencastle/lock.json</code>, in every project. Commit it. One change to a baseline
             regenerates dozens of files across several assistants, and nobody reviews that; the lock is the
             one file that says, in a shape a person can read, what every assistant is given.
           </p>
           <ul class="docs-list">
             <li><strong>Layers</strong> — each with its version, and for a baseline a digest of its content, so a baseline that changed without a version bump still shows.</li>
             <li><strong>Content</strong> — every instruction, skill, agent, prompt and workflow, with the layer it came from (or the integration, as <code>plugin:&lt;id&gt;</code>), a hash of what was compiled, what it replaced, its description, and for instructions an estimate of their tokens.</li>
-            <li><strong>MCP servers</strong> — each with where it came from, whether it is local or remote, the command line or URL, and the names of the variables it reads. Integration servers the policy refused are listed under <code>blocked</code>, with why.</li>
+            <li><strong>MCP servers</strong> — each with where it came from, whether it is local or remote, the command line or URL, the names of the variables it reads, and for a team server a hash of its definition, so a changed header or environment value moves the lock. Servers left out — refused by the policy, or excluded with <code>mcpServers/&lt;name&gt;</code> — are listed under <code>blocked</code>, with why.</li>
             <li><strong>Policy</strong> — the effective rules, and which layer set each.</li>
             <li><strong>Context</strong> — the tokens every assistant loads before a task.</li>
           </ul>
@@ -837,11 +876,15 @@ $ npx opencastle baseline check opencastle-baseline
             <code>.opencastle/</code> or the baseline and run <code>sync</code>.
           </p>
           <p>
-            Every change to what an assistant is given moves the lock, so owning the lock routes all of them to
-            the right reviewers. <code>opencastle ci --owners @acme/platform</code> appends this to
-            <code>.github/CODEOWNERS</code>:
+            Every change to the instructions, skills, agents, prompts, workflows, MCP servers and policy moves the
+            lock, so owning the lock routes all of them to the right reviewers.
+            <code>opencastle ci --owners @acme/platform</code> appends this to <code>.github/CODEOWNERS</code>:
           </p>
           <pre><code>{codeowners}</code></pre>
+          <p>
+            Lessons are not in the lock. To have the same owners approve them, add a line for
+            <code>/.opencastle/lessons/</code>.
+          </p>
         </section>
 
         <!-- ═══════════ Team memory ═══════════ -->
@@ -879,12 +922,15 @@ $ npx opencastle baseline check opencastle-baseline
           <p>
             Corrections and project notes become lessons; memories about you, ones holding a credential, and ones
             already promoted are left out, and your home directory is written as <code>~</code>. Before you commit,
-            set the category and severity and cite the code:
+            set the category and severity, and cite the code — by hand under <code>citations:</code>, as here, or
+            with <code>opencastle lesson verify &lt;id&gt; --cite db/migrations/</code>, which also records the date
+            it was verified:
           </p>
           <pre><code>{lessonFile}</code></pre>
           <p>
             Nothing is shared until it is committed. The pull request that commits a promoted skill or lesson is where
-            the team agrees with it — and, with CODEOWNERS on <code>.opencastle/</code>, where its owners do.
+            the team agrees with it — and, with a CODEOWNERS line for <code>/.opencastle/lessons/</code>, which
+            <code>ci --owners</code> does not add (see <a class="docs-link" href="#lock">The Lock File</a>), where its owners do.
           </p>
         </section>
 
@@ -892,32 +938,25 @@ $ npx opencastle baseline check opencastle-baseline
         <section class="docs-section" id="commands">
           <h3 class="section-title">Team Commands</h3>
           <p>
-            Seven commands, each described in full in the <a class="docs-link" href="/docs/cli#teams">CLI reference</a>.
+            Seven commands. What each is for is below; their options, exit codes and every check they make are in
+            the <a class="docs-link" href="/docs/cli#teams">CLI reference</a>.
           </p>
 
           <h4 class="arch-subheading">explain</h4>
           <pre><code>npx opencastle explain [--all] [--json]</code></pre>
           <p>
-            What every assistant here is given: the layers, what is always loaded and what it costs, the team's
-            skills, agents, prompts and workflows by origin (<code>--all</code> lists OpenCastle's own too), the
-            MCP servers, the policy, and under <em>Your setup</em> the variables you have not set and the servers
-            that will ask you to sign in. A variable counts as set when it is in your shell or in <code>.env</code>
-            at the project root.
+            What every assistant here is given, and what you still have to set up. Step 4 of the
+            <a class="docs-link" href="#example">worked example</a> is a run; the options are in the
+            <a class="docs-link" href="/docs/cli#explain">CLI reference</a>.
           </p>
 
           <h4 class="arch-subheading">review</h4>
           <pre><code>npx opencastle review [--base &lt;ref&gt;] [--markdown] [--json]</code></pre>
           <p>
-            Compares the lock committed at <code>--base</code> (default <code>HEAD</code>; on a GitHub Actions pull
-            request, <code>origin/&lt;base branch&gt;</code>) with what the current sources compile to, and says what
-            changed in sentences. It marks ⚠️: a baseline added, dropped, or changed without a version change; a new
-            or changed always-loaded instruction; a required item that moved or went; every new MCP server, and one
-            that now launches differently or reads different variables; a widened or removed allowlist or host list;
-            pinning or a requirement dropped; the budget removed; and context growth over 10% or past the
-            budget. On GitHub Actions it also appends the Markdown to the job summary. It exits 0 whatever it finds —
-            <code>sync --check</code> is the gate — and 1 only when it cannot compare, for instance when the base is
-            not a commit here; in CI, check out with <code>fetch-depth: 0</code>. If the committed lock is stale, it
-            says so first.
+            Says in sentences what a change does to every assistant, and marks with ⚠️ what deserves a careful
+            look; step 6 is a run. It explains rather than gates: whatever the change, it exits 0, and
+            <code>sync --check</code> is the gate. What gets ⚠️, and the few cases where it cannot compare:
+            <a class="docs-link" href="/docs/cli#review">CLI reference</a>.
           </p>
 
           <h4 class="arch-subheading">ci</h4>
@@ -928,30 +967,18 @@ $ npx opencastle baseline check opencastle-baseline
           </p>
           <pre><code>{ciWorkflow}</code></pre>
           <p>
-            It installs dependencies with the package manager your lockfile names (npm, pnpm, Yarn or Bun), so
-            baselines resolve. When <code>opencastle</code> is one of your devDependencies it runs that copy —
-            <code>npx --no opencastle</code>, <code>pnpm exec opencastle</code> or <code>yarn opencastle</code> —
-            so laptops and CI run the version your lockfile pins. Otherwise, as here, it pins the release that last
-            compiled the project and tells you to add the devDependency. Run it from a subdirectory of a monorepo and
-            the workflow is named after that directory, filtered to its paths, and runs there. An existing workflow is
-            replaced only with <code>--force</code>. <code>--owners</code> appends to the CODEOWNERS file GitHub already
-            reads — <code>.github/</code>, the root or <code>docs/</code>, in that order — and creates
-            <code>.github/CODEOWNERS</code> only when there is none, since GitHub reads the first it finds; it leaves the
-            file alone if it already routes the lock.
+            <em>shop</em> has a <code>package-lock.json</code>, so the workflow installs with <code>npm ci</code> and the
+            baseline resolves. <code>opencastle</code> is not one of its devDependencies, so the workflow pins the release
+            that compiled the project; add it and the workflow runs that copy instead. Other package managers,
+            monorepos and where <code>--owners</code> writes: <a class="docs-link" href="/docs/cli#ci">CLI reference</a>.
           </p>
 
           <h4 class="arch-subheading">baseline</h4>
           <pre><code>npx opencastle baseline &lt;init|check&gt; [dir] [--name &lt;pkg&gt;] [--json]</code></pre>
           <p>
-            <code>init</code> scaffolds a baseline package in <code>./opencastle-baseline</code> or the directory you
-            name, laid out as an Agent Plugin: <code>plugin.json</code>, an example skill in <code>skills/</code>,
-            <code>mcp.json</code>, an example instruction and the policy in <code>dev.opencastle/</code>, Claude Code's
-            <code>.claude-plugin/plugin.json</code>, a <code>package.json</code> that declares the layer and ships all of it
-            in <code>"files"</code>, a README on publishing and adopting it, and a CI workflow that runs <code>check</code>. It refuses a directory that already has a
-            <code>package.json</code>. <code>check</code> resolves the baseline exactly as a repository extending it
-            would and reports what it contributes and how many tokens load up front. It fails — exit 1 — when the
-            package does not declare <code>{'"opencastle": { "baseline": "<dir>" }'}</code>, when <code>"files"</code>
-            would leave the layer out of <code>npm publish</code>, or when the config, content or policy has an error.
+            <code>init</code> scaffolds a baseline that is also an Agent Plugin, laid out like the package in step 1;
+            <code>check</code> validates it the way every repository extending it will, and fails — exit 1 — on any of
+            the problems listed in the <a class="docs-link" href="/docs/cli#baseline">CLI reference</a>.
           </p>
           <pre><code>{baselineCheckOutput}</code></pre>
 
@@ -961,37 +988,32 @@ $ npx opencastle baseline check opencastle-baseline
             <code>check</code> loads an Agent Plugin the way an assistant that follows the standard does and says what it
             would refuse or skip; <code>build</code> writes the manifest and MCP file Claude Code reads instead of the
             portable ones; <code>index</code> writes the marketplace files Claude Code, Copilot, Cursor and Codex read for a
-            repository of plugins. See <a href="/docs/agent-plugins">Agent Plugins</a>.
+            repository of plugins. How to use them: <a class="docs-link" href="/docs/agent-plugins">Agent Plugins</a>;
+            options: <a class="docs-link" href="/docs/cli#plugin">CLI reference</a>.
           </p>
 
           <h4 class="arch-subheading">promote</h4>
           <pre><code>npx opencastle promote &lt;skill|memory&gt; [name|path] [--to &lt;dir&gt;] [--from &lt;dir&gt;] [--force] [--dry-run]</code></pre>
           <p>
             Copies a skill from your own skill directories into <code>.opencastle/skills/</code> or a baseline, or turns
-            Claude Code's auto memory for the repository into lessons. See <a href="#memory">Team Memory</a>.
+            Claude Code's auto memory for the repository into lessons. See <a class="docs-link" href="#memory">Team Memory</a>
+            and the <a class="docs-link" href="/docs/cli#promote">CLI reference</a>.
           </p>
 
           <h4 class="arch-subheading">fleet</h4>
           <pre><code>npx opencastle fleet &lt;dir...&gt; [--json]</code></pre>
           <p>
-            Reads the committed <code>.opencastle/lock.json</code> of each directory — nothing is installed or
-            fetched — and shows which OpenCastle and baseline versions each repository runs, which lag behind the
-            newest, and which MCP servers launch differently across them. Directories without
-            <code>.opencastle/</code> are skipped; one without a lock is listed as not yet synced by a release that
-            writes one, and one whose lock this release cannot read — written by a newer OpenCastle, or edited — is
-            listed as such.
+            Reads the committed lock of each directory you give it — nothing is installed or fetched — and shows which
+            versions each repository runs and which MCP servers launch differently; step 7 is a run. Which directories
+            it skips: <a class="docs-link" href="/docs/cli#fleet">CLI reference</a>.
           </p>
 
-          <h4 class="arch-subheading">And what changed in doctor and sync</h4>
+          <h4 class="arch-subheading">doctor and sync in a team</h4>
           <p>
-            <code>doctor</code> now also reports whether the team sources resolve; the always-loaded context
-            against the budget, naming the three largest contributors when it is over; <code>npm run</code> scripts
-            named anywhere in team content, and backticked paths named in the repository's own content, that no longer
-            exist; and an OpenCastle older than the one that compiled the project. <code>sync</code> refuses to
-            compile with an older release than the one that last compiled the project — it would replace newer output
-            with older, and the next teammate's sync would put it back — unless you pass
-            <code>--allow-downgrade</code>. <code>sync --check</code> run by an older release says so and compares
-            nothing, instead of reporting every file as drifted.
+            <code>doctor</code> also checks the team's sources, the context budget, and the scripts and paths the team's
+            content names; <code>sync</code> will not compile with an older OpenCastle than the one that compiled the
+            project. See <a class="docs-link" href="/docs/cli#doctor">doctor</a> and
+            <a class="docs-link" href="/docs/cli#sync">sync</a> in the CLI reference.
           </p>
         </section>
 
@@ -1035,8 +1057,8 @@ $ npx opencastle baseline check opencastle-baseline
             </li>
             <li>
               <strong>Review in pull requests.</strong> Read the ⚠️ lines closely: a new MCP server, a widened
-              allowlist, a new always-loaded instruction. With CODEOWNERS in place, the owners approve every change to
-              what the assistants are given.
+              allowlist, a new always-loaded instruction. With CODEOWNERS in place, the owners approve every change the
+              lock records.
             </li>
             <li>
               <strong>Watch the fleet.</strong> <code>npx opencastle fleet ~/src/*</code> over your checkouts shows who

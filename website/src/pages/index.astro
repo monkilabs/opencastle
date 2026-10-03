@@ -3,6 +3,7 @@ import '../styles/global.css';
 import logo from '../images/opencastle-logo.png';
 import illustration from '../images/opencastle-illustration.png';
 import dashboardSnapshot from '../images/dashboard-snapshot.png';
+import { PLUGINS } from '../../../src/orchestrator/plugins/index';
 
 const DEMO_URL = 'https://www.opencastle.dev/dashboard';
 
@@ -33,7 +34,7 @@ const features = [
     icon: 'agents',
     title: 'Specialist Agents',
     description:
-      'From frontend developer to security expert, each with curated tools, a capability tier, and domain-specific skills.',
+      'From developer and UI/UX expert to security expert, each with curated tools, a capability tier, and domain-specific skills.',
   },
   {
     icon: 'skills',
@@ -78,7 +79,7 @@ const teamPoints = [
     icon: 'pin',
     title: 'A lock you can review',
     description:
-      '.opencastle/lock.json records which layers ran at which versions, where every skill and instruction came from, and every MCP server. With CODEOWNERS on it, every change to what the assistants get goes to its owners.',
+      '.opencastle/lock.json records which layers ran at which versions, where every skill and instruction came from, and every MCP server. With CODEOWNERS on it, every change it records goes to its owners.',
   },
   {
     icon: 'review',
@@ -117,7 +118,7 @@ const standards = [
     icon: 'workflows',
     title: 'AGENTS.md',
     description:
-      'Codex CLI and OpenCode read AGENTS.md; Claude Code, Copilot, Cursor, Windsurf and Antigravity each get their own root file with the same content.',
+      'Codex CLI and OpenCode read AGENTS.md, and Antigravity reads it beside GEMINI.md. Claude Code gets the same content in CLAUDE.md; Copilot, Cursor and Windsurf get it as their own instruction and rule files.',
   },
   {
     icon: 'orchestrator',
@@ -142,7 +143,7 @@ const standards = [
 const workflows = [
   { name: 'feature-implementation', description: 'Brainstorm → Research → Foundation → Integration → Validation → QA Gate' },
   { name: 'bug-fix', description: 'Triage & Reproduce → Root Cause Analysis → Fix → Verification' },
-  { name: 'data-pipeline', description: 'Source Analysis → Scraping → Processing → Validation → Import' },
+  { name: 'data-pipeline', description: 'Source Analysis → Crawling → Processing → Validation → Import' },
   { name: 'security-audit', description: 'Scope → Automated Checks → Manual Review → Panel Review → Remediation' },
   {
     name: 'performance-optimization',
@@ -182,7 +183,7 @@ const integrationIcons: Record<string, string> = {
   supabase: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M11.9 1.036c-.015-.986-1.26-1.41-1.874-.637L.764 12.05C-.33 13.427.65 15.455 2.409 15.455h9.579l.113 7.51c.014.985 1.259 1.408 1.873.636l9.262-11.653c1.093-1.375.113-3.403-1.645-3.403h-9.642z"/></svg>`,
   sanity: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="m23.327 15.205-.893-1.555-4.321 2.632 4.799-6.11.726-.426-.179-.27.33-.421-1.515-1.261-.693.883-13.992 8.186 5.173-6.221 9.636-5.282-.915-1.769-5.248 2.876 2.584-3.106-1.481-1.305-5.816 6.994-5.777 3.168 4.423-5.847 2.771-1.442-.88-1.789-8.075 4.203L6.186 4.43 4.648 3.198 0 9.349l.072.058.868 1.768 5.153-2.683-4.696 6.207.77.617.458.885 5.425-2.974-5.974 7.185 1.481 1.304.297-.358 14.411-8.459-4.785 6.094.078.065-.007.005.992 1.726 6.364-3.877-2.451 3.954 1.642 1.077L24 15.648z"/></svg>`,
   vercel: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 19.5h20L12 2Z"/></svg>`,
-  chrome: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C8.21 0 4.831 1.757 2.632 4.501l3.953 6.848A5.454 5.454 0 0 1 12 6.545h10.691A12 12 0 0 0 12 0zM1.931 5.47A11.943 11.943 0 0 0 0 12c0 6.012 4.42 10.991 10.189 11.864l3.953-6.847a5.45 5.45 0 0 1-6.865-2.29zm13.342 2.166a5.446 5.446 0 0 1 1.45 7.09l.002.001h-.002l-5.344 9.257c.206.01.413.016.621.016 6.627 0 12-5.373 12-12 0-1.54-.29-3.011-.818-4.364zM12 16.364a4.364 4.364 0 1 1 0-8.728 4.364 4.364 0 0 1 0 8.728Z"/></svg>`,
+  'chrome-devtools': `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 0C8.21 0 4.831 1.757 2.632 4.501l3.953 6.848A5.454 5.454 0 0 1 12 6.545h10.691A12 12 0 0 0 12 0zM1.931 5.47A11.943 11.943 0 0 0 0 12c0 6.012 4.42 10.991 10.189 11.864l3.953-6.847a5.45 5.45 0 0 1-6.865-2.29zm13.342 2.166a5.446 5.446 0 0 1 1.45 7.09l.002.001h-.002l-5.344 9.257c.206.01.413.016.621.016 6.627 0 12-5.373 12-12 0-1.54-.29-3.011-.818-4.364zM12 16.364a4.364 4.364 0 1 1 0-8.728 4.364 4.364 0 0 1 0 8.728Z"/></svg>`,
   jira: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005zm5.723-5.756H5.736a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.215 5.214V6.758a1.001 1.001 0 0 0-1.001-1.001zM23.013 0H11.455a5.215 5.215 0 0 0 5.215 5.215h2.129v2.057A5.215 5.215 0 0 0 24 12.483V1.005A1.001 1.001 0 0 0 23.013 0Z"/></svg>`,
   convex: `<svg width="24" height="24" viewBox="15 15 154 158" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M108.092 130.021C126.258 128.003 143.385 118.323 152.815 102.167C148.349 142.128 104.653 167.385 68.9858 151.878C65.6992 150.453 62.8702 148.082 60.9288 145.034C52.9134 132.448 50.2786 116.433 54.0644 101.899C64.881 120.567 86.8748 132.01 108.092 130.021Z"/><path d="M53.4012 90.1735C46.0375 107.19 45.7186 127.114 54.7463 143.51C22.9759 119.608 23.3226 68.4578 54.358 44.7949C57.2286 42.6078 60.64 41.3096 64.2178 41.1121C78.9312 40.336 93.8804 46.0225 104.364 56.6193C83.0637 56.8309 62.318 70.4756 53.4012 90.1735Z"/><path d="M114.637 61.8552C103.89 46.8701 87.0686 36.6684 68.6387 36.358C104.264 20.1876 148.085 46.4045 152.856 85.1654C153.3 88.7635 152.717 92.4322 151.122 95.6775C144.466 109.195 132.124 119.679 117.702 123.559C128.269 103.96 126.965 80.0151 114.637 61.8552Z"/></svg>`,
   teams: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M19.19 8.77q-.46 0-.86-.17q-.39-.17-.69-.47q-.3-.3-.47-.69q-.17-.4-.17-.86q0-.45.17-.85q.17-.4.47-.69q.3-.3.69-.47q.4-.18.86-.17q.45-.01.85.17q.4.17.7.47q.29.29.47.69q.17.4.17.85q0 .46-.17.86q-.17.39-.47.69q-.3.3-.7.47q-.4.17-.85.17m0-3.12q-.39 0-.69.27q-.25.27-.25.66t.25.67q.3.25.69.25q.39 0 .66-.25q.28-.25.28-.67q0-.39-.28-.66q-.27-.27-.66-.27M22 10.33V15q0 .63-.24 1.2q-.26.57-.67.99q-.43.43-1 .67q-.59.25-1.21.25q-.38 0-.76-.11q-.39-.07-.71-.25q-.24.79-.71 1.44q-.47.65-1.1 1.11q-.63.46-1.39.7q-.76.27-1.58.27q-.96 0-1.81-.33q-.82-.33-1.5-.94q-.66-.57-1.09-1.36q-.44-.8-.57-1.74H2.83q-.33 0-.59-.25q-.24-.24-.24-.58V7.73q0-.34.24-.59q.26-.24.59-.24H10q-.29-.6-.29-1.25q0-.61.23-1.15q.22-.5.62-.92q.4-.39.94-.62q.5-.23 1.12-.23q.61 0 1.14.23q.53.23.93.62q.4.42.62.92q.23.54.23 1.15q0 .6-.23 1.14q-.22.53-.62.92q-.4.4-.93.63q-.53.23-1.14.23q-.15 0-.31-.02q-.15-.02-.31-.05v.9h9.06q.39 0 .67.27q.27.27.27.66M12.63 4q-.35 0-.63.11q-.33.13-.56.36q-.22.23-.35.53q-.13.31-.13.65q0 .35.13.65q.13.3.35.53q.23.22.56.36q.28.13.63.13q.34 0 .64-.13q.3-.14.53-.36q.23-.23.36-.53q.14-.3.14-.65q0-.34-.14-.65q-.13-.3-.36-.53q-.23-.23-.53-.36q-.3-.11-.64-.11m-4.85 6.18h1.88V8.62H4.34v1.56h1.88v5h1.56m8.6 1.09v-5.62H12v5.42q0 .34-.24.58q-.26.25-.59.25H8.92q.13.67.47 1.25q.34.57.82.99q.48.41 1.1.65q.61.21 1.32.21q.77 0 1.45-.27q.68-.3 1.2-.81q.51-.51.8-1.19q.3-.68.3-1.46M20.75 15v-4.35h-3.12v5.71q.25.25.57.38q.3.12.68.12q.39 0 .73-.15q.34-.15.59-.4q.26-.25.4-.6q.15-.34.15-.71Z"/></svg>`,
@@ -203,12 +204,67 @@ const integrationIcons: Record<string, string> = {
   drizzle: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M5.353 11.823a1.036 1.036 0 0 0-.395-1.422 1.063 1.063 0 0 0-1.437.399L.138 16.702a1.035 1.035 0 0 0 .395 1.422 1.063 1.063 0 0 0 1.437-.398l3.383-5.903Zm11.216 0a1.036 1.036 0 0 0-.394-1.422 1.064 1.064 0 0 0-1.438.399l-3.382 5.902a1.036 1.036 0 0 0 .394 1.422c.506.283 1.15.104 1.438-.398l3.382-5.903Zm7.293-4.525a1.036 1.036 0 0 0-.395-1.422 1.062 1.062 0 0 0-1.437.399l-3.383 5.902a1.036 1.036 0 0 0 .395 1.422 1.063 1.063 0 0 0 1.437-.399l3.383-5.902Zm-11.219 0a1.035 1.035 0 0 0-.394-1.422 1.064 1.064 0 0 0-1.438.398l-3.382 5.903a1.036 1.036 0 0 0 .394 1.422c.506.282 1.15.104 1.438-.399l3.382-5.902Z"/></svg>`,
   cloudflare: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.6045-.499-1.0615-.5205l-8.6592-.1123a.1559.1559 0 0 1-.1333-.0713c-.0283-.042-.0351-.0986-.021-.1553.0278-.084.1123-.1484.2036-.1562l8.7359-.1123c1.0351-.0489 2.1601-.8868 2.5537-1.9136l.499-1.3013c.0215-.0561.0293-.1128.0147-.168-.5625-2.5463-2.835-4.4453-5.5499-4.4453-2.5039 0-4.6284 1.6177-5.3876 3.8614-.4927-.3658-1.1187-.5625-1.794-.499-1.2026.119-2.1665 1.083-2.2861 2.2856-.0283.31-.0069.6128.0635.894C1.5683 13.171 0 14.7754 0 16.752c0 .1748.0142.3515.0352.5273.0141.083.0844.1475.1689.1475h15.9814c.0909 0 .1758-.0645.2032-.1553l.12-.4268zm2.7568-5.5634c-.0771 0-.1611 0-.2383.0112-.0566 0-.1054.0415-.127.0976l-.3378 1.1744c-.1475.5068-.0918.9707.1543 1.3164.2256.3164.6055.498 1.0625.5195l1.8437.1133c.0557 0 .1055.0263.1329.0703.0283.043.0351.1074.0214.1562-.0283.084-.1132.1485-.204.1553l-1.921.1123c-1.041.0488-2.1582.8867-2.5527 1.914l-.1406.3585c-.0283.0713.0215.1416.0986.1416h6.5977c.0771 0 .1474-.0489.169-.126.1122-.4082.1757-.837.1757-1.2803 0-2.6025-2.125-4.727-4.7344-4.727"/></svg>`,
   coolify: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4.364 4.364V0h17.454v4.364zm0 13.09H0V4.365h4.364zm0 0h17.454v4.364H4.364ZM6.545 6.546v-1.7H22.3V2.182H24v4.363zm0 0v10.4h-1.7v-10.4ZM3.882 17.936v1.7h-1.7v-1.7ZM24 24H6.545v-1.7H22.3v-2.664H24Z"/></svg>`,
+  hetzner: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" d="M2 2h20v20H2zm4.5 3.5v13h3v-5h5v5h3v-13h-3v5h-5v-5z"/></svg>`,
   nextjs: `<svg width="24" height="24" viewBox="0 0 256 256" fill="currentColor"><path d="M119.617.069C119.066.119 117.315.294 115.738.419 79.378 3.697 45.319 23.313 23.748 53.463 11.736 70.227 4.054 89.243 1.151 109.385.125 116.415 0 118.492 0 128.025c0 9.533.125 11.61 1.151 18.64 6.957 48.065 41.165 88.449 87.561 103.411 8.308 2.678 17.066 4.504 27.026 5.605 3.879.425 20.645.425 24.524 0 17.192-1.902 31.756-6.155 46.12-13.486 2.202-1.126 2.628-1.426 2.328-1.676-.2-.15-9.584-12.735-20.846-27.948L147.394 184.922l-25.65-37.957c-14.114-20.867-25.724-37.931-25.824-37.931-.1-.025-.2 16.839-.25 37.431-.075 36.055-.1 37.506-.55 38.357-.67 1.226-1.17 1.726-2.222 2.277-.8.4-1.5.475-5.28.475h-4.328l-1.151-.726c-.752-.475-1.302-1.1-1.678-1.826l-.525-1.126.05-50.166.075-50.192.776-.975c.4-.526 1.251-1.201 1.851-1.527 1.026-.5 1.427-.55 5.755-.55 5.105 0 5.956.2 7.282 1.651.376.4 14.264 21.318 30.88 46.514 16.616 25.196 39.338 59.6 50.499 76.489l20.27 30.7 1.026-.675c9.083-5.905 18.693-14.312 26.3-23.069 16.191-18.59 26.626-41.26 30.13-65.43 1.025-7.03 1.15-9.107 1.15-18.64 0-9.533-.125-11.61-1.15-18.64C247.892 61.32 213.684 20.936 167.288 5.974 159.105 3.322 150.397 1.495 140.637.394c-2.402-.25-18.943-.525-21.02-.325zM172.018 77.483c1.201.6 2.177 1.751 2.527 2.952.2.651.25 14.562.2 45.913l-.075 44.988-7.932-12.16-7.958-12.16V114.314c0-21.143.1-33.028.25-33.603.4-1.401 1.276-2.502 2.477-3.153 1.026-.5 1.401-.55 5.33-.55 3.704 0 4.354.05 5.18.475z"/></svg>`,
   expo: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M0 20.084c.043.53.23 1.063.718 1.778.58.849 1.576 1.315 2.303.567.49-.505 5.794-9.776 8.35-13.29a.761.761 0 011.248 0c2.556 3.514 7.86 12.785 8.35 13.29.727.748 1.723.282 2.303-.567.57-.835.728-1.42.728-2.046 0-.426-8.26-15.798-9.092-17.078-.8-1.23-1.044-1.498-2.397-1.542h-1.032c-1.353.044-1.597.311-2.398 1.542C8.267 3.991.33 18.758 0 19.77Z"/></svg>`,
   astro: `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8.358 20.162c-1.186-1.07-1.532-3.316-1.038-4.944.856 1.026 2.043 1.352 3.272 1.535 1.897.283 3.76.177 5.522-.678.202-.098.388-.229.608-.36.166.473.209.95.151 1.437-.14 1.185-.738 2.1-1.688 2.794-.38.277-.782.525-1.175.787-1.205.804-1.531 1.747-1.078 3.119l.044.148a3.158 3.158 0 0 1-1.407-1.188 3.31 3.31 0 0 1-.544-1.815c-.004-.32-.004-.642-.048-.958-.106-.769-.472-1.113-1.161-1.133-.707-.02-1.267.411-1.415 1.09-.012.053-.028.104-.045.165h.002zm-5.961-4.445s3.24-1.575 6.49-1.575l2.451-7.565c.092-.366.36-.614.662-.614.302 0 .57.248.662.614l2.45 7.565c3.85 0 6.491 1.575 6.491 1.575L16.088.727C15.93.285 15.663 0 15.303 0H8.697c-.36 0-.615.285-.784.727l-5.516 14.99z"/></svg>`,
   trello: `<svg width="24" height="24" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><rect x="144.64" y="33.28" width="78.08" height="112" rx="12"/><rect x="33.28" y="33.28" width="78.08" height="176" rx="12"/></svg>`,
   notion: `<svg width="24" height="24" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M11.2481 13.5787V13.3756C11.2481 12.8607 11.6605 12.4337 12.192 12.3982L16.0633 12.1397L21.417 20.0235V13.1041L20.039 12.9204V12.824C20.039 12.303 20.4608 11.8732 20.9991 11.8456L24.5216 11.6652V12.1721C24.5216 12.41 24.3446 12.6136 24.1021 12.6546L23.2544 12.798V24.0037L22.1906 24.3695C21.3018 24.6752 20.3124 24.348 19.8036 23.5803L14.6061 15.7372V23.223L16.2058 23.5291L16.1836 23.6775C16.1137 24.1423 15.7124 24.4939 15.227 24.5155L11.2481 24.6926C11.1955 24.1927 11.5701 23.7456 12.0869 23.6913L12.6103 23.6363V13.6552L11.2481 13.5787Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M20.6749 2.96678L4.72347 4.05585C3.76799 4.12109 3.02734 4.88925 3.02734 5.81499V21.3299C3.02734 22.1997 3.32676 23.0448 3.87843 23.7321L7.3178 28.0167C7.87388 28.7094 8.74899 29.0909 9.65435 29.0352L27.3586 27.9454C28.266 27.8895 28.9724 27.1619 28.9724 26.2832V8.64426C28.9724 8.10059 28.6979 7.59115 28.2369 7.27951L22.6325 3.49029C22.0613 3.10413 21.3702 2.91931 20.6749 2.96678ZM5.51447 6.057C5.29261 5.89274 5.3982 5.55055 5.6769 5.53056L20.7822 4.44711C21.2635 4.41259 21.7417 4.54512 22.1309 4.82088L25.1617 6.96813C25.2767 7.04965 25.2228 7.22563 25.0803 7.23338L9.08387 8.10336C8.59977 8.12969 8.12193 7.98747 7.73701 7.7025L5.51447 6.057ZM8.33357 10.8307C8.33357 10.311 8.75341 9.88177 9.29027 9.85253L26.203 8.93145C26.7263 8.90296 27.1667 9.30534 27.1667 9.81182V25.0853C27.1667 25.604 26.7484 26.0328 26.2126 26.0633L9.40688 27.0195C8.8246 27.0527 8.33357 26.6052 8.33357 26.0415V10.8307Z"/></svg>`,
 };
+
+/** One line per integration, in the order the grid shows them. Names and the count come from PLUGINS. */
+const integrationBlurbs: Record<string, string> = {
+  linear: 'Issue tracking & task management',
+  jira: 'Project tracking & sprint management',
+  trello: 'Visual board task management',
+  supabase: 'Database, auth & type generation',
+  convex: 'Reactive database & real-time sync',
+  sanity: 'Headless CMS & content queries',
+  contentful: 'Headless CMS & content delivery',
+  strapi: 'Open-source headless CMS',
+  nextjs: 'React framework for production',
+  expo: 'React Native & EAS builds',
+  astro: 'Static site generator & frontend framework',
+  slack: 'Agent notifications & progress updates',
+  teams: 'Agent notifications & progress updates',
+  notion: 'Knowledge base & workspace docs',
+  vercel: 'Deployment & environment management',
+  nx: 'Monorepo build system & task runner',
+  'chrome-devtools': 'Browser testing & visual validation',
+  netlify: 'Deployment & serverless functions',
+  turborepo: 'Monorepo build system & caching',
+  prisma: 'Type-safe ORM & migrations',
+  cypress: 'E2E & component testing',
+  playwright: 'Cross-browser E2E testing',
+  vitest: 'Vite-native unit testing',
+  figma: 'Design tokens & component specs',
+  resend: 'Transactional email & React templates',
+  stripe: 'Payments, billing & financial infrastructure',
+  sentry: 'Error monitoring & performance tracing',
+  drizzle: 'Type-safe SQL ORM & migrations',
+  cloudflare: 'Workers, Pages & edge computing',
+  coolify: 'Self-hosted PaaS & deployment',
+  hetzner: 'Servers, volumes & firewalls (hcloud CLI / Pulumi)',
+};
+
+// A new integration fails the build until it has a tile, so the grid cannot fall behind the CLI.
+const missingTiles = Object.keys(PLUGINS).filter((id) => !integrationBlurbs[id] || !integrationIcons[id]);
+const unknownTiles = Object.keys(integrationBlurbs).filter((id) => !PLUGINS[id]);
+if (missingTiles.length || unknownTiles.length) {
+  throw new Error(
+    `index.astro: integration tiles out of step with PLUGINS — missing ${missingTiles.join(', ') || 'none'}, unknown ${unknownTiles.join(', ') || 'none'}`,
+  );
+}
+const integrations = Object.keys(integrationBlurbs).map((id) => ({
+  id,
+  name: PLUGINS[id].name,
+  description: integrationBlurbs[id],
+}));
+const integrationCount = Object.keys(PLUGINS).length;
+// The skills in src/orchestrator/skills/ (website-plugins.test.ts counts them),
+// plus the one every integration ships.
+const coreSkillCount = 31;
+const skillCount = coreSkillCount + Object.values(PLUGINS).filter((p) => p.skillName).length;
 
 const arrowIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.33 8h9.33M8.67 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
@@ -386,7 +442,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 
 <span class="code-comment"># Compile it into every assistant and write .opencastle/lock.json</span>
 <span class="code-folder">$ npx opencastle sync</span>
-<span class="code-comment"># Drift, policy and a review of what changed, on every pull request</span>
+<span class="code-comment"># Write the CI check — drift, policy and a review on every PR — and make @acme/platform the lock's owner</span>
 <span class="code-folder">$ npx opencastle ci --owners @acme/platform</span></pre>
           </div>
         </div>
@@ -427,11 +483,11 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
           <div class="code-block__body">
             <pre><span class="code-comment"># Your standard as an Agent Plugin, and an OpenCastle baseline</span>
-<span class="code-folder">$ npx opencastle baseline init --name @acme/ai-standard</span>
+<span class="code-folder">$ npx opencastle baseline init plugins/ai-standard --name @acme/ai-standard</span>
 <span class="code-comment"># Check it the way assistants load it, and write Claude Code's copies</span>
-<span class="code-folder">$ npx opencastle plugin check</span>
-<span class="code-folder">$ npx opencastle plugin build</span>
-<span class="code-comment"># A marketplace file for Claude Code, Copilot, Cursor and Codex</span>
+<span class="code-folder">$ npx opencastle plugin check plugins/ai-standard</span>
+<span class="code-folder">$ npx opencastle plugin build plugins/ai-standard</span>
+<span class="code-comment"># List everything in plugins/ as one marketplace for Claude Code, Copilot, Cursor and Codex</span>
 <span class="code-folder">$ npx opencastle plugin index</span></pre>
           </div>
         </div>
@@ -474,7 +530,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           Specialized agents, intelligent routing.
         </h2>
         <p class="section__subtitle">
-          Precisely developed specialist agents, each with its own model tier, tool access, and
+          Precisely developed specialist agents, each with its own capability tier, tool access, and
           file partition. The Team Lead orchestrator routes tasks based on
           complexity scoring.
         </p>
@@ -528,9 +584,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           One command. Your stack.
         </h2>
         <p class="section__subtitle">
-          Run <code>npx opencastle init</code> and follow the guided onboarding.
-          Select your IDEs, tech tools, and team tools.
-          The CLI installs only the plugins you need.
+          Run <code>npx opencastle init</code>. It reads your repository — the assistants you
+          already have config for, your framework, database and test runner — shows the plan and
+          asks once. <code>--customize</code> lets you choose by hand.
         </p>
         <div class="code-block">
           <div class="code-block__header">
@@ -539,18 +595,27 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             <span class="code-block__dot" />
           </div>
           <div class="code-block__body">
-            <pre><span class="code-comment"># Install OpenCastle</span>
+            <pre><span class="code-comment"># Set up OpenCastle</span>
 <span class="code-folder">$ npx opencastle init</span>
+  …
+  Found assistant config:
+    • Claude Code (CLAUDE.md)
+    • Cursor (.cursorrules)
+  …
+  Integrations detected:
+    nextjs, supabase, vitest, chrome-devtools
 
-<span class="code-comment"># Select your IDEs:        VS Code / Cursor / Claude Code / OpenCode / Windsurf / Codex / Antigravity</span>
-<span class="code-comment"># Select Tech Tools:       Sanity / Supabase / Prisma / Vercel / Netlify / NX / Turborepo / ...</span>
-<span class="code-comment"># Select Team Tools:       Linear / Jira / Trello / Slack / Teams / Notion</span>
+  Set this up? [Y/n]
+  …
+
+<span class="code-comment"># Another assistant or tool: choose by hand</span>
+<span class="code-folder">$ npx opencastle init --customize</span>
 
 <span class="code-comment"># Key commands</span>
 <span class="code-folder">$ npx opencastle sync     </span><span class="code-comment"># Update framework, preserve customizations</span>
 <span class="code-folder">$ npx opencastle sync --check  </span><span class="code-comment"># In CI: fail on drift, annotate the PR</span>
 <span class="code-folder">$ npx opencastle add stripe  </span><span class="code-comment"># Adopt a tool and recompile</span>
-<span class="code-folder">$ npx opencastle convoy dashboard  </span><span class="code-comment"># View observability dashboard</span>
+<span class="code-folder">$ npx opencastle explain  </span><span class="code-comment"># What every assistant here is given, and what to set up</span>
 <span class="code-folder">$ npx opencastle doctor     </span><span class="code-comment"># Check system health and configuration</span>
 
 <span class="code-comment"># See all commands: <a href="/docs/cli">docs/cli</a></span></pre>
@@ -654,8 +719,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <p class="autonomous-feature__desc">
                 Per-task adapter overrides let you run <strong>Copilot</strong>,
                 <strong>Claude Code</strong>, <strong>Cursor</strong>,
-                <strong>OpenCode</strong>, <strong>Windsurf</strong>,
-                <strong>Codex</strong>, and <strong>Antigravity</strong>
+                <strong>OpenCode</strong> and <strong>Codex</strong>
                 workers in the same convoy.
               </p>
             </div>
@@ -684,13 +748,14 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <!-- ==================== Observability ==================== -->
     <section class="section section--border-top" id="dashboard">
       <div class="container">
-        <span class="section__label">Observability</span>
+        <span class="section__label">Observability · Experimental</span>
         <h2 class="section__title">
           Track every delegation, every session, every lesson.
         </h2>
         <p class="section__subtitle">
-          A real-time dashboard shows agent performance, model tier
-          distribution, session timelines, and panel review outcomes.
+          <code>npx opencastle convoy dashboard</code> (experimental) shows agent performance,
+          capability-tier distribution, session timelines and panel outcomes, from the logs
+          agents write to <code>.opencastle/logs/</code>.
         </p>
         <a
           href={DEMO_URL}
@@ -710,7 +775,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
           <img
             src={dashboardSnapshot.src}
-            alt="OpenCastle Observability Dashboard — showing session metrics, model tier distribution, and recent agent sessions"
+            alt="OpenCastle Observability Dashboard — showing session metrics, capability-tier distribution, and recent agent sessions"
           />
           <div class="dashboard-preview__overlay">
             View live demo →
@@ -724,224 +789,24 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
       <div class="container">
         <span class="section__label">Pre-Configured Integrations</span>
         <h2 class="section__title">
-          Plugins for your entire stack.
+          Integrations for your stack.
         </h2>
         <p class="section__subtitle">
-          OpenCastle ships with 31 plugins — each bundling skills, MCP
-          server configs, and agent tool mappings for popular tools and services.
-          Choose your stack during onboarding and the CLI wires everything up.
+          OpenCastle ships with {integrationCount} integrations — each bundling a skill, an MCP
+          server config where the tool has one, and agent tool mappings. <code>init</code> adds
+          the ones it detects in your repository; <code>opencastle add</code> adopts another.
+          Setup for each: <a href="/docs/plugins">Integrations</a>.
         </p>
         <div class="integrations-grid">
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.linear} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Linear</span>
-              <span class="integration-card__desc">Issue tracking &amp; task management</span>
+          {integrations.map((i) => (
+            <div class="integration-card">
+              <Fragment set:html={integrationIcons[i.id]} />
+              <div class="integration-card__info">
+                <span class="integration-card__name">{i.name}</span>
+                <span class="integration-card__desc">{i.description}</span>
+              </div>
             </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.jira} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Jira</span>
-              <span class="integration-card__desc">Project tracking &amp; sprint management</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.trello} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Trello</span>
-              <span class="integration-card__desc">Visual board task management</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.supabase} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Supabase</span>
-              <span class="integration-card__desc">Database, auth &amp; type generation</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.convex} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Convex</span>
-              <span class="integration-card__desc">Reactive database &amp; real-time sync</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.sanity} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Sanity</span>
-              <span class="integration-card__desc">Headless CMS &amp; content queries</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.contentful} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Contentful</span>
-              <span class="integration-card__desc">Headless CMS &amp; content delivery</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.strapi} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Strapi</span>
-              <span class="integration-card__desc">Open-source headless CMS</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.nextjs} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Next.js</span>
-              <span class="integration-card__desc">React framework for production</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.expo} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Expo</span>
-              <span class="integration-card__desc">React Native &amp; EAS builds</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.astro} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Astro</span>
-              <span class="integration-card__desc">Static site generator &amp; frontend framework</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.slack} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Slack</span>
-              <span class="integration-card__desc">Agent notifications &amp; progress updates</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.teams} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Microsoft Teams</span>
-              <span class="integration-card__desc">Agent notifications &amp; progress updates</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.notion} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Notion</span>
-              <span class="integration-card__desc">Knowledge base &amp; workspace docs</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.vercel} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Vercel</span>
-              <span class="integration-card__desc">Deployment &amp; environment management</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.nx} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">NX</span>
-              <span class="integration-card__desc">Monorepo build system &amp; task runner</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.chrome} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Chrome DevTools</span>
-              <span class="integration-card__desc">Browser testing &amp; visual validation</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.netlify} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Netlify</span>
-              <span class="integration-card__desc">Deployment &amp; serverless functions</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.turborepo} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Turborepo</span>
-              <span class="integration-card__desc">Monorepo build system &amp; caching</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.prisma} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Prisma</span>
-              <span class="integration-card__desc">Type-safe ORM &amp; migrations</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.cypress} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Cypress</span>
-              <span class="integration-card__desc">E2E &amp; component testing</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.playwright} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Playwright</span>
-              <span class="integration-card__desc">Cross-browser E2E testing</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.vitest} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Vitest</span>
-              <span class="integration-card__desc">Vite-native unit testing</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.figma} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Figma</span>
-              <span class="integration-card__desc">Design tokens &amp; component specs</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.resend} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Resend</span>
-              <span class="integration-card__desc">Transactional email &amp; React templates</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.stripe} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Stripe</span>
-              <span class="integration-card__desc">Payments, billing &amp; financial infrastructure</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.sentry} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Sentry</span>
-              <span class="integration-card__desc">Error monitoring &amp; performance tracing</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.drizzle} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Drizzle</span>
-              <span class="integration-card__desc">Type-safe SQL ORM &amp; migrations</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.cloudflare} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Cloudflare</span>
-              <span class="integration-card__desc">Workers, Pages &amp; edge computing</span>
-            </div>
-          </div>
-          <div class="integration-card">
-            <Fragment set:html={integrationIcons.coolify} />
-            <div class="integration-card__info">
-              <span class="integration-card__name">Coolify</span>
-              <span class="integration-card__desc">Self-hosted PaaS &amp; deployment</span>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
     </section>
@@ -981,15 +846,15 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
     <!-- ==================== Quality Gates ==================== -->
     <section class="section section--border-top" id="quality">
       <div class="container">
-        <span class="section__label">Quality Gates · Convoy</span>
+        <span class="section__label">Quality Gates</span>
         <h2 class="section__title">
           No code ships without verification.
         </h2>
         <p class="section__subtitle">
-          When the convoy engine runs work for you, it puts it through layered
-          validation — secret scanning through final smoke test — escalating to a
-          structured dispute when agents cannot converge. These gates apply to convoy
-          runs, not to the compiler.
+          Layered validation — secret scanning through final smoke test. In an interactive
+          session the gates are instructions the Team Lead follows (the validation-gates skill);
+          when the experimental convoy engine runs the work, it enforces them — escalating to a
+          structured dispute when agents cannot converge.
         </p>
         <div class="quality-grid">
           <div class="quality-card">
@@ -1097,8 +962,8 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             <div class="stat__label">IDE Adapters</div>
           </div>
           <div class="stat">
-            <div class="stat__value">57</div>
-            <div class="stat__label">Skills &amp; Integrations</div>
+            <div class="stat__value">{skillCount}</div>
+            <div class="stat__label">Skills</div>
           </div>
           <div class="stat">
             <div class="stat__value">1</div>

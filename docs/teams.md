@@ -1,6 +1,6 @@
 # OpenCastle for teams
 
-> Back to [README](../README.md) · Status: first release shipped, September 2026 ·
+> Back to [README](../README.md) · Status: shipped through v1.3.0, 3 October 2026 ·
 > How to use it: [opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/)
 
 A single developer's assistant config is a solved problem. A team's is not.
@@ -9,9 +9,9 @@ nobody owns the result: nobody reviews it, nobody notices when it drifts, and
 nobody can say which MCP servers — code that runs with every developer's
 credentials — the team's agents actually launch.
 
-That is the gap OpenCastle should close. This document records what shipped
-toward it and what is still open, in order of leverage. The guide to using what
-shipped is on the website; this is the record of decisions and gaps.
+That is the gap OpenCastle should close. This document records the decisions
+behind what shipped and what is still open, in order of leverage. How to use
+what shipped is in [the guide](https://www.opencastle.dev/docs/teams/).
 
 ## Why now
 
@@ -36,53 +36,76 @@ shipped is on the website; this is the record of decisions and gaps.
 
 ## Shipped
 
-| Change | Why it matters to a team |
-| --- | --- |
-| `sync --check` annotates drifted files on GitHub Actions and writes a run summary | Drift is seen by the PR author and reviewer, not only by whoever opens the job log |
-| Every MCP default pinned, project-local (`npx --no`), or the vendor's remote server | Every laptop and CI run starts the same server version; upgrades are a reviewable diff |
-| Three defaults replaced: two packages that were never published, one unpublished from npm | The servers start at all — and nobody can claim the vacated name |
-| Remote servers in `.mcp.json` carry `"type": "http"` | Claude Code loads them; before, it read them as stdio servers with no command |
-| `sync` moves entries still exactly as an earlier release wrote them | Existing installs get fixes without anyone's edits being overwritten |
-| `doctor` audits what every MCP config launches | Covers servers the team added by hand, with a remedy per finding |
-| Weekly `mcp:check` workflow | A pin that disappears from the registry turns a check red here first |
-| **Shared baselines**: `extends` in `.opencastle/config.json` names npm packages (devDependencies, found in `node_modules`) or relative paths; layers merge OpenCastle → baselines → project | One standard across every repository. The package manager fetches and pins it, and an upgrade bot rolls it out one pull request per repository |
-| Team content in `.opencastle/` and in each baseline — `instructions/`, `agents/`, `skills/<name>/SKILL.md`, `prompts/`, `workflows/` — compiled into all seven targets | A skill or rule written once reaches every assistant, with no per-assistant copy |
-| Team MCP servers written in each target's variable syntax; retired ones removed | `${NAME}` written once; Cursor, Windsurf, OpenCode and VS Code each receive a spelling they expand |
-| **Policy** that only tightens: `mcp.allow`, `mcp.remoteHosts`, `mcp.requirePinned`, `require`, `contextBudget`, and the `opencastle` version range | A baseline's rules hold in every repository that extends it. A team server refused by its own layer's rules or those below is a compile error; one a higher layer refuses, and an integration server the policy refuses, is left out |
-| Credentials written inline refused in team config, and failed in every MCP config `doctor` reads | A token in a committed file fails the check instead of shipping |
-| `.opencastle/lock.json`, written by `sync` and compared by `sync --check` | One deterministic, reviewable record of what every assistant is given; CODEOWNERS on it routes every such change to owners |
-| **Review the meaning**: `opencastle review`, on the job summary in CI | Reviewers read "New MCP server acme-flags from this project" or "@acme/opencastle-baseline's MCP allowlist now also allows Sentry", marked ⚠️ where it matters — not a hundred lines of generated Markdown |
-| **Instruction health** in `doctor`: always-loaded context against the budget with the largest contributors, dead `npm run` scripts and repository paths in team content, CLI version skew | Rot and bloat show up before an agent follows a stale instruction |
-| **Onboarding**: `opencastle explain` | A new teammate sees what their assistant gets, where each piece comes from, and which variables and sign-ins they still need |
-| **CI setup**: `opencastle ci [--owners <team>]` | The drift and policy check, the review summary and CODEOWNERS lines in one command |
-| `opencastle baseline init` and `check` | A baseline package scaffolded with its CI check, and validated the way every repository extending it will read it — including that `npm publish` ships the layer |
-| **Fleet**: `opencastle fleet <dir...>` | Which repositories run which OpenCastle and baseline versions, and which MCP servers run differently, from committed locks alone |
-| `sync` refuses to downgrade a project a newer release compiled | Two teammates on different versions no longer rewrite each other's output |
-| **Namespaced commands**: `/oc:bug-fix` in Claude Code (`.claude/commands/oc/`) and Copilot (`.github/prompts/oc.*.prompt.md`), a team's own prompts included; `sync` removes the un-namespaced files an earlier release wrote | A teammate's own `/bug-fix` keeps working beside ours, and `sync`, `sync --check` and `remove` never touch a command OpenCastle did not write |
-| Integration servers' variables written as `${env:NAME}` for Cursor and Windsurf and `{env:NAME}` for OpenCode | Cursor and OpenCode passed the `${NAME}` written before to the server as literal text |
-| **Codex CLI** receives skills in `.agents/skills/` and MCP servers as `[mcp_servers.<name>]` tables in `.codex/config.toml`, changed table by table so the rest of the file stays the user's; variables as `env_vars`, `bearer_token_env_var` and `env_http_headers`. `sync` removes `.codex/skills/` and takes our servers out of `.codex/mcp.json` | Codex reads neither of the paths written before, so a Codex user got AGENTS.md and no skill, integration or team server at all |
-| **Lessons as files**: `opencastle lesson` writes `.opencastle/lessons/<date>-<title>.md`; `LESSONS-LEARNED.md` becomes an index compiled from them by `sync` and checked by `sync --check`. A lesson can `--cite` code; `doctor` names one whose cited file changed since it was verified (`lesson verify`, `lesson archive`). A credential in a lesson is refused. `sync` moves an old single-file log into files and keeps a backup | Every lesson was appended to one file and numbered one past the highest there, so two branches each adding one conflicted and both called theirs LES-042. And nothing said when a lesson's code had moved on |
-| **Agent Plugins 1.0**: a baseline can be an Agent Plugin — `plugin.json`, `skills/`, `mcp.json`, and OpenCastle's own content and policy in the `dev.opencastle/` extension directory — and `baseline init` creates one. `extends` takes any Agent Plugin, from npm or a path, with no OpenCastle declaration; its portable servers become team servers held to the policy | One package is the team's standard twice over: Copilot, VS Code, Cursor, Codex and Kiro install it natively, and OpenCastle compiles it — with what the standard does not cover — into all seven assistants. A team adopting an Agent Plugin someone else publishes gets it in every assistant, not only the ones that read plugins |
-| **`opencastle plugin`**: `check` loads a plugin as a conformant client must (closed manifest, Agent Skills names, MCP server variants, containment); `build` writes Claude Code's `.claude-plugin/plugin.json` and `.mcp.json` from the portable files; `index` writes the marketplace files Claude Code and Copilot CLI, Cursor and Codex read | The standard leaves Claude Code's manifest and each marketplace format to the client, which is three copies of one fact kept by hand — compiled and checked instead, like everything else |
-| Each integration is an Agent Plugin directory, checked against the spec in CI, and its skill compiles under the skill's own name (`supabase-database/`, not `supabase/`) | An assistant that follows the Agent Skills spec skips a skill whose name does not match its directory — every integration skill was one. An `exclude` naming the old directory still works, with a warning |
-| **`opencastle promote`**: `skill` copies a skill from a person's own skill directories (`~/.claude/skills`, `~/.agents/skills`, …) into `.opencastle/skills/` or, with `--to`, a baseline — checked against the Agent Skills spec and for credentials first. `memory` writes Claude Code's auto memory for the repository (`feedback` and `project` memories) as lessons, leaving out memories about the person, credentials and ones already promoted, and writing the home directory as `~` | Knowledge starts on one laptop: Claude Code's auto memory is machine-local by design, and a personal skill reaches one assistant. Promotion is the step from personal to team to organisation — Productboard's Spark draws the same line between personal and workspace skills — and the pull request that commits it is the review |
-| **Cursor and Windsurf get Agent Skills**, not rules: skills go to `.agents/skills/`, which both read natively, with their scripts and other files — as do OpenCode's, which used `.opencode/skills/`. `sync` removes what an earlier release wrote | Flattened into rules, a skill lost every non-Markdown file, could not be invoked by name, and was matched like a rule. Cursor's own `/migrate-to-skills` converts exactly those rules |
-| **Windsurf, now Devin Desktop**: MCP servers go to `.devin/mcp_config.json`, the project file its default agent (Devin Local) reads; `sync` takes our servers out of `.windsurf/mcp.json` | Nothing read `.windsurf/mcp.json` — the legacy Cascade agent reads one global file — so no integration or team server reached Windsurf |
-| **Antigravity**: remote servers as `serverUrl`, the field its MCP docs require; an `env` entry that only forwards `${NAME}` left out | Antigravity expands no variables, so the forwarded `${NAME}` replaced the value the server would have inherited with literal text. `doctor` names any other reference |
-| `explain` says whether Codex trusts the project, reading Codex's own config | Codex loads `.codex/config.toml` — every server written for it — only in a trusted project |
-| With Codex or OpenCode also selected, Antigravity's `GEMINI.md` points to `AGENTS.md` instead of repeating it | Antigravity reads both files, cumulatively, so it loaded every instruction and both indexes twice — about 5,000 tokens before each task in a stock project |
+How to use each of these: [the guide](https://www.opencastle.dev/docs/teams/).
+
+- **1.0.0** (1 October 2026) — Shared baselines through `extends`; the team's
+  own instructions, skills, agents, prompts and workflows in `.opencastle/`,
+  compiled into all seven assistants; policy that only tightens; the lock;
+  `review`, `explain`, `ci`, `baseline` and `fleet`. Every default MCP server
+  pinned, project-local or remote, audited by `doctor` and `sync --check`.
+  Drift annotated on GitHub Actions. `sync` refuses to downgrade.
+- **1.1.0** (1 October) — Compiled commands namespaced as `/oc:<name>` in
+  Claude Code and Copilot.
+- **1.1.1** (3 October) — Codex gets skills in `.agents/skills/` and MCP
+  servers in `.codex/config.toml`.
+- **1.2.0** (3 October) — Lessons as files that cite code; Agent Plugins 1.0
+  (a baseline is one, `opencastle plugin`, every integration is one);
+  `opencastle promote`.
+- **1.3.0** (3 October) — Cursor, Windsurf and OpenCode read skills from
+  `.agents/skills/`; Windsurf's MCP servers go to `.devin/mcp_config.json`;
+  Antigravity gets remote servers as `serverUrl`, and a `GEMINI.md` that points
+  to `AGENTS.md` when Codex or OpenCode is also selected; `explain` says
+  whether Codex trusts the project.
+
+### Decisions behind it
+
+- **The package manager fetches baselines, not OpenCastle.** `extends` names
+  devDependencies, found in `node_modules`, or relative paths, which resolve
+  from `.opencastle/`. The lockfile pins the version and an upgrade bot rolls a
+  new one out one pull request per repository.
+- **Policy only tightens.** A team server refused by its own layer's policy or
+  one below it is a compile error. One a higher layer refuses is left out: that
+  is how a repository opts out of a baseline's server.
+- **Review the meaning, not the output.** `review` reads the lock and says "New
+  MCP server acme-flags from this project", marked ⚠️ where it matters, instead
+  of a hundred lines of generated Markdown. CODEOWNERS on the lock routes every
+  such change to its owners.
+- **Integration servers are written in each assistant's variable syntax.**
+  Cursor and OpenCode passed a `${NAME}` written for Claude Code to the server
+  as literal text. Antigravity expands no variables, so an `env` entry that only
+  forwards one is left out and the server inherits it.
+- **One file per lesson.** In one shared file, two branches each adding a lesson
+  conflicted and both numbered theirs one past the highest. A lesson can cite
+  code, so `doctor` can say when that code has moved on.
+- **Promotion is the step from personal to team.** Claude Code's auto memory is
+  machine-local by design, and a personal skill reaches one assistant.
+  `promote` writes them into the team's sources, and the pull request that
+  commits them is the review.
+- **A baseline is an Agent Plugin.** Copilot, VS Code, Cursor, Codex and Kiro
+  install one natively; OpenCastle compiles it, with what the standard does not
+  cover, into all seven assistants. The standard leaves Claude Code's manifest
+  and each marketplace format to the client, so `opencastle plugin` compiles
+  and checks those instead of three copies kept by hand.
+- **Skills as Agent Skills, not rules.** Flattened into Cursor or Windsurf rules,
+  a skill lost every non-Markdown file, could not be invoked by name, and was
+  matched like a rule. An integration skill compiles under the skill's own name
+  (`supabase-database/`), because a client following the spec skips a skill
+  whose name does not match its directory.
+- **Output goes where each assistant reads it.** Codex read neither path written
+  before 1.1.1, and nothing read `.windsurf/mcp.json` before 1.3.0, so those
+  users got no skill, integration or team server at all.
+- **Instructions load once.** Antigravity reads `GEMINI.md` and `AGENTS.md`
+  together, so with Codex or OpenCode selected it loaded every instruction and
+  both indexes twice — about 5,000 tokens before each task in a stock project.
 
 ## Next, in order of leverage
 
 ### 1. Instructions loaded once per assistant
 
-Antigravity documents that it reads `AGENTS.md` and `GEMINI.md` together, so
-with Codex or OpenCode also selected it loaded every instruction twice;
-`GEMINI.md` now points to `AGENTS.md` in that case (see Shipped). VS Code,
-Cursor and Devin Desktop also support `AGENTS.md`; whether each reads it beside
-its own root file by default — and so loads the same instructions twice when
-both exist — needs checking against each one's docs before their root files
-get the same treatment.
+Antigravity is done (see Shipped). VS Code, Cursor and Devin Desktop also
+support `AGENTS.md`; whether each reads it beside its own root file by default —
+and so loads the same instructions twice when both exist — needs checking
+against each one's docs before their root files get the same treatment.
 
 ### 2. VS Code's newer formats
 
@@ -139,13 +162,12 @@ lead actually asks.
 Agent Plugins, integration skill names, and one shared `.agents/skills/` for
 Codex, Cursor, Windsurf, OpenCode and Antigravity are done (see Shipped). What
 remains: VS Code still gets `.github/skills/` although it reads `.agents/skills/`
-too — `.github/skills/` is also where Copilot's cloud agent looks, which needs
-checking first. Claude
-Code reads only `.claude/skills/`, so a project targeting it keeps a second copy
-(see the open question on duplicates). Keep per-assistant dialects only where
-an assistant needs one. Fewer generated files means less to review and less to drift — and
-the lock already records what each assistant is given, so the reduction can be
-reviewed like any other change.
+too, and `.github/skills/` is also where Copilot's cloud agent looks, which
+needs checking first. Claude Code's copy is an open question (see skills written
+to more than one directory, below). Keep per-assistant dialects only where an
+assistant needs one. Fewer generated files means less to review and less to
+drift, and the lock already records what each assistant is given, so the
+reduction can be reviewed like any other change.
 
 ## Open questions to verify
 

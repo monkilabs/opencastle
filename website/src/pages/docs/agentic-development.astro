@@ -383,8 +383,8 @@ const sectionIcons: Record<string, string> = {
             <li><strong>Refinery</strong> — a merge queue that serializes changes from parallel workers, preventing conflicts before they reach the main branch</li>
           </ul>
 
-          <h4 class="arch-subheading">Gas Town vs OpenCastle</h4>
-          <p>OpenCastle takes these ideas and rebuilds them for the IDE-native developer workflow — TypeScript over Go, SQLite over Git JSONL, standard git tooling over custom infrastructure:</p>
+          <h4 class="arch-subheading">Gas Town vs OpenCastle's convoy engine (experimental)</h4>
+          <p>OpenCastle's convoy engine — experimental, under <code>opencastle convoy</code> — takes these ideas and rebuilds them for the IDE-native developer workflow: TypeScript over Go, SQLite over Git JSONL, standard git tooling over custom infrastructure.</p>
 
           <div class="comparison-table-wrap">
             <table class="comparison-table">
@@ -399,7 +399,7 @@ const sectionIcons: Record<string, string> = {
                 <tr>
                   <td>Language</td>
                   <td>Go + custom tooling</td>
-                  <td>TypeScript (Node.js 22+)</td>
+                  <td>TypeScript (Node.js 22.5+)</td>
                 </tr>
                 <tr>
                   <td>State storage</td>
@@ -409,7 +409,7 @@ const sectionIcons: Record<string, string> = {
                 <tr>
                   <td>Worker model</td>
                   <td>Claude Code instances in tmux</td>
-                  <td>Any AI runtime (Copilot, Claude Code, Cursor, OpenCode)</td>
+                  <td>Any of five agent runtimes (Copilot, Claude Code, Cursor, OpenCode, Codex)</td>
                 </tr>
                 <tr>
                   <td>Setup</td>
@@ -444,12 +444,12 @@ const sectionIcons: Record<string, string> = {
           <div class="highlight-box">
             <p class="highlight-box__title">Benefits</p>
             <ul class="highlight-box__list">
-              <li><strong>Easy adoption</strong> — one command install (<code>npx opencastle init</code>), works with your existing IDE and AI runtime</li>
-              <li><strong>Minimal setup</strong> — YAML config, no dedicated infrastructure, no proprietary tooling to learn</li>
+              <li><strong>One source, every assistant</strong> — <code>npx opencastle init</code> compiles agents, skills and MCP config for Claude Code, Copilot, Cursor, Windsurf, Codex CLI, OpenCode and Antigravity</li>
+              <li><strong>Minimal setup</strong> — the convoy engine (experimental) runs from a YAML spec per run, with no dedicated infrastructure and no proprietary tooling to learn</li>
               <li><strong>Crash-safe execution</strong> — SQLite WAL persists all task state; interrupted runs resume from where they stopped</li>
               <li><strong>Isolated workers</strong> — git worktrees give each parallel agent its own branch, eliminating mid-flight merge conflicts</li>
-              <li><strong>Multi-runtime support</strong> — bring your own AI: GitHub Copilot, Claude Code, Cursor, and OpenCode all supported</li>
-              <li><strong>Observable by default</strong> — SQL-queryable state, NDJSON event logs, and a real-time dashboard out of the box</li>
+              <li><strong>Multi-runtime support</strong> — bring your own AI: GitHub Copilot, Claude Code, Cursor, OpenCode and Codex all supported</li>
+              <li><strong>Observable by default</strong> — SQL-queryable state, NDJSON event logs, and a run viewer (<code>opencastle convoy dashboard</code>)</li>
             </ul>
           </div>
         </section>

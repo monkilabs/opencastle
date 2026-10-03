@@ -21,8 +21,11 @@ function mcpSnippet(id: string): string {
   return JSON.stringify(out, null, 2);
 }
 
-const title = 'Plugin Setup Guide — OpenCastle';
-const description = 'Configure plugins for your AI coding agents. Each plugin bundles skills, optional MCP server configs, and agent tool mappings.';
+const integrationCount = Object.keys(PLUGINS).length;
+const { contentful, strapi, hetzner } = PLUGINS;
+
+const title = 'Integrations — OpenCastle';
+const description = `Set up OpenCastle's ${integrationCount} integrations: the skill each one adds, how its MCP server signs in, and the config init writes for it.`;
 
 /* ---------- Inline SVG icons (monochrome, from Simple Icons) ---------- */
 const icons: Record<string, string> = {
@@ -54,6 +57,7 @@ const icons: Record<string, string> = {
   drizzle: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5.353 11.823a1.036 1.036 0 0 0-.395-1.422 1.063 1.063 0 0 0-1.437.399L.138 16.702a1.035 1.035 0 0 0 .395 1.422 1.063 1.063 0 0 0 1.437-.398zm7.706-4.921a1.036 1.036 0 0 0-.395-1.422 1.062 1.062 0 0 0-1.437.399l-3.383 5.902a1.036 1.036 0 0 0 .395 1.422 1.063 1.063 0 0 0 1.437-.399zm7.707-4.101a1.035 1.035 0 0 0-.395-1.422 1.063 1.063 0 0 0-1.437.399L15.55 7.68a1.035 1.035 0 0 0 .395 1.422 1.063 1.063 0 0 0 1.437-.399zM18.56 12.1a1.036 1.036 0 0 0-.395-1.422 1.063 1.063 0 0 0-1.437.399l-3.383 5.902a1.036 1.036 0 0 0 .395 1.422 1.063 1.063 0 0 0 1.437-.399z"/></svg>`,
   cloudflare: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.5752-.4961-.9834-.5274l-8.9209-.1172c-.0615 0-.1182-.0322-.1533-.083-.0361-.0498-.0459-.1133-.0264-.1719.0283-.083.1084-.1396.1963-.1455l9.0186-.122c.9463-.0537 1.9727-.8789 2.3535-1.8896l.4834-1.2871c.0264-.0713.0381-.1484.0322-.2246C18.167 5.1289 13.2686 1.5 7.5 1.5 2.8506 1.5-.4648 5.6377.0479 10.3301c.2256 2.0654 1.1768 3.9082 2.6074 5.249a8.5874 8.5874 0 0 0 5.5547 2.4209h8.5771c.376 0 .7207-.2559.7969-.6182z"/><path d="M19.5439 10.5059a.1285.1285 0 0 0-.1221.0039.1285.1285 0 0 0-.0635.0898l-.3398 1.167c-.1475.5059-.0918.9697.1543 1.3145.2246.3164.5762.4961.9844.5273l1.8828.123c.0606 0 .1172.0312.1523.084.0371.0488.0459.1123.0264.1709-.0283.084-.1094.1406-.1963.1465L19.8252 13c-.9453.0527-1.9716.8779-2.3535 1.8887l-.1299.3457c-.0264.0703.0186.1406.0928.1406h4.7803c1.0547 0 1.9727-.7207 2.1416-1.7598.1016-.6162.0439-1.2393-.167-1.8018a3.5036 3.5036 0 0 0-1.0996-1.4619 3.5145 3.5145 0 0 0-1.6924-.7969 3.4952 3.4952 0 0 0-1.8436.1494z"/></svg>`,
   coolify: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M4.364 4.364V0h17.454v4.364zm0 13.09H0V4.365h4.364zm1.454 1.455V24h17.454v-4.364zM24 6.545v12.728h-4.364V6.545z"/></svg>`,
+  hetzner: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M2 2h20v20H2zm4.5 3.5v13h3v-5h5v5h3v-13h-3v5h-5v-5z"/></svg>`,
   trello: `<svg width="20" height="20" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><rect x="144.64" y="33.28" width="78.08" height="112" rx="12"/><rect x="33.28" y="33.28" width="78.08" height="176" rx="12"/></svg>`,
   notion: `<svg width="20" height="20" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M11.2481 13.5787V13.3756C11.2481 12.8607 11.6605 12.4337 12.192 12.3982L16.0633 12.1397L21.417 20.0235V13.1041L20.039 12.9204V12.824C20.039 12.303 20.4608 11.8732 20.9991 11.8456L24.5216 11.6652V12.1721C24.5216 12.41 24.3446 12.6136 24.1021 12.6546L23.2544 12.798V24.0037L22.1906 24.3695C21.3018 24.6752 20.3124 24.348 19.8036 23.5803L14.6061 15.7372V23.223L16.2058 23.5291L16.1836 23.6775C16.1137 24.1423 15.7124 24.4939 15.227 24.5155L11.2481 24.6926C11.1955 24.1927 11.5701 23.7456 12.0869 23.6913L12.6103 23.6363V13.6552L11.2481 13.5787Z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M20.6749 2.96678L4.72347 4.05585C3.76799 4.12109 3.02734 4.88925 3.02734 5.81499V21.3299C3.02734 22.1997 3.32676 23.0448 3.87843 23.7321L7.3178 28.0167C7.87388 28.7094 8.74899 29.0909 9.65435 29.0352L27.3586 27.9454C28.266 27.8895 28.9724 27.1619 28.9724 26.2832V8.64426C28.9724 8.10059 28.6979 7.59115 28.2369 7.27951L22.6325 3.49029C22.0613 3.10413 21.3702 2.91931 20.6749 2.96678ZM5.51447 6.057C5.29261 5.89274 5.3982 5.55055 5.6769 5.53056L20.7822 4.44711C21.2635 4.41259 21.7417 4.54512 22.1309 4.82088L25.1617 6.96813C25.2767 7.04965 25.2228 7.22563 25.0803 7.23338L9.08387 8.10336C8.59977 8.12969 8.12193 7.98747 7.73701 7.7025L5.51447 6.057ZM8.33357 10.8307C8.33357 10.311 8.75341 9.88177 9.29027 9.85253L26.203 8.93145C26.7263 8.90296 27.1667 9.30534 27.1667 9.81182V25.0853C27.1667 25.604 26.7484 26.0328 26.2126 26.0633L9.40688 27.0195C8.8246 27.0527 8.33357 26.6052 8.33357 26.0415V10.8307Z"/></svg>`,
 };
@@ -84,10 +88,10 @@ const categories = [
   { id: 'testing', label: 'Testing', icon: categoryIcons.testing },
   { id: 'issue-trackers', label: 'Trackers', icon: categoryIcons.trackers },
   { id: 'notifications', label: 'Notifications', icon: categoryIcons.notifications },
+  { id: 'knowledge', label: 'Knowledge', icon: categoryIcons.knowledge },
   { id: 'design', label: 'Design', icon: categoryIcons.design },
   { id: 'email', label: 'Email', icon: categoryIcons.email },
   { id: 'payments', label: 'Payments', icon: categoryIcons.payments },
-  { id: 'knowledge', label: 'Knowledge', icon: categoryIcons.knowledge },
   { id: 'observability', label: 'Observability', icon: categoryIcons.observability },
 ];
 ---
@@ -99,6 +103,16 @@ const categories = [
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <link rel="canonical" href="https://www.opencastle.dev/docs/plugins/" />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="https://www.opencastle.dev/docs/plugins/" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="https://www.opencastle.dev/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="https://www.opencastle.dev/og-image.png" />
     <link rel="icon" type="image/png" href="/icon-192.png" />
   </head>
   <body>
@@ -112,7 +126,7 @@ const categories = [
           <h1 class="docs-header__title">
             <a href="/docs/" class="docs-header__breadcrumb-link">Docs</a>
             <span class="docs-header__breadcrumb-sep">/</span>
-            Plugin Setup Guide
+            Integrations
           </h1>
         </div>
       </div>
@@ -141,10 +155,12 @@ const categories = [
 
       <main class="docs-main">
         <p class="docs-subtitle">
-          Each plugin bundles skills, optional MCP server configs, and agent tool mappings —
-          and each is an <a href="/docs/agent-plugins">Agent Plugin 1.0</a> directory, with its
-          skill in <code>skills/&lt;name&gt;/SKILL.md</code> and its server in <code>mcp.json</code>.
-          Select a category from the sidebar or browse all plugins below.
+          OpenCastle has {integrationCount} integrations. Each one adds a skill, an MCP server where
+          the tool has one, and the tools its agents may call — and each is an
+          <a href="/docs/agent-plugins">Agent Plugin 1.0</a> directory, with its skill in
+          <code>skills/&lt;name&gt;/SKILL.md</code> and its server in <code>mcp.json</code>.
+          <code>init</code> adds the ones it detects; <code>opencastle add &lt;name&gt;</code> adds another.
+          Select a category from the sidebar or browse them all below.
         </p>
         <div class="callout">
           <strong>Pinned like dependencies.</strong> Every MCP server OpenCastle writes is
@@ -154,10 +170,22 @@ const categories = [
           server version, and an upgrade arrives as a reviewable diff. <code>opencastle doctor</code>
           audits servers you add yourself by the same rules.
         </div>
+        <div class="callout">
+          <strong>Where tokens go.</strong> VS Code reads them from <code>.env</code> in the project
+          root. Claude Code, Cursor, Windsurf, OpenCode, Codex and Antigravity read them from the
+          environment they were started in — export them in your shell, or load <code>.env</code>
+          with a tool such as direnv, before you start the assistant. <code>opencastle explain</code>
+          lists the ones your project's MCP servers still need.
+        </div>
+        <div class="callout">
+          <strong>The MCP configs below</strong> are the entries <code>init</code> writes to VS Code's
+          <code>.vscode/mcp.json</code>. Every other assistant gets the same server in its own file
+          and syntax; <code>opencastle explain</code> names the files for your project.
+        </div>
 
         <!-- ====== CMS Plugins ====== -->
         <section class="docs-category" id="cms-plugins" data-category>
-          <h2 class="docs-hero__heading">CMS Plugins</h2>
+          <h2 class="docs-hero__heading">CMS</h2>
 
           <div class="plugin-card" id="sanity">
             <h3 class="plugin-card__name"><Fragment set:html={icons.sanity} /> Sanity</h3>
@@ -171,8 +199,8 @@ const categories = [
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('sanity')}</code></pre>
@@ -184,11 +212,17 @@ const categories = [
             <table class="plugin-table">
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
-                <td><span class="badge badge--none">No auth</span></td>
+                <td><span class="badge badge--none">None set</span></td>
                 <td><code>@contentful/mcp-server</code></td>
-                <td><a href="https://www.contentful.com/developers/docs/" target="_blank" rel="noopener">contentful.com/developers/docs</a></td>
+                <td><a href={contentful.officialDocs} target="_blank" rel="noopener">contentful.com/developers/docs</a></td>
               </tr></tbody>
             </table>
+            <div class="callout callout--warning">
+              <strong>Credentials:</strong> OpenCastle writes this server without any, but the server
+              may need credentials before it can reach your content. See
+              <a href={contentful.officialDocs} target="_blank" rel="noopener">Contentful's developer docs</a>,
+              and set what it asks for where your assistant reads tokens.
+            </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('contentful')}</code></pre>
           </div>
@@ -199,11 +233,17 @@ const categories = [
             <table class="plugin-table">
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
-                <td><span class="badge badge--none">No auth</span></td>
+                <td><span class="badge badge--none">None set</span></td>
                 <td><code>strapi-mcp</code></td>
-                <td><a href="https://docs.strapi.io/" target="_blank" rel="noopener">docs.strapi.io</a></td>
+                <td><a href={strapi.officialDocs} target="_blank" rel="noopener">docs.strapi.io</a></td>
               </tr></tbody>
             </table>
+            <div class="callout callout--warning">
+              <strong>Credentials:</strong> OpenCastle writes this server without any, but the server
+              may need credentials before it can reach your content. See
+              <a href={strapi.officialDocs} target="_blank" rel="noopener">Strapi's docs</a>,
+              and set what it asks for where your assistant reads tokens.
+            </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('strapi')}</code></pre>
           </div>
@@ -211,7 +251,7 @@ const categories = [
 
         <!-- ====== Database Plugins ====== -->
         <section class="docs-category" id="database-plugins" data-category>
-          <h2 class="docs-hero__heading">Database Plugins</h2>
+          <h2 class="docs-hero__heading">Databases</h2>
 
           <div class="plugin-card" id="supabase">
             <h3 class="plugin-card__name"><Fragment set:html={icons.supabase} /> Supabase</h3>
@@ -225,8 +265,8 @@ const categories = [
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('supabase')}</code></pre>
@@ -239,7 +279,7 @@ const categories = [
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
                 <td><span class="badge badge--none">No auth</span></td>
-                <td><code>convex</code></td>
+                <td>Bundled with <code>convex</code> — your project's own copy</td>
                 <td><a href="https://docs.convex.dev/" target="_blank" rel="noopener">docs.convex.dev</a></td>
               </tr></tbody>
             </table>
@@ -274,15 +314,15 @@ const categories = [
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>Skills only:</strong> This plugin provides agent skills but no MCP
-              server. No additional configuration needed.
+              <strong>Skills only:</strong> This integration adds a skill but no MCP
+              server. Nothing to configure.
             </div>
           </div>
         </section>
 
         <!-- ====== Framework Plugins ====== -->
         <section class="docs-category" id="framework-plugins" data-category>
-          <h2 class="docs-hero__heading">Framework Plugins</h2>
+          <h2 class="docs-hero__heading">Frameworks</h2>
 
           <div class="plugin-card" id="nextjs">
             <h3 class="plugin-card__name"><Fragment set:html={icons.nextjs} /> Next.js</h3>
@@ -326,8 +366,8 @@ const categories = [
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('expo')}</code></pre>
@@ -350,8 +390,8 @@ const categories = [
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('vercel')}</code></pre>
@@ -390,8 +430,8 @@ const categories = [
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('cloudflare')}</code></pre>
@@ -412,12 +452,37 @@ const categories = [
               <strong>Required env vars:</strong><br />
               <code>COOLIFY_ACCESS_TOKEN</code> — generate in your Coolify dashboard &rarr; API Tokens.<br />
               <code>COOLIFY_BASE_URL</code> — your Coolify instance URL (e.g. <code>https://coolify.example.com</code>).<br />
-              Add both to your <code>.env</code> file:
+              For VS Code, add both to <code>.env</code>; for any other assistant, to its environment:
               <pre><code>COOLIFY_ACCESS_TOKEN="your-token-here"
 COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('coolify')}</code></pre>
+          </div>
+
+          <div class="plugin-card" id="hetzner">
+            <h3 class="plugin-card__name"><Fragment set:html={icons.hetzner} /> {hetzner.name}</h3>
+            <p class="plugin-card__desc">Servers, volumes, private networks and firewalls, through the hcloud CLI or Pulumi.</p>
+            <table class="plugin-table">
+              <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
+              <tbody><tr>
+                <td><code class="badge badge--apikey">API Key</code></td>
+                <td>&mdash;</td>
+                <td><a href={hetzner.officialDocs} target="_blank" rel="noopener">docs.hetzner.com/cloud</a></td>
+              </tr></tbody>
+            </table>
+            <div class="callout">
+              <strong>Skills only:</strong> This integration adds the <code>{hetzner.skillName}</code> skill
+              and no MCP server. Agents run the hcloud CLI or Pulumi in a terminal.
+            </div>
+            <div class="callout callout--warning">
+              <strong>Required env var:</strong><br />
+              {hetzner.envVars.map((v) => (
+                <Fragment><code>{v.name}</code> — {v.hint}.<br /></Fragment>
+              ))}
+              The hcloud CLI and Pulumi read it from the shell the agent runs them in, so export it
+              there. No MCP config passes it, and <code>opencastle explain</code> does not list it.
+            </div>
           </div>
         </section>
 
@@ -432,7 +497,7 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
                 <td><span class="badge badge--none">No auth</span></td>
-                <td>Bundled with <code>nx</code></td>
+                <td>Bundled with <code>nx</code> — your project's own copy</td>
                 <td><a href="https://nx.dev/getting-started/intro" target="_blank" rel="noopener">nx.dev/getting-started</a></td>
               </tr></tbody>
             </table>
@@ -452,8 +517,8 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>Skills only:</strong> This plugin provides agent skills but no MCP
-              server. No additional configuration needed.
+              <strong>Skills only:</strong> This integration adds a skill but no MCP
+              server. Nothing to configure.
             </div>
           </div>
         </section>
@@ -474,8 +539,8 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>Skills only:</strong> This plugin provides agent skills but no MCP
-              server. No additional configuration needed.
+              <strong>Skills only:</strong> This integration adds a skill but no MCP
+              server. Nothing to configure.
             </div>
           </div>
 
@@ -506,8 +571,8 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>Skills only:</strong> This plugin provides agent skills but no MCP
-              server. No additional configuration needed.
+              <strong>Skills only:</strong> This integration adds a skill but no MCP
+              server. Nothing to configure.
             </div>
           </div>
 
@@ -562,8 +627,8 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('jira')}</code></pre>
@@ -584,7 +649,7 @@ COOLIFY_BASE_URL="https://coolify.example.com"</code></pre>
               <strong>Required env vars:</strong><br />
               <code>TRELLO_API_KEY</code> — create at <a href="https://trello.com/app-key" target="_blank" rel="noopener">trello.com/app-key</a> &rarr; API Key.<br />
               <code>TRELLO_TOKEN</code> — generate at trello.com/app-key &rarr; Token.<br />
-              Add both to your <code>.env</code> file:
+              For VS Code, add both to <code>.env</code>; for any other assistant, to its environment:
               <pre><code>TRELLO_API_KEY="your-api-key-here"
 TRELLO_TOKEN="your-token-here"</code></pre>
             </div>
@@ -618,7 +683,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               redirects to <code>http://127.0.0.1:&lt;port&gt;</code> which Slack rejects
               because it requires HTTPS redirect URLs.
               We use <code>@kazuph/mcp-slack</code> instead — it runs locally via stdio
-              and reads the bot token from <code>.env</code>, no OAuth needed.
+              and takes a bot token, no OAuth needed.
             </div>
 
             <h4>1. Create a Slack App</h4>
@@ -686,18 +751,18 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             </ol>
 
             <div class="callout callout--warning">
-              <strong>Security:</strong> Treat this token like a password. Store it in
-              your project's <code>.env</code> file (which should be in
-              <code>.gitignore</code>). Never commit it to source control.
+              <strong>Security:</strong> Treat this token like a password. Keep it in
+              <code>.env</code> (the <code>.gitignore</code> entries <code>init</code> writes cover it)
+              or in your shell's environment. Never commit it to source control.
             </div>
 
-            <p>Add the token to your <code>.env</code> file:</p>
+            <p>For VS Code, add the token to <code>.env</code>; for any other assistant, to its environment:</p>
             <pre><code>SLACK_MCP_XOXB_TOKEN="xoxb-your-token-here"</code></pre>
 
             <h4>4. MCP Config</h4>
 
-            <p><strong>VS Code</strong> — ensure <code>.vscode/mcp.json</code> includes
-            (automatic if you ran <code>npx opencastle init</code> with Slack enabled):</p>
+            <p><strong>VS Code</strong> — <code>.vscode/mcp.json</code> includes this once Slack is
+            added (<code>npx opencastle add slack</code>, or <code>init</code> when it is selected):</p>
             <pre><code>{mcpSnippet('slack')}</code></pre>
 
             <div class="callout">
@@ -710,7 +775,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             <p><strong>Cursor</strong> — the Slack server appears from <code>.cursor/mcp.json</code>
             (auto-generated by <code>npx opencastle init</code>). Open Cursor Settings &rarr; MCP &rarr; Enable.</p>
 
-            <p><strong>Claude Code</strong> — reads config from <code>.claude/mcp.json</code>
+            <p><strong>Claude Code</strong> — reads config from <code>.mcp.json</code>
             (auto-generated). Run <code>claude mcp list</code> to verify.</p>
 
             <h4>5. Verify</h4>
@@ -722,9 +787,9 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             <p><strong>"missing_scope" error</strong> — Go back to your Slack app's
             OAuth &amp; Permissions &rarr; Bot Token Scopes, add the missing scope(s), then click
             Reinstall to Workspace.</p>
-            <p><strong>"not_authed" / "invalid_auth"</strong> — Check that your <code>.env</code>
-            contains <code>SLACK_MCP_XOXB_TOKEN</code> with a valid <code>xoxb-…</code> token,
-            wrapped in quotes with no trailing whitespace.</p>
+            <p><strong>"not_authed" / "invalid_auth"</strong> — Check that <code>SLACK_MCP_XOXB_TOKEN</code>
+            holds a valid <code>xoxb-…</code> token with no trailing whitespace — in <code>.env</code>
+            for VS Code, in the assistant's environment for the others.</p>
             <p><strong>Bot can't see channels</strong> — Invite the bot to the channel:
             <code>/invite @OpenCastle Agents</code>.</p>
             <p><strong>Can't post messages</strong> — Ensure
@@ -747,15 +812,15 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('teams')}</code></pre>
             <div class="callout">
-              <strong>Note:</strong> Replace <code>${`\${input:tenant_id}`}</code> with your
-              Microsoft 365 tenant ID. In VS Code, this will prompt you for the value
-              when the server starts.
+              <strong>Tenant ID:</strong> VS Code asks for your Microsoft Entra tenant ID when the
+              server starts. In every other assistant's config the URL contains
+              <code>REPLACE_ME</code> — replace it with your tenant ID.
             </div>
           </div>
         </section>
@@ -776,8 +841,8 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('notion')}</code></pre>
@@ -829,7 +894,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             <div class="callout callout--warning">
               <strong>Required env var:</strong> <code>RESEND_API_KEY</code><br />
               Generate at resend.com &rarr; API Keys.
-              Add it to your <code>.env</code> file:
+              For VS Code, add it to <code>.env</code>; for any other assistant, to its environment:
               <pre><code>RESEND_API_KEY="re_your-key-here"</code></pre>
             </div>
             <h4>MCP Config</h4>
@@ -853,8 +918,8 @@ TRELLO_TOKEN="your-token-here"</code></pre>
               </tr></tbody>
             </table>
             <div class="callout">
-              <strong>OAuth:</strong> This plugin uses OAuth. The MCP server will open
-              a browser window for authentication when you first connect.
+              <strong>OAuth:</strong> Your assistant opens a browser to sign in the first time it
+              starts the server.
             </div>
             <h4>MCP Config</h4>
             <pre><code>{mcpSnippet('stripe')}</code></pre>
@@ -879,7 +944,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             <div class="callout callout--warning">
               <strong>Required env var:</strong> <code>SENTRY_ACCESS_TOKEN</code><br />
               Generate at sentry.io &rarr; Settings &rarr; Auth Tokens.
-              Add it to your <code>.env</code> file:
+              For VS Code, add it to <code>.env</code>; for any other assistant, to its environment:
               <pre><code>SENTRY_ACCESS_TOKEN="sntrys_your-token-here"</code></pre>
             </div>
             <h4>MCP Config</h4>
@@ -1097,6 +1162,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
         border-radius: 12px;
         padding: 20px 24px;
         margin-bottom: 16px;
+        scroll-margin-top: 72px;
         transition: border-color var(--transition-fast);
       }
       .plugin-card:hover {
@@ -1148,6 +1214,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
       }
       .plugin-table td {
         color: var(--text-primary);
+        overflow-wrap: anywhere;
       }
       .plugin-table a {
         color: var(--text-accent);
@@ -1337,48 +1404,23 @@ TRELLO_TOKEN="your-token-here"</code></pre>
       const sections = document.querySelectorAll('[data-category]');
       const mobileToggle = document.getElementById('mobile-toggle');
 
-      function setActiveSection(sectionId: string) {
-        // Update active link
+      // Show one category, or every one ('all'), and mark its sidebar link.
+      function filterSections(sectionId: string) {
         links?.forEach(link => {
           link.classList.toggle('docs-sidebar__link--active',
             link.getAttribute('data-section') === sectionId);
         });
-
-        // Show/hide sections
-        if (sectionId === 'all') {
-          sections.forEach(s => s.removeAttribute('hidden'));
-        } else {
-          sections.forEach(s => {
-            if (s.id === sectionId) {
-              s.removeAttribute('hidden');
-            } else {
-              s.setAttribute('hidden', '');
-            }
-          });
-          // Scroll to visible section
-          const target = document.getElementById(sectionId);
-          if (target) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }
-
-        // Close mobile sidebar
+        sections.forEach(s => s.toggleAttribute('hidden', sectionId !== 'all' && s.id !== sectionId));
         sidebar?.classList.remove('docs-sidebar--open');
+      }
 
+      function setActiveSection(sectionId: string) {
+        filterSections(sectionId);
+        if (sectionId !== 'all') {
+          document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         // Update URL hash without scrolling
         history.replaceState(null, '', sectionId === 'all' ? location.pathname : `#${sectionId}`);
-
-        // Update plugin count
-        const countEl = document.getElementById('plugin-count');
-        if (countEl) {
-          if (sectionId === 'all') {
-            const total = document.querySelectorAll('.plugin-card').length;
-            countEl.textContent = `${total} plugins`;
-          } else {
-            const visible = document.querySelectorAll(`#${sectionId} .plugin-card`);
-            countEl.textContent = `${visible.length} plugin${visible.length !== 1 ? 's' : ''}`;
-          }
-        }
       }
 
       // Click handler for sidebar buttons
@@ -1403,11 +1445,23 @@ TRELLO_TOKEN="your-token-here"</code></pre>
         }
       });
 
-      // Restore from URL hash on load
-      const hash = location.hash.replace('#', '');
-      if (hash && document.getElementById(hash)) {
-        setActiveSection(hash);
+      // Open the URL's hash: a category filters to it; anything else — a card, such as
+      // #slack, the link init prints and each integration's plugin.json names — shows
+      // every category and scrolls to it. Filtering to a card's id hid every section.
+      // On load, jump straight there: a smooth scroll across the whole page takes seconds.
+      function openHash(behavior: ScrollBehavior) {
+        const id = decodeURIComponent(location.hash.slice(1));
+        const target = id ? document.getElementById(id) : null;
+        if (!target) return;
+        if (target.matches('[data-category]')) {
+          setActiveSection(id);
+        } else {
+          filterSections('all');
+          target.scrollIntoView({ block: 'start', behavior });
+        }
       }
+      openHash('instant');
+      window.addEventListener('hashchange', () => openHash('smooth'));
     </script>
   </body>
 </html>

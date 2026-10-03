@@ -2,7 +2,7 @@
 import '../../styles/global.css';
 
 const title = 'Prompt Templates — OpenCastle';
-const description = 'Ready-to-use prompt templates for orchestrating AI agent teams. Brainstorm ideas, implement features, fix bugs, and more.';
+const description = 'The 14 prompts OpenCastle compiles for every assistant: brainstorm, implement features, fix bugs, resolve PR comments, set up a project, and the seven steps of the convoy pipeline. Where each assistant keeps them and how to run one.';
 
 /* ---------- Sidebar category icons ---------- */
 const categoryIcons: Record<string, string> = {
@@ -10,6 +10,7 @@ const categoryIcons: Record<string, string> = {
   implementation: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
   collaboration: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
   setup: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
+  pipeline: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M5 8v2a4 4 0 0 0 4 4h6a4 4 0 0 0 4-4V8"/><line x1="12" y1="14" x2="12" y2="16"/></svg>`,
 };
 
 const categories = [
@@ -17,6 +18,13 @@ const categories = [
   { id: 'implementation', label: 'Implementation', icon: categoryIcons.implementation },
   { id: 'collaboration', label: 'Collaboration', icon: categoryIcons.collaboration },
   { id: 'setup', label: 'Setup', icon: categoryIcons.setup },
+  {
+    id: 'pipeline',
+    label: 'Convoy pipeline',
+    title: 'Convoy pipeline (experimental)',
+    icon: categoryIcons.pipeline,
+    intro: `<p><code>npx opencastle convoy "&lt;task&gt;"</code> runs these seven steps in order and fills in their input itself; <code>npx opencastle convoy plan --prd &lt;path&gt;</code> starts at step 2 with a PRD you already have. Each step returns something the CLI reads — a PRD, a VALID or INVALID verdict, or JSON — so you rarely run one yourself. Run by hand, a step returns that output and nothing else: no file is written. The convoy engine is experimental; its commands are on the <a href="/docs/cli#convoy">CLI page</a>.</p>`,
+  },
 ];
 
 /* ---------- Prompt data ---------- */
@@ -27,22 +35,10 @@ const prompts = [
     name: 'Brainstorm',
     summary: 'Collaborative brainstorm to explore requirements, approaches, and trade-offs BEFORE committing to a plan. Use when the task has ambiguity, multiple valid approaches, or significant design decisions.',
     agent: 'Team Lead (OpenCastle)',
-    variables: ['{{request}}'],
+    input: 'what you want to explore',
     details: [
       { heading: 'When to use', content: `<p>When a task has ambiguity, multiple valid approaches, or design decisions to make before implementation. Use this <em>before</em> reaching for an implementation prompt.</p>` },
-      { heading: 'What it does', content: `<p>Runs a structured brainstorm — clarifies the problem, explores the solution space, generates alternatives, evaluates trade-offs, and defines scope before any code is written.</p>` },
-    ],
-  },
-  {
-    id: 'generate-convoy',
-    category: 'planning',
-    name: 'Generate Convoy',
-    summary: 'Generate a .convoy.yml spec file for autonomous convoy execution based on a high-level goal.',
-    agent: 'Team Lead (OpenCastle)',
-    variables: ['{{goal}}', '{{context}}'],
-    details: [
-      { heading: 'When to use', content: `<p>When you want <code>opencastle convoy</code> to execute autonomously (e.g., overnight or unattended). Generates a YAML convoy spec from a high-level goal.</p>` },
-      { heading: 'What it does', content: `<p>Analyzes the goal, decomposes into self-contained tasks with dependency ordering, assigns appropriate agents, and produces a valid <code>.convoy.yml</code> file. The convoy engine handles isolated git worktrees, parallel execution, crash recovery, and merge ordering automatically.</p>` },
+      { heading: 'What it does', content: `<p>Runs a structured brainstorm — clarifies the problem, explores the solution space, generates alternatives, evaluates trade-offs, and defines scope before any code is written. The report it ends with is the input for <code>implement-feature</code>.</p>` },
     ],
   },
   {
@@ -51,16 +47,15 @@ const prompts = [
     name: 'Implement Feature',
     summary: 'Instruct the Team Lead to implement a specific task from your roadmap with full orchestration, validation, and traceability.',
     agent: 'Team Lead (OpenCastle)',
-    variables: ['{{roadmapTask}}'],
+    input: 'the roadmap task',
     details: [
-      { heading: 'When to use', content: `<p>When implementing a tracked roadmap task. Provides full orchestration with issue tracking, validation gates, and multi-agent delegation.</p>` },
+      { heading: 'When to use', content: `<p>When implementing a task from <code>.opencastle/project/roadmap.md</code>. Provides full orchestration with issue tracking, validation gates, and multi-agent delegation.</p>` },
       { heading: 'What it does', content: `<ol>
-        <li><strong>Research &amp; context gathering</strong> — reads relevant files, loads skills, and understands scope</li>
-        <li><strong>Task board setup</strong> — creates or locates the tracker issue</li>
-        <li><strong>Execution strategy</strong> — chooses direct delegation (1-2 tasks) or convoy engine (3+ tasks)</li>
-        <li><strong>Implementation</strong> — delegates to agents or generates a convoy spec for autonomous execution</li>
-        <li><strong>Validation &amp; testing</strong> — runs lint, tests, and browser checks</li>
-        <li><strong>Delivery via PR</strong> — opens a pull request linked to the tracker issue</li>
+        <li><strong>Research &amp; context gathering</strong> — reads the roadmap, known issues, lessons learned and related code</li>
+        <li><strong>Task board setup</strong> — creates one tracker issue per subtask before any code is written</li>
+        <li><strong>Convoy spec</strong> — writes a convoy spec for the work, whatever its size, checks it with <code>--dry-run</code>, and asks you to run <code>npx opencastle convoy run -f .opencastle/convoys/&lt;name&gt;.convoy.yml</code> (the convoy engine is experimental)</li>
+        <li><strong>Validation &amp; testing</strong> — after the run: secret scan, lint, tests, build, fast review, browser checks</li>
+        <li><strong>Delivery via PR</strong> — opens a pull request from the convoy's branch, linked to the tracker issues</li>
       </ol>` },
     ],
   },
@@ -70,14 +65,14 @@ const prompts = [
     name: 'Bug Fix',
     summary: 'Investigate and fix a reported bug with proper triage, root cause analysis, issue tracking, and verification.',
     agent: 'Team Lead (OpenCastle)',
-    variables: ['{{bugDescription}}'],
+    input: 'the bug report',
     details: [
       { heading: 'When to use', content: `<p>When a bug is reported. Provides structured triage, root cause analysis, and fix verification — rather than jumping straight to editing code.</p>` },
       { heading: 'What it does', content: `<ol>
         <li><strong>Triage &amp; reproduce</strong> — confirms the bug, gathers context</li>
         <li><strong>Create tracker issue</strong> — opens a bug ticket with reproduction steps</li>
         <li><strong>Root cause analysis</strong> — traces the defect to its origin</li>
-        <li><strong>Delegate fix</strong> — sends a targeted fix to the appropriate specialist agent</li>
+        <li><strong>Fix via convoy</strong> — writes a convoy spec for the fix, even a single task, and asks you to run it with <code>npx opencastle convoy run -f …</code> (experimental)</li>
         <li><strong>Validate</strong> — verifies with tests and browser checks before delivering the PR</li>
       </ol>` },
     ],
@@ -88,10 +83,10 @@ const prompts = [
     name: 'Quick Refinement',
     summary: 'Handle follow-up refinements after a roadmap task — bug fixes, UI tweaks, polish, and adjustments that are too small for issue tracking.',
     agent: 'Team Lead (OpenCastle)',
-    variables: ['{{followUpRequest}}'],
+    input: 'the change you want',
     details: [
       { heading: 'When to use', content: `<p>For post-task adjustments like UI tweaks, polish, or minor bug fixes that are too small for full issue tracking. Ideal for iterating after an <code>implement-feature</code> run.</p>` },
-      { heading: 'What it does', content: `<p>Triages the request to determine the appropriate tracking level, then delegates focused fixes via sub-agents with the same code quality and verification standards as full feature work.</p>` },
+      { heading: 'What it does', content: `<p>Triages the request to determine the appropriate tracking level, then delegates focused fixes via sub-agents with the same code quality and verification standards as full feature work. No convoy: if the change grows past 5 files, a migration, or auth, it switches to <code>implement-feature</code>.</p>` },
     ],
   },
   {
@@ -100,9 +95,9 @@ const prompts = [
     name: 'Resolve PR Comments',
     summary: 'Resolve GitHub PR review comments by reading them, grouping by file, and applying fixes systematically.',
     agent: 'Team Lead (OpenCastle)',
-    variables: ['{{prReference}}'],
+    input: 'the pull request number or URL',
     details: [
-      { heading: 'When to use', content: `<p>When a pull request has review comments that need to be addressed. Reads, groups, and resolves comments systematically rather than ad-hoc.</p>` },
+      { heading: 'When to use', content: `<p>When a pull request has review comments that need to be addressed. Reads, groups, and resolves comments systematically rather than ad-hoc. It reads the comments with the <code>gh</code> CLI, so <code>gh</code> must be signed in.</p>` },
       { heading: 'What it does', content: `<ol>
         <li><strong>Gather PR comments</strong> — reads all review comments from GitHub</li>
         <li><strong>Group by file</strong> — organises comments into file-level batches</li>
@@ -116,26 +111,100 @@ const prompts = [
     id: 'bootstrap-customizations',
     category: 'setup',
     name: 'Bootstrap Customizations',
-    summary: 'Bootstrap the .github/customizations/ directory for a new project. Discovers project structure, tech stack, and configuration, then generates all customization files so skills have project-specific context to operate on.',
+    summary: 'Fills in what opencastle init could not detect — schemas, API routes, environment variables — in the .opencastle/ files init pre-filled, so skills have project-specific context to work from.',
     agent: 'Team Lead (OpenCastle)',
-    variables: ['{{context}}'],
+    input: 'optional extra context',
     details: [
-      { heading: 'When to use', content: `<p>After running <code>opencastle init</code>, to set up project-specific customization files that give agents concrete context about your codebase. Run this once per project.</p>` },
-      { heading: 'What it does', content: `<p>Discovers project structure, tech stack, and config — then generates customization files for project context, stack config, tracker config, and more so every skill has accurate project-specific data to work from.</p>` },
+      { heading: 'When to use', content: `<p>Once, right after <code>opencastle init</code>, on an existing codebase. Skip it in an empty project: there is nothing to read yet.</p>` },
+      { heading: 'What it does', content: `<p>Reads <code>.opencastle/manifest.json</code> for what init detected, then reads the real config files, schemas and route handlers, and completes the files init created — <code>project.instructions.md</code>, <code>stack/*-config.md</code>, the tracker config — instead of regenerating them. Anything it cannot determine is marked <code>&lt;!-- TODO: verify --&gt;</code>.</p>` },
     ],
   },
   {
     id: 'create-skill',
     category: 'setup',
     name: 'Create Skill',
-    summary: 'Scaffold a new skill file with proper frontmatter, structure, and registration. Use when adding a new domain skill to the AI configuration.',
+    summary: 'Scaffold a new team skill with proper frontmatter and structure. Use when adding a new domain skill to the AI configuration.',
     agent: 'Team Lead (OpenCastle)',
-    variables: ['{{skillDescription}}'],
+    input: 'what the skill should cover',
     details: [
-      { heading: 'When to use', content: `<p>When adding a new domain-specific skill to the AI configuration — either as a process skill (workflow pattern) or a plugin skill (third-party integration).</p>` },
-      { heading: 'What it does', content: `<p>Classifies the skill type, names it, creates the <code>SKILL.md</code> file with proper structure, and registers it in the skill matrix so agents can discover and load it automatically.</p>` },
+      { heading: 'When to use', content: `<p>When your team has knowledge every assistant should load on demand — a deploy runbook, a review checklist, the rules for one part of your stack.</p>` },
+      { heading: 'What it does', content: `<p>Checks the compiled skills and the available integrations for overlap, names the skill, and writes <code>.opencastle/skills/&lt;name&gt;/SKILL.md</code>. The next <code>npx opencastle sync</code> compiles it for every assistant in the project. A team skill with the same name as one of OpenCastle's replaces it.</p>` },
     ],
   },
+  {
+    id: 'generate-prd',
+    category: 'pipeline',
+    name: '1. Generate PRD',
+    summary: 'Turns a feature request into a product requirements document. The CLI writes it to .opencastle/prds/<name>.prd.md, named after the PRD\'s title.',
+    agent: 'Team Lead (OpenCastle)',
+    input: 'the task you gave opencastle convoy',
+    details: [],
+  },
+  {
+    id: 'validate-prd',
+    category: 'pipeline',
+    name: '2. Validate PRD',
+    summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Answers VALID or INVALID with the issues.',
+    agent: 'Reviewer',
+    input: 'the PRD',
+    details: [],
+  },
+  {
+    id: 'fix-prd',
+    category: 'pipeline',
+    name: '3. Fix PRD',
+    summary: 'Rewrites the PRD to fix the issues validate-prd found. Runs only when validation fails, up to two attempts.',
+    agent: 'Team Lead (OpenCastle)',
+    input: 'the PRD and the issues',
+    details: [],
+  },
+  {
+    id: 'assess-complexity',
+    category: 'pipeline',
+    name: '4. Assess Complexity',
+    summary: 'Scores the PRD and decides between one convoy and a chain of convoys. Runs at the same time as validate-prd; the CLI saves its JSON beside the PRD as <name>.complexity.json and reuses it on the next run.',
+    agent: 'Reviewer',
+    input: 'the PRD and your original task',
+    details: [],
+  },
+  {
+    id: 'generate-convoy',
+    category: 'pipeline',
+    name: '5. Generate Convoy',
+    summary: 'Turns the PRD into a JSON task plan. The CLI converts it and writes .opencastle/convoys/<name>.convoy.yml; run by hand, it returns the JSON only.',
+    agent: 'Team Lead (OpenCastle)',
+    input: 'your task, and the PRD with its complexity scores',
+    details: [],
+  },
+  {
+    id: 'validate-convoy',
+    category: 'pipeline',
+    name: '6. Validate Convoy',
+    summary: 'After the CLI\'s own schema check, looks for tasks that run in parallel on the same files, missing dependencies, and missing or redundant tasks. Answers VALID or INVALID.',
+    agent: 'Reviewer',
+    input: 'the convoy spec',
+    details: [],
+  },
+  {
+    id: 'fix-convoy',
+    category: 'pipeline',
+    name: '7. Fix Convoy',
+    summary: 'Returns JSON patches for the issues the schema check or validate-convoy found; the CLI applies them and rewrites the spec. Up to two attempts.',
+    agent: 'Team Lead (OpenCastle)',
+    input: 'the task plan and the issues',
+    details: [],
+  },
+];
+
+/* ---------- Where each assistant keeps the prompts ---------- */
+const assistants = [
+  { name: 'Claude Code', path: '.claude/commands/oc/<name>.md', run: 'Type <code>/oc:</code> and pick one — <code>/oc:bug-fix</code> — then describe the task' },
+  { name: 'VS Code (GitHub Copilot)', path: '.github/prompts/oc.<name>.prompt.md', run: 'In Copilot Chat, type <code>/oc:</code> and pick one; it also selects the agent' },
+  { name: 'Cursor', path: '.cursor/rules/prompts/<name>.mdc', run: 'Ask for it by name: “run the bug-fix prompt: …”' },
+  { name: 'Windsurf (Devin Desktop)', path: '.windsurf/rules/prompts/<name>.md', run: 'Ask for it by name' },
+  { name: 'OpenCode', path: '.opencode/prompts/<name>.md', run: 'Ask for it by name' },
+  { name: 'Codex CLI', path: '.codex/prompts/<name>.md', run: 'Ask for it by name' },
+  { name: 'Antigravity', path: '.agents/prompts/<name>.md', run: 'Ask for it by name' },
 ];
 ---
 
@@ -188,6 +257,12 @@ const prompts = [
         <div class="docs-sidebar__divider"></div>
         <p class="docs-sidebar__label">Prompts</p>
         <ul class="docs-sidebar__list">
+          <li>
+            <a class="docs-sidebar__link docs-sidebar__cmd" href="#how-to-use" data-prompt="how-to-use">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              How to use
+            </a>
+          </li>
           {prompts.map(prompt => (
             <li>
               <a class="docs-sidebar__link docs-sidebar__cmd" href={`#${prompt.id}`} data-prompt={prompt.id}>
@@ -201,29 +276,47 @@ const prompts = [
 
       <main class="docs-main">
         <p class="docs-subtitle">
-          Prompt templates compile into slash commands under one namespace — <code>/oc:bug-fix</code> in Claude Code
-          and in VS Code Copilot Chat — so they never collide with a command of your own. Each template is pre-wired
-          to the Team Lead agent with the full OpenCastle skill set.
+          OpenCastle compiles 14 prompts for every assistant in your project: seven you run yourself,
+          and the seven steps of the convoy pipeline. In Claude Code and VS Code Copilot Chat each one is a
+          slash command under one namespace — <code>/oc:bug-fix</code> — so it never collides with a command
+          of your own. Each tells your assistant to act as the Team Lead (three pipeline steps, as the
+          Reviewer); in Copilot Chat it also selects that agent.
         </p>
 
-        <!-- How to use block -->
-        <div class="usage-block">
-          <pre><code>{`# How to use a prompt template
-# 1. Open the chat — Copilot Chat (⌃⌘I / Ctrl+Alt+I) or Claude Code
-# 2. Type /oc: to list OpenCastle's commands
-# 3. Pick one — /oc:bug-fix, /oc:implement-feature, …
-# 4. Describe the task
-# 5. Press Enter — the Team Lead takes it from there
+        <!-- How to use -->
+        <section class="usage-block" id="how-to-use">
+          <h2 class="docs-category__title">How to use</h2>
+          <div class="usage-table-wrap">
+            <table class="usage-table">
+              <thead>
+                <tr><th>Assistant</th><th>Where the prompts are</th><th>How to run one</th></tr>
+              </thead>
+              <tbody>
+                {assistants.map(a => (
+                  <tr>
+                    <td>{a.name}</td>
+                    <td><code>{a.path}</code></td>
+                    <td set:html={a.run} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p class="usage-note">
+            What you type after the command, or after the prompt's name, is the input. The
+            <code>{'{{…}}'}</code> placeholders in a prompt file only mark where it goes; no assistant
+            substitutes them. <code>npx opencastle explain</code> lists the prompts compiled in your project
+            and where each assistant reads them. The workflow templates sit beside the prompts:
+            <code>/oc:workflow-&lt;name&gt;</code> in Claude Code, and an <code>agent-workflows/</code> or
+            <code>workflows/</code> directory for the other assistants.
+          </p>
+        </section>
 
-# Claude Code:  .claude/commands/oc/<name>.md
-# VS Code:      .github/prompts/oc.<name>.prompt.md
-# Other assistants: ask for the prompt by name — "run the bug-fix prompt"`}</code></pre>
-        </div>
-
-        <!-- Planning -->
-        <section class="docs-category" id="planning" data-category>
-          <h2 class="docs-category__title">Planning</h2>
-          {prompts.filter(p => p.category === 'planning').map(prompt => (
+        {categories.map(cat => (
+          <section class="docs-category" id={cat.id} data-category>
+            <h2 class="docs-category__title">{cat.title ?? cat.label}</h2>
+            {cat.intro && <div class="docs-category__intro" set:html={cat.intro} />}
+            {prompts.filter(p => p.category === cat.id).map(prompt => (
             <div class="plugin-card" id={prompt.id}>
               <h3 class="plugin-card__name">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -236,11 +329,7 @@ const prompts = [
                   {prompt.agent}
                 </span>
                 <span class="prompt-meta__sep">·</span>
-                <span class="prompt-meta__vars">
-                  Variables:&nbsp;{prompt.variables.map((v, i) => (
-                    <Fragment key={v}><code>{v}</code>{i < prompt.variables.length - 1 ? ', ' : ''}</Fragment>
-                  ))}
-                </span>
+                <span class="prompt-meta__vars">Input:&nbsp;{prompt.input}</span>
               </div>
               {prompt.details.map(d => (
                 <Fragment key={d.heading}>
@@ -253,116 +342,9 @@ const prompts = [
                 <code>/oc:{prompt.id}</code>
               </div>
             </div>
-          ))}
-        </section>
-
-        <!-- Implementation -->
-        <section class="docs-category" id="implementation" data-category>
-          <h2 class="docs-category__title">Implementation</h2>
-          {prompts.filter(p => p.category === 'implementation').map(prompt => (
-            <div class="plugin-card" id={prompt.id}>
-              <h3 class="plugin-card__name">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                {prompt.name}
-              </h3>
-              <p class="plugin-card__desc">{prompt.summary}</p>
-              <div class="prompt-meta">
-                <span class="prompt-meta__agent">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  {prompt.agent}
-                </span>
-                <span class="prompt-meta__sep">·</span>
-                <span class="prompt-meta__vars">
-                  Variables:&nbsp;{prompt.variables.map((v, i) => (
-                    <Fragment key={v}><code>{v}</code>{i < prompt.variables.length - 1 ? ', ' : ''}</Fragment>
-                  ))}
-                </span>
-              </div>
-              {prompt.details.map(d => (
-                <Fragment key={d.heading}>
-                  <h4>{d.heading}</h4>
-                  <Fragment set:html={d.content} />
-                </Fragment>
-              ))}
-              <div class="prompt-filename">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>/oc:{prompt.id}</code>
-              </div>
-            </div>
-          ))}
-        </section>
-
-        <!-- Collaboration -->
-        <section class="docs-category" id="collaboration" data-category>
-          <h2 class="docs-category__title">Collaboration</h2>
-          {prompts.filter(p => p.category === 'collaboration').map(prompt => (
-            <div class="plugin-card" id={prompt.id}>
-              <h3 class="plugin-card__name">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                {prompt.name}
-              </h3>
-              <p class="plugin-card__desc">{prompt.summary}</p>
-              <div class="prompt-meta">
-                <span class="prompt-meta__agent">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  {prompt.agent}
-                </span>
-                <span class="prompt-meta__sep">·</span>
-                <span class="prompt-meta__vars">
-                  Variables:&nbsp;{prompt.variables.map((v, i) => (
-                    <Fragment key={v}><code>{v}</code>{i < prompt.variables.length - 1 ? ', ' : ''}</Fragment>
-                  ))}
-                </span>
-              </div>
-              {prompt.details.map(d => (
-                <Fragment key={d.heading}>
-                  <h4>{d.heading}</h4>
-                  <Fragment set:html={d.content} />
-                </Fragment>
-              ))}
-              <div class="prompt-filename">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>/oc:{prompt.id}</code>
-              </div>
-            </div>
-          ))}
-        </section>
-
-        <!-- Setup -->
-        <section class="docs-category" id="setup" data-category>
-          <h2 class="docs-category__title">Setup</h2>
-          {prompts.filter(p => p.category === 'setup').map(prompt => (
-            <div class="plugin-card" id={prompt.id}>
-              <h3 class="plugin-card__name">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                {prompt.name}
-              </h3>
-              <p class="plugin-card__desc">{prompt.summary}</p>
-              <div class="prompt-meta">
-                <span class="prompt-meta__agent">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  {prompt.agent}
-                </span>
-                <span class="prompt-meta__sep">·</span>
-                <span class="prompt-meta__vars">
-                  Variables:&nbsp;{prompt.variables.map((v, i) => (
-                    <Fragment key={v}><code>{v}</code>{i < prompt.variables.length - 1 ? ', ' : ''}</Fragment>
-                  ))}
-                </span>
-              </div>
-              {prompt.details.map(d => (
-                <Fragment key={d.heading}>
-                  <h4>{d.heading}</h4>
-                  <Fragment set:html={d.content} />
-                </Fragment>
-              ))}
-              <div class="prompt-filename">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>/oc:{prompt.id}</code>
-              </div>
-            </div>
-          ))}
-        </section>
+            ))}
+          </section>
+        ))}
 
       </main>
     </div>
@@ -569,11 +551,55 @@ const prompts = [
       /* ── Usage block ── */
       .usage-block {
         margin-bottom: 32px;
+        scroll-margin-top: 72px;
       }
-      .usage-block pre {
+      .usage-block[hidden] {
+        display: none;
+      }
+      .usage-table-wrap {
+        overflow-x: auto;
         background: var(--bg-secondary);
         border: 1px solid var(--border-color);
         border-radius: 12px;
+      }
+      .usage-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8125rem;
+      }
+      .usage-table th,
+      .usage-table td {
+        text-align: left;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: top;
+        color: var(--text-secondary);
+      }
+      .usage-table th {
+        color: var(--text-secondary);
+        font-weight: 600;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border-bottom: 1px solid rgba(167, 139, 250, .15);
+      }
+      .usage-table tr:last-child td {
+        border-bottom: none;
+      }
+      .usage-table td:first-child {
+        color: var(--text-primary);
+        white-space: nowrap;
+      }
+      .usage-table code {
+        font-size: 0.75rem;
+        white-space: nowrap;
+      }
+      .usage-note,
+      .docs-category__intro :global(p) {
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        line-height: 1.6;
+        margin: 12px 0 16px;
       }
 
       /* ── Category sections ── */
@@ -893,16 +919,6 @@ const prompts = [
 
         sidebar?.classList.remove('docs-sidebar--open');
         history.replaceState(null, '', sectionId === 'all' ? location.pathname : `#${sectionId}`);
-
-        const countEl = document.getElementById('prompt-count');
-        if (countEl) {
-          if (sectionId === 'all') {
-            countEl.textContent = '8 prompts';
-          } else {
-            const visible = document.querySelectorAll(`#${sectionId} .plugin-card`);
-            countEl.textContent = `${visible.length} prompt${visible.length !== 1 ? 's' : ''}`;
-          }
-        }
       }
 
       catLinks?.forEach(link => {
