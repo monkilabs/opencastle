@@ -1932,7 +1932,7 @@ describe('progress reporting', () => {
     // eslint-disable-next-line no-control-regex
     const statuses = chunks.filter(ch => ch.startsWith('\r\x1b[2K') && ch.includes('▸')).map(ch => ch.replace(/\x1b\[[0-9;]*m/g, ''))
     expect(statuses.length).toBeGreaterThan(0)
-    expect(statuses.some(s => /▸ build-api, docs · 1 queued · 0\/3 done/.test(s))).toBe(true)
+    expect(statuses.some(s => /▸ build-api, write-tests · 1 queued · 0\/3 done/.test(s))).toBe(true)
     // Nothing of the status line is left once the run has ended.
     expect(chunks.join('')).not.toMatch(/▸[^\n]*$/)
   })
@@ -3731,3 +3731,209 @@ describe('permission mode', () => {
 
 // ── Compaction continuation ───────────────────────────────────────────────────
 
+
+// ── Scheduler: a ready queue, not phase barriers ──────────────────────────────
+
+describe('ready-queue scheduler', () => {
+  it('runs the audit’s demo in about 6s, not 8.6s', async () => {
+    // slow 6s, fast1 1s, fast2 (after fast1) 1s, indep 1s, two slots. With
+    // phase barriers fast2 waited for slow: 6 + 1 + 1 ≈ 8.6s measured. With a
+    // ready queue it starts the moment fast1 is done, and the run takes as
+    // long as its slowest task.
+    vi.useFakeTimers()
+    try {
+      const durations: Record<string, number> = { slow: 6000, fast1: 1000, fast2: 1000, indep: 1000 }
+      const timeline: Record<string, { start: number; end: number }> = {}
+      const adapter = makeAdapter()
+      adapter.execute.mockImplementation(async (task: Task) => {
+        const start = Date.now()
+        await new Promise(r => setTimeout(r, durations[task.id]))
+        timeline[task.id] = { start, end: Date.now() }
+        return { success: true, output: 'ok', exitCode: 0 }
+      })
+      const spec = makeSpec({ concurrency: 2 }, [
+        { id: 'slow' },
+        { id: 'fast1' },
+        { id: 'fast2', depends_on: ['fast1'] },
+        { id: 'indep' },
+      ])
+      const t0 = Date.now()
+      let finished = false
+      const run = makeEngine({
+        spec, specYaml: 'name: test', adapter, dbPath,
+        _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+      }).run().finally(() => { finished = true })
+      while (!finished) await vi.advanceTimersByTimeAsync(50)
+      const result = await run
+      const total = Date.now() - t0
+
+      expect(result.status).toBe('done')
+      expect(total).toBeGreaterThanOrEqual(6000)
+      expect(total).toBeLessThan(6500)
+      // fast2 ran while slow was still running.
+      expect(timeline.fast2.start).toBeLessThan(timeline.slow.end)
+      expect(timeline.fast2.start - t0).toBeLessThan(1500)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('never runs a task next to a running task whose files overlap, though both are ready', async () => {
+    // `writer` becomes ready while `owner` still holds src/ — the dynamic form
+    // of the per-phase partition check, which only compared tasks in one phase.
+    const timeline: Record<string, { start: number; end: number }> = {}
+    const adapter = makeAdapter()
+    adapter.execute.mockImplementation(async (task: Task) => {
+      const start = Date.now()
+      await new Promise(r => setTimeout(r, task.id === 'owner' ? 120 : 10))
+      timeline[task.id] = { start, end: Date.now() }
+      return { success: true, output: 'ok', exitCode: 0 }
+    })
+    const spec = makeSpec({ concurrency: 3 }, [
+      { id: 'owner', files: ['src/'] },
+      { id: 'gate', files: [] },
+      { id: 'writer', files: ['src/api.ts'], depends_on: ['gate'] },
+    ])
+    // Real (empty) directories: tasks with files are symlink-scanned in their worktree.
+    const wt = makeWorktreeManager()
+    wt.create.mockImplementation(async (id: string) => {
+      const dir = join(tmpDir, 'wt', id)
+      mkdirSync(dir, { recursive: true })
+      return dir
+    })
+    const result = await makeEngine({
+      spec, specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: wt, _mergeQueue: makeMergeQueue(),
+    }).run()
+    expect(result.status).toBe('done')
+    expect(timeline.writer.start).toBeGreaterThanOrEqual(timeline.owner.end)
+  })
+
+  it('refuses a plan whose same-phase tasks overlap, before recording anything', async () => {
+    const adapter = makeAdapter()
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'a', files: ['src/'] }, { id: 'b', files: ['src/x.ts'] }]),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    await expect(engine.run()).rejects.toThrow('File partition conflicts detected')
+    const store = createConvoyStore(dbPath)
+    expect(store.getLatestConvoy()).toBeUndefined()
+    store.close()
+    expect(adapter.execute).not.toHaveBeenCalled()
+  })
+})
+
+// ── Resume resets everything retry did ────────────────────────────────────────
+
+describe('resume resets every unfinished task', () => {
+  it('reopens failed, timed-out, gate-failed, review-blocked, disputed, interrupted and skipped tasks', async () => {
+    const convoyId = 'convoy-mixed'
+    const statuses = ['done', 'failed', 'timed-out', 'gate-failed', 'review-blocked', 'disputed', 'running', 'assigned', 'skipped'] as const
+    const seeder = createConvoyStore(dbPath)
+    seeder.insertConvoy({ id: convoyId, name: 'Mixed', spec_hash: 'x', status: 'failed', branch: 'feat/mixed', created_at: new Date().toISOString(), spec_yaml: 'name: m' })
+    for (const status of statuses) {
+      seeder.insertTask({
+        id: `t-${status}`, convoy_id: convoyId, phase: 0, prompt: `p ${status}`, agent: 'developer', adapter: null, model: null,
+        timeout_ms: 30_000, status, retries: 1, max_retries: 1, files: null, depends_on: null, gates: null,
+      })
+    }
+    seeder.close()
+
+    const adapter = makeAdapter()
+    const result = await makeEngine({
+      spec: makeSpec({ concurrency: 4 }, statuses.map(s => ({ id: `t-${s}` }))),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).resume(convoyId)
+
+    expect(result.status).toBe('done')
+    const ran = adapter.execute.mock.calls.map(([t]) => (t as Task).id).sort()
+    expect(ran).toEqual(statuses.filter(s => s !== 'done').map(s => `t-${s}`).sort())
+    const store = createConvoyStore(dbPath)
+    const events = store.getEvents(convoyId).filter(e => e.type === 'task_retried')
+    store.close()
+    expect(events).toHaveLength(8)
+  })
+
+  it('retryFailed with task ids brings the dependents a failure skipped along', async () => {
+    const convoyId = 'convoy-chain'
+    const seeder = createConvoyStore(dbPath)
+    seeder.insertConvoy({ id: convoyId, name: 'Chain', spec_hash: 'x', status: 'done', branch: 'feat/chain', created_at: new Date().toISOString(), spec_yaml: 'name: c' })
+    const task = (id: string, status: 'failed' | 'skipped' | 'done', deps: string[] = []) => seeder.insertTask({
+      id, convoy_id: convoyId, phase: deps.length, prompt: id, agent: 'developer', adapter: null, model: null,
+      timeout_ms: 30_000, status, retries: 0, max_retries: 0, files: null, depends_on: deps.length ? JSON.stringify(deps) : null, gates: null,
+    })
+    task('a', 'failed')
+    task('b', 'skipped', ['a'])
+    task('c', 'skipped', ['b'])
+    task('other', 'failed')
+    seeder.close()
+
+    const engine = makeEngine({
+      spec: makeSpec({}, [{ id: 'a' }]), specYaml: 'name: test', adapter: makeAdapter(), dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    await engine.retryFailed(convoyId, ['a'])
+
+    const store = createConvoyStore(dbPath)
+    const byId = Object.fromEntries(store.getTasksByConvoy(convoyId).map(t => [t.id, t.status]))
+    store.close()
+    expect(byId).toEqual({ a: 'pending', b: 'pending', c: 'pending', other: 'failed' })
+  })
+})
+
+// ── Telemetry ─────────────────────────────────────────────────────────────────
+
+describe('telemetry', () => {
+  it('records the agent’s real tier, not a hard-coded "standard"', async () => {
+    const result = await makeEngine({
+      spec: makeSpec({}, [{ id: 'sec', agent: 'security-expert' }, { id: 'doc', agent: 'writer' }]),
+      specYaml: 'name: test', adapter: makeAdapter(), dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).run()
+    const store = createConvoyStore(dbPath)
+    const tiers = Object.fromEntries(store.getEvents(result.convoyId)
+      .filter(e => e.type === 'delegation')
+      .map(e => [e.task_id, (JSON.parse(e.data!) as { tier: string }).tier]))
+    store.close()
+    expect(tiers).toEqual({ sec: 'premium', doc: 'economy' })
+  })
+
+  it('counts a failure once toward the circuit breaker', async () => {
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: false, output: 'err', exitCode: 1 })
+    const result = await makeEngine({
+      spec: makeSpec({ defaults: { circuit_breaker: { threshold: 5 } } }, [{ id: 'only', max_retries: 0 }]),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).run()
+    const store = createConvoyStore(dbPath)
+    const state = JSON.parse(store.getConvoy(result.convoyId)!.circuit_state!) as Record<string, { failures: number }>
+    store.close()
+    expect(state.developer.failures).toBe(1)
+  })
+
+  it('masks a secret in a failure before it reaches the task row, the DLQ and the ledger', async () => {
+    gates._setAllowlistConfigPath('/nonexistent/secret-scan-config.yml')
+    gates._resetAllowlistCache()
+    const token = 'ghp_' + 'abcdefghijklmnopqrstuvwxyz0123456789AB'
+    const adapter = makeAdapter()
+    adapter.execute.mockResolvedValue({ success: false, output: `auth failed with token ${token}`, exitCode: 1 })
+    const result = await makeEngine({
+      spec: makeSpec({}, [{ id: 'leaky', max_retries: 0 }]),
+      specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    }).run()
+    const store = createConvoyStore(dbPath)
+    const task = store.getTask('leaky', result.convoyId)!
+    const dlq = store.listDlqEntries(result.convoyId)
+    const events = store.getEvents(result.convoyId)
+    store.close()
+    expect(task.output).not.toContain(token)
+    expect(dlq).toHaveLength(1)
+    expect(dlq[0].error_output).not.toContain(token)
+    expect(JSON.stringify(events)).not.toContain(token)
+    expect(readFileSync(join(tmpDir, '.opencastle', 'AGENT-FAILURES.md'), 'utf8')).not.toContain(token)
+  })
+})

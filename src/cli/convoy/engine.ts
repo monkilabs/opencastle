@@ -1358,7 +1358,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
           events.emit('built_in_gate_result', { gate: 'browser_test', passed: browserResult.passed, output: browserResult.output }, { convoy_id: convoyId, task_id: rec.id })
           if (!browserResult.passed) {
             return retryOrFail('gate-failed', 'Browser test gate failed', {
-              kind: 'gate-failed', gate: 'browser_test', output: browserResult.output, failureType: 'browser-test',
+              kind: 'gate-failed', gate: 'browser_test', output: `Built-in gate (browser_test) failed:\n${browserResult.output}`, failureType: 'browser-test',
               note: `The browser test gate failed on your previous attempt:\n${browserResult.output.slice(-3000)}`,
             })
           }
@@ -1370,7 +1370,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
         events.emit('built_in_gate_result', { gate: 'secret_scan', passed: scanResult.passed, output: scanResult.output }, { convoy_id: convoyId, task_id: rec.id })
         if (!scanResult.passed) {
           return retryOrFail('gate-failed', 'Secret scan found a credential in the change', {
-            kind: 'gate-failed', gate: 'secret_scan', output: scanResult.output, failureType: 'secret-scan',
+            kind: 'gate-failed', gate: 'secret_scan', output: `Built-in gate (secret_scan) failed:\n${scanResult.output}`, failureType: 'secret-scan',
             note: `The secret scan found credentials in your previous change:\n${scanResult.output}\n\nRemove them; read secrets from the environment instead.`,
           })
         }
@@ -1381,7 +1381,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
         events.emit('built_in_gate_result', { gate: 'blast_radius', level: blast.level, passed: blast.passed, output: blast.output }, { convoy_id: convoyId, task_id: rec.id })
         if (!blast.passed) {
           return retryOrFail('gate-failed', blast.output, {
-            kind: 'gate-failed', gate: 'blast_radius', output: blast.output,
+            kind: 'gate-failed', gate: 'blast_radius', output: `Built-in gate (blast_radius) failed:\n${blast.output}`,
             note: `Your previous change was too large: ${blast.output}\n\nKeep the change to what the task asks for.`,
           })
         }
@@ -1409,7 +1409,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
           }, { convoy_id: convoyId, task_id: rec.id })
           if (tddConfig.mode === 'block') {
             return retryOrFail('gate-failed', 'TDD gate: source files without tests', {
-              kind: 'gate-failed', gate: 'tdd_check', output: failureMsg, failureType: 'tdd-check',
+              kind: 'gate-failed', gate: 'tdd_check', output: `Built-in gate (tdd_check) failed:\n${failureMsg}`, failureType: 'tdd-check',
               note: `The TDD gate failed on your previous attempt:\n${failureMsg}\n\nCreate the missing test files.`,
             })
           }
@@ -1763,15 +1763,36 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     ? spec.concurrency
     : (spec.defaults?.max_swarm_concurrency ?? 4)
 
+  function prerequisites(t: TaskRecord): string[] {
+    // An input names the task that produces it; that is a dependency too.
+    const inputs = t.inputs ? (JSON.parse(t.inputs) as TaskInput[]).map(i => i.from) : []
+    return [...parseJsonList(t.depends_on), ...inputs]
+  }
+
+  /**
+   * Ready tasks, most-blocking first: a task that others wait on starts before
+   * one nobody needs, and ties keep the spec's order. Picking alphabetically
+   * could leave the run's longest task for the second round.
+   */
+  const specOrder = new Map((spec.tasks ?? []).map((t, i) => [t.id, i]))
   function readyTasks(all: TaskRecord[]): TaskRecord[] {
+    const ids = new Set(all.map(t => t.id))
     const done = new Set(all.filter(t => t.status === 'done').map(t => t.id))
-    return all.filter(t => {
-      if (t.status !== 'pending' || running.has(t.id)) return false
-      const deps = parseJsonList(t.depends_on)
-      // An input names the task that produces it; that is a dependency too.
-      const inputs = t.inputs ? (JSON.parse(t.inputs) as TaskInput[]).map(i => i.from) : []
-      return [...deps, ...inputs].every(d => done.has(d) || !all.some(x => x.id === d))
-    })
+    const dependents = new Map<string, string[]>()
+    for (const t of all) {
+      for (const d of prerequisites(t)) dependents.set(d, [...(dependents.get(d) ?? []), t.id])
+    }
+    const reach = (id: string, seen = new Set<string>()): number => {
+      for (const next of dependents.get(id) ?? []) {
+        if (!seen.has(next)) { seen.add(next); reach(next, seen) }
+      }
+      return seen.size
+    }
+    return all
+      .filter(t => t.status === 'pending' && !running.has(t.id) && prerequisites(t).every(d => done.has(d) || !ids.has(d)))
+      .map(t => ({ t, weight: reach(t.id), order: specOrder.get(t.id) ?? Number.MAX_SAFE_INTEGER }))
+      .sort((a, b) => b.weight - a.weight || a.order - b.order)
+      .map(x => x.t)
   }
 
   progress.setStatus(() => {
