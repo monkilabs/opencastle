@@ -1151,7 +1151,11 @@ function digest(events: EventLite[]) {
         checkStats.warnings++
         warnings.push({
           event_id: e.id, type: e.type, task_id: e.task_id,
-          items: e.type === 'partition_violation' ? stringItems(d.violations) : [...stringItems(d.missing), ...stringItems(d.warnings)],
+          // `__contract_block` is the engine's name for an answer with no output
+          // summary block at all; say that, not the key.
+          items: e.type === 'partition_violation'
+            ? stringItems(d.violations)
+            : [...stringItems(d.missing), ...stringItems(d.warnings)].map((m) => (m === '__contract_block' ? 'no output summary block in the answer' : m)),
           created_at: e.created_at,
         })
         break

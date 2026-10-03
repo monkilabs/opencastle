@@ -76,13 +76,16 @@ the dark scheme: it follows the OS setting.
 
 The hosted demo at opencastle.dev/dashboard is the same page in its static mode
 over a committed snapshot of real runs, in `tools/dashboard-demo/snapshot/`.
-The exporter writes the API's responses for each project into `data/`, combines
-the projects, and copies the page beside them:
+The snapshot is data only: the exporter writes the API's responses for each
+project into `data/` and combines the projects. The deploy puts the current page
+from `src/cli/dashboard/` beside it with `assemble.mjs`, which you can run to
+look at the result:
 
 ```bash
 npm run cli:build
 node tools/dashboard-demo/export.mjs --out tools/dashboard-demo/snapshot \
   --name "<label>" <project> [<project>...]
+node tools/dashboard-demo/assemble.mjs tools/dashboard-demo/snapshot /tmp/dashboard-site
 ```
 
 Use only projects with real runs; never generate demo data. The snapshot is
@@ -90,8 +93,8 @@ public. The exporter replaces each project's path with `<project>` and the home
 directory with `~`, and refuses to write anything that still holds an absolute
 local path or your user name, but read the task output in it before committing:
 `grep -rE '/Users/|/home/|/private/' tools/dashboard-demo/snapshot` should print
-nothing. Re-run the exporter after any change to the page, so the demo serves
-the same files the CLI does; a test checks that it does.
+nothing. A change to the page needs no new export: the demo always serves the
+page the CLI does.
 
 ## Pull Request Process
 

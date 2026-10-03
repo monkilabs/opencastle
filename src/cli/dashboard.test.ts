@@ -206,6 +206,22 @@ describe('startDashboard', () => {
 
 const repoRoot = join(import.meta.dirname, '..', '..')
 const exporter = join(repoRoot, 'tools', 'dashboard-demo', 'export.mjs')
+const assembler = join(repoRoot, 'tools', 'dashboard-demo', 'assemble.mjs')
+
+/** The static site assemble.mjs builds from a snapshot directory. */
+function assemble(from: string, to: string): void {
+  execFileSync(process.execPath, [assembler, from, to], { stdio: 'pipe' })
+}
+
+/** The site is the page the CLI serves, switched to static mode, beside the data. */
+function expectStaticPage(site: string): void {
+  expect(readFileSync(join(site, 'index.html'), 'utf8')).toBe(
+    readFileSync(join(pageDir(), 'index.html'), 'utf8').replace('content="live"', 'content="static"'),
+  )
+  for (const file of ['dashboard.css', 'dashboard.js', 'icon-192.png']) {
+    expect(readFileSync(join(site, file)).equals(readFileSync(join(pageDir(), file)))).toBe(true)
+  }
+}
 const snapshot = join(repoRoot, 'tools', 'dashboard-demo', 'snapshot')
 const built = existsSync(join(repoRoot, 'dist', 'cli', 'convoy', 'read-model.js'))
 
@@ -237,18 +253,17 @@ function run(args: string[]): { status: number; stderr: string } {
 
 // The exporter reads through the compiled read model, as it does when run by hand.
 describe.skipIf(!built)('the static export', () => {
-  it('writes the page in static mode, its assets, and every file it reads, combining projects', () => {
+  it('writes every file the page reads, and only data, combining projects', () => {
     seed()
     const other = secondProject()
     try {
       const out = join(root, 'out')
       expect(run(['--out', out, '--name', 'examples', root, other]).status).toBe(0)
-      const page = readFileSync(join(out, 'index.html'), 'utf8')
-      expect(page).toContain('name="opencastle-dashboard" content="static"')
-      expect(page).not.toContain('content="live"')
-      for (const file of ['dashboard.css', 'dashboard.js', 'icon-192.png']) {
-        expect(readFileSync(join(out, file)).equals(readFileSync(join(pageDir(), file)))).toBe(true)
-      }
+      // No copy of the page: assemble.mjs puts the current one beside the data.
+      expect(readdirSync(out)).toEqual(['data'])
+      const site = join(root, 'site')
+      assemble(out, site)
+      expectStaticPage(site)
       const read = (rel: string): Record<string, unknown> => JSON.parse(readFileSync(join(out, 'data', rel), 'utf8'))
       const runs = read('runs.json')
       expect(runs).toMatchObject({ project: 'examples', projects: 2 })
@@ -302,12 +317,15 @@ describe.skipIf(!built)('the static export', () => {
 describe('the committed demo snapshot', () => {
   const read = (rel: string): Record<string, unknown> => JSON.parse(readFileSync(join(snapshot, rel), 'utf8'))
 
-  it('is the dashboard in static mode, the same page the CLI serves', () => {
-    expect(readFileSync(join(snapshot, 'index.html'), 'utf8')).toBe(
-      readFileSync(join(pageDir(), 'index.html'), 'utf8').replace('content="live"', 'content="static"'),
-    )
-    for (const file of ['dashboard.css', 'dashboard.js', 'icon-192.png']) {
-      expect(readFileSync(join(snapshot, file)).equals(readFileSync(join(pageDir(), file))), `${file} is stale: re-run the exporter`).toBe(true)
+  it('holds data only, and assembles into the page the CLI serves, as the deploy does', () => {
+    expect(readdirSync(snapshot)).toEqual(['data'])
+    const site = mkdtempSync(join(tmpdir(), 'dashboard-site-'))
+    try {
+      assemble(snapshot, site)
+      expectStaticPage(site)
+      expect(existsSync(join(site, 'data', 'runs.json'))).toBe(true)
+    } finally {
+      rmSync(site, { recursive: true, force: true })
     }
   })
 

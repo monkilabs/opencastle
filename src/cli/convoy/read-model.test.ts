@@ -629,7 +629,7 @@ describe('run insights', () => {
     expect(ins.mechanisms).toEqual([{ mechanism: 'worktree', attempts: 4 }])
     expect(ins.merges).toEqual({ a: 3, b: 1 })
     expect(ins.retries.map((r) => [r.task_id, r.attempt, r.previous_status])).toEqual([['a', 2, 'gate-failed'], ['a', 3, 'review-blocked']])
-    expect(ins.warnings).toMatchObject([{ type: 'contract_violation', task_id: 'a', items: ['__contract_block'] }])
+    expect(ins.warnings).toMatchObject([{ type: 'contract_violation', task_id: 'a', items: ['no output summary block in the answer'] }])
     expect(ins.secrets_prevented).toMatchObject([{ context: 'event_redacted', patterns: ['github_token'] }])
     expect(ins.artifacts).toEqual([
       { name: 'src/tags.js', type: 'file', task_id: 'a', created_at: at(D1, 40), size_bytes: 0 },

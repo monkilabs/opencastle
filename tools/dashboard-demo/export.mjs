@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 /**
- * Export the Observability dashboard as a static page over recorded runs.
+ * Export recorded runs as the data a static Observability dashboard reads.
  *
  *   npm run cli:build
  *   node tools/dashboard-demo/export.mjs --out <dir> [--name <label>] <projectRoot>...
+ *   node tools/dashboard-demo/assemble.mjs <dir> <site>   # the page over that data
  *
- * Writes <dir>/index.html and the page's stylesheet, script and icon — the same
- * files `opencastle convoy dashboard` serves, switched to static mode — and
- * <dir>/data/*.json: the responses the dashboard's API gives, read through the
- * same compiled read model. Several projects combine into one snapshot: their
+ * Writes <dir>/data/*.json: the responses the dashboard's API gives, read
+ * through the same compiled read model. Only data: the page itself is put
+ * beside it by assemble.mjs from src/cli/dashboard/, so a snapshot never holds
+ * a second, ageing copy of the page. Several projects combine into one snapshot: their
  * runs are listed together and the overview is computed over all of them, the
  * way it is for one project. Nothing is generated or made up; the page shows
  * the runs recorded in each <projectRoot>/.opencastle/convoy.db.
@@ -23,7 +24,7 @@
  * directory with "~", and refuses to write anything that still holds an
  * absolute local path or the current user's name.
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, userInfo } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -67,13 +68,6 @@ for (const root of roots) {
 }
 const outDir = resolve(outArg)
 
-const pageDir = join(repo, 'src', 'cli', 'dashboard')
-const LIVE = '<meta name="opencastle-dashboard" content="live">'
-const page = readFileSync(join(pageDir, 'index.html'), 'utf8')
-if (!page.includes(LIVE)) {
-  console.error('The dashboard page has no mode marker to switch; was src/cli/dashboard/index.html changed?')
-  process.exit(1)
-}
 
 // ── Local paths out ───────────────────────────────────────────────────────────
 
@@ -189,12 +183,10 @@ for (const [rel, text] of files) {
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, text)
 }
-writeFileSync(join(outDir, 'index.html'), page.replace(LIVE, '<meta name="opencastle-dashboard" content="static">'))
-for (const asset of ['dashboard.css', 'dashboard.js', 'icon-192.png']) copyFileSync(join(pageDir, asset), join(outDir, asset))
-// The page from before the merge kept everything in one file; nothing else belongs here.
+// Only data belongs here; a page copied in by an earlier export goes.
 for (const entry of readdirSync(outDir)) {
-  if (!['index.html', 'dashboard.css', 'dashboard.js', 'icon-192.png', 'data'].includes(entry) && statSync(join(outDir, entry)).isFile()) rmSync(join(outDir, entry))
+  if (entry !== 'data' && statSync(join(outDir, entry)).isFile()) rmSync(join(outDir, entry))
 }
 
 console.log(`Exported ${allRuns.length} run(s) and ${eventCount} event(s) from ${roots.length} project(s)`)
-console.log(`  → ${join(outDir, 'index.html')}`)
+console.log(`  → ${join(outDir, 'data')}`)

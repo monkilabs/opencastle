@@ -498,9 +498,10 @@ terminal outside CI starts the dashboard on port 4300, or the next free port,
 and prints its address.
 
 [`tools/dashboard-demo/export.mjs`](tools/dashboard-demo/export.mjs) writes the
-same page in a static mode over the same API responses, from one or more
-projects' runs; the website publishes it at
-[opencastle.dev/dashboard](https://www.opencastle.dev/dashboard/).
+same API responses from one or more projects' runs as data files, and
+[`assemble.mjs`](tools/dashboard-demo/assemble.mjs) puts the page beside them in
+its static mode; the website's deploy does that over a committed snapshot and
+publishes it at [opencastle.dev/dashboard](https://www.opencastle.dev/dashboard/).
 
 ### Adapters and platform
 
