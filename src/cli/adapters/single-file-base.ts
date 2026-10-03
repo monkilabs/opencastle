@@ -58,6 +58,28 @@ export interface SingleFileAdapterConfig {
    * `/oc:` command described as "This file is managed by OpenCastle".
    */
   commandDescriptions?: boolean
+  /**
+   * Agent files are the assistant's own subagents, which it registers only
+   * with a `name` and a `description` in frontmatter. Claude Code reads
+   * `.claude/agents/`; written bare, every agent there was a file it never
+   * offered to delegate to. Everything else in the source frontmatter (VS Code
+   * tool names, handoffs, the tier) means nothing to it and is left out, so the
+   * agent inherits the session's tools and model.
+   */
+  agentFrontmatter?: boolean
+}
+
+/** An agent's name as a subagent: its file name, lower-case and hyphenated. */
+function subagentName(file: string): string {
+  return basename(file).replace(/\.agent\.md$|\.md$/, '').toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+}
+
+/** An agent file: the body, under a name and description when the assistant registers subagents. */
+function agentFile(file: string, content: string, withFrontmatter: boolean): string {
+  const body = stripFrontmatter(content) + '\n'
+  if (!withFrontmatter) return body
+  const description = commandDescription(content) ?? subagentName(file)
+  return `---\nname: ${subagentName(file)}\ndescription: ${JSON.stringify(description)}\n---\n\n${body}`
 }
 
 /** The frontmatter `description`, or the first heading, as a command's one line. */
@@ -376,7 +398,7 @@ export function createSingleFileAdapter(
         if (!file.endsWith('.md')) continue
         const destPath = resolve(destAgents, file)
         const content = await readFile(resolve(agentsDir, file), 'utf8')
-        await emit(projectRoot, destPath, stripFrontmatter(content) + '\n', overwrite, results)
+        await emit(projectRoot, destPath, agentFile(file, content, config.agentFrontmatter === true), overwrite, results)
       }
     }
 

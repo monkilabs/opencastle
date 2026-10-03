@@ -18,7 +18,8 @@ import { CLAUDE_COMMANDS_DIR, legacyClaudeCommands } from '../command-namespace.
  *   agents/*.agent.md          → .claude/agents/<name>.agent.md            (subagents)
  *
  * Each command keeps one line of frontmatter, its description, which is what
- * Claude Code lists beside it in the `/` menu.
+ * Claude Code lists beside it in the `/` menu. Each agent keeps a name and a
+ * description, which is what makes it a subagent Claude Code can delegate to.
  */
 
 export const IDE_ID = 'claude-code'
@@ -34,6 +35,7 @@ const { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs } = 
   frameworkDirs: ['agents', 'skills', CLAUDE_COMMANDS_DIR],
   legacyOutputs: (projectRoot) => legacyClaudeCommands(projectRoot),
   commandDescriptions: true,
+  agentFrontmatter: true,
 })
 
 export { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs }

@@ -22,8 +22,8 @@ const SYNC_HELP = `
     --force           Recompile even when everything already matches its sources
     --allow-downgrade Recompile with this OpenCastle even though a newer one
                       compiled the project
-    --reconfigure     Choose the tech and team tools again (assistants:
-                      opencastle init --customize)
+    --reconfigure     Choose the tech and team tools again (the assistants
+                      are chosen by opencastle init)
     --yes             Skip the confirmation prompt
     --json            Machine-readable output (with --check)
     --help, -h        Show this help
