@@ -1051,21 +1051,18 @@ describe('Windsurf adapter install', () => {
     expect(files.length).toBeGreaterThan(0)
   })
 
-  it('creates skill rules in .windsurf/rules/skills/', async () => {
+  it('writes skills as Agent Skills in .agents/skills/, which Devin Desktop reads', async () => {
     const adapter = await IDE_ADAPTERS['windsurf']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
-    const skillsDir = join(tmpDir, '.windsurf', 'rules', 'skills')
-    expect(existsSync(skillsDir)).toBe(true)
-    const files = (await readdir(skillsDir)).filter(f => f.endsWith('.md'))
-    expect(files.length).toBeGreaterThan(0)
+    expect(existsSync(join(tmpDir, '.agents', 'skills', 'sanity-cms', 'SKILL.md'))).toBe(true)
+    expect(existsSync(join(tmpDir, '.windsurf', 'rules', 'skills'))).toBe(false)
   })
 
-  it('generates Windsurf MCP config with mcpServers format', async () => {
+  it('writes MCP servers to .devin/mcp_config.json, the project file Devin Local reads', async () => {
     const adapter = await IDE_ADAPTERS['windsurf']()
     await adapter.install(PKG_ROOT, tmpDir, STACK_SANITY_LINEAR)
-    const mcpPath = join(tmpDir, '.windsurf', 'mcp.json')
-    expect(existsSync(mcpPath)).toBe(true)
-    const mcp = await readJson(mcpPath)
+    expect(existsSync(join(tmpDir, '.windsurf', 'mcp.json'))).toBe(false)
+    const mcp = await readJson(join(tmpDir, '.devin', 'mcp_config.json'))
     expect(mcp).toHaveProperty('mcpServers')
   })
 
@@ -1075,7 +1072,8 @@ describe('Windsurf adapter install', () => {
     expect(paths.merged).toContain('.windsurfrules')
     expect(paths.framework).not.toContain('.windsurfrules')
     expect(paths.framework.some(p => p.includes('.windsurf/rules/'))).toBe(true)
-    expect(paths.customizable).toContain('.windsurf/mcp.json')
+    expect(paths.customizable).toContain('.devin/mcp_config.json')
+    expect(paths.framework).toContain('.agents/skills/')
   })
 })
 

@@ -194,8 +194,10 @@ cycle is an error.
   password input. Codex expands no variables, so `.codex/config.toml` gets the
   field that reads one instead: a forwarded variable in `env_vars`, a
   `Bearer ${NAME}` header as `bearer_token_env_var`, a header that is only
-  `${NAME}` in `env_http_headers`. Antigravity keeps `${NAME}` until its syntax
-  is confirmed. Editor variables are not environment variables: VS Code and
+  `${NAME}` in `env_http_headers`. Antigravity expands no variables and has no
+  field that reads one, so an `env` entry that only forwards a variable is left
+  out — the server inherits it — and any other reference is left as written for
+  `doctor` to name; its remote servers are written with `serverUrl`. Editor variables are not environment variables: VS Code and
   Cursor get `${workspaceFolder}` as written, the others `.` (they start a
   project's servers in the project directory) and `HOME` for `${userHome}`. A
   server an earlier sync wrote that no layer defines any more is removed, with

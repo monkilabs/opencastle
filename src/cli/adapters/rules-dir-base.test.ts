@@ -50,7 +50,7 @@ describe.each([
     ext: '.mdc',
     configDir: '.cursor',
     rootFile: '.cursorrules',
-    skillsDir: '.agents/skills' as string | undefined,
+    mcpPath: '.cursor/mcp.json',
   },
   {
     name: 'windsurf',
@@ -58,9 +58,11 @@ describe.each([
     ext: '.md',
     configDir: '.windsurf',
     rootFile: '.windsurfrules',
-    skillsDir: undefined as string | undefined,
+    mcpPath: '.devin/mcp_config.json',
   },
-])('$name adapter', ({ adapter, ext, configDir, rootFile, skillsDir }) => {
+])('$name adapter', ({ adapter, ext, configDir, rootFile, mcpPath }) => {
+  // Both read Agent Skills natively, from the cross-assistant location.
+  const skillsDir = '.agents/skills'
   let pkgRoot: string
   let projectRoot: string
 
@@ -75,8 +77,7 @@ describe.each([
   })
 
   const rules = () => join(projectRoot, configDir, 'rules')
-  /** Where the demo skill's main file lands: an Agent Skill, or a rule. */
-  const skillFile = () => (skillsDir ? join(projectRoot, skillsDir, 'demo-skill', 'SKILL.md') : join(rules(), 'skills', `demo-skill${ext}`))
+  const skillFile = () => join(projectRoot, skillsDir, 'demo-skill', 'SKILL.md')
 
   it('writes the root rules file pointing at the rules directory', async () => {
     await adapter.install(pkgRoot, projectRoot)
@@ -114,9 +115,9 @@ describe.each([
     expect(existsSync(join(rules(), 'prompts', `generate${ext}`))).toBe(true)
   })
 
-  it.skipIf(!skillsDir)('writes skills as Agent Skills, with every file and no rule copy', async () => {
+  it('writes skills as Agent Skills, with every file and no rule copy', async () => {
     await adapter.install(pkgRoot, projectRoot)
-    const dir = join(projectRoot, skillsDir!, 'demo-skill')
+    const dir = join(projectRoot, skillsDir, 'demo-skill')
     expect(readdirSync(dir).sort()).toEqual(['REFERENCE.md', 'SKILL.md'])
     // Copied as written: the sibling sits beside it, so its pointer is right as it is.
     expect(readFileSync(join(dir, 'SKILL.md'), 'utf8')).toContain('[REFERENCE.md](./REFERENCE.md)')
@@ -124,7 +125,7 @@ describe.each([
     expect(readFileSync(join(projectRoot, rootFile), 'utf8')).toContain(`Skills are in \`${skillsDir}/\``)
   })
 
-  it.skipIf(!skillsDir)('moves skills an earlier release wrote as rules, and leaves no empty folder', async () => {
+  it('moves skills an earlier release wrote as rules, and leaves no empty folder', async () => {
     mkdirSync(join(rules(), 'skills', 'demo-skill'), { recursive: true })
     writeFileSync(join(rules(), 'skills', `demo-skill${ext}`), 'old rule')
     writeFileSync(join(rules(), 'skills', 'demo-skill', `REFERENCE${ext}`), 'old sibling')
@@ -132,22 +133,6 @@ describe.each([
     expect(existsSync(join(rules(), 'skills'))).toBe(false)
     expect(result.deleted).toContain(`${configDir}/rules/skills/demo-skill${ext}`)
     expect(existsSync(skillFile())).toBe(true)
-  })
-
-  it.skipIf(Boolean(skillsDir))('points a skill at where its sibling actually lands', async () => {
-    // The sibling is written to `skills/<skill>/REFERENCE<ext>` while the skill
-    // itself is `skills/<skill><ext>`, so the source's own `./REFERENCE.md` is
-    // wrong in both directory and extension. Fourteen shipped skills point at a
-    // sibling this way, and every one of those pointers used to lead nowhere.
-    await adapter.install(pkgRoot, projectRoot)
-    const skill = readFileSync(join(rules(), 'skills', `demo-skill${ext}`), 'utf8')
-    expect(skill).not.toMatch(/(?<![\w/-])(?:\.\/)?REFERENCE\.md(?![\w-])/)
-    // Both the markdown link and the bare prose mention are retargeted.
-    expect(skill).toContain(`[demo-skill/REFERENCE${ext}](demo-skill/REFERENCE${ext})`)
-    expect(skill).toContain(`more in demo-skill/REFERENCE${ext}`)
-    // And the retargeted path resolves, read from the rules root where the
-    // skill file sits.
-    expect(existsSync(join(rules(), 'skills', 'demo-skill', `REFERENCE${ext}`))).toBe(true)
   })
 
   it('excludes agent-workflows/README.md', async () => {
@@ -221,11 +206,11 @@ describe.each([
     // Co-owned, not framework — `remove --all` may only strip its own block from it.
     expect(managed.merged).toContain(rootFile)
     expect(managed.framework).not.toContain(rootFile)
-    expect(managed.customizable).toContain(`${configDir}/mcp.json`)
+    expect(managed.customizable).toContain(mcpPath)
     for (const check of adapter.getDoctorChecks()) {
       expect(check.path === rootFile || check.path.startsWith(`${configDir}/`) || check.path === `${skillsDir}/`).toBe(true)
     }
-    if (skillsDir) expect(managed.framework).toContain(`${skillsDir}/`)
+    expect(managed.framework).toContain(`${skillsDir}/`)
   })
 
   it('generates only files with the IDE extension in the rules root', async () => {

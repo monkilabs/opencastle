@@ -608,11 +608,11 @@ $ npx opencastle baseline check opencastle-baseline
               <thead><tr><th>Assistant</th><th>File</th><th>The header it receives</th></tr></thead>
               <tbody>
                 <tr><td>Claude Code</td><td><code>.mcp.json</code></td><td><code>{'Bearer ${ACME_DOCS_TOKEN}'}</code></td></tr>
-                <tr><td>Cursor, Windsurf</td><td><code>.cursor/mcp.json</code>, <code>.windsurf/mcp.json</code></td><td><code>{'Bearer ${env:ACME_DOCS_TOKEN}'}</code></td></tr>
+                <tr><td>Cursor, Windsurf (Devin Desktop)</td><td><code>.cursor/mcp.json</code>, <code>.devin/mcp_config.json</code></td><td><code>{'Bearer ${env:ACME_DOCS_TOKEN}'}</code></td></tr>
                 <tr><td>OpenCode</td><td><code>opencode.json</code></td><td><code>{'Bearer {env:ACME_DOCS_TOKEN}'}</code></td></tr>
                 <tr><td>VS Code</td><td><code>.vscode/mcp.json</code></td><td><code>{'Bearer ${input:ACME_DOCS_TOKEN}'}</code> — a password input VS Code asks for once and keeps</td></tr>
                 <tr><td>Codex CLI</td><td><code>.codex/config.toml</code></td><td>None written as text: Codex expands no variables, so the server gets <code>bearer_token_env_var = "ACME_DOCS_TOKEN"</code> and Codex sends the header itself</td></tr>
-                <tr><td>Antigravity</td><td><code>.agents/mcp_config.json</code></td><td><code>{'Bearer ${ACME_DOCS_TOKEN}'}</code>, until its syntax is confirmed</td></tr>
+                <tr><td>Antigravity</td><td><code>.agents/mcp_config.json</code></td><td>Written as <code>{'Bearer ${ACME_DOCS_TOKEN}'}</code>, which Antigravity sends as text — it expands no variables, so <code>doctor</code> says to set the header in your own <code>~/.gemini/config/mcp_config.json</code></td></tr>
               </tbody>
             </table>
           </div>
@@ -1054,7 +1054,7 @@ $ npx opencastle baseline check opencastle-baseline
             <li><strong><code>fleet</code> reads checkouts.</strong> There is no hosted view; you point it at directories you have cloned.</li>
             <li><strong>The context figure is an estimate.</strong> It is one number — four characters per token over the merged instructions and the skill and agent index — not a measurement of what each assistant loads.</li>
             <li><strong>A pin fixes a server's own version,</strong> not its dependencies, which <code>npx</code> resolves on each machine. Launching the project's own copy with <code>npx --no</code>, or a remote server, avoids that.</li>
-            <li><strong>Windsurf and Antigravity are less certain.</strong> Antigravity receives <code>{'${NAME}'}</code> until its variable syntax is confirmed, and Windsurf's MCP config is documented as one global file — so team servers may not reach those assistants yet. Codex CLI gets its servers in <code>.codex/config.toml</code>, which it loads only in a project you have marked as trusted.</li>
+            <li><strong>Windsurf and Antigravity are less certain.</strong> Windsurf is now Devin Desktop: its default agent, Devin Local, reads the <code>.devin/mcp_config.json</code> OpenCastle writes, while the legacy Cascade agent reads only its global config. Antigravity expands no variables, so a server that needs a token in a header needs it set in each person's global config. Codex CLI gets its servers in <code>.codex/config.toml</code>, which it loads only in a project you have trusted — <code>explain</code> tells you whether you have.</li>
             <li><strong>Replacing is all or nothing.</strong> A layer that provides an item with the same name replaces the whole item; two layers' versions of one skill are never merged.</li>
             <li><strong>Policy covers what is present, not what it says.</strong> It decides which servers run and which items must exist; it does not read the text of instructions.</li>
             <li><strong>Dead references are checked narrowly.</strong> Scripts named as <code>npm run</code> (or <code>pnpm</code>, <code>yarn</code>, <code>bun run</code>) are checked in all team content; backticked paths only in the repository's own content, and only under a top-level directory that exists.</li>

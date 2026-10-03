@@ -441,6 +441,8 @@ const OWN_SPELLING: Partial<Record<IdeChoice, (name: string) => string>> = {
   // Codex expands nothing: a variable reaches a server only by being named in
   // a field that reads one.
   codex: (n) => `env_vars, bearer_token_env_var or env_http_headers naming ${n}`,
+  // Antigravity expands none either, and has no field that reads a variable.
+  antigravity: (n) => `the value in your own ~/.gemini/config/mcp_config.json — Antigravity expands no variables, and a local server inherits ${n} from the environment`,
 }
 
 /** The first `${NAME}` this target would pass through literally, as `NAME → spelling`, or null. */

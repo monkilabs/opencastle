@@ -380,7 +380,7 @@ c5_mcp() {
     codex)       echo .codex/config.toml ;;
     antigravity) echo .agents/mcp_config.json ;;
     cursor)      echo .cursor/mcp.json ;;
-    windsurf)    echo .windsurf/mcp.json ;;
+    windsurf)    echo .devin/mcp_config.json ;;
     vscode)      echo .vscode/mcp.json ;;
     opencode)    echo opencode.json ;;
   esac
