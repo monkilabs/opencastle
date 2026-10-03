@@ -93,13 +93,21 @@ describe.skipIf(!posix)('stopping a process tree', () => {
     const closed = new Promise<void>((r) => child.on('close', () => r()))
     killTree(child.pid)
     await closed
-    let groupAlive = true
-    try {
-      process.kill(-child.pid!, 0)
-    } catch {
-      groupAlive = false
+    // The shell closing is not the end of the group: on Linux the `sleep` it
+    // started is handed to init when the shell dies and stays a group member
+    // until init reaps it, a moment later. Wait for that, but for less than the
+    // 5s SIGKILL escalation, so this still proves SIGTERM reached the child.
+    const groupAlive = (): boolean => {
+      try {
+        process.kill(-child.pid!, 0)
+        return true
+      } catch {
+        return false
+      }
     }
-    expect(groupAlive).toBe(false)
+    const deadline = Date.now() + 3_000
+    while (groupAlive() && Date.now() < deadline) await new Promise((r) => setTimeout(r, 25))
+    expect(groupAlive()).toBe(false)
   })
 
   it('kills at once with a grace of 0, for a process that cannot wait to escalate', async () => {
