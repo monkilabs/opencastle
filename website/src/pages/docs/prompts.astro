@@ -53,7 +53,7 @@ const prompts = [
       { heading: 'What it does', content: `<ol>
         <li><strong>Research &amp; context gathering</strong> — reads the roadmap, known issues, lessons learned and related code</li>
         <li><strong>Task board setup</strong> — creates one tracker issue per subtask before any code is written</li>
-        <li><strong>Convoy spec</strong> — writes a convoy spec for the work, whatever its size, checks it with <code>--dry-run</code>, and asks you to run <code>npx opencastle convoy run -f .opencastle/convoys/&lt;name&gt;.convoy.yml</code> (the convoy engine is experimental)</li>
+        <li><strong>Convoy spec</strong> — writes a convoy spec for the work, whatever its size, checks it with <code>--dry-run</code>, and asks you to run <code>npx opencastle convoy run .opencastle/convoys/&lt;name&gt;.convoy.yml</code> (the convoy engine is experimental)</li>
         <li><strong>Validation &amp; testing</strong> — after the run: secret scan, lint, tests, build, fast review, browser checks</li>
         <li><strong>Delivery via PR</strong> — opens a pull request from the convoy's branch, linked to the tracker issues</li>
       </ol>` },
@@ -72,7 +72,7 @@ const prompts = [
         <li><strong>Triage &amp; reproduce</strong> — confirms the bug, gathers context</li>
         <li><strong>Create tracker issue</strong> — opens a bug ticket with reproduction steps</li>
         <li><strong>Root cause analysis</strong> — traces the defect to its origin</li>
-        <li><strong>Fix via convoy</strong> — writes a convoy spec for the fix, even a single task, and asks you to run it with <code>npx opencastle convoy run -f …</code> (experimental)</li>
+        <li><strong>Fix via convoy</strong> — writes a convoy spec for the fix, even a single task, and asks you to run it with <code>npx opencastle convoy run …</code> (experimental)</li>
         <li><strong>Validate</strong> — verifies with tests and browser checks before delivering the PR</li>
       </ol>` },
     ],

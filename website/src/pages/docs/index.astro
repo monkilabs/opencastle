@@ -284,15 +284,15 @@ const pages = [
                       <div class="quickstart__substeps">
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">1</span>
-                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add user reviews to the place detail page"</code>. It writes a PRD to <code class="quickstart__code">.opencastle/prds/</code> and a validated spec to <code class="quickstart__code">.opencastle/convoys/</code>, then asks <em>&ldquo;Run the convoy now?&rdquo;</em> &mdash; answer <em>n</em> to review the spec first.</p>
+                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add user reviews to the place detail page"</code>. It writes a PRD to <code class="quickstart__code">.opencastle/prds/</code> and a validated spec to <code class="quickstart__code">.opencastle/convoys/</code>, then shows the plan and asks <em>&ldquo;Run it?&rdquo;</em> &mdash; answer <em>n</em> to review the spec first.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">2</span>
-                          <p class="quickstart__desc"><strong>Review:</strong> check the task breakdown, file partitions, and dependency order in the spec. <code class="quickstart__code">npx opencastle convoy run --file .opencastle/convoys/your-spec.convoy.yml --dry-run</code> prints the execution plan.</p>
+                          <p class="quickstart__desc"><strong>Review:</strong> check the task breakdown, file partitions, and dependency order in the spec. <code class="quickstart__code">npx opencastle convoy run .opencastle/convoys/your-spec.convoy.yml --dry-run</code> checks it and prints what would run.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">3</span>
-                          <p class="quickstart__desc"><strong>Execute:</strong> <code class="quickstart__code">npx opencastle convoy run --file .opencastle/convoys/your-spec.convoy.yml</code></p>
+                          <p class="quickstart__desc"><strong>Execute:</strong> <code class="quickstart__code">npx opencastle convoy run .opencastle/convoys/your-spec.convoy.yml</code>. The work lands on a branch of its own; your checkout is not touched.</p>
                         </div>
                       </div>
                       <p class="quickstart__hint">Every convoy command and option: <a href="/docs/cli#convoy">CLI reference</a>.</p>

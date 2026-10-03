@@ -90,11 +90,11 @@ Health thresholds, escalation path, Error Recovery Playbook, Circuit Breaker: se
 Use OpenCastle CLI (`npx opencastle` or `bin/cli.mjs`):
 
 ```bash
-opencastle convoy run --file convoy.yml --dry-run
-opencastle convoy run --file convoy.yml --verbose
-opencastle convoy resume
-opencastle convoy
-opencastle convoy retry
+opencastle convoy run convoy.yml --dry-run   # check the spec, start nothing
+opencastle convoy run convoy.yml --verbose
+opencastle convoy                            # the last run and the one next step
+opencastle convoy resume                     # re-run what is not done
+opencastle convoy dashboard                  # watch it live
 ```
 
 **Post-run verification (copy-paste checks):**
@@ -104,7 +104,6 @@ plain-text run log to tail.
 
 ```bash
 opencastle convoy --json          # last run's status, machine-readable
-opencastle convoy run --status    # current convoy state from convoy.db
 tail -n 50 .opencastle/logs/events.ndjson | jq -c 'select(.outcome != "success")'
 ```
 
@@ -113,9 +112,9 @@ tail -n 50 .opencastle/logs/events.ndjson | jq -c 'select(.outcome != "success")
 | Phase | Check | Command / Action |
 |-------|-------|-----------------|
 | Pre-spawn | Inputs present (task, scope, ACs) | `test -s convoy.yml \|\| exit 1` |
-| During-run | Watch for failures | `opencastle convoy run --status` |
+| During-run | Watch for failures | `opencastle convoy dashboard` |
 | Pre-merge | No task left failed or gate-failed | `opencastle convoy --json \| jq -e '.failed == 0'` |
-| Dead letters | Queue is empty | `opencastle convoy run --dlq-list` |
+| Unfinished | Nothing failed, skipped or left running | `opencastle convoy --json \| jq -e '.done == .total'` |
 | Post-merge | Lint + smoke tests pass | `npm run lint && npm test -- -t "smoke"` |
 | Blocker | Any failure | Block merge; reopen to original researcher(s) |
 

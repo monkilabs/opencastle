@@ -238,13 +238,17 @@ instead of restarting. This part is experimental and may change; the compiler
 above does not depend on it.
 
 ```bash
-opencastle convoy "Add user reviews to the place detail page"
-opencastle convoy                    # where did the last run get to?
-opencastle convoy resume             # continue after an interruption
+opencastle convoy "Add user reviews to the place detail page"   # plan, show, ask, run
+opencastle convoy                    # the last run and the one next step
+opencastle convoy resume             # continue whatever is not done
+opencastle convoy dashboard          # the live viewer
+opencastle convoy run my.convoy.yml  # run a spec you wrote
 ```
 
-It plans the work, executes it on Claude Code, Copilot, Cursor, OpenCode or
-Codex, and runs your gates. Inspired by Steve Yegge's
+It plans the work, shows you the plan, and runs independent tasks at the same
+time on the runtime `opencastle init` set up — Claude Code, Codex, Cursor,
+OpenCode or Copilot. The result lands on a branch of its own, and your gates run
+once at the end. Inspired by Steve Yegge's
 [Gas Town](https://github.com/steveyegge/gastown).
 
 <br>

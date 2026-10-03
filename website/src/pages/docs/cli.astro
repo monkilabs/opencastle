@@ -185,34 +185,35 @@ const commands = [
     id: 'convoy',
     category: 'runtime',
     name: 'convoy',
-    summary: 'Experimental: plan and run multi-step work',
-    description: 'Runs long multi-step work in dependency order across isolated git worktrees, with SQLite persistence so an interrupted run resumes rather than restarting. Give it a task description and it plans, executes, and runs your gates.',
+    summary: 'Experimental: plan multi-step work and run it with agents in parallel',
+    description: 'Plans long multi-step work, shows you the plan, and runs it on the agent runtime <code>opencastle init</code> set up: each task in its own git worktree, independent tasks at the same time, the result on a branch of its own. Runs are recorded in SQLite, so an interrupted or failed run resumes rather than restarting.',
     usage: 'npx opencastle convoy [task] [options]',
     options: [
-      { flag: '--dry-run', desc: 'With a task: print the first planning prompt and stop. With run: show the execution plan' },
+      { flag: '--yes, -y', desc: 'With a task: run the plan without asking' },
+      { flag: '--dry-run', desc: 'With a task: plan and write the spec, but do not run it. With run or resume: show what would run' },
+      { flag: '--adapter, -a <name>', desc: 'Agent runtime: claude, codex, cursor, opencode or copilot (default: the one opencastle init set up)' },
+      { flag: '--concurrency, -c <n>', desc: 'Tasks at once' },
       { flag: '--verbose', desc: 'Stream agent output' },
-      { flag: '--adapter, -a <name>', desc: 'Agent runtime to plan and run with: claude, copilot, cursor, opencode or codex' },
-      { flag: '--skip-validation', desc: 'Skip the PRD and spec validation passes' },
-      { flag: '--json', desc: 'Machine-readable status' },
+      { flag: '--json', desc: 'With no task: the last run, as JSON' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
       { heading: 'Subcommands', content: `<ul>
-        <li><code>opencastle convoy</code> — where the last run got to, and the verb that fits its state</li>
-        <li><code>opencastle convoy "&lt;task&gt;"</code> — plan and execute a task</li>
-        <li><code>opencastle convoy resume</code> — continue an interrupted run</li>
-        <li><code>opencastle convoy retry</code> — re-run only the failed tasks</li>
-        <li><code>opencastle convoy plan --prd &lt;path&gt;</code> — resume from a PRD the planner wrote earlier</li>
-        <li><code>opencastle convoy run --file &lt;spec&gt;</code> — execute a spec you wrote by hand</li>
-        <li><code>opencastle convoy dashboard</code> — open the run viewer (port 4300 by default)</li>
+        <li><code>opencastle convoy</code> — the last run and the one next step</li>
+        <li><code>opencastle convoy "&lt;task&gt;"</code> — plan it, show the plan, ask, then run it</li>
+        <li><code>opencastle convoy run &lt;spec.yml&gt;</code> — run a spec you wrote</li>
+        <li><code>opencastle convoy resume</code> — continue whatever is not done: failed, interrupted and skipped tasks</li>
+        <li><code>opencastle convoy dashboard</code> — the live viewer (port 4300 by default)</li>
+        <li><code>opencastle convoy plan --prd &lt;path&gt;</code> — plan again from a PRD you edited</li>
       </ul>
-<p><code>run</code>, <code>plan</code> and <code>dashboard</code> take their own options: <code>opencastle convoy run --help</code>.</p>` },
+<p>Each subcommand takes its own options: <code>opencastle convoy run --help</code>.</p>` },
       { heading: 'Experimental', content: `<p>This namespace may change or be removed. The compiler does not depend on it. Native background and cloud agents now cover much of what it was built for, so treat it as a research surface rather than a stable one.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle convoy "Add user reviews to the place detail page"', desc: 'Plan and run' },
       { cmd: 'npx opencastle convoy', desc: 'Status of the last run' },
-      { cmd: 'npx opencastle convoy resume', desc: 'Continue after an interruption' },
+      { cmd: 'npx opencastle convoy run .opencastle/convoys/reviews.convoy.yml --dry-run', desc: 'Check a spec and see what would run' },
+      { cmd: 'npx opencastle convoy resume', desc: 'Continue what is not done' },
     ],
   },
   {

@@ -279,7 +279,7 @@ Workers run on one of five runtimes ([`src/cli/run/adapters/`](src/cli/run/adapt
 graph LR
     S[".convoy.yml"] --> V["Validate & Build DAG"]
     V --> I["Initialize Engine"]
-    I --> E["Execute Phases"]
+    I --> E["Run the ready queue"]
     E --> G["Post-Convoy Gates"]
     G --> D["Deliver"]
 
@@ -289,10 +289,10 @@ graph LR
 
 1. **Spec** — A `.convoy.yml` file defines tasks, agents, file partitions, dependencies, and orchestration rules
 2. **DAG validation** — Tasks form a directed acyclic graph; phase assignment is computed from dependencies
-3. **Initialization** — Engine creates convoy record in SQLite (`.opencastle/convoy.db`), starts health monitor, configures event emitter
-4. **Execution** — Tasks run phase-by-phase; within a phase, up to `concurrency: N` tasks run in parallel
-5. **Completion** — Post-convoy gates run, convoy guard validates logs, worktrees are cleaned up
-6. **Recovery** — On crash, `resume(convoyId)` replays from the last checkpoint using SQLite + NDJSON recovery
+3. **Initialization** — Engine creates the convoy record in SQLite (`.opencastle/convoy.db`), a branch of its own for the work (the spec's `branch`, or `convoy/<name>-<id>`), and the event emitter. The user's checkout is never touched
+4. **Execution** — A ready queue: a task starts as soon as the tasks it depends on are done, up to `concurrency` at once (default 4), the task that most others wait on first
+5. **Completion** — Post-convoy gates run once on the merged result, convoy guard validates logs, worktrees are cleaned up
+6. **Recovery** — `opencastle convoy resume` continues the newest run that is not done: failed, interrupted and skipped tasks run again on the same branch
 
 ### Per-Task Execution
 
@@ -326,15 +326,11 @@ This enables safe parallel execution and deterministic merging of results.
 
 A convoy worker runs with no terminal attached, so a permission prompt is not a question it can answer — it is a refusal. Workers therefore run with edits pre-accepted (`acceptEdits`), which is the least authority that lets one do the job it was given, and matches the other CLI adapters (`codex -a never -s workspace-write`, `cursor --force`).
 
-Set it per spec, or per run:
+Set it in the spec:
 
 ```yaml
 defaults:
   permission_mode: bypassPermissions   # default | acceptEdits | auto | dontAsk | bypassPermissions | plan
-```
-
-```
-npx opencastle convoy run -f .opencastle/convoys/my-feature.convoy.yml --permission-mode bypassPermissions
 ```
 
 `bypassPermissions` gives a worker a free hand and is a sandbox-shaped choice; `default` restores the prompt-driven behavior, which in a non-interactive run means the worker writes nothing. Isolation still comes from the per-task worktree and the `files` partition either way.
@@ -372,7 +368,7 @@ The engine tracks agent failures over the life of a convoy:
 
 ### Event System
 
-46 canonical event types cover the convoy and task lifecycle, reviews and disputes, gates, safety checks, circuit breakers, watch mode and worker health. [TELEMETRY.md](src/cli/convoy/TELEMETRY.md) lists every one with its data fields.
+39 canonical event types cover the convoy and task lifecycle, reviews and disputes, gates, safety checks, circuit breakers and worker health. [TELEMETRY.md](src/cli/convoy/TELEMETRY.md) lists every one with its data fields.
 
 Events are dual-written to **SQLite** (`.opencastle/convoy.db`; queryable, durable) and **NDJSON** (`.opencastle/logs/convoys/<convoy-id>.ndjson`; append-only, crash-safe via `fsyncSync`). Secret scanning runs on every NDJSON write.
 
@@ -442,7 +438,7 @@ Agents append sessions, delegations, reviews, panels and disputes to
 go to `.opencastle/convoy.db` and `.opencastle/logs/convoys/<convoy-id>.ndjson`
 ([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)).
 
-The [dashboard](src/dashboard/) (`opencastle convoy dashboard`, experimental) provides a web UI for exploring convoy runs, task timelines, agent performance, and event streams.
+The live viewer (`opencastle convoy dashboard`, experimental; [`src/cli/dashboard.ts`](src/cli/dashboard.ts)) is one read-only page over the same database: runs, tasks and their dependencies, tokens and cost, failure reasons, and the event feed. `convoy run` starts it on a terminal and prints its address.
 
 ---
 
@@ -463,7 +459,7 @@ The [dashboard](src/dashboard/) (`opencastle convoy dashboard`, experimental) pr
 | `plugin` | Check an Agent Plugin, build Claude Code's files from it (`build`), write marketplace files for a directory of them (`index`) |
 | `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or Claude Code's auto memory for this repository into lessons (`memory`) |
 | `fleet` | OpenCastle and baseline versions, and MCP server spread, across many repositories' locks |
-| `convoy` | Experimental: plan and run multi-step work |
+| `convoy` | Experimental: plan multi-step work and run it with agents in parallel |
 
 On GitHub Actions, `sync --check` also writes an `::error` annotation on each
 drifted file and a table to `$GITHUB_STEP_SUMMARY`

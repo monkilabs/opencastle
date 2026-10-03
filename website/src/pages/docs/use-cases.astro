@@ -302,21 +302,20 @@ $ git commit -m "Add OpenCastle"</code></pre>
   PRD:           .opencastle/prds/portfolio.prd.md
   Convoy spec:   .opencastle/convoys/portfolio.convoy.yml
 
-  Preview: npx opencastle convoy run -f .opencastle/convoys/portfolio.convoy.yml --dry-run
-  Execute: npx opencastle convoy run -f .opencastle/convoys/portfolio.convoy.yml
+  Preview: npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml --dry-run
+  Execute: npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml
 
-  Run the convoy now? [Y/n]</code></pre>
+  Run it? [Y/n]</code></pre>
             </div>
             <div class="recipe-tip">
-              <strong>Answer n.</strong> The run ends by asking <code>Run the convoy now? [Y/n]</code>, and
+              <strong>Answer n.</strong> The run ends by asking <code>Run it? [Y/n]</code>, and
               Enter means yes. This recipe reviews the spec and previews the plan first, so answer
               <strong>n</strong>; the <code>Preview:</code> and <code>Execute:</code> lines are the commands for
               Steps 4 and 5.
             </div>
             <div class="recipe-tip">
-              <strong>Tip:</strong> <code>--dry-run</code> prints the first planning prompt and stops.
-              <code>--skip-validation</code> skips the validation and fix steps when you already trust the
-              description.
+              <strong>Tip:</strong> <code>--dry-run</code> plans, shows the plan and writes the spec, and
+              stops there. <code>--yes</code> runs the plan without asking.
             </div>
           </section>
 
@@ -400,7 +399,7 @@ gates:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/portfolio.convoy.yml --dry-run</code></pre>
+              <pre><code>$ npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml --dry-run</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  ℹ Auto-detected adapter: copilot
@@ -438,18 +437,18 @@ gates:
               Run it without <code>--dry-run</code>. The run viewer opens in your browser. The engine creates the
               spec's branch, <code>feat/portfolio</code>, and runs each task in its own git worktree, so agents
               work in parallel without touching each other's files. Each finished task is reviewed and merged
-              into the branch, and the spec's <code>gates</code> run at the end; a task that keeps failing goes
-              to the dead-letter queue. When the run ends, OpenCastle says where the results are saved and keeps
-              the viewer running until you press <code>Ctrl+C</code>.
+              into the convoy's own branch, and the spec's <code>gates</code> run once at the end. When the run
+              ends, OpenCastle prints a summary — what failed and why, the branch, and how to review and merge
+              it — and exits.
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/portfolio.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml</code></pre>
             </div>
             <div class="recipe-tip">
               <strong>Note:</strong> If your machine sleeps or the process is interrupted, resume any time
-              with <code>npx opencastle convoy resume</code>. <code>npx opencastle convoy retry</code>
-              re-runs only the tasks that failed.
+              with <code>npx opencastle convoy resume</code>. It also re-runs the tasks that failed, and the
+              ones a failure skipped; finished tasks are kept.
             </div>
           </section>
 
@@ -475,9 +474,9 @@ gates:
               <li>The event timeline and the execution log</li>
             </ul>
             <div class="recipe-tip">
-              <strong>Tip:</strong> The viewer opens by itself whenever a convoy runs — <code>convoy run</code>,
-              <code>resume</code>, <code>retry</code>, or answering yes to <code>Run the convoy now?</code>. For a
-              short status in the terminal, run <code>npx opencastle convoy</code>.
+              <strong>Tip:</strong> Whenever a convoy runs in a terminal — <code>convoy run</code>,
+              <code>resume</code>, or answering yes to <code>Run it?</code> — it prints a <em>Live view</em>
+              address for the viewer. For a short status in the terminal, run <code>npx opencastle convoy</code>.
             </div>
           </section>
 
@@ -528,15 +527,14 @@ $ gh pr create --title "feat: personal portfolio" --body "Built with OpenCastle'
                   OpenCastle tries twice to fix it, then carries on with the best version it has and prints
                   the remaining issues. Read them before you run the spec; if they matter, make your
                   description more specific about scope and requirements and run the pipeline again.
-                  <code>--skip-validation</code> skips validation while you iterate.
                 </p>
               </div>
               <div class="recipe-troubleshooting__item">
                 <p class="recipe-troubleshooting__problem">A task keeps failing</p>
                 <p class="recipe-troubleshooting__solution">
-                  <code>npx opencastle convoy run --dlq-list</code> lists the tasks in the dead-letter queue,
-                  and the run viewer's Reliability panel shows them too. Fix the cause — a failing gate, a
-                  missing script — then <code>npx opencastle convoy retry</code> re-runs the failed tasks.
+                  <code>npx opencastle convoy</code> shows what failed, and the run viewer shows why, with the
+                  last lines of each failed task's output. Fix the cause — a failing gate, a missing script —
+                  then <code>npx opencastle convoy resume</code> re-runs what is not done.
                 </p>
               </div>
               <div class="recipe-troubleshooting__item">
@@ -544,9 +542,9 @@ $ gh pr create --title "feat: personal portfolio" --body "Built with OpenCastle'
                 <p class="recipe-troubleshooting__solution">
                   Stop the convoy with <code>Ctrl+C</code> — the state is saved to <code>.opencastle/convoy.db</code>.
                   <code>npx opencastle convoy resume</code> continues the run as it was started: it replays the
-                  spec saved then, so edits to the file don't apply, and neither does <code>retry</code>. To
+                  spec saved then, so edits to the file don't apply. To
                   change scope, edit the spec and start a new run with
-                  <code>npx opencastle convoy run -f .opencastle/convoys/portfolio.convoy.yml</code>; it works on
+                  <code>npx opencastle convoy run .opencastle/convoys/portfolio.convoy.yml</code>; it works on
                   the same branch.
                 </p>
               </div>
@@ -729,7 +727,7 @@ $ git commit -m "chore: add OpenCastle with Linear"</code></pre>
           <section class="recipe-section recipe-step" id="team-step-3">
             <div class="recipe-step__number">3</div>
             <h3 class="recipe-section__heading">Step 3: Create issues</h3>
-            <p class="recipe-section__body">Plan the feature with the convoy pipeline: it writes a PRD and a convoy spec whose tasks you'll map to Linear issues. It runs the same steps as in the <a href="#step-2">first recipe</a>. Answer <strong>n</strong> when it asks <code>Run the convoy now? [Y/n]</code> — the IDs go in first.</p>
+            <p class="recipe-section__body">Plan the feature with the convoy pipeline: it writes a PRD and a convoy spec whose tasks you'll map to Linear issues. It runs the same steps as in the <a href="#step-2">first recipe</a>. Answer <strong>n</strong> when it asks <code>Run it? [Y/n]</code> — the IDs go in first.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
               <pre><code>$ npx opencastle convoy "Add user authentication with login, sessions, and role-based access"</code></pre>
@@ -741,7 +739,7 @@ $ git commit -m "chore: add OpenCastle with Linear"</code></pre>
   PRD:           .opencastle/prds/user-authentication.prd.md
   Convoy spec:   .opencastle/convoys/user-authentication.convoy.yml
   …
-  Run the convoy now? [Y/n]</code></pre>
+  Run it? [Y/n]</code></pre>
             </div>
             <p class="recipe-section__body">Review the generated PRD to confirm it captures the right scope before continuing:</p>
             <div class="recipe-code">
@@ -822,8 +820,8 @@ gates:
             <p class="recipe-section__body">Preview the plan, then run it. Each task runs in its own git worktree and is merged into <code>feat/user-authentication</code> when it passes review — the <a href="#step-5">first recipe</a> describes a run.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/user-authentication.convoy.yml --dry-run
-$ npx opencastle convoy run --file .opencastle/convoys/user-authentication.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy run .opencastle/convoys/user-authentication.convoy.yml --dry-run
+$ npx opencastle convoy run .opencastle/convoys/user-authentication.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  …
@@ -836,7 +834,7 @@ $ npx opencastle convoy run --file .opencastle/convoys/user-authentication.convo
   Phase 3:
     session-tests — PRJ-212 · Add integration tests for the auth flow [testing-expert, 30m] (after: login-form) [tests/integration/auth/]</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> <code>npx opencastle convoy retry</code> re-runs only the failed tasks, and <code>npx opencastle convoy resume</code> continues after an interruption. Each task persists state so resumes pick up where they left off.</div>
+            <div class="recipe-tip"><strong>Tip:</strong> <code>npx opencastle convoy resume</code> continues after an interruption or a failure: it re-runs the failed tasks and the ones a failure skipped, and keeps the finished ones.</div>
           </section>
 
           <!-- Step 6 -->
@@ -1001,7 +999,7 @@ $ git commit -m "Add OpenCastle"</code></pre>
           <section class="recipe-section recipe-step" id="api-step-2">
             <div class="recipe-step__number">2</div>
             <h3 class="recipe-section__heading">Step 2: Describe the API</h3>
-            <p class="recipe-section__body">Run <code>npx opencastle convoy "&lt;task&gt;"</code> with a description of the API. It generates a PRD, validates it, assesses complexity, and produces a convoy spec — the full run is shown in the <a href="#step-2">first recipe</a>. Answer <strong>n</strong> when it asks <code>Run the convoy now? [Y/n]</code>: you'll review the PRD first.</p>
+            <p class="recipe-section__body">Run <code>npx opencastle convoy "&lt;task&gt;"</code> with a description of the API. It generates a PRD, validates it, assesses complexity, and produces a convoy spec — the full run is shown in the <a href="#step-2">first recipe</a>. Answer <strong>n</strong> when it asks <code>Run it? [Y/n]</code>: you'll review the PRD first.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
               <pre><code>$ npx opencastle convoy "Build a REST API for a task management app \
@@ -1015,7 +1013,7 @@ $ git commit -m "Add OpenCastle"</code></pre>
   PRD:           .opencastle/prds/rest-api-task-management.prd.md
   Convoy spec:   .opencastle/convoys/rest-api-task-management.convoy.yml
   …
-  Run the convoy now? [Y/n]</code></pre>
+  Run it? [Y/n]</code></pre>
             </div>
             <div class="recipe-tip"><strong>Tip:</strong> Keep the prompt focused and include explicit constraints (e.g., "use Zod", "JWT", "SQLite") so generated code matches your stack.</div>
           </section>
@@ -1064,7 +1062,7 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <p class="recipe-section__body">Preview the convoy execution plan with <code>--dry-run</code> on the <code>run</code> command. This shows the dependency graph and execution order without starting an agent.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/rest-api-task-management.convoy.yml --dry-run</code></pre>
+              <pre><code>$ npx opencastle convoy run .opencastle/convoys/rest-api-task-management.convoy.yml --dry-run</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  …
@@ -1102,9 +1100,9 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <p class="recipe-section__body">Run the convoy to execute the plan. Each task runs in an isolated git worktree and is merged into <code>feat/rest-api-task-management</code> when it passes review; the <a href="#step-5">first recipe</a> describes a run.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/rest-api-task-management.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy run .opencastle/convoys/rest-api-task-management.convoy.yml</code></pre>
             </div>
-            <div class="recipe-tip"><strong>Tip:</strong> A failed task is retried once by default (<code>max_retries</code> in the spec). To resume after an interruption, use <code>npx opencastle convoy resume</code>; <code>npx opencastle convoy retry</code> re-runs only the tasks that failed.</div>
+            <div class="recipe-tip"><strong>Tip:</strong> A failed task is retried once by default (<code>max_retries</code> in the spec). To continue after an interruption or a failure, use <code>npx opencastle convoy resume</code>; it re-runs only what is not done.</div>
           </section>
 
           <!-- Step 6 -->
@@ -1304,7 +1302,7 @@ $ git commit -m "chore: add OpenCastle configuration"</code></pre>
           <section class="recipe-section recipe-step" id="existing-step-4">
             <div class="recipe-step__number">4</div>
             <h3 class="recipe-section__heading">Step 4: Generate a PRD for a new feature</h3>
-            <p class="recipe-section__body">Describe a small, scoped feature. Let <code>npx opencastle convoy "&lt;task&gt;"</code> write the PRD and spec, or write <code>.opencastle/prds/&lt;name&gt;.prd.md</code> yourself and run <code>npx opencastle convoy plan --prd &lt;path&gt;</code>. Reference existing code paths so agents understand context. Answer <strong>n</strong> when it asks <code>Run the convoy now? [Y/n]</code>: you'll review the PRD first.</p>
+            <p class="recipe-section__body">Describe a small, scoped feature. Let <code>npx opencastle convoy "&lt;task&gt;"</code> write the PRD and spec, or write <code>.opencastle/prds/&lt;name&gt;.prd.md</code> yourself and run <code>npx opencastle convoy plan --prd &lt;path&gt;</code>. Reference existing code paths so agents understand context. Answer <strong>n</strong> when it asks <code>Run it? [Y/n]</code>: you'll review the PRD first.</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
               <pre><code>$ npx opencastle convoy "Add user notifications with a server-side API \
@@ -1318,7 +1316,7 @@ $ git commit -m "chore: add OpenCastle configuration"</code></pre>
   PRD:           .opencastle/prds/user-notifications.prd.md
   Convoy spec:   .opencastle/convoys/user-notifications.convoy.yml
   …
-  Run the convoy now? [Y/n]</code></pre>
+  Run it? [Y/n]</code></pre>
             </div>
             <div class="recipe-tip"><strong>Tip:</strong> Reference existing code paths (files and folders) so agents can locate relevant code quickly.</div>
           </section>
@@ -1347,8 +1345,8 @@ Server-side notification API with a database migration and a UI inbox component.
             <p class="recipe-section__body">If you edit the PRD, rebuild the spec with <code>npx opencastle convoy plan --prd .opencastle/prds/user-notifications.prd.md</code>. Then preview the execution plan and run:</p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
-              <pre><code>$ npx opencastle convoy run --file .opencastle/convoys/user-notifications.convoy.yml --dry-run
-$ npx opencastle convoy run --file .opencastle/convoys/user-notifications.convoy.yml</code></pre>
+              <pre><code>$ npx opencastle convoy run .opencastle/convoys/user-notifications.convoy.yml --dry-run
+$ npx opencastle convoy run .opencastle/convoys/user-notifications.convoy.yml</code></pre>
             </div>
             <div class="recipe-output">
               <pre><code>  …

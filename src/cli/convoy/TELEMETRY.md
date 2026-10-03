@@ -45,17 +45,18 @@ An async buffered writer is deferred until profiling shows sync writes are a bot
 
 ## Event Type Reference
 
-All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). Sources are relative to `src/cli/`.
+All 39 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). Sources are relative to `src/cli/`.
 
 ### Convoy Lifecycle
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `convoy_started` | convoy/engine.ts | `name?: string` |
+| `convoy_started` | convoy/engine.ts | `name?: string; branch?: string; base?: string \| null; concurrency?: number` |
 | `convoy_finished` | convoy/engine.ts | `status: string` |
 | `convoy_failed` | convoy/engine.ts | `status: string; reason?: string` |
 | `convoy_guard` | convoy/engine.ts | `checks?: string[]` |
-| `convoy_resumed` | convoy/engine.ts | `original_created_at?: string` |
+| `convoy_resumed` | convoy/engine.ts | `original_created_at?: string; reset?: string[]` |
+| `convoy_interrupted` | convoy/engine.ts | `signal?: string; requeued?: string[]` |
 
 ### Task Lifecycle
 
@@ -66,24 +67,17 @@ All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). So
 | `task_failed` | convoy/engine.ts | `reason: string; worker_id?: string; gate?: string; hook?: string` |
 | `task_skipped` | convoy/engine.ts | `reason: string` |
 | `task_retried` | convoy/engine.ts | `previous_status: string` |
-| `task_waiting_input` | convoy/engine.ts | `task_id?: string; reason?: string` |
+| `task_merged` | convoy/engine.ts | `branch?: string; files?: number` |
 
 ### Review & Disputes
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
 | `review_started` | convoy/engine.ts | `level: string; task_id?: string; model?: string` |
-| `review_stage_completed` | convoy/engine.ts | `stage: string; verdict: string; tokens: number; task_id?: string; model?: string` |
 | `review_verdict` | convoy/engine.ts | `level: string; verdict: string; tokens: number; model?: string; feedback_length?: number; budget_exceeded?: boolean; budget_downgrade?: boolean; budget_skip?: boolean; passes?: number; blocks?: number` |
+| `review_skipped` | convoy/engine.ts | `level: string; reason: string` — a review was due and reached no verdict; never recorded as a pass |
 | `dispute_opened` | convoy/engine.ts | `dispute_id: string; task_id: string; agent?: string; reason?: string` |
 | `dlq_entry_created` | convoy/engine.ts | `dlq_id: string; task_id: string; agent?: string; attempts?: number` |
-
-### Drift Detection
-
-| Event Type | Source | Data Fields |
-|-----------|--------|-------------|
-| `drift_check_result` | convoy/engine.ts | `score?: number; threshold?: number; passed?: boolean` |
-| `drift_detected` | convoy/engine.ts | `score?: number; files?: string[]` |
 
 ### Circuit Breaker
 
@@ -98,13 +92,12 @@ All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). So
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
 | `merge_conflict_detected` | convoy/engine.ts | `task_id?: string; files?: string[]` |
-| `merge_conflict_failed` | convoy/engine.ts | `task_id?: string; error?: string` |
+| `merge_failed` | convoy/engine.ts | `branch: string; error: string; conflicting_files?: string[]` — the task fails and its branch is kept |
 
-### Artifacts & Injection
+### Artifacts
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `file_injection_received` | convoy/engine.ts | `task_id?: string; from_task?: string; name?: string` |
 | `artifact_limit_reached` | convoy/engine.ts | `task_id?: string; limit?: number; current?: number` |
 | `artifacts_extracted` | convoy/engine.ts | `task_id?: string; count?: number; artifacts?: Array<{ filename: string; summary?: string }>` |
 
@@ -114,7 +107,6 @@ All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). So
 |-----------|--------|-------------|
 | `agent_identity_captured` | convoy/engine.ts | `agent?: string; task_id?: string` |
 | `agent_identity_rejected` | convoy/engine.ts | `agent?: string; task_id?: string; reason?: string` |
-| `swarm_concurrency_update` | convoy/engine.ts | `new_concurrency?: number; reason?: string` |
 
 ### Hooks
 
@@ -129,7 +121,7 @@ All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). So
 | `session` | convoy/engine.ts | `agent?: string; model?: string; task?: string; outcome?: string; duration_min?: number` |
 | `delegation` | convoy/engine.ts | `agent?: string; model?: string; tier?: string; mechanism?: string; outcome?: string` |
 
-`run/reporter.ts` also writes `session` and `delegation` records, to the agent log rather than the convoy's events.
+`opencastle log` writes `session` and `delegation` records to the agent log, `.opencastle/logs/events.ndjson`, rather than to a convoy's events.
 
 ### Security & Reliability
 
@@ -138,26 +130,18 @@ All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). So
 | `secret_leak_prevented` | convoy/engine.ts, convoy/events.ts | `original_type?: string; patterns?: string[]; task_id?: string; findings_count?: number; context?: string` |
 | `ndjson_write_failed` | convoy/events.ts | `original_type?: string` |
 
-### Built-in Gates
+### Gates
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
+| `gate_result` | convoy/engine.ts | `command: string; passed: boolean; exit_code?: number; scope?: string; output?: string` — a spec gate, per task (`scope: task`) or once after the tasks (`scope: convoy`) |
 | `built_in_gate_result` | convoy/engine.ts | `gate: string; passed: boolean; output?: string; level?: string` |
-
-### Watch Mode
-
-| Event Type | Source | Data Fields |
-|-----------|--------|-------------|
-| `watch_started` | watch.ts | `trigger_type?: string; pid?: number` |
-| `watch_cycle_start` | watch.ts | `cycle_number?: number; triggered_by?: string` |
-| `watch_cycle_end` | watch.ts | `cycle_number?: number; status?: string` |
-| `watch_stopped` | watch.ts | `reason?: string` |
 
 ### Worker Health
 
 | Event Type | Source | Data Fields |
 |-----------|--------|-------------|
-| `worker_killed` | convoy/health.ts | `reason?: string; worker_id?: string; task_id?: string` |
+| `worker_killed` | convoy/engine.ts | `reason?: string; worker_id?: string; task_id?: string` |
 
 ### Contracts & Partitions
 
@@ -165,7 +149,6 @@ All 46 canonical event types in `KNOWN_EVENT_TYPES` ([`types.ts`](types.ts)). So
 |-----------|--------|-------------|
 | `contract_violation` | convoy/engine.ts | `task_id?: string; agent?: string; missing?: string[]; warnings?: string[]` |
 | `partition_violation` | convoy/engine.ts | `task_id?: string; allowed?: string[]; actual?: string[]; violations?: string[]` |
-| `file_partition_conflict` | convoy/engine.ts | `conflicts?: Array<{ phase: number; taskA: string; taskB: string; overlapping: string[] }>` |
 
 ### TDD Gate
 
