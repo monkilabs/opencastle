@@ -1900,6 +1900,9 @@ describe('progress reporting', () => {
     expect(text).toContain('Gates:')
     expect(text).toContain('✓ echo gate-ok')
     expect(text).toContain('✗ false')
+    // The summary names the gate that failed.
+    expect(text).toContain('Gates: 1/2 passed')
+    expect(text).toMatch(/• false \(exit 1\)/)
   })
 
   it('prints retries with their reason', async () => {

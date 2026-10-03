@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ExecuteOptions } from './spec-types.js'
@@ -2113,6 +2113,9 @@ function printSummary(progress: Progress, result: ConvoyResult, store: ConvoySto
   if (result.gateResults) {
     const passed = result.gateResults.filter(g => g.passed).length
     lines.push(`  Gates: ${passed}/${result.gateResults.length} passed`)
+    for (const g of result.gateResults.filter(x => !x.passed)) {
+      lines.push(`    ${c.dim('•')} ${g.command} ${c.dim(`(exit ${g.exitCode})`)}: ${firstLine(g.output, 120) || 'no output'}`)
+    }
   }
   if (result.cost) {
     const cost = formatCost(result.cost.total_cost_usd, Boolean(result.cost.estimated))
@@ -2250,7 +2253,26 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
   /** The integration checkout for `branch`, and whether this run owns it. */
   async function integrationCheckout(repoRoot: string, branch: string, base: string, dirName: string): Promise<{ path: string; owned: boolean }> {
     if (typeof options._convoyWorktreeDir === 'string') return { path: resolve(options._convoyWorktreeDir), owned: false }
-    if (injectedCheckout) return { path: basePath, owned: false }
+    if (injectedCheckout) {
+      // `basePath` is the merge target here. That must never be the user's own
+      // checkout — the main worktree — however the caller got there. (Tests
+      // that inject `_ensureBranch` use a scratch directory and are spared the
+      // git call; the pipeline never passes it.)
+      let main: string | undefined
+      if (options._ensureBranch === undefined) {
+        try {
+          main = (await listAllWorktrees(basePath))[0]?.path
+        } catch { /* not a git repository */ }
+      }
+      const real = (p: string): string => { try { return realpathSync(p) } catch { return resolve(p) } }
+      if (main && real(main) === real(basePath)) {
+        throw new Error(
+          `Refusing to merge convoy work into ${basePath}, the repository's own checkout. ` +
+            'Give the convoy a worktree of its branch (_convoyWorktreeDir), or let it create one.',
+        )
+      }
+      return { path: basePath, owned: false }
+    }
     return { path: await ensureRootWorktree({ repoRoot, branch, base, dirName }), owned: true }
   }
 

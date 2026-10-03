@@ -119,6 +119,15 @@ describe('work lands on a branch of its own', () => {
     expect(adapter.execute).not.toHaveBeenCalled()
   })
 
+  it('refuses a caller-supplied checkout that is the user’s own', async () => {
+    // The pipeline passes `_convoyWorktreeDir: null`, meaning "merge in
+    // basePath"; with no pipeline branch, basePath was the user's checkout.
+    const adapter = stubAdapter(writesOwnFile)
+    await expect(engine({ spec: spec([{ id: 'a' }]), adapter, _convoyWorktreeDir: null }).run())
+      .rejects.toThrow(/Refusing to merge convoy work into/)
+    expect(adapter.execute).not.toHaveBeenCalled()
+  })
+
   it('writes the event log to the main repository, never into a worktree it removes', async () => {
     const result = await engine({ spec: spec([{ id: 'a', files: ['a.txt'] }]), adapter: stubAdapter(writesOwnFile) }).run()
     expect(result.logPath).toBe(join(repo, '.opencastle', 'logs', 'convoys', `${result.convoyId}.ndjson`))
