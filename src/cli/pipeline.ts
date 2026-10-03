@@ -1,15 +1,28 @@
-import { readFile, writeFile, mkdir, unlink } from 'node:fs/promises'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { stringify } from 'yaml'
+import { createHash } from 'node:crypto'
+import { resolve, relative, basename } from 'node:path'
 import { c, confirm, closePrompts } from './prompt.js'
-import { runPromptStep, readProjectMcpServers } from './plan.js'
-import type { PromptStepOptions } from './plan.js'
-import { cleanupAdapters } from './run/adapters/index.js'
+import { runPromptStep, freePath } from './plan.js'
+import type { PromptStepOptions, PromptStepResult } from './plan.js'
+import { resolveAdapter, cleanupAdapters, type ResolvedAdapter } from './run/adapters/index.js'
+import { findProjectRoot } from './convoy/read-model.js'
+import type { AgentAdapter } from './convoy/spec-types.js'
 import type { CliContext } from './types.js'
-import { parseYaml, validateSpec } from './run/schema.js'
-import { buildConvoyYaml, parseTaskPlanWithReason, parsePatches, applyPatches, deriveSpecEnrichment } from './convoy/spec-builder.js'
-import type { TaskPlan, SpecEnrichment } from './convoy/spec-builder.js'
+import { foldTestOnlyTasks,
+  applyPatches,
+  buildConvoyYaml,
+  checkPlan,
+  detectGates,
+  mergeGroupPlans,
+  normalizePlanFiles,
+  parsePatches,
+  parseTaskPlanWithReason,
+  planConcurrency,
+  sequenceConflicts,
+  slugify,
+} from './convoy/spec-builder.js'
+import type { SpecSettings, TaskPlan } from './convoy/spec-builder.js'
 
 export interface ConvoyGroup {
   name: string
@@ -290,59 +303,453 @@ export function topologicalSortGroups(groups: ConvoyGroup[]): ConvoyGroup[] {
   return sorted
 }
 
+/** The SHA-256 of a PRD's text: the complexity cache's key. */
+export function hashPrd(content: string): string {
+  return createHash('sha256').update(content).digest('hex')
+}
+
+/**
+ * The cached assessment of exactly this PRD, or null.
+ *
+ * The cache sits next to the PRD and records the hash of the text it assessed;
+ * it is used only when that hash matches. It used to be trusted by path alone,
+ * and PRDs were overwritten by title, so a different request that produced the
+ * same title was planned with the previous request's assessment.
+ */
+export async function readCachedComplexity(prdPath: string, prdContent: string): Promise<ComplexityAssessment | null> {
+  const path = deriveComplexityPath(prdPath)
+  if (!existsSync(path)) return null
+  try {
+    const raw = JSON.parse(await readFile(path, 'utf8')) as { prd_sha256?: unknown }
+    if (raw.prd_sha256 !== hashPrd(prdContent)) return null
+    return parseComplexityAssessment(JSON.stringify(raw))
+  } catch {
+    return null
+  }
+}
+
+async function writeCachedComplexity(prdPath: string, prdContent: string, assessment: ComplexityAssessment): Promise<void> {
+  const record = { prd_sha256: hashPrd(prdContent), ...assessment }
+  await writeFile(deriveComplexityPath(prdPath), JSON.stringify(record, null, 2) + '\n', 'utf8')
+}
+
+// ── Planning ────────────────────────────────────────────────────────────────
+
+/** Rounds of fix-prd, and of fix-convoy, before the planner stops asking. */
+const MAX_FIX_ROUNDS = 2
+
+export interface PlanRequest {
+  /** What the user asked for. Absent when re-planning from a PRD. */
+  task?: string
+  /** An existing PRD to plan from instead of writing one. */
+  prdPath?: string
+  /** The runtime every step runs on, resolved once by the caller. */
+  adapter: AgentAdapter
+  /** Its name, recorded in the spec so run and resume stay on it. */
+  adapterName: string
+  pkgRoot: string
+  /** Defaults to the current directory. */
+  projectRoot?: string
+  verbose?: boolean
+  /**
+   * Have validate-convoy review the plan. Only when nobody will read it before
+   * it runs (`--yes`): a person looking at the plan is the better reviewer,
+   * and the session is skipped for them.
+   */
+  critic?: boolean
+}
+
+export interface PlanOutcome {
+  /** Null for a small change, planned straight from the request. */
+  prdPath: string | null
+  specPath: string
+  plan: TaskPlan
+  settings: SpecSettings
+  /** What still fails the checks after every fix. A spec with any is written, not runnable. */
+  problems: string[]
+  /** What planning took: sessions run, time, and spend as the runtime reported it. */
+  planning?: PlanningSpend
+}
+
+export interface PlanningSpend {
+  sessions: number
+  ms: number
+  tokens: number
+  costUsd: number
+  /** False when some session reported no cost, so `costUsd` is a lower bound. */
+  costComplete: boolean
+}
+
+type StepRunner = (template: string, inputs: Omit<PromptStepOptions, 'template' | 'adapter' | 'pkgRoot'>) => Promise<PromptStepResult>
+
+function done(text: string, detail = ''): void {
+  console.log(`  ${c.green('✓')} ${text}${detail ? ` ${c.dim(detail)}` : ''}`)
+}
+
+function warn(text: string): void {
+  console.log(`  ${c.yellow('⚠')} ${text}`)
+}
+
+/** Agent-written text, indented under the line that introduced it. */
+function indented(text: string): string {
+  return c.dim(text.trim().split('\n').map((line) => `    ${line}`).join('\n'))
+}
+
+function relPath(abs: string): string {
+  const rel = relative(process.cwd(), abs)
+  return rel && !rel.startsWith('..') ? rel : abs
+}
+
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * Like Promise.all, but waits for every step before reporting the first failure,
+ * so a failed step never leaves its siblings' sessions running unwatched.
+ */
+async function settleAll<T>(work: Array<Promise<T>>): Promise<T[]> {
+  const settled = await Promise.allSettled(work)
+  const failed = settled.find((s): s is PromiseRejectedResult => s.status === 'rejected')
+  if (failed) throw failed.reason
+  return settled.map((s) => (s as PromiseFulfilledResult<T>).value)
+}
+
+/** generate-convoy, with the one retry an unreadable answer gets. */
+async function generatePlan(step: StepRunner, goal: string, context: string, label: string, convoyDir: string): Promise<TaskPlan> {
+  let raw = ''
+  let reason = ''
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    raw = (await step('generate-convoy', { goalText: goal, contextText: context })).rawOutput
+    const parsed = parseTaskPlanWithReason(raw)
+    if (parsed.plan) return parsed.plan
+    reason = parsed.reason ?? 'unreadable'
+    if (attempt === 1) warn(`The ${label} plan could not be read (${reason}) — asking once more`)
+  }
+  await mkdir(convoyDir, { recursive: true })
+  const kept = freePath(convoyDir, `${slugify(label) || 'plan'}.task-plan`, '.json')
+  await writeFile(kept, raw + '\n', 'utf8')
+  throw new Error(`The ${label} plan could not be read after a retry: ${reason}. The answer is in ${relPath(kept)}.`)
+}
+
+/** One fix-convoy round: patches applied to the plan, globs reduced again. */
+async function fixPlan(step: StepRunner, plan: TaskPlan, problems: string): Promise<TaskPlan> {
+  const answer = await step('fix-convoy', { goalText: JSON.stringify(plan, null, 2), contextText: problems })
+  const patches = parsePatches(answer.rawOutput)
+  if (!patches?.length) {
+    warn('No usable patches came back')
+    return plan
+  }
+  return normalizePlanFiles(applyPatches(plan, patches)).plan
+}
+
+/**
+ * From a request (or an edited PRD) to a checked spec on disk.
+ *
+ * Sessions, all read-only, on the one adapter the caller resolved:
+ * - generate-prd, unless a PRD was given;
+ * - validate-prd beside assess-complexity, which is skipped when this exact
+ *   PRD was assessed before; up to two fix-prd + validate-prd rounds;
+ * - generate-convoy, once, or once per group at the same time for a large
+ *   feature; one retry when an answer cannot be read;
+ * - fix-convoy only when the code's checks fail, at most twice;
+ * - validate-convoy only as the reviewer for `--yes`.
+ *
+ * The semantic validate-convoy pass that followed every plan is gone: the
+ * checks it was there for are done in code, and a person reads the plan
+ * before it runs.
+ */
+/** Where a PRD would go, for a change small enough to plan from the request alone. */
+const NO_PRD = 'There is no PRD: this is a small change, planned straight from the request. Read the code it touches before you plan.'
+
+export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
+  const root = req.projectRoot ?? process.cwd()
+  const convoyDir = resolve(root, '.opencastle', 'convoys')
+  // Planning is agent sessions too, and the run's own total never counted them.
+  const started = Date.now()
+  const spend: PlanningSpend = { sessions: 0, ms: 0, tokens: 0, costUsd: 0, costComplete: true }
+  const step: StepRunner = async (template, inputs) => {
+    const r = await runPromptStep({ template, adapter: req.adapter, pkgRoot: req.pkgRoot, cwd: root, verbose: req.verbose, ...inputs })
+    spend.sessions++
+    spend.tokens += r.tokens ?? 0
+    if (r.costUsd === undefined) spend.costComplete = false
+    else spend.costUsd += r.costUsd
+    spend.ms = Date.now() - started
+    return r
+  }
+
+  // ── A small change: no PRD ────────────────────────────────────────────────
+  // Sizing the request first is one short economy session. When it is small,
+  // the plan is written straight from it: a PRD, its review and its fixes were
+  // four or five sessions and most of the planning time — 7m 25s in a real
+  // run — for a change the request already described.
+  let prdPath: string | null = null
+  let plan: TaskPlan | null = null
+  let quick: ComplexityAssessment | null = null
+  if (!req.prdPath && req.task) {
+    quick = await step('assess-complexity', { goalText: req.task, contextText: req.task })
+      .then((r) => parseComplexityAssessment(r.rawOutput))
+      .catch(() => null)
+    if (quick?.complexity === 'low' && quick.recommended_strategy !== 'chain') {
+      done('Sized', 'low — planned straight from the request, without a PRD')
+      plan = await generatePlan(step, req.task, appendTaskComplexity(NO_PRD, quick.task_complexity), 'task', convoyDir)
+      done(`${plan.tasks.length} tasks planned`)
+    }
+  }
+
+  if (!plan) {
+    // ── The PRD ───────────────────────────────────────────────────────────────
+    if (req.prdPath) {
+      prdPath = resolve(root, req.prdPath)
+      done('PRD', relPath(prdPath))
+    } else {
+      const written = await step('generate-prd', { goalText: req.task ?? '' })
+      prdPath = written.outputPath!
+      done('PRD written', relPath(prdPath))
+    }
+    let prd = await readFile(prdPath!, 'utf8')
+
+    // Both only read the PRD, so they run side by side. fix-prd is told to keep
+    // the PRD's phases, so the assessment of this draft still fits a fixed one;
+    // it is cached under this draft's text, which is the text it describes.
+    const cached = await readCachedComplexity(prdPath, prd)
+    const assessedFrom = prd
+    const [verdict, complexity] = await settleAll<PromptStepResult | ComplexityAssessment | null>([
+      step('validate-prd', { goalText: `<!-- validation-pass: 1 -->\n${prd}` }),
+      // The request was sized already. Only groups need sizing against the
+      // PRD, whose phases they name.
+      cached || (quick && quick.recommended_strategy !== 'chain')
+        ? Promise.resolve(cached ?? quick)
+        : step('assess-complexity', { goalText: prd, contextText: req.task ?? '' })
+            .then((r) => parseComplexityAssessment(r.rawOutput))
+            .catch((err: unknown) => {
+              warn(`Could not size the work (${message(err)}) — planning it as one`)
+              return null
+            }),
+    ]) as [PromptStepResult, ComplexityAssessment | null]
+
+    if (complexity && !cached && complexity !== quick) await writeCachedComplexity(prdPath, assessedFrom, complexity)
+
+    if (verdict.isValid) {
+      done('PRD checked')
+    } else {
+      let issues = verdict.errors || verdict.rawOutput
+      let fixed = false
+      for (let round = 1; round <= MAX_FIX_ROUNDS && !fixed; round++) {
+        warn(`The PRD has issues — fixing (${round}/${MAX_FIX_ROUNDS})`)
+        console.log(indented(issues))
+        await step('fix-prd', { goalText: prd, contextText: issues, outputPath: prdPath })
+        prd = await readFile(prdPath, 'utf8')
+        const again = await step('validate-prd', { goalText: `<!-- validation-pass: ${round + 1} -->\n${prd}` })
+        fixed = again.isValid === true
+        if (!fixed) issues = again.errors || again.rawOutput
+      }
+      if (fixed) done('PRD fixed and checked')
+      else warn(`The PRD still has issues after ${MAX_FIX_ROUNDS} fixes — planning from it anyway:\n${indented(issues)}`)
+    }
+
+    if (complexity) {
+      done(cached ? 'Sized (cached for this PRD)' : 'Sized', `${complexity.complexity}, ${complexity.total_tasks} workstreams`)
+    }
+
+    // ── The tasks ─────────────────────────────────────────────────────────────
+    let groups: ConvoyGroup[] | null = null
+    if (complexity?.recommended_strategy === 'chain' && complexity.convoy_groups.length > 1) {
+      const check = validateComplexityGroups(complexity)
+      if (check.valid) groups = topologicalSortGroups(complexity.convoy_groups)
+      else warn(`Ignoring the suggested groups (${check.reason}) — planning it as one`)
+    }
+
+    if (groups) {
+      const featureName =
+        prd.match(/^# (.+?)\s*(?:—|-)?\s*PRD/m)?.[1].trim() ?? complexity?.original_prompt ?? 'Feature'
+      const request = req.task ?? complexity?.original_prompt ?? ''
+      const all = groups
+      const plans = await settleAll(
+        all.map((group) => {
+          const goal = [
+            request,
+            '',
+            '## Convoy Group Scope',
+            '',
+            `This is one of ${all.length} groups, all planned at the same time. Plan ONLY the phases listed here.`,
+            'The planner joins the group plans into one spec: tasks of the groups this one depends on are',
+            'finished before this group\'s first tasks start.',
+            '',
+            `- **Group name:** ${group.name}`,
+            `- **Description:** ${group.description}`,
+            `- **Phases to include:** ${group.phases.join(', ')}`,
+            group.depends_on.length ? `- **Depends on groups:** ${group.depends_on.join(', ')}` : '',
+          ].filter((line, i, lines) => line !== '' || lines[i - 1] !== '').join('\n')
+          const context = appendTaskComplexity(
+            extractRelevantPrdSections(prd, group.phases),
+            filterTaskComplexityByPhases(complexity?.task_complexity, group.phases),
+          )
+          return generatePlan(step, goal, context, group.name, convoyDir)
+        }),
+      )
+      plan = mergeGroupPlans(
+        featureName,
+        all.map((g, i) => ({ name: g.name, depends_on: g.depends_on, plan: plans[i] })),
+      )
+      done(`${plan.tasks.length} tasks planned`, `${all.length} groups, planned side by side`)
+    } else {
+      const goal = req.task ?? complexity?.original_prompt ?? 'Implement the PRD.'
+      plan = await generatePlan(step, goal, appendTaskComplexity(prd, complexity?.task_complexity), 'task', convoyDir)
+      done(`${plan.tasks.length} tasks planned`)
+    }
+  }
+
+  const normalized = normalizePlanFiles(plan)
+  plan = normalized.plan
+  for (const note of normalized.notes) console.log(c.dim(`    files: ${note}`))
+  const tests = foldTestOnlyTasks(plan)
+  plan = tests.plan
+  for (const [from, into] of tests.folded) console.log(c.dim(`    ${from} folded into ${into}: the agent that writes the code writes its tests`))
+
+  // ── The spec ──────────────────────────────────────────────────────────────
+  await mkdir(convoyDir, { recursive: true })
+  const specPath = freePath(convoyDir, slugify(plan.name) || 'convoy', '.convoy.yml')
+  const settings: SpecSettings = {
+    adapter: req.adapterName,
+    branch: `convoy/${basename(specPath, '.convoy.yml')}`,
+    gates: detectGates(root),
+  }
+
+  let problems = checkPlan(plan, settings)
+  for (let round = 1; round <= MAX_FIX_ROUNDS && problems.length > 0; round++) {
+    warn(`The plan fails ${problems.length} check${problems.length === 1 ? '' : 's'} — fixing (${round}/${MAX_FIX_ROUNDS})`)
+    console.log(indented(problems.join('\n')))
+    plan = await fixPlan(step, plan, problems.map((p) => `- ${p}`).join('\n'))
+    problems = checkPlan(plan, settings)
+  }
+  if (problems.length > 0) {
+    const sequenced = sequenceConflicts(plan)
+    if (sequenced.added.length > 0) {
+      plan = sequenced.plan
+      problems = checkPlan(plan, settings)
+      for (const [later, earlier] of sequenced.added) {
+        console.log(c.dim(`    ${later} now waits for ${earlier}: they claim the same files`))
+      }
+    }
+  }
+  if (problems.length === 0) done('Plan checked')
+
+  if (req.critic && problems.length === 0) {
+    const review = await step('validate-convoy', { goalText: buildConvoyYaml(plan, settings) })
+    if (review.isValid) {
+      done('Plan reviewed')
+    } else {
+      const issues = review.errors || review.rawOutput
+      warn('The review found issues — fixing once')
+      console.log(indented(issues))
+      const revised = await fixPlan(step, plan, issues)
+      if (checkPlan(revised, settings).length === 0) {
+        plan = revised
+        done('Plan revised after review')
+      } else {
+        warn('The revision fails the checks — keeping the plan as it was')
+      }
+    }
+  }
+
+  await writeFile(specPath, buildConvoyYaml(plan, settings), 'utf8')
+  return { prdPath, specPath, plan, settings, problems, planning: spend }
+}
+
+// ── Showing the plan ────────────────────────────────────────────────────────
+
+function fit(text: string, width: number): string {
+  if (text.length <= width) return text.padEnd(width)
+  return text.slice(0, Math.max(0, width - 1)) + '…'
+}
+
+/**
+ * The plan as a few lines a person can check before saying yes: who does what,
+ * after what, touching which files.
+ */
+export function renderPlan(outcome: Pick<PlanOutcome, 'plan' | 'settings' | 'specPath' | 'planning'>, columns = 100): string[] {
+  const { plan, settings } = outcome
+  const rows = plan.tasks.map((t) => ({
+    id: t.id,
+    agent: t.agent ?? 'developer',
+    deps: t.depends_on?.length ? t.depends_on.join(', ') : '–',
+    files: t.files?.length ? t.files.join(', ') : '(any)',
+  }))
+  const width = (pick: (r: (typeof rows)[number]) => string, header: string, cap: number): number =>
+    Math.min(cap, Math.max(header.length, ...rows.map((r) => pick(r).length)))
+  const idW = width((r) => r.id, 'TASK', 32)
+  const agentW = width((r) => r.agent, 'AGENT', 18)
+  const depsW = width((r) => r.deps, 'DEPENDS ON', 30)
+  const filesW = Math.max(20, columns - 4 - idW - agentW - depsW - 6)
+  const line = (a: string, b: string, d: string, f: string): string =>
+    `    ${fit(a, idW)}  ${fit(b, agentW)}  ${fit(d, depsW)}  ${fit(f, filesW).trimEnd()}`
+
+  const at = planConcurrency(plan)
+  const out = [
+    '',
+    `  ${c.bold(`Plan: ${plan.name}`)} ${c.dim(`— ${plan.tasks.length} task${plan.tasks.length === 1 ? '' : 's'}, up to ${at} at a time`)}`,
+    '',
+    c.dim(line('TASK', 'AGENT', 'DEPENDS ON', 'FILES')),
+    ...rows.map((r) => line(r.id, r.agent, r.deps, r.files)),
+    '',
+    `  ${c.dim('Branch')} ${settings.branch} ${c.dim('· runtime')} ${settings.adapter}` +
+      (settings.gates.length ? ` ${c.dim('· then once:')} ${settings.gates.join(', ')}` : ''),
+    `  ${c.dim('Spec')}   ${relPath(outcome.specPath)}`,
+    ...(outcome.planning ? [`  ${c.dim('Planned')} ${describeSpend(outcome.planning)}`] : []),
+    '',
+  ]
+  return out
+}
+
+function describeSpend(s: PlanningSpend): string {
+  const secs = Math.round(s.ms / 1000)
+  const time = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`
+  const tokens = s.tokens >= 1_000_000 ? `${(s.tokens / 1_000_000).toFixed(1)}M` : s.tokens >= 1000 ? `${Math.round(s.tokens / 1000)}K` : String(s.tokens)
+  const cost = s.costUsd > 0 || s.costComplete ? ` · $${s.costUsd.toFixed(2)}${s.costComplete ? '' : '+ (not every session reported a cost)'}` : ''
+  return `in ${time} · ${s.sessions} session${s.sessions === 1 ? '' : 's'} · ${tokens} tokens${cost}`
+}
+
+// ── The command ─────────────────────────────────────────────────────────────
+
 const HELP = `
-  opencastle convoy plan [options]
+  opencastle convoy plan --prd <file> [options]
 
-  Run the full convoy generation pipeline from a feature prompt:
-
-    Step 1 — Generate PRD        (generate-prd)
-    Step 2 — Validate PRD        (validate-prd)
-    Step 3 — Fix PRD             (fix-prd, up to 2 retries if invalid)
-    Step 4 — Assess complexity    (assess-complexity, determines single vs chain)
-    Step 5 — Generate task plan   (generate-convoy outputs JSON, code builds YAML)
-    Step 6 — Validate convoy spec (programmatic + semantic validation)
-    Step 7 — Fix convoy spec      (patch-based fixing, up to 2 retries)
+  Plan again from a PRD you edited. The PRD is checked, broken into tasks and
+  written as a spec; you see the plan and are asked before it runs.
 
   Options:
-    --text, -t <text>        Feature prompt text (required, unless --prd is set)
-    --prd <path>             Skip step 1 — use an existing PRD file
-    --output-prd <path>      Override path for the generated PRD
-    --output-spec <path>     Override path for the generated convoy spec
-    --adapter, -a <name>     Override agent runtime adapter
-    --verbose                Show full agent output for each step
-    --dry-run                Generate and print the PRD prompt only, then stop
-    --complexity <path>      Skip complexity assessment — use an existing complexity file
-    --skip-validation        Skip PRD and convoy validation (steps 2, 3, 6, 7)
+    --prd <file>             The PRD to plan from (opencastle convoy "<task>" writes
+                             them to .opencastle/prds/)
+    --yes, -y                Run the plan without asking
+    --dry-run                Plan and write the spec, but do not run it
+    --adapter, -a <name>     Agent runtime to plan and run with
+    --concurrency, -c <n>    Tasks at once when it runs
+    --verbose                Show each planning session's output
     --help, -h               Show this help
 `
 
-interface PipelineOptions {
-  text: string | null
+interface CliOptions {
   prd: string | null
-  complexity: string | null
-  outputPrd: string | null
-  outputSpec: string | null
-  adapter: string | null
-  verbose: boolean
+  yes: boolean
   dryRun: boolean
-  skipValidation: boolean
+  adapter: string | null
+  concurrency: number | null
+  verbose: boolean
   help: boolean
 }
 
-function parseArgs(args: string[]): PipelineOptions {
-  const opts: PipelineOptions = {
-    text: null,
-    prd: null,
-    complexity: null,
-    outputPrd: null,
-    outputSpec: null,
-    adapter: null,
-    verbose: false,
-    dryRun: false,
-    skipValidation: false,
-    help: false,
+/** Flags `convoy "<task>"` and `convoy plan` share; `--prd` is plan's alone. */
+function parseArgs(args: string[], allowPrd: boolean): CliOptions {
+  const opts: CliOptions = { prd: null, yes: false, dryRun: false, adapter: null, concurrency: null, verbose: false, help: false }
+  const value = (i: number, flag: string): string => {
+    const v = args[i + 1]
+    if (v === undefined || !v.trim() || v.startsWith('-')) {
+      console.error(`  ✗ ${flag} needs a value`)
+      process.exit(1)
+    }
+    return v
   }
-
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
     switch (arg) {
@@ -350,774 +757,152 @@ function parseArgs(args: string[]): PipelineOptions {
       case '-h':
         opts.help = true
         break
-      case '--text':
-      case '-t':
-        if (i + 1 >= args.length) { console.error('  ✗ --text requires a value'); process.exit(1) }
-        opts.text = args[++i]
-        if (!opts.text.trim()) { console.error('  ✗ --text cannot be empty'); process.exit(1) }
-        break
       case '--prd':
-        if (i + 1 >= args.length) { console.error('  ✗ --prd requires a path'); process.exit(1) }
-        opts.prd = args[++i]
+        if (!allowPrd) {
+          console.error(`  ✗ --prd belongs to \`opencastle convoy plan\`: plan from a task or from a PRD, not both.`)
+          process.exit(1)
+        }
+        opts.prd = value(i++, arg)
         break
-      case '--complexity':
-        if (i + 1 >= args.length) { console.error('  ✗ --complexity requires a path'); process.exit(1) }
-        opts.complexity = args[++i]
+      case '--yes':
+      case '-y':
+        opts.yes = true
         break
-      case '--output-prd':
-        if (i + 1 >= args.length) { console.error('  ✗ --output-prd requires a path'); process.exit(1) }
-        opts.outputPrd = args[++i]
-        break
-      case '--output-spec':
-        if (i + 1 >= args.length) { console.error('  ✗ --output-spec requires a path'); process.exit(1) }
-        opts.outputSpec = args[++i]
+      case '--dry-run':
+        opts.dryRun = true
         break
       case '--adapter':
       case '-a':
-        if (i + 1 >= args.length) { console.error('  ✗ --adapter requires a name'); process.exit(1) }
-        opts.adapter = args[++i]
+        opts.adapter = value(i++, arg)
         break
+      case '--concurrency':
+      case '-c': {
+        const raw = value(i++, arg)
+        const n = Number(raw)
+        if (!/^\d+$/.test(raw) || n < 1 || n > 50) {
+          console.error(`  ✗ --concurrency must be a whole number from 1 to 50, not "${raw}"`)
+          process.exit(1)
+        }
+        opts.concurrency = n
+        break
+      }
       case '--verbose':
         opts.verbose = true
         break
-      case '--dry-run':
-      case '--dryRun':
-        opts.dryRun = true
-        break
-      case '--skip-validation':
-        opts.skipValidation = true
-        break
       default:
-        console.error(`  ✗ Unknown option: ${arg}. Run with --help to see available options.`)
+        console.error(`  ✗ Unknown option: ${arg}`)
+        console.error(`  ${c.dim('Accepts:')} --yes --dry-run --adapter --concurrency --verbose --help${allowPrd ? ' --prd' : ''}`)
         process.exit(1)
     }
   }
-
   return opts
 }
 
-const MAX_FIX_RETRIES = 2
-
-function relPath(abs: string): string {
-  return abs.startsWith(process.cwd()) ? abs.slice(process.cwd().length + 1) : abs
-}
-
-function stepLabel(n: number, total: number, name: string): string {
-  return c.bold(c.cyan(`  [${n}/${total}] ${name}`))
-}
-
-async function fixPrd(
-  sharedOpts: Omit<PromptStepOptions, 'template' | 'goalText'>,
-  prdPath: string,
-  prdContent: string,
-  initialErrors: string,
-  totalSteps: number,
-  adapterFlag: string | null,
-): Promise<void> {
-  const MAX_PRD_FIX_RETRIES = 2
-  let fixedPrdContent = prdContent
-  let prdValidationErrors = initialErrors
-  let prdFixed = false
-
-  for (let attempt = 1; attempt <= MAX_PRD_FIX_RETRIES; attempt++) {
-    const label = `Fix PRD attempt ${attempt}/${MAX_PRD_FIX_RETRIES}…`
-    console.log(stepLabel(3, totalSteps, label))
-
-    try {
-      await runPromptStep({
-        ...sharedOpts,
-        template: 'fix-prd',
-        goalText: fixedPrdContent,
-        contextText: prdValidationErrors,
-        outputPath: prdPath,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Step 3 (attempt ${attempt}) failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    console.log(c.dim(`  Re-validating after fix…`))
-
-    fixedPrdContent = await readFile(prdPath, 'utf8')
-
-    let revalidation
-    try {
-      revalidation = await runPromptStep({
-        ...sharedOpts,
-        template: 'validate-prd',
-        goalText: `<!-- validation-pass: ${attempt + 1} -->\n${fixedPrdContent}`,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Re-validation failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    if (revalidation.isValid) {
-      console.log(c.green(`  ✓ PRD fixed and validated\n`))
-      prdFixed = true
-      break
-    }
-
-    prdValidationErrors = revalidation.errors ?? revalidation.rawOutput
-
-    if (attempt < MAX_PRD_FIX_RETRIES) {
-      console.log(c.yellow(`  ⚠ Still has issues after fix attempt ${attempt} — retrying…\n`))
-      console.log(c.dim(prdValidationErrors))
-      console.log()
-    }
-  }
-
-  if (!prdFixed) {
-    console.log(c.yellow(`\n  ⚠ Could not fully auto-fix the PRD after ${MAX_PRD_FIX_RETRIES} attempts — continuing with best-effort PRD.\n`))
-    console.log(c.dim(`  Remaining issues:\n`))
-    console.log(c.dim(prdValidationErrors))
-    console.log(
-      c.dim(`\n  PRD saved to ${relPath(prdPath)} with best available fixes.`) +
-        c.dim(`\n  You can re-validate later with:\n`) +
-        `    opencastle convoy plan --prd ${relPath(prdPath)}${adapterFlag ? ` --adapter ${adapterFlag}` : ''}\n`
-    )
-  }
-}
-
-export default async function pipeline({ args, pkgRoot }: CliContext): Promise<void> {
-  const opts = parseArgs(args)
-
-  if (opts.help) {
-    console.log(HELP)
-    return
-  }
-
-  if (!opts.text && !opts.prd) {
-    console.error(`  ✗ Either --text or --prd is required.`)
-    console.log(HELP)
-    process.exit(1)
-  }
-
-  if (opts.text && opts.prd) {
-    console.error(`  ✗ --text and --prd are mutually exclusive.`)
-    process.exit(1)
-  }
-
-  if (opts.prd) {
-    const resolvedPrd = resolve(process.cwd(), opts.prd)
-    if (!existsSync(resolvedPrd)) {
-      console.error(`  ✗ PRD file not found: ${opts.prd}`)
-      process.exit(1)
-    }
-  }
-
-  const totalSteps = opts.skipValidation ? 4 : 7
-  const mcpServers = await readProjectMcpServers(process.cwd())
-  const sharedOpts = {
-    adapterName: opts.adapter ?? undefined,
-    verbose: opts.verbose,
-    pkgRoot,
-    ...(mcpServers.length ? { mcpServers } : {}),
-  }
-
-  console.log(c.bold('\n  opencastle convoy\n'))
-
-  // ── Step 1: Generate PRD ──────────────────────────────────────────────────
-  let prdPath: string
-
-  if (opts.prd) {
-    prdPath = resolve(process.cwd(), opts.prd)
-    console.log(c.dim(`  [−] Skipping PRD generation — using: ${relPath(prdPath)}`))
-  } else {
-    console.log(stepLabel(1, totalSteps, 'Generating PRD…'))
-
-    let result
-    try {
-      result = await runPromptStep({
-        ...sharedOpts,
-        template: 'generate-prd',
-        goalText: opts.text!,
-        outputPath: opts.outputPrd ? resolve(process.cwd(), opts.outputPrd) : undefined,
-        dryRun: opts.dryRun,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Step 1 failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    if (opts.dryRun) {
-      console.log(c.dim('\n  [dry-run] Stopping after step 1. Remove --dry-run to run the full pipeline.'))
-      return
-    }
-
-    prdPath = result.outputPath!
-    console.log(c.green(`  ✓ PRD written to ${relPath(prdPath)}\n`))
-  }
-
-  // Handle --dry-run when PRD was provided externally (not generated)
-  if (opts.dryRun && opts.prd) {
-    console.log(c.dim('\n  [dry-run] Nothing to preview — PRD already provided via --prd. Remove --dry-run to continue.'))
-    return
-  }
-
-  // ── Steps 2 + 4: Validate PRD & Assess complexity (in parallel) ────────
-  // Both only read the PRD — run them concurrently to save one LLM round-trip.
-  // If validation fails we still use the complexity result (fix-prd patches
-  // issues without changing the overall structure/phases).
-
-  const complexityStep = opts.skipValidation ? 2 : 4
-
-  let complexity: ComplexityAssessment | null = null
-  const complexityFilePath = opts.complexity
-    ? resolve(process.cwd(), opts.complexity)
-    : deriveComplexityPath(prdPath)
-
-  // Check for cached / provided complexity before launching LLM calls
-  if (opts.complexity) {
-    if (!existsSync(complexityFilePath)) {
-      console.error(`  ✗ Complexity file not found: ${opts.complexity}`)
-      process.exit(1)
-    }
-    try {
-      const raw = await readFile(complexityFilePath, 'utf8')
-      complexity = parseComplexityAssessment(raw)
-      if (complexity) {
-        console.log(c.dim(`  [−] Using existing complexity assessment: ${relPath(complexityFilePath)}`))
-      } else {
-        console.error(`  ✗ Invalid complexity file: ${opts.complexity}`)
-        process.exit(1)
-      }
-    } catch (err) {
-      console.error(`  ✗ Failed to read complexity file: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-  } else if (existsSync(complexityFilePath)) {
-    try {
-      const raw = await readFile(complexityFilePath, 'utf8')
-      const cached = parseComplexityAssessment(raw)
-      if (cached) {
-        complexity = cached
-        console.log(c.dim(`  [−] Using existing complexity assessment: ${relPath(complexityFilePath)}`))
-      }
-    } catch {
-      // ignore — fall through to LLM assessment
-    }
-  }
-
-  const needsValidation = !opts.skipValidation
-  const needsComplexity = !complexity
-
-  if (needsValidation || needsComplexity) {
-    const prdContent = await readFile(prdPath, 'utf8')
-
-    // Launch validation and complexity in parallel when both are needed
-    if (needsValidation && needsComplexity) {
-      console.log(stepLabel(2, totalSteps, 'Validating PRD…'))
-      console.log(stepLabel(complexityStep, totalSteps, 'Assessing complexity…'))
-      console.log(c.dim(`  (running in parallel)\n`))
-
-      const [validationResult, complexityResult] = await Promise.all([
-        runPromptStep({
-          ...sharedOpts,
-          template: 'validate-prd',
-          goalText: `<!-- validation-pass: 1 -->\n${prdContent}`,
-        }).catch((err) => {
-          console.error(`\n  ✗ Validation failed: ${err instanceof Error ? err.message : String(err)}`)
-          return null
-        }),
-        runPromptStep({
-          ...sharedOpts,
-          template: 'assess-complexity',
-          filePath: prdPath,
-          contextText: opts.text ?? undefined,
-        }).catch((err) => {
-          console.warn(c.yellow(`  ⚠ Complexity assessment failed: ${err instanceof Error ? err.message : String(err)}`))
-          return null
-        }),
-      ])
-
-      // Process complexity result
-      if (complexityResult) {
-        complexity = parseComplexityAssessment(complexityResult.rawOutput)
-        if (complexity) {
-          await writeFile(complexityFilePath, JSON.stringify(complexity, null, 2), 'utf8')
-          console.log(c.green(`  ✓ Complexity assessment saved to ${relPath(complexityFilePath)}`))
-        }
-      }
-
-      // Process validation result
-      if (!validationResult) {
-        process.exit(1)
-      }
-
-      if (!validationResult.isValid) {
-        let prdValidationErrors = validationResult.errors ?? validationResult.rawOutput
-        console.log(c.yellow(`  ⚠ PRD has validation issues — attempting auto-fix…\n`))
-        console.log(c.dim(prdValidationErrors))
-        console.log()
-
-        await fixPrd(sharedOpts, prdPath, prdContent, prdValidationErrors, totalSteps, opts.adapter)
-      } else {
-        console.log(c.green(`  ✓ PRD is valid\n`))
-      }
-    } else if (needsValidation) {
-      // Only validation needed (complexity was cached)
-      console.log(stepLabel(2, totalSteps, 'Validating PRD…'))
-
-      let result
-      try {
-        result = await runPromptStep({
-          ...sharedOpts,
-          template: 'validate-prd',
-          goalText: `<!-- validation-pass: 1 -->\n${prdContent}`,
-        })
-      } catch (err) {
-        console.error(`\n  ✗ Step 2 failed: ${err instanceof Error ? err.message : String(err)}`)
-        process.exit(1)
-      }
-
-      if (!result.isValid) {
-        let prdValidationErrors = result.errors ?? result.rawOutput
-        console.log(c.yellow(`  ⚠ PRD has validation issues — attempting auto-fix…\n`))
-        console.log(c.dim(prdValidationErrors))
-        console.log()
-
-        await fixPrd(sharedOpts, prdPath, prdContent, prdValidationErrors, totalSteps, opts.adapter)
-      } else {
-        console.log(c.green(`  ✓ PRD is valid\n`))
-      }
-    } else {
-      // Only complexity needed (validation skipped)
-      console.log(stepLabel(complexityStep, totalSteps, 'Assessing complexity…'))
-      try {
-        const complexityResult = await runPromptStep({
-          ...sharedOpts,
-          template: 'assess-complexity',
-          filePath: prdPath,
-          contextText: opts.text ?? undefined,
-        })
-        complexity = parseComplexityAssessment(complexityResult.rawOutput)
-        if (complexity) {
-          await writeFile(complexityFilePath, JSON.stringify(complexity, null, 2), 'utf8')
-          console.log(c.green(`  ✓ Complexity assessment saved to ${relPath(complexityFilePath)}\n`))
-        }
-      } catch (err) {
-        console.warn(c.yellow(`  ⚠ Complexity assessment failed: ${err instanceof Error ? err.message : String(err)}`))
-        console.warn(c.dim(`    Falling back to single convoy strategy.\n`))
-      }
-    }
-  }
-
-  if (!complexity) {
-    console.log(c.dim(`  Could not determine complexity — using single convoy strategy.\n`))
-  }
-
-  if (complexity) {
-    if (complexity.recommended_strategy === 'chain' && complexity.convoy_groups.length > 1) {
-      // Validate complexity groups before chain generation
-      const groupValidation = validateComplexityGroups(complexity)
-      if (!groupValidation.valid) {
-        console.log(c.yellow(`  ⚠ Complexity groups failed validation: ${groupValidation.reason}`))
-        console.log(c.yellow(`  Falling back to single convoy strategy.\n`))
-        // Fall through to single-spec generation below
-      } else {
-        // Sort groups in dependency order
-        complexity.convoy_groups = topologicalSortGroups(complexity.convoy_groups)
-        console.log(
-          c.cyan(`  ℹ`) +
-            ` Complexity: ${complexity.complexity} | Strategy: chain | ${complexity.convoy_groups.length} convoy groups\n`
-        )
-        console.log(`  Chain plan:`)
-        for (let i = 0; i < complexity.convoy_groups.length; i++) {
-          const g = complexity.convoy_groups[i]
-          const depStr =
-            g.depends_on.length > 0 ? ` → depends on: ${g.depends_on.join(', ')}` : ''
-          console.log(
-            `    ${i + 1}. ${g.name.padEnd(20)} (phases: ${g.phases.join(', ')})${depStr}`
-          )
-        }
-        console.log()
-
-        const convoyDir = resolve(process.cwd(), '.opencastle', 'convoys')
-        await mkdir(convoyDir, { recursive: true })
-
-        // Extract feature name early for convoy naming
-        const chainPrdContent = await readFile(prdPath, 'utf8')
-        const featureNameMatch = chainPrdContent.match(/^# (.+?)\s*(?:—|-)?\s*PRD/m)
-        const featureName = featureNameMatch
-          ? featureNameMatch[1].trim().toLowerCase().replace(/[^a-z0-9]+/g, '-')
-          : 'feature'
-
-        const groupSpecPaths: string[] = []
-
-        for (let i = 0; i < complexity.convoy_groups.length; i++) {
-          const group = complexity.convoy_groups[i]
-          console.log(c.cyan(`  [${i + 1}/${complexity.convoy_groups.length}] Generating convoy: ${group.name}`) + c.dim(` (phases: ${group.phases.join(', ')})`))
-
-          const chainGoal = [
-            complexity.original_prompt,
-            '',
-            '## Convoy Group Scope',
-            '',
-            `This is group **${i + 1} of ${complexity.convoy_groups.length}** in a convoy chain.`,
-            `Generate a convoy spec covering ONLY the phases listed below.`,
-            '',
-            `- **Group name:** ${group.name}`,
-            `- **Description:** ${group.description}`,
-            `- **Phases to include:** ${group.phases.join(', ')}`,
-            group.depends_on.length ? `- **Depends on groups:** ${group.depends_on.join(', ')}` : '',
-          ].filter(Boolean).join('\n')
-
-          const prdContent = await readFile(prdPath, 'utf8')
-          const relevantPrd = extractRelevantPrdSections(prdContent, group.phases)
-          const relevantComplexity = filterTaskComplexityByPhases(complexity?.task_complexity, group.phases)
-          const contextForSpec = appendTaskComplexity(relevantPrd, relevantComplexity)
-          const groupSpecPath = resolve(convoyDir, `${featureName}-${group.name}.convoy.yml`)
-
-          const { specPath: resolvedGroupSpecPath } = await generateAndValidateSpec({
-            sharedOpts,
-            goalText: chainGoal,
-            contextText: contextForSpec,
-            specPath: groupSpecPath,
-            skipValidation: opts.skipValidation,
-            groupName: group.name,
-            featureName,
-            enrichment: complexity ? deriveSpecEnrichment(complexity) : undefined,
-          })
-          groupSpecPaths.push(resolvedGroupSpecPath)
-        }
-
-        // Build master pipeline spec (version 2)
-        const branchMatch = chainPrdContent.match(/`feat\/([^`]+)`/)
-        const branch = branchMatch ? `feat/${branchMatch[1]}` : `feat/${featureName}`
-
-        const masterSpec = {
-          name: featureNameMatch ? featureNameMatch[1].trim() : 'Feature Pipeline',
-          version: 2,
-          branch,
-          on_failure: 'stop',
-          depends_on_convoy: groupSpecPaths.map(p => relPath(p)),
-        }
-
-        const masterSpecPath = resolve(convoyDir, `${featureName}-pipeline.convoy.yml`)
-        await writeFile(masterSpecPath, stringify(masterSpec), 'utf8')
-
-        console.log(c.green(`  ✓ Generated convoy chain:\n`))
-        for (const p of groupSpecPaths) {
-          console.log(`    ${relPath(p)}`)
-        }
-        console.log(`    ${relPath(masterSpecPath)} ${c.dim('(master)')}`)
-        console.log()
-        console.log(
-          `  ${c.dim('Preview:')} npx opencastle convoy run -f ${relPath(masterSpecPath)} --dry-run\n` +
-            `  ${c.dim('Execute:')} npx opencastle convoy run -f ${relPath(masterSpecPath)}\n`
-        )
-
-        try {
-          const shouldRun = await confirm('Run the convoy chain now?', true)
-          if (shouldRun) {
-            closePrompts()
-            const runModule = await import('./run.js')
-            const runArgs = ['-f', masterSpecPath]
-            if (opts.adapter) runArgs.push('-a', opts.adapter)
-            if (opts.verbose) runArgs.push('--verbose')
-            await runModule.default({ args: runArgs, pkgRoot })
-          }
-        } finally {
-          closePrompts()
-          await cleanupAdapters()
-        }
-        return
-      }
-    } else {
-      console.log(
-        c.cyan(`  ℹ`) + ` Complexity: ${complexity.complexity} | Strategy: single\n`
-      )
-    }
-  }
-
-  // ── Generate convoy spec ──────────────────────────────────────────────────
-  const singlePrdContent = await readFile(prdPath, 'utf8')
-  const singleContextForSpec = appendTaskComplexity(singlePrdContent, complexity?.task_complexity)
-  const singleGoal = complexity?.original_prompt ?? opts.text ?? ''
-
-  const specResult = await generateAndValidateSpec({
-    sharedOpts,
-    goalText: singleGoal,
-    contextText: singleContextForSpec,
-    specPath: opts.outputSpec ? resolve(process.cwd(), opts.outputSpec) : undefined,
-    skipValidation: opts.skipValidation,
-    enrichment: complexity ? deriveSpecEnrichment(complexity) : undefined,
-  })
-
-  await printFinalSummary(prdPath, specResult.specPath, opts, pkgRoot)
-}
-
-async function fixViaPatch(
-  taskPlan: TaskPlan,
-  errors: string,
-  sharedOpts: Omit<PromptStepOptions, 'template' | 'goalText' | 'contextText'>,
-  specPath: string,
-  enrichment?: SpecEnrichment,
-): Promise<TaskPlan> {
-  let currentPlan = taskPlan
-  let currentErrors = errors
-
-  for (let attempt = 1; attempt <= MAX_FIX_RETRIES; attempt++) {
-    console.log(c.dim(`  Fix attempt ${attempt}/${MAX_FIX_RETRIES}…`))
-
-    let fixResult
-    try {
-      fixResult = await runPromptStep({
-        ...sharedOpts,
-        template: 'fix-convoy',
-        goalText: JSON.stringify(currentPlan, null, 2),
-        contextText: currentErrors,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Fix attempt ${attempt} failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    const patches = parsePatches(fixResult.rawOutput)
-    if (!patches || patches.length === 0) {
-      console.warn(c.yellow(`  ⚠ No valid patches returned`))
-      if (attempt >= MAX_FIX_RETRIES) break
-      continue
-    }
-
-    console.log(c.dim(`  Applied ${patches.length} patches`))
-    currentPlan = applyPatches(currentPlan, patches)
-
-    // Rebuild YAML and re-validate
-    const yaml = buildConvoyYaml(currentPlan, enrichment)
-    try {
-      const parsed = parseYaml(yaml)
-      const { valid, errors: schemaErrors } = validateSpec(parsed)
-      if (!valid) {
-        currentErrors = schemaErrors.map(e => `- Schema: ${e}`).join('\n')
-        if (attempt < MAX_FIX_RETRIES) {
-          console.log(c.yellow(`  ⚠ Still has schema issues — retrying…\n`))
-          console.log(c.dim(currentErrors))
-        }
-        continue
-      }
-    } catch (err) {
-      currentErrors = `YAML error: ${err instanceof Error ? err.message : String(err)}`
-      continue
-    }
-
-    await writeFile(specPath, yaml, 'utf8')
-    console.log(c.dim(`  Re-validating after fix…`))
-
-    let revalidation
-    try {
-      revalidation = await runPromptStep({
-        ...sharedOpts,
-        template: 'validate-convoy',
-        goalText: `<!-- validation-pass: ${attempt + 1} -->\n${yaml}`,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Re-validation failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    if (revalidation.isValid) {
-      console.log(c.green(`  ✓ Fixed and validated\n`))
-      return currentPlan
-    }
-
-    currentErrors = revalidation.errors ?? revalidation.rawOutput
-    if (attempt < MAX_FIX_RETRIES) {
-      console.log(c.yellow(`  ⚠ Still has issues — retrying…\n`))
-      console.log(c.dim(currentErrors))
-    }
-  }
-
-  // Exhausted retries — save best effort and continue with warning
-  await writeFile(specPath, buildConvoyYaml(currentPlan, enrichment), 'utf8')
-  console.log(c.yellow(`\n  ⚠ Could not fully auto-fix after ${MAX_FIX_RETRIES} attempts — continuing with best-effort spec.\n`))
-  console.log(c.dim(`  Remaining issues:\n`))
-  console.log(c.dim(currentErrors))
-  console.log(
-    c.dim(`\n  Spec saved to ${relPath(specPath)} with best available fixes.`) +
-    c.dim(`\n  You can re-validate later with:\n`) +
-    `    opencastle convoy run --file ${relPath(specPath)} --dry-run\n`
-  )
-  return currentPlan
-}
-
-async function generateAndValidateSpec(params: {
-  sharedOpts: Omit<PromptStepOptions, 'template' | 'goalText' | 'contextText'>
-  goalText: string
-  contextText: string
-  specPath?: string
-  skipValidation: boolean
-  groupName?: string
-  featureName?: string
-  enrichment?: SpecEnrichment
-}): Promise<{ specPath: string; taskPlan: TaskPlan }> {
-  const label = params.groupName
-    ? `Generating task plan: ${params.groupName}…`
-    : 'Generating task plan…'
-  console.log(c.cyan(`  ${label}`))
-
-  // Temp file for debugging — kept on failure, deleted on success
-  const convoyDir = resolve(process.cwd(), '.opencastle', 'convoys')
-  await mkdir(convoyDir, { recursive: true })
-  const tempJsonName = params.groupName
-    ? `${params.featureName ? `${params.featureName}-` : ''}${params.groupName}.task-plan.json`
-    : `${params.featureName ?? 'task-plan'}.task-plan.json`
-  const tempJsonPath = resolve(convoyDir, tempJsonName)
-
-  let taskPlanResult
+/**
+ * The runtime for the whole plan, and the run after it, chosen once by the
+ * rule `resolveAdapter` owns: `--adapter`, else what `opencastle init` set up,
+ * else what is on PATH.
+ */
+async function chooseRuntime(projectRoot: string, explicit: string | null): Promise<ResolvedAdapter> {
   try {
-    taskPlanResult = await runPromptStep({
-      ...params.sharedOpts,
-      template: 'generate-convoy',
-      goalText: params.goalText,
-      contextText: params.contextText,
+    return await resolveAdapter({ projectRoot, explicit })
+  } catch (err) {
+    console.error(`  ${c.red('✗')} ${message(err)}`)
+    process.exit(1)
+  }
+}
+
+/**
+ * Plan, show the plan once, ask once, run.
+ *
+ * Nothing runs without a yes. A closed stdin is not one: piped into a script,
+ * the old prompt's default-yes started a full convoy nobody had agreed to.
+ */
+async function planThenRun(source: { task: string } | { prd: string }, opts: CliOptions, pkgRoot: string): Promise<void> {
+  const projectRoot = process.cwd()
+  const runtime = await chooseRuntime(findProjectRoot(projectRoot) ?? projectRoot, opts.adapter)
+  console.log(`\n  ${c.bold('opencastle convoy')} ${c.dim('— planning, read-only')}`)
+  console.log(`  ${c.dim('Runtime:')} ${runtime.detail}\n`)
+
+  let outcome: PlanOutcome
+  try {
+    outcome = await planConvoy({
+      task: 'task' in source ? source.task : undefined,
+      prdPath: 'prd' in source ? source.prd : undefined,
+      adapter: runtime.adapter,
+      adapterName: runtime.name,
+      pkgRoot,
+      verbose: opts.verbose,
+      critic: opts.yes && !opts.dryRun,
     })
   } catch (err) {
-    console.error(`\n  ✗ Task plan generation failed: ${err instanceof Error ? err.message : String(err)}`)
+    console.error(`\n  ${c.red('✗')} Planning stopped: ${message(err)}`)
+    await cleanupAdapters()
     process.exit(1)
   }
 
-  // Write raw JSON to temp file for debugging
-  await writeFile(tempJsonPath, taskPlanResult.rawOutput + '\n', 'utf8')
+  for (const row of renderPlan(outcome, process.stdout.columns ?? 100)) console.log(row)
+  const later = `opencastle convoy run ${relPath(outcome.specPath)}`
 
-  let result = parseTaskPlanWithReason(taskPlanResult.rawOutput)
-  if (!result.plan) {
-    console.log(c.yellow(`  ⚠ Failed to parse task plan JSON: ${result.reason}`))
-    console.log(c.dim(`    Output length: ${taskPlanResult.rawOutput.length} chars`))
-    console.log(c.dim(`    Temp file: ${relPath(tempJsonPath)}`))
-    console.log(c.yellow(`    Retrying generation…\n`))
-
-    let retryResult
-    try {
-      retryResult = await runPromptStep({
-        ...params.sharedOpts,
-        template: 'generate-convoy',
-        goalText: params.goalText,
-        contextText: params.contextText,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Retry failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    // Overwrite temp file with retry output
-    await writeFile(tempJsonPath, retryResult.rawOutput + '\n', 'utf8')
-
-    result = parseTaskPlanWithReason(retryResult.rawOutput)
-    if (!result.plan) {
-      console.error(`  ✗ Failed to parse task plan JSON after retry: ${result.reason}`)
-      console.error(c.dim(`    Output length: ${retryResult.rawOutput.length} chars`))
-      console.error(c.dim(`    Raw JSON saved to ${relPath(tempJsonPath)} for inspection.`))
-      console.error(c.dim(`\n${retryResult.rawOutput}`))
-      process.exit(1)
-    }
+  if (outcome.problems.length > 0) {
+    console.error(`  ${c.red('✗')} The plan still fails these checks, so it was not started:`)
+    for (const p of outcome.problems) console.error(`    • ${p}`)
+    console.error(`\n  Edit the spec, then: ${later}\n`)
+    await cleanupAdapters()
+    process.exit(1)
   }
 
-  let taskPlan = result.plan
-
-  // Success — clean up temp file
-  await unlink(tempJsonPath).catch(() => {})
-
-  console.log(c.green(`  ✓ Task plan generated (${taskPlan.tasks.length} tasks)`))
-
-  // Derive spec path from plan name if not provided
-  let resolvedSpecPath = params.specPath
-  if (!resolvedSpecPath) {
-    const convoyDir = resolve(process.cwd(), '.opencastle', 'convoys')
-    await mkdir(convoyDir, { recursive: true })
-    const kebab = taskPlan.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    resolvedSpecPath = resolve(convoyDir, `${kebab}.convoy.yml`)
+  if (opts.dryRun) {
+    console.log(`  ${c.dim('Dry run — not started. To run it:')} ${later}\n`)
+    await cleanupAdapters()
+    return
   }
 
-  // Build YAML from JSON task plan
-  let yamlContent = buildConvoyYaml(taskPlan, params.enrichment)
-  await mkdir(resolve(resolvedSpecPath, '..'), { recursive: true })
-  await writeFile(resolvedSpecPath, yamlContent, 'utf8')
-  console.log(c.green(`  ✓ Convoy spec written to ${relPath(resolvedSpecPath)}\n`))
-
-  if (!params.skipValidation) {
-    // Programmatic validation first
-    try {
-      const parsed = parseYaml(yamlContent)
-      const { valid, errors: schemaErrors } = validateSpec(parsed)
-      if (!valid) {
-        console.log(c.yellow(`  ⚠ Schema validation issues — auto-fixing…\n`))
-        const errorText = schemaErrors.map(e => `- Schema: ${e}`).join('\n')
-        console.log(c.dim(errorText))
-        console.log()
-        taskPlan = await fixViaPatch(taskPlan, errorText, params.sharedOpts, resolvedSpecPath, params.enrichment)
-        yamlContent = buildConvoyYaml(taskPlan, params.enrichment)
-        await writeFile(resolvedSpecPath, yamlContent, 'utf8')
-      } else {
-        console.log(c.dim(`  ✓ Schema validation passed`))
-      }
-    } catch (err) {
-      console.warn(c.yellow(`  ⚠ YAML warning: ${err instanceof Error ? err.message : String(err)}`))
-    }
-
-    // Semantic validation (LLM)
-    const valLabel = params.groupName
-      ? `Validating spec: ${params.groupName}…`
-      : 'Validating convoy spec…'
-    console.log(c.cyan(`  ${valLabel}`))
-
-    let semanticResult
-    try {
-      semanticResult = await runPromptStep({
-        ...params.sharedOpts,
-        template: 'validate-convoy',
-        goalText: `<!-- validation-pass: 1 -->\n${await readFile(resolvedSpecPath, 'utf8')}`,
-      })
-    } catch (err) {
-      console.error(`\n  ✗ Semantic validation failed: ${err instanceof Error ? err.message : String(err)}`)
-      process.exit(1)
-    }
-
-    if (semanticResult.isValid) {
-      console.log(c.green(`  ✓ Spec is valid\n`))
-    } else {
-      const semanticErrors = semanticResult.errors ?? semanticResult.rawOutput
-      console.log(c.yellow(`  ⚠ Semantic issues — auto-fixing…\n`))
-      console.log(c.dim(semanticErrors))
-      console.log()
-      taskPlan = await fixViaPatch(taskPlan, semanticErrors, params.sharedOpts, resolvedSpecPath, params.enrichment)
-      yamlContent = buildConvoyYaml(taskPlan, params.enrichment)
-      await writeFile(resolvedSpecPath, yamlContent, 'utf8')
-    }
+  const go = opts.yes || (await confirm('Run it?', true, 'refuse'))
+  closePrompts()
+  if (!go) {
+    console.log(`\n  ${c.dim('Not started. To run it later:')} ${later}\n`)
+    await cleanupAdapters()
+    return
   }
 
-  return { specPath: resolvedSpecPath, taskPlan }
-}
-
-async function printFinalSummary(
-  prdPath: string,
-  specPath: string,
-  opts: PipelineOptions,
-  pkgRoot: string,
-): Promise<void> {
-  const prd = relPath(prdPath)
-  const spec = relPath(specPath)
-  console.log(c.bold(c.green('  Pipeline complete!\n')))
-  console.log(`  PRD:           ${prd}`)
-  console.log(`  Convoy spec:   ${spec}\n`)
-  console.log(
-    `  ${c.dim('Preview:')} npx opencastle convoy run -f ${spec} --dry-run\n` +
-      `  ${c.dim('Execute:')} npx opencastle convoy run -f ${spec}\n`
-  )
-
+  // The run takes the spec by its path, as `convoy run <spec>` does, on the
+  // runtime already chosen and printed above.
+  const { runSpec, exitWith } = await import('./run.js')
+  let code = 1
   try {
-    const shouldRun = await confirm('Run the convoy now?', true)
-    if (shouldRun) {
-      closePrompts()
-      const runModule = await import('./run.js')
-      const runArgs = ['-f', specPath]
-      if (opts.adapter) runArgs.push('-a', opts.adapter)
-      if (opts.verbose) runArgs.push('--verbose')
-      await runModule.default({ args: runArgs, pkgRoot })
-    }
+    code = await runSpec(
+      { spec: outcome.specPath, dryRun: false, adapter: opts.adapter, concurrency: opts.concurrency, verbose: opts.verbose, help: false },
+      { runtime },
+    )
   } finally {
     closePrompts()
     await cleanupAdapters()
   }
+  exitWith(code)
+}
+
+/** `opencastle convoy "<task>"`: the task comes from the words typed, the flags from `args`. */
+export async function planTask({ args, pkgRoot }: CliContext, task: string): Promise<void> {
+  const opts = parseArgs(args, false)
+  await planThenRun({ task }, opts, pkgRoot)
+}
+
+/** `opencastle convoy plan --prd <file>`. */
+export default async function pipeline({ args, pkgRoot }: CliContext): Promise<void> {
+  const opts = parseArgs(args, true)
+  if (opts.help) {
+    console.log(HELP)
+    return
+  }
+  if (opts.prd === null) {
+    console.error('  ✗ Name the PRD to plan from: opencastle convoy plan --prd <file>')
+    console.log(HELP)
+    process.exit(1)
+  }
+  if (!existsSync(resolve(process.cwd(), opts.prd))) {
+    console.error(`  ✗ PRD not found: ${opts.prd}`)
+    process.exit(1)
+  }
+  await planThenRun({ prd: opts.prd }, opts, pkgRoot)
 }

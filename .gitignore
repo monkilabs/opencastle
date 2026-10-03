@@ -19,10 +19,6 @@ coverage/
 *.log
 .DS_Store
 
-# generated dashboard data (regenerate via: npm run dashboard:etl)
-src/dashboard/public/data/**/*.json
-src/dashboard/public/data/**/*.ndjson
-
 # IDE
 .idea/
 .vscode/*

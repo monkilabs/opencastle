@@ -1,46 +1,43 @@
-import { resolve } from 'node:path'
-import { existsSync } from 'node:fs'
-import { createConvoyStore } from './convoy/store.js'
-import { selectLastRun } from './convoy/last-run.js'
+import { findProjectRoot, readRun, readRuns, type RunSummary } from './convoy/read-model.js'
+import { nearest } from './nearest.js'
 import { c } from './prompt.js'
 import type { CliContext } from './types.js'
 
 /**
  * The experimental `convoy` namespace.
  *
- * Convoy execution used to occupy four top-level commands (start, plan,
- * validate, run) plus a 20-flag arg parser inside `run` that bundled status
- * reporting, resume, retry, and three DLQ verbs. All of that is state the tool
- * can read for itself, so the surface here is: name a task to start one, or run
- * it bare to see where the last one stands and what to do about it.
+ * Name a task to plan and run it, run a spec you wrote, continue what is not
+ * done, or watch it live. Run it bare to see where the last run stands and the
+ * one thing to do next. Everything else that used to live here — a status
+ * flag, retry and dead-letter verbs, watch mode, formulas — is state the tool
+ * can read for itself, so it is gone.
  */
 
 const CONVOY_HELP = `
   opencastle convoy [task] [options]
 
-  Experimental: run multi-step work through the convoy engine.
+  Experimental: plan multi-step work and run it with agents in parallel.
 
   Usage:
-    opencastle convoy                    Show the last run and what to do next
-    opencastle convoy "<task>"           Plan and execute a task
-    opencastle convoy plan --prd <path>  Resume from a PRD written earlier
-    opencastle convoy resume             Continue the last interrupted run
-    opencastle convoy retry              Re-run the failed tasks of the last run
-    opencastle convoy dashboard          Open the run viewer
-    opencastle convoy run -f <spec>      Execute a spec you wrote by hand
+    opencastle convoy                     The last run and the one next step
+    opencastle convoy "<task>"            Plan it, show the plan, ask, then run it
+    opencastle convoy run <spec.yml>      Run a spec you wrote
+    opencastle convoy resume              Continue whatever is not done
+    opencastle convoy dashboard           The live viewer
+    opencastle convoy plan --prd <file>   Plan again from a PRD you edited
 
   Options:
-    --dry-run            With a task: print the first planning prompt and stop.
-                         With run: show the execution plan
-    --verbose            Stream agent output
-    --adapter, -a <name> Agent runtime to plan and run with
-    --skip-validation    Skip PRD and spec validation passes
-    --json               Machine-readable status
-    --help, -h           Show this help
+    --yes, -y                With a task: run the plan without asking
+    --dry-run                With a task: plan and write the spec, but do not run it.
+                             With run or resume: show what would run
+    --adapter, -a <name>     Agent runtime (default: the one opencastle init set up)
+    --concurrency, -c <n>    Tasks at once
+    --verbose                Stream agent output
+    --json                   With no task: the last run, as JSON
+    --help, -h               Show this help
 
-  run and plan take their own options — try: opencastle convoy run --help
-
-  This namespace is experimental and may change or be removed.
+  Every subcommand has its own --help. This namespace is experimental and may
+  change.
 `
 
 /**
@@ -53,62 +50,21 @@ const CONVOY_HELP = `
  * `bin/cli.mjs` has already split any `--flag=value` form before this runs, so
  * only the space form reaches here.
  */
-const FLAGS_WITH_VALUES = new Set([
-  '--adapter',
-  '-a',
-  '--file',
-  '-f',
-  '--prd',
-  '--complexity',
-  '--output-prd',
-  '--output-spec',
-  '--concurrency',
-  '-c',
-  '--permission-mode',
-  '--report-dir',
-  '--formula',
-  '--set',
-  '--watch-config',
-  '--convoy',
-  '--resolution',
-])
+const FLAGS_WITH_VALUES = new Set(['--adapter', '-a', '--concurrency', '-c', '--file', '-f', '--prd'])
 
-/**
- * Flags the planner reads, forwarded from the task path.
- *
- * `opencastle convoy "add rate limiting" --adapter codex` used to run on the
- * auto-detected adapter and say nothing: the task path kept an allowlist of two
- * flags and silently discarded everything else. A flag that is accepted and
- * ignored is the defect `bin/cli.mjs` refuses unknown options to prevent, and
- * its comment exempts `convoy` on the grounds that this file validates its own
- * input — which, on this path, it did not.
- *
- * `--text` is not here because the task itself supplies it, and `--prd` is not
- * because `SUBCOMMAND_FLAGS` sends it to `convoy plan` with a pointer.
- */
-const TASK_FLAGS = new Set([
-  '--adapter',
-  '-a',
-  '--verbose',
-  '--dry-run',
-  '--dryRun',
-  '--skip-validation',
-  '--complexity',
-  '--output-prd',
-  '--output-spec',
-])
+/** Flags the planner reads, forwarded from the task path. */
+const TASK_FLAGS = new Set(['--yes', '-y', '--dry-run', '--adapter', '-a', '--concurrency', '-c', '--verbose'])
+
+/** What a mistyped word is checked against. `retry` still works, but is not suggested. */
+const SUBCOMMANDS = ['run', 'resume', 'dashboard', 'plan']
 
 /**
  * The words of the task, with the flags and their values taken out.
  *
  * A shell splits an unquoted task into one argument per word, and this command
  * used to read only the first of them: `opencastle convoy add rate limiting to
- * the API` planned a feature called "add". No error — it went on to spend a full
- * PRD round-trip on the wrong request, and the quoted form that works is the
- * only one our own "Start one:" hint shows.
- *
- * Flag values come out with their flag, so `--adapter codex` cannot contribute
- * the word "codex" to a task description.
+ * the API` planned a feature called "add". Flag values come out with their
+ * flag, so `--adapter codex` cannot add the word "codex" to a task.
  */
 export function positionalWords(args: string[]): string[] {
   const out: string[] = []
@@ -149,212 +105,213 @@ export function splitTaskFlags(args: string[]): { forward: string[]; unknown: st
   return { forward, unknown }
 }
 
-/** Delegate to an existing command module, passing through remaining args. */
-async function delegate(mod: string, ctx: CliContext, args: string[]): Promise<void> {
-  const loaded = (await import(`./${mod}.js`)) as {
-    default: (_ctx: CliContext) => Promise<void>
-  }
-  await loaded.default({ ...ctx, args })
-}
+// ── Status ────────────────────────────────────────────────────────────────────
 
-interface LastRun {
+const FAILED_STATUSES = new Set(['failed', 'gate-failed', 'timed-out', 'review-blocked', 'disputed', 'hook-failed'])
+
+export interface LastRun {
   id: string
   name: string
   status: string
-  /** Which orchestrator owns it — `resume` hands a pipeline to a different one. */
-  kind: 'pipeline' | 'convoy'
+  branch: string | null
+  created_at: string
+  /** A process is working on it now. */
+  alive: boolean
   total: number
   done: number
+  /** Every failed status: failed, gate-failed, timed-out, review-blocked, disputed, hook-failed. */
   failed: number
+  running: number
+  skipped: number
   pending: number
+  /** The one command to run next. */
+  next: string
+  /** An older run with work left, when this one has none: what `resume` would continue. */
+  older_unfinished: { id: string; name: string } | null
+}
+
+function unfinished(run: RunSummary): boolean {
+  return run.status !== 'done' || run.tasks_done < run.tasks_total
 }
 
 /**
- * The same run `opencastle convoy resume` would continue.
- *
- * Read through `selectLastRun` rather than `getLatestConvoy`, which is what this
- * used to call. The two answers differed whenever a project had run a pipeline:
- * this screen named the newest convoy and advised `resume`, and `resume` then
- * reopened the pipeline instead. Advice that names a different run than the
- * command acts on is worse than no advice.
+ * The last run, from the read model: the database is opened read-only, never
+ * migrated, and closed again. The status screen used to open the read-write
+ * store, which migrated an older project's database just to look at it.
  */
-function readLastRun(projectRoot: string): LastRun | null {
-  const dbPath = resolve(projectRoot, '.opencastle', 'convoy.db')
-  if (!existsSync(dbPath)) return null
-  let store
-  try {
-    store = createConvoyStore(dbPath)
-  } catch {
-    return null
-  }
-  try {
-    const last = selectLastRun(store)
-    if (!last) return null
-
-    // A pipeline's progress is the progress of every convoy in it, so the counts
-    // come from all of them rather than from a single spec's task list.
-    const convoyIds =
-      last.kind === 'pipeline'
-        ? store.getConvoysByPipeline(last.record.id).map((c) => c.id)
-        : [last.record.id]
-    const tasks = convoyIds.flatMap((id) => store.getTasksByConvoy(id))
-
-    return {
-      id: last.record.id,
-      name: last.record.name,
-      status: last.record.status,
-      kind: last.kind,
-      total: tasks.length,
-      done: tasks.filter((t) => t.status === 'done').length,
-      failed: tasks.filter((t) => t.status === 'failed' || t.status === 'gate-failed').length,
-      pending: tasks.filter((t) => t.status === 'pending' || t.status === 'assigned').length,
-    }
-  } catch {
-    return null
-  } finally {
-    try { store.close() } catch { /* already closed */ }
+export function readLastRun(projectRoot: string): LastRun | null {
+  const runs = readRuns(projectRoot, 200)
+  if (runs.length === 0) return null
+  const last = runs[0]
+  const tasks = readRun(projectRoot, last.id)?.tasks ?? []
+  const count = (pick: (s: string) => boolean): number => tasks.filter((t) => pick(t.status)).length
+  const done = count((s) => s === 'done')
+  // Not done is not done: skipped and running tasks count against "finished"
+  // as much as failed ones do, and the run's own status is not trusted to say so.
+  const notDone = last.status !== 'done' || done < tasks.length
+  const older = notDone ? undefined : runs.slice(1).find(unfinished)
+  return {
+    id: last.id,
+    name: last.name,
+    status: last.status,
+    branch: last.branch,
+    created_at: last.created_at,
+    alive: last.alive,
+    total: tasks.length,
+    done,
+    failed: count((s) => FAILED_STATUSES.has(s)),
+    running: count((s) => s === 'running' || s === 'assigned'),
+    skipped: count((s) => s === 'skipped'),
+    pending: count((s) => s === 'pending'),
+    next: last.alive ? 'opencastle convoy dashboard' : notDone ? 'opencastle convoy resume' : 'opencastle convoy "<task>"',
+    older_unfinished: older ? { id: older.id, name: older.name } : null,
   }
 }
 
-/** Bare `convoy`: report the last run and offer the verb that fits its state. */
+/** Bare `convoy`: report the last run and the one verb that fits its state. */
 function renderStatus(last: LastRun | null, json: boolean): void {
   if (json) {
     console.log(JSON.stringify(last, null, 2))
     return
   }
 
+  console.log(`\n  🚚 ${c.bold('Convoy')} ${c.dim('(experimental)')}\n`)
   if (!last) {
-    console.log(`\n  🚚 ${c.bold('Convoy')} ${c.dim('(experimental)')}\n`)
     console.log('  No runs yet.\n')
     console.log(`  ${c.bold('Start one:')} ${c.cyan('opencastle convoy "add rate limiting to the API"')}\n`)
     return
   }
 
-  const mark =
-    last.status === 'done' ? c.green('✓') : last.status === 'running' ? c.cyan('▶') : c.yellow('!')
-
-  console.log(`\n  🚚 ${c.bold('Convoy')} ${c.dim('(experimental)')}\n`)
-  console.log(
-    `  ${mark} ${c.bold(last.name)} ${c.dim(`— ${last.status}`)}` +
-      (last.kind === 'pipeline' ? c.dim(' (pipeline)') : ''),
-  )
-  console.log(
-    `    ${last.done}/${last.total} done` +
-      (last.failed ? c.yellow(`, ${last.failed} failed`) : '') +
-      (last.pending ? c.dim(`, ${last.pending} pending`) : ''),
-  )
+  const resumable = last.next === 'opencastle convoy resume'
+  const mark = last.alive ? c.cyan('▶') : resumable ? c.yellow('!') : c.green('✓')
+  const state = last.alive ? 'running now' : last.status
+  console.log(`  ${mark} ${c.bold(last.name)} ${c.dim(`— ${state}`)}`)
+  const parts = [`${last.done}/${last.total} done`]
+  if (last.failed) parts.push(c.yellow(`${last.failed} failed`))
+  if (last.skipped) parts.push(c.yellow(`${last.skipped} skipped`))
+  if (last.running) parts.push(`${last.running} running`)
+  if (last.pending) parts.push(c.dim(`${last.pending} pending`))
+  console.log(`    ${parts.join(', ')}`)
+  if (last.branch) console.log(`    ${c.dim('Branch')} ${last.branch}`)
   console.log('')
 
-  // `retry` reopens the failed tasks of a single convoy. A pipeline is a chain
-  // of them, and `resume` is what carries the chain on past a failed link — so
-  // advising `retry` here named a verb that would have run one link in isolation.
-  if (last.failed > 0 && last.kind === 'convoy') {
-    console.log(`  ${c.bold('Next:')} ${c.cyan('opencastle convoy retry')}`)
-    console.log(`  ${c.dim('re-runs only the failed tasks')}`)
-  } else if (last.failed > 0 || last.pending > 0 || last.status === 'running') {
-    console.log(`  ${c.bold('Next:')} ${c.cyan('opencastle convoy resume')}`)
-    console.log(`  ${c.dim('continues from the last checkpoint')}`)
-  } else {
-    console.log(`  ${c.dim('Nothing outstanding. Start another with')} ${c.cyan('opencastle convoy "<task>"')}`)
+  const why = last.alive
+    ? 'watch it live'
+    : resumable
+      ? 'runs what is not done — failed, interrupted and skipped tasks — and keeps the rest'
+      : 'every task is done; start another'
+  console.log(`  ${c.bold('Next:')} ${c.cyan(last.next)}`)
+  console.log(`  ${c.dim(why)}`)
+  if (last.older_unfinished) {
+    console.log(`  ${c.dim(`An earlier run, ${last.older_unfinished.name}, has work left; opencastle convoy resume continues it.`)}`)
   }
   console.log('')
 }
 
+// ── Dispatch ──────────────────────────────────────────────────────────────────
+
+/** Hand the arguments to another command module. */
+async function delegate(mod: string, ctx: CliContext, args: string[]): Promise<void> {
+  const loaded = (await import(`./${mod}.js`)) as { default: (_ctx: CliContext) => Promise<void> }
+  await loaded.default({ ...ctx, args })
+}
+
+function refuse(message: string, hint?: string): never {
+  console.error(`  ${c.red('✗')} ${message}`)
+  if (hint) console.error(`  ${c.dim(hint)}`)
+  process.exit(1)
+}
+
+/** An unknown flag, named with what replaced it when it is one we removed, or the nearest one we have. */
+async function unknownFlag(flag: string, candidates: string[]): Promise<string> {
+  const { REMOVED_FLAGS } = await import('./run.js')
+  if (flag in REMOVED_FLAGS) return `${flag} was removed. ${REMOVED_FLAGS[flag]}.`
+  const near = nearest(flag, candidates)
+  return `Unknown option ${flag}.${near ? ` Did you mean ${near}?` : ''}`
+}
+
 export default async function convoy(ctx: CliContext): Promise<void> {
   const { args } = ctx
-
   const [sub, ...rest] = args
 
-  // `convoy --help` is ours; `convoy plan --help` belongs to the subcommand, which
-  // is where its flags are actually documented.
-  const wantsHelp = args.includes('--help') || args.includes('-h')
-  if (wantsHelp && (sub === undefined || sub === '--help' || sub === '-h')) {
-    console.log(CONVOY_HELP)
-    return
-  }
-
-  const positionals = positionalWords(args)
-
   switch (sub) {
-    case undefined:
-      renderStatus(readLastRun(process.cwd()), false)
+    case 'run':
+      await delegate('run', ctx, rest)
       return
-
     case 'resume':
-      await delegate('run', ctx, ['--resume', ...rest])
+    // `retry` is what this was called before resume did everything it did.
+    case 'retry': {
+      const { resume } = await import('./run.js')
+      await resume({ ...ctx, args: rest })
       return
-
-    case 'retry':
-      await delegate('run', ctx, ['--retry-failed', ...rest])
-      return
-
+    }
     case 'dashboard':
       await delegate('dashboard', ctx, rest)
       return
-
-    case 'run':
-      // Explicit spec execution, for a .convoy.yml written by hand or by the planner.
-      await delegate('run', ctx, rest)
-      return
-
     case 'plan':
-      // The planner writes a PRD before it writes a spec, and tells you where. Without
-      // this there was no command that would take that PRD back — the advice dead-ended.
+      // The only way to plan again from a PRD someone edited.
       await delegate('pipeline', ctx, rest)
       return
-
     default:
       break
   }
 
-  // A bare flag set with no subcommand is a status query — but only for flags
-  // this level actually reads. `--file` and `--prd` belong to `run` and `plan`,
-  // and falling into the status screen meant `convoy --file spec.yml` printed
-  // "No runs yet" and exited without reading the file, or looking for it: the
-  // value was never touched, so a path that did not exist produced no error. Our
-  // own shipped instructions named that form.
+  // `convoy --help` is ours; `convoy run --help` belongs to the subcommand.
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(CONVOY_HELP)
+    return
+  }
+
+  // A flag that belongs to a subcommand used at this level would otherwise
+  // be read as part of a task, or dropped.
   const SUBCOMMAND_FLAGS = new Map([
     ['--file', 'run'],
     ['-f', 'run'],
     ['--prd', 'plan'],
-    ['--resume', 'resume'],
-    ['--retry-failed', 'retry'],
   ])
   const misplaced = args.find((a) => SUBCOMMAND_FLAGS.has(a))
   if (misplaced) {
     const owner = SUBCOMMAND_FLAGS.get(misplaced)!
-    console.error(`  ${c.red('✗')} ${misplaced} belongs to \`opencastle convoy ${owner}\`.`)
-    console.error(`  ${c.dim('Try:')} opencastle convoy ${owner} ${args.slice(args.indexOf(misplaced)).join(' ')}`)
-    process.exit(1)
+    refuse(
+      `${misplaced} belongs to \`opencastle convoy ${owner}\`.`,
+      `Try: opencastle convoy ${owner} ${args.slice(args.indexOf(misplaced)).join(' ')}`,
+    )
   }
 
-  if (sub.startsWith('--')) {
-    renderStatus(readLastRun(process.cwd()), args.includes('--json'))
+  const words = positionalWords(args)
+  if (words.length === 0) {
+    // Flags alone: the status screen, which reads only --json.
+    const stray = args.find((a) => a.startsWith('-') && a !== '--json')
+    if (stray) {
+      refuse(
+        TASK_FLAGS.has(stray) ? `${stray} goes with a task: opencastle convoy "<task>" ${stray}` : await unknownFlag(stray, ['--json', ...TASK_FLAGS]),
+        'Run "opencastle convoy --help" for usage.',
+      )
+    }
+    renderStatus(readLastRun(findProjectRoot(process.cwd()) ?? process.cwd()), args.includes('--json'))
     return
   }
 
-  // Words that plainly mean "tell me where things stand" are a status query, not
-  // a feature request. `convoy status` used to spend 95 seconds generating a PRD
-  // for a feature called "status" — and it is the obvious thing to type, since
-  // the bare command prints a status report.
-  if (['status', 'state', 'info', 'ls', 'list'].includes(sub) && positionals.length === 1) {
-    renderStatus(readLastRun(process.cwd()), args.includes('--json'))
-    return
+  // A single word is not something a planner can act on, and is far more
+  // often a mistyped subcommand: `convoy resum` used to start a planning
+  // session for a feature called "resum". Planning costs real sessions, so
+  // the word is checked before any start.
+  if (words.length === 1 && !words[0].includes(' ')) {
+    const near = nearest(words[0], SUBCOMMANDS)
+    refuse(
+      near ? `Unknown subcommand "${words[0]}". Did you mean opencastle convoy ${near}?` : `"${words[0]}" is one word; describe the task in a few.`,
+      near
+        ? 'To plan a task, describe it in a few words: opencastle convoy "add rate limiting to the API"'
+        : 'For example: opencastle convoy "add rate limiting to the API". For the last run: opencastle convoy',
+    )
   }
 
-  // Anything else is a task description: plan it, then execute. `pipeline` takes
-  // it as a flag value, so name it — passing it positionally made the one command
-  // this tool prints under "Start one:" fail with "Unknown option".
-  //
-  // Every word, not just the first. An unquoted task arrives as one argument per
-  // word, and taking `sub` alone silently planned the first of them.
+  // Everything else is a task: plan it, show the plan, ask, run. Every word,
+  // not just the first: an unquoted task arrives as one argument per word.
   const { forward, unknown } = splitTaskFlags(args)
   if (unknown.length > 0) {
-    const accepted = [...TASK_FLAGS].sort().join(' ')
-    console.error(`  ${c.red('✗')} Unknown option for a convoy task: ${unknown[0]}`)
-    console.error(`  ${c.dim('Accepts:')} ${accepted} --help`)
-    console.error(`  ${c.dim('For run or plan options:')} opencastle convoy run --help`)
-    process.exit(1)
+    refuse(await unknownFlag(unknown[0], [...TASK_FLAGS]), `A task accepts: ${[...TASK_FLAGS].join(' ')} --help`)
   }
-  await delegate('pipeline', ctx, ['--text', positionals.join(' '), ...forward])
+  const { planTask } = await import('./pipeline.js')
+  await planTask({ ...ctx, args: forward }, words.join(' '))
 }

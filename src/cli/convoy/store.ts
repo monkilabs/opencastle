@@ -17,7 +17,7 @@ import type {
   TaskStepRecord,
 } from './types.js'
 
-const SCHEMA_VERSION = 13
+const SCHEMA_VERSION = 14
 
 // ── Size limits (bytes) ────────────────────────────────────────────────────────
 const LIMIT_SPEC_YAML = 256 * 1024      // 256 KB
@@ -58,6 +58,24 @@ export class ConvoyArtifactLimitError extends Error {
   }
 }
 
+/** Columns a status change may set alongside the status. */
+export type TaskStatusExtra = Partial<
+  Pick<
+    TaskRecord,
+    | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
+    | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
+    | 'contract_result' | 'model' | 'cache_read_tokens' | 'cache_write_tokens' | 'cost_estimated'
+    | 'retry_note' | 'branch'
+  >
+>
+
+const TASK_EXTRA_FIELDS = [
+  'worker_id', 'worktree', 'output', 'exit_code', 'started_at', 'finished_at',
+  'retries', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_usd', 'prompt',
+  'contract_result', 'model', 'cache_read_tokens', 'cache_write_tokens', 'cost_estimated',
+  'retry_note', 'branch',
+] as const
+
 export interface ConvoyStore {
   insertConvoy(
     record: Omit<
@@ -73,8 +91,16 @@ export interface ConvoyStore {
   updateConvoyStatus(
     id: string,
     status: ConvoyStatus,
-    extra?: { started_at?: string; finished_at?: string; total_tokens?: number | null; total_cost_usd?: number | null },
+    extra?: {
+      started_at?: string
+      finished_at?: string
+      total_tokens?: number | null
+      total_cost_usd?: number | null
+      cost_estimated?: boolean
+    },
   ): void
+  /** Record the branch a convoy works on, and what it was cut from. */
+  updateConvoyBranch(id: string, branch: string, baseRef: string | null): void
   updateConvoyReviewTokens(convoyId: string, tokens: number): void
   updateConvoyCircuitState(convoyId: string, state: string | null): void
   insertTask(
@@ -98,14 +124,7 @@ export interface ConvoyStore {
     id: string,
     convoyId: string,
     status: ConvoyTaskStatus,
-    extra?: Partial<
-      Pick<
-        TaskRecord,
-        | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
-        | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
-        | 'contract_result' | 'model'
-      >
-    >,
+    extra?: TaskStatusExtra,
   ): void
   updateTaskReview(
     taskId: string,
@@ -205,7 +224,10 @@ class ConvoyStoreImpl implements ConvoyStore {
           pipeline_id          TEXT,
           circuit_state        TEXT,
           review_tokens_total  INTEGER,
-          review_budget        INTEGER
+          review_budget        INTEGER,
+          base_ref             TEXT,
+          cost_estimated       INTEGER NOT NULL DEFAULT 0,
+          adapter              TEXT
         );
 
         CREATE TABLE IF NOT EXISTS pipeline (
@@ -266,6 +288,11 @@ class ConvoyStoreImpl implements ConvoyStore {
           outputs           TEXT,
           inputs            TEXT,
           contract_result   TEXT,
+          cache_read_tokens  INTEGER,
+          cache_write_tokens INTEGER,
+          cost_estimated    INTEGER NOT NULL DEFAULT 0,
+          retry_note        TEXT,
+          branch            TEXT,
           PRIMARY KEY (id, convoy_id)
         );
 
@@ -433,6 +460,10 @@ class ConvoyStoreImpl implements ConvoyStore {
       migrateSchema(this.db, this.dbPath, 12, 13)
       version = 13
     }
+    if (version === 13) {
+      migrateSchema(this.db, this.dbPath, 13, 14)
+      version = 14
+    }
   }
 
   insertConvoy(
@@ -447,12 +478,29 @@ class ConvoyStoreImpl implements ConvoyStore {
       .prepare(
         `INSERT INTO convoy
            (id, name, spec_hash, status, branch, created_at, started_at, finished_at,
-            spec_yaml, pipeline_id)
+            spec_yaml, pipeline_id, base_ref, adapter)
          VALUES
            (:id, :name, :spec_hash, :status, :branch, :created_at, NULL, NULL,
-            :spec_yaml, :pipeline_id)`,
+            :spec_yaml, :pipeline_id, :base_ref, :adapter)`,
       )
-      .run({ ...record, pipeline_id: record.pipeline_id ?? null })
+      .run({
+        id: record.id,
+        name: record.name,
+        spec_hash: record.spec_hash,
+        status: record.status,
+        branch: record.branch,
+        created_at: record.created_at,
+        spec_yaml: record.spec_yaml,
+        pipeline_id: record.pipeline_id ?? null,
+        base_ref: record.base_ref ?? null,
+        adapter: record.adapter ?? null,
+      })
+  }
+
+  updateConvoyBranch(id: string, branch: string, baseRef: string | null): void {
+    this.db
+      .prepare('UPDATE convoy SET branch = :branch, base_ref = :base_ref WHERE id = :id')
+      .run({ id, branch, base_ref: baseRef })
   }
 
   getConvoy(id: string): ConvoyRecord | undefined {
@@ -487,10 +535,21 @@ class ConvoyStoreImpl implements ConvoyStore {
   updateConvoyStatus(
     id: string,
     status: ConvoyStatus,
-    extra?: { started_at?: string; finished_at?: string; total_tokens?: number | null; total_cost_usd?: number | null },
+    extra?: {
+      started_at?: string
+      finished_at?: string
+      total_tokens?: number | null
+      total_cost_usd?: number | null
+      cost_estimated?: boolean
+    },
   ): void {
     const sets = ['status = :status']
     const params: Record<string, string | number | null> = { id, status }
+
+    if (extra?.cost_estimated !== undefined) {
+      sets.push('cost_estimated = :cost_estimated')
+      params.cost_estimated = extra.cost_estimated ? 1 : 0
+    }
 
     if (extra?.started_at !== undefined) {
       sets.push('started_at = :started_at')
@@ -569,7 +628,7 @@ class ConvoyStoreImpl implements ConvoyStore {
             on_exhausted, injected, provenance, idempotency_key,
             current_step, total_steps, review_level, review_verdict,
             review_tokens, review_model, panel_attempts, dispute_id,
-            drift_score, drift_retried, outputs, inputs, discovered_issues)
+            drift_score, drift_retried, outputs, inputs)
          VALUES
            (:id, :convoy_id, :phase, :prompt, :agent, :adapter, :model, :timeout_ms, :status,
             :worker_id, :worktree, :output, :exit_code, :started_at, :finished_at,
@@ -577,9 +636,49 @@ class ConvoyStoreImpl implements ConvoyStore {
             :on_exhausted, :injected, :provenance, :idempotency_key,
             :current_step, :total_steps, :review_level, :review_verdict,
             :review_tokens, :review_model, :panel_attempts, :dispute_id,
-            :drift_score, :drift_retried, :outputs, :inputs, :discovered_issues)`,
+            :drift_score, :drift_retried, :outputs, :inputs)`,
       )
-      .run(record as unknown as Record<string, string | number | null>)
+      // `discovered_issues` was in this list after migration 12 dropped the
+      // column, so every injected task failed to insert. Named parameters are
+      // passed explicitly now, so an extra key on the record cannot break it.
+      .run({
+        id: record.id,
+        convoy_id: record.convoy_id,
+        phase: record.phase,
+        prompt: record.prompt,
+        agent: record.agent,
+        adapter: record.adapter,
+        model: record.model,
+        timeout_ms: record.timeout_ms,
+        status: record.status,
+        worker_id: record.worker_id,
+        worktree: record.worktree,
+        output: record.output,
+        exit_code: record.exit_code,
+        started_at: record.started_at,
+        finished_at: record.finished_at,
+        retries: record.retries,
+        max_retries: record.max_retries,
+        files: record.files,
+        depends_on: record.depends_on,
+        gates: record.gates,
+        on_exhausted: record.on_exhausted,
+        injected: record.injected,
+        provenance: record.provenance,
+        idempotency_key: record.idempotency_key,
+        current_step: record.current_step,
+        total_steps: record.total_steps,
+        review_level: record.review_level,
+        review_verdict: record.review_verdict,
+        review_tokens: record.review_tokens,
+        review_model: record.review_model,
+        panel_attempts: record.panel_attempts,
+        dispute_id: record.dispute_id,
+        drift_score: record.drift_score,
+        drift_retried: record.drift_retried,
+        outputs: record.outputs ?? null,
+        inputs: record.inputs ?? null,
+      })
   }
 
   getTask(id: string, convoyId: string): TaskRecord | undefined {
@@ -621,28 +720,16 @@ class ConvoyStoreImpl implements ConvoyStore {
     id: string,
     convoyId: string,
     status: ConvoyTaskStatus,
-    extra?: Partial<
-      Pick<
-        TaskRecord,
-        | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
-        | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
-        | 'contract_result' | 'model'
-      >
-    >,
+    extra?: TaskStatusExtra,
   ): void {
     if (extra?.output !== undefined) {
       extra = { ...extra, output: truncateOutput(extra.output) }
     }
     const sets = ['status = :status']
     const params: Record<string, string | number | null> = { id, convoy_id: convoyId, status }
-    const extraFields = [
-      'worker_id', 'worktree', 'output', 'exit_code', 'started_at', 'finished_at',
-      'retries', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_usd', 'prompt',
-      'contract_result', 'model',
-    ] as const
 
     if (extra) {
-      for (const field of extraFields) {
+      for (const field of TASK_EXTRA_FIELDS) {
         if (field in extra && extra[field] !== undefined) {
           sets.push(`${field} = :${field}`)
           params[field] = extra[field] as string | number | null
@@ -1126,7 +1213,7 @@ class ConvoyStoreImpl implements ConvoyStore {
          SUM(CASE WHEN status IN ('failed', 'gate-failed', 'timed-out', 'hook-failed') THEN 1 ELSE 0 END) AS failed,
          SUM(CASE WHEN status = 'review-blocked' THEN 1 ELSE 0 END) AS review_blocked,
          SUM(CASE WHEN status = 'disputed' THEN 1 ELSE 0 END) AS disputed,
-         SUM(CASE WHEN review_verdict IS NOT NULL THEN 1 ELSE 0 END) AS reviewed,
+         SUM(CASE WHEN review_verdict IN ('pass', 'block') AND review_level != 'auto-pass' THEN 1 ELSE 0 END) AS reviewed,
          SUM(CASE WHEN panel_attempts > 0 THEN 1 ELSE 0 END) AS panel_reviewed,
          SUM(CASE WHEN drift_score IS NOT NULL THEN 1 ELSE 0 END) AS tasks_with_drift,
          MAX(drift_score) AS max_drift_score,
@@ -1258,6 +1345,11 @@ class ConvoyStoreImpl implements ConvoyStore {
   close(): void {
     this.db.close()
   }
+}
+
+function addColumnIfMissing(db: DatabaseSync, table: string, column: string, ddl: string): void {
+  const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(c => c.name)
+  if (!cols.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`)
 }
 
 export function migrateSchema(db: DatabaseSync, dbPath: string, fromVersion: number, toVersion: number): void {
@@ -1454,6 +1546,24 @@ export function migrateSchema(db: DatabaseSync, dbPath: string, fromVersion: num
           ALTER TABLE task DROP COLUMN compaction_count;
           ALTER TABLE task DROP COLUMN discovered_issues;
         `)
+      }
+      if (v === 13) {
+        // What a run actually spent, and what it could not merge.
+        //
+        // Cost used to be priced from the adapter's *name* and stored as if the
+        // runtime had reported it; cache tokens were dropped. A retry rewrote the
+        // task's prompt in place, so every attempt stacked another banner on the
+        // last. And a merge failure deleted the branch holding the work.
+        // Each column is added only if missing, so a database whose user_version
+        // was wound back over a newer schema still migrates.
+        addColumnIfMissing(db, 'task', 'cache_read_tokens', 'INTEGER')
+        addColumnIfMissing(db, 'task', 'cache_write_tokens', 'INTEGER')
+        addColumnIfMissing(db, 'task', 'cost_estimated', 'INTEGER NOT NULL DEFAULT 0')
+        addColumnIfMissing(db, 'task', 'retry_note', 'TEXT')
+        addColumnIfMissing(db, 'task', 'branch', 'TEXT')
+        addColumnIfMissing(db, 'convoy', 'base_ref', 'TEXT')
+        addColumnIfMissing(db, 'convoy', 'cost_estimated', 'INTEGER NOT NULL DEFAULT 0')
+        addColumnIfMissing(db, 'convoy', 'adapter', 'TEXT')
       }
       db.exec('COMMIT')
     } catch (err) {

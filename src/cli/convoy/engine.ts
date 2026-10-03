@@ -1,28 +1,36 @@
-import { execFile as execFileCb } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-} from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { promisify } from 'node:util'
-import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ReviewHeuristics, PermissionMode } from './spec-types.js'
+import type { Task, TaskSpec, AgentAdapter, ExecuteResult, ExecuteOptions } from './spec-types.js'
 import { createConvoyStore, ConvoyArtifactLimitError, type ConvoyStore } from './store.js'
 import { acquireEngineLock } from './lock.js'
 import { createEventEmitter, ndjsonPathForConvoy, recoverNdjson, type ConvoyEventEmitter } from './events.js'
-import { createWorktreeManager, type WorktreeManager } from './worktree.js'
+import {
+  createWorktreeManager,
+  ensureRootWorktree,
+  removeRootWorktree,
+  mainRepoRoot,
+  currentRef,
+  listAllWorktrees,
+  worktreesDirFor,
+  workerBranchName,
+  commitAllIn,
+  git,
+  BranchInUseError,
+  type WorktreeManager,
+} from './worktree.js'
 import { createMergeQueue, MergeConflictError, type MergeQueue } from './merge.js'
-import { createHealthMonitor, detectDrift } from './health.js'
-import type { TaskRecord, ConvoyStatus, ConvoyTaskStatus, GuardConfig, CircuitBreakerConfig, TaskStep, Hook, TaskOutput, TaskInput, TDDGateConfig } from './types.js'
-import { buildPhases, formatDuration } from '../run/executor.js'
-import { parseTimeout, parseYaml } from '../run/schema.js'
-import { getAdapter, detectAdapter } from '../run/adapters/index.js'
+import type {
+  TaskRecord, ConvoyStatus, ConvoyTaskStatus, GuardConfig, CircuitBreakerConfig, TaskStep, Hook,
+  TaskOutput, TaskInput, TDDGateConfig,
+} from './types.js'
+import { parseTimeout } from '../run/schema.js'
+import { getAdapter } from '../run/adapters/index.js'
+import { supportsPermissionMode } from '../run/adapters/permission-modes.js'
+import { runShell } from '../run/platform.js'
 import { c } from '../prompt.js'
+import { tierForAgent } from '../tiers.js'
 import { validateFilePartitions, scanSymlinks, scanNewSymlinks, normalizePath, pathsOverlap } from './partition.js'
 import {
   scanForSecrets,
@@ -32,39 +40,68 @@ import {
   runRegressionTestGate,
   browserTestGate,
   noOpGate,
-  collectWorktreeChanges,
 } from './gates.js'
-import { validateOutput, buildContractInstruction, buildContractRetryPrompt } from './contracts.js'
-import { runTwoStageReview } from './review-stages.js'
-import { buildIsolationPreamble, resolveDependencyResults, detectPartitionViolations } from './isolation.js'
+import { validateOutput, buildContractInstruction } from './contracts.js'
+import {
+  defaultReviewer,
+  evaluateReviewLevel,
+  countChangedLines,
+  type DiffStats,
+  type ReviewLevel,
+  type ReviewResult,
+  type ReviewRunner,
+  type ReviewContext,
+} from './reviewer.js'
+import {
+  buildSharedContext,
+  buildTaskSection,
+  composePrompt,
+  resolveDependencyResults,
+  detectPartitionViolations,
+  summarizeTask,
+} from './isolation.js'
 import { checkTDD, formatTDDFailure, DEFAULT_TDD_CONFIG } from './tdd-gate.js'
-import { getArtifactDir, extractArtifactRefs } from './artifacts.js'
+import { extractArtifactRefs } from './artifacts.js'
 import { calculateCost } from './pricing.js'
+import { buildPhases, formatDuration, pickStartable, taskFiles } from './schedule.js'
+import { createProgress, firstLine, formatCost, formatTokens, type Progress, type ProgressStream } from './progress.js'
+import { redactSecrets } from './redact.js'
 
-const execFile = promisify(execFileCb)
+export { evaluateReviewLevel }
+export type { DiffStats, ReviewLevel, ReviewResult }
 
 // ── Public interfaces ─────────────────────────────────────────────────────────
 
 export interface ConvoyEngineOptions {
   spec: TaskSpec
   specYaml: string
+  /** The run's agent runtime. A task's own `adapter:` overrides it; `auto` means this one. */
   adapter: AgentAdapter
   basePath?: string
   dbPath?: string
   logsDir?: string
   verbose?: boolean
-  pipelineId?: string
+  /** Where `.opencastle/` logs and ledgers go. Defaults to the main checkout of `basePath`'s repository. */
+  repoRoot?: string
+  /** Aborting it stops the run the way Ctrl+C does. */
+  signal?: AbortSignal
+  /** Stop the run on SIGINT/SIGTERM (default true). */
+  handleSignals?: boolean
+  /** Where progress is printed (default stdout). */
+  output?: ProgressStream
   _worktreeManager?: WorktreeManager
   _mergeQueue?: MergeQueue
-  /** Override for test injection. Pass `ensureBranch` for real behavior, or a mock. */
+  /** Present for older tests: when set, `basePath` is used as the integration checkout. */
   _ensureBranch?: (branchName: string, basePath: string) => Promise<void>
-  /** Pass `null` to skip convoy-level worktree creation (test mode).
-   *  Pass a string path to inject a specific worktree directory.
-   *  Omit (undefined) for real worktree creation.
-   *  Also skipped when `_ensureBranch` is provided (backward-compat for tests). */
+  /**
+   * The checkout merges land in.
+   * - omitted: the engine creates (or reuses) a worktree of the convoy branch;
+   * - a path: that directory, already on the convoy branch;
+   * - null: `basePath` itself, already on the branch (tests).
+   */
   _convoyWorktreeDir?: string | null
-  /** Injectable for test injection of the review pipeline. */
-  _reviewRunner?: (task: TaskRecord, level: ReviewLevel, reviewerModel: string) => Promise<ReviewResult>
+  /** Replaces the default reviewer (tests). */
+  _reviewRunner?: ReviewRunner
 }
 
 export interface ConvoyResult {
@@ -73,12 +110,23 @@ export interface ConvoyResult {
   summary: { total: number; done: number; failed: number; skipped: number; timedOut: number }
   duration: string
   gateResults?: Array<{ command: string; exitCode: number; passed: boolean; output?: string }>
-  cost?: { total_tokens: number; total_cost_usd?: number }
+  cost?: { total_tokens: number; total_cost_usd?: number; estimated?: boolean }
+  /** What the caller should exit with: 0 done, 1 failed, 130 interrupted. */
+  exitCode?: number
+  /** The branch the work landed on. */
+  branch?: string
+  /** What the branch was cut from. */
+  baseRef?: string | null
+  /** The convoy's NDJSON event log. */
+  logPath?: string
+  /** Worker branches kept because their work could not be merged. */
+  keptBranches?: Array<{ taskId: string; branch: string }>
 }
 
 export interface ConvoyEngine {
   run(): Promise<ConvoyResult>
   resume(convoyId: string): Promise<ConvoyResult>
+  /** Reopen failed and skipped tasks; `resume` does this itself, so this is only for callers that preview. */
   retryFailed(convoyId: string, taskIds?: string[]): Promise<void>
   injectTask(convoyId: string, task: {
     id: string
@@ -197,14 +245,16 @@ export class CircuitBreakerManager {
   }
 }
 
-// ── Branch management ───────────────────────────────────────────────────────
-
 // ── Convoy guard ──────────────────────────────────────────────────────────────
 
 export interface ConvoyGuardResult {
   passed: boolean
   warnings: string[]
 }
+
+const TERMINAL_TASK_STATUSES = new Set([
+  'done', 'failed', 'skipped', 'timed-out', 'gate-failed', 'review-blocked', 'hook-failed', 'disputed',
+])
 
 export function runConvoyGuard(
   store: ConvoyStore,
@@ -213,7 +263,6 @@ export function runConvoyGuard(
   ndjsonPath: string,
   guardConfig?: GuardConfig,
 ): ConvoyGuardResult {
-  // If guard is explicitly disabled, skip all checks
   if (guardConfig?.enabled === false) {
     return { passed: true, warnings: [] }
   }
@@ -221,21 +270,17 @@ export function runConvoyGuard(
   const warnings: string[] = []
   const tasks = store.getTasksByConvoy(convoyId)
 
-  // Check 1: All task statuses are terminal
-  const terminalStatuses = new Set(['done', 'failed', 'skipped', 'timed-out', 'gate-failed', 'review-blocked', 'hook-failed', 'disputed'])
-  const nonTerminal = tasks.filter(t => !terminalStatuses.has(t.status))
+  const nonTerminal = tasks.filter(t => !TERMINAL_TASK_STATUSES.has(t.status))
   if (nonTerminal.length > 0) {
     warnings.push(
       `Non-terminal tasks: ${nonTerminal.map(t => `${t.id}(${t.status})`).join(', ')}`,
     )
   }
 
-  // Check 2: NDJSON file exists and record count >= completed task count
   const completedTasks = tasks.filter(t => t.status === 'done')
   try {
     const content = readFileSync(ndjsonPath, 'utf8')
     const lines = content.split('\n').filter(l => l.trim())
-    // Per-convoy file — all records belong to this convoy, no need to filter by convoy_id
     if (lines.length < completedTasks.length) {
       warnings.push(
         `NDJSON record count (${lines.length}) < completed tasks (${completedTasks.length})`,
@@ -249,7 +294,6 @@ export function runConvoyGuard(
     }
   }
 
-  // Check 3: Every retried task has events for each attempt
   const retriedTasks = tasks.filter(t => t.retries > 0)
   const events = store.getEvents(convoyId)
   for (const task of retriedTasks) {
@@ -261,23 +305,6 @@ export function runConvoyGuard(
     }
   }
 
-  // Check 4: Gate results recorded for all gates that ran
-  const gateEvents = events.filter(e => {
-    if (e.type === 'built_in_gate_result') return true
-    if (e.data == null) return false
-    try {
-      const parsed = JSON.parse(e.data) as Record<string, unknown>
-      return 'gate' in parsed
-    } catch {
-      return false
-    }
-  })
-  const tasksWithGates = tasks.filter(t => t.gates)
-  if (tasksWithGates.length > 0 && gateEvents.length === 0) {
-    warnings.push('Tasks have gates configured but no gate result events found')
-  }
-
-  // Check 5: Token/cost totals computed
   const convoy = store.getConvoy(convoyId)
   if (convoy && convoy.total_tokens == null) {
     const totalTokens = tasks.reduce((sum, t) => sum + (t.total_tokens ?? 0), 0)
@@ -286,78 +313,26 @@ export function runConvoyGuard(
     }
   }
 
-  // Check 6: No orphaned worktrees — engine already calls removeAll() during cleanup.
-  // Synchronous check is not possible; the engine handles this.
-
   return { passed: warnings.length === 0, warnings }
 }
 
-// ── Review routing ────────────────────────────────────────────────────────────
+// ── Small helpers ─────────────────────────────────────────────────────────────
 
-export interface DiffStats {
-  linesChanged: number
-  filesChanged: number
-  filePaths: string[]
-}
-
-export type ReviewLevel = 'auto-pass' | 'fast' | 'panel'
-
-export interface ReviewResult {
-  verdict: 'pass' | 'block'
-  feedback: string
-  tokens: number
-  model: string
-}
-
-export function evaluateReviewLevel(
-  task: TaskRecord,
-  diff: DiffStats,
-  heuristics?: ReviewHeuristics,
-  allGatesPassed?: boolean,
-): ReviewLevel {
-  const panelPaths = heuristics?.panel_paths ?? ['auth/', 'security/', 'migrations/', 'rls/']
-  const panelAgents = heuristics?.panel_agents ?? ['security-expert', 'data-engineer']
-  const autoPassAgents = heuristics?.auto_pass_agents ?? ['writer']
-  const autoPassMaxLines = heuristics?.auto_pass_max_lines ?? 10
-  const autoPassMaxFiles = heuristics?.auto_pass_max_files ?? 2
-
-  // Panel: sensitive paths or agents
-  if (panelPaths.some(p => diff.filePaths.some(fp => fp.startsWith(p) || fp.includes('/' + p)))) return 'panel'
-  if (panelAgents.includes(task.agent)) return 'panel'
-
-  // Auto-pass: documentation/copy agents
-  if (autoPassAgents.includes(task.agent)) return 'auto-pass'
-
-  // Auto-pass: small diffs with all gates passing
-  if (diff.linesChanged <= autoPassMaxLines && diff.filesChanged <= autoPassMaxFiles && allGatesPassed !== false) return 'auto-pass'
-
-  // Large diffs → fast review
-  if (diff.linesChanged > 200 || diff.filesChanged > 5) return 'fast'
-
-  // Default → fast review
-  return 'fast'
-}
-
-class ReviewSemaphore {
+class Semaphore {
   private current = 0
   private queue: Array<() => void> = []
   constructor(private max: number) {}
 
-  async acquire(): Promise<void> {
-    if (this.current < this.max) {
-      this.current++
-      return
+  async use<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.current >= this.max) {
+      await new Promise<void>(res => this.queue.push(res))
     }
-    return new Promise<void>(resolve => {
-      this.queue.push(() => { this.current++; resolve() })
-    })
-  }
-
-  release(): void {
-    this.current--
-    if (this.queue.length > 0) {
-      const next = this.queue.shift()!
-      next()
+    this.current++
+    try {
+      return await fn()
+    } finally {
+      this.current--
+      this.queue.shift()?.()
     }
   }
 }
@@ -365,12 +340,44 @@ class ReviewSemaphore {
 function msToTimeout(ms: number): string {
   if (ms >= 3_600_000 && ms % 3_600_000 === 0) return `${ms / 3_600_000}h`
   if (ms >= 60_000 && ms % 60_000 === 0) return `${ms / 60_000}m`
-  return `${ms / 1_000}s`
+  return `${Math.max(1, Math.round(ms / 1_000))}s`
 }
 
-// ── DLQ markdown dual-write ───────────────────────────────────────────────────
+function parseJsonList(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const v = JSON.parse(raw) as unknown
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
 
-// Builds the DLQ markdown entry text (no I/O, no scanning).
+function slugify(text: string, max: number): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, max).replace(/-+$/, '')
+}
+
+/** Six characters that name a convoy's worktrees, derived from its id so resume finds them. */
+export function shortConvoyId(convoyId: string): string {
+  return createHash('sha1').update(convoyId).digest('hex').slice(0, 6)
+}
+
+/** `convoy/<name>-<short id>`: the branch a run works on when its spec names none. */
+export function defaultBranchName(specName: string, convoyId: string): string {
+  return `convoy/${slugify(specName, 40) || 'run'}-${shortConvoyId(convoyId)}`
+}
+
+/** Every task status `resume` turns back into pending. Skipped counts: it was skipped because something failed. */
+export const RESUME_RESET_STATUSES: readonly ConvoyTaskStatus[] = [
+  'failed', 'timed-out', 'gate-failed', 'review-blocked', 'disputed', 'hook-failed',
+  'running', 'assigned', 'skipped', 'wait-for-input',
+]
+
+/** Statuses whose reset gives the task its retry budget back. Interrupted tasks keep theirs. */
+const FAILED_STATUSES = new Set<string>(['failed', 'timed-out', 'gate-failed', 'review-blocked', 'disputed', 'hook-failed'])
+
+// ── DLQ and dispute ledgers ───────────────────────────────────────────────────
+
 function buildDlqMarkdownEntry(
   dlqId: string,
   task: TaskRecord,
@@ -382,13 +389,10 @@ function buildDlqMarkdownEntry(
   return { marker, entry }
 }
 
-// Appends a pre-scanned DLQ entry to AGENT-FAILURES.md. The caller must have
-// already verified the entry is clean via scanForSecrets — no re-scan here.
-function appendDlqMarkdownClean(marker: string, entry: string, basePath: string): void {
-  const mdPath = join(resolve(basePath), '.opencastle', 'AGENT-FAILURES.md')
+function appendLedger(repoRoot: string, file: string, marker: string, entry: string): void {
+  const mdPath = join(resolve(repoRoot), '.opencastle', file)
   try {
-    const existing = readFileSync(mdPath, 'utf8')
-    if (existing.includes(marker)) return
+    if (readFileSync(mdPath, 'utf8').includes(marker)) return
   } catch {
     // File doesn't exist yet — will create
   }
@@ -397,12 +401,8 @@ function appendDlqMarkdownClean(marker: string, entry: string, basePath: string)
 }
 
 /**
- * Marks a convoy 'failed' after an unexpected throw escapes runConvoy.
- *
- * Both run() and resume() previously wrapped runConvoy in try/finally with no
- * catch, so a crash left the row reading 'running' — which resume() then treats
- * as owned by a live engine and refuses to pick up (KI-003). Best-effort: if the
- * store is already closed or the DB is gone, the original error still wins.
+ * Marks a convoy 'failed' after an unexpected throw escapes runConvoy, so a
+ * crash does not leave the row reading 'running'. Best-effort.
  */
 function markConvoyCrashed(
   store: ConvoyStore,
@@ -419,88 +419,26 @@ function markConvoyCrashed(
   } catch { /* ditto */ }
 }
 
-function writeDisputeToMarkdown(
-  disputeId: string,
-  convoyId: string,
-  task: TaskRecord,
-  panelResults: ReviewResult[],
-  basePath: string,
-  events?: ConvoyEventEmitter | null,
-): void {
-  const mdPath = join(resolve(basePath), '.opencastle', 'DISPUTES.md')
-  const marker = `<!-- dispute:${disputeId} -->`
-
-  try {
-    const existing = readFileSync(mdPath, 'utf8')
-    if (existing.includes(marker)) return
-  } catch {
-    // File doesn't exist yet
-  }
-
-  const blockingReasons = panelResults
-    .filter(r => r.verdict === 'block')
-    .map(r => r.feedback)
-    .join('\n\n')
-
-  const entry = `\n${marker}\n## Dispute: ${task.id}\n\n| Field | Value |\n|-------|-------|\n| Convoy | ${convoyId} |\n| Task | ${task.id} |\n| Date | ${new Date().toISOString()} |\n| Panel attempts | ${task.panel_attempts + 1} |\n| Agent | ${task.agent} |\n| Status | Open |\n\n**Blocking reasons:**\n\n${blockingReasons}\n`
-
-  const scanResult = scanForSecrets(entry, '.opencastle/DISPUTES.md')
-  if (!scanResult.clean) {
-    if (events) {
-      events.emit(
-        'secret_leak_prevented',
-        {
-          task_id: task.id,
-          findings_count: scanResult.findings.length,
-          patterns: scanResult.findings.map((f) => f.pattern),
-          context: 'dispute_markdown_write',
-        },
-        { convoy_id: convoyId, task_id: task.id },
-      )
-    }
-    return
-  }
-
-  mkdirSync(dirname(mdPath), { recursive: true })
-  appendFileSync(mdPath, entry)
-}
-
-
-
 function taskRecordToTask(record: TaskRecord): Task {
   return {
     id: record.id,
     prompt: record.prompt,
     agent: record.agent,
     timeout: msToTimeout(record.timeout_ms),
-    depends_on: record.depends_on ? (JSON.parse(record.depends_on) as string[]) : [],
-    files: record.files ? (JSON.parse(record.files) as string[]) : [],
+    depends_on: parseJsonList(record.depends_on),
+    files: parseJsonList(record.files),
     description: '',
     model: record.model ?? undefined,
     max_retries: record.max_retries,
     adapter: record.adapter ?? undefined,
-    gates: record.gates ? (JSON.parse(record.gates) as string[]) : undefined,
+    gates: record.gates ? parseJsonList(record.gates) : undefined,
   }
 }
-
-function makeTimeoutPromise(ms: number): { promise: Promise<ExecuteResult>; clear: () => void } {
-  let timerId: ReturnType<typeof setTimeout> | undefined
-  const promise = new Promise<ExecuteResult>((res) => {
-    timerId = setTimeout(
-      () => res({ _timedOut: true, success: false, output: 'Task timed out', exitCode: -1 }),
-      ms,
-    )
-  })
-  return { promise, clear: () => { if (timerId !== undefined) clearTimeout(timerId) } }
-}
-
-// ── Step condition evaluation ─────────────────────────────────────────────────
 
 function evaluateStepCondition(
   condition: TaskStep['if'],
   stepResults: Map<string, { exitCode: number }>,
-  worktreePath: string | null,
-  basePath: string,
+  worktreePath: string,
 ): boolean {
   if (!condition) return true
 
@@ -516,50 +454,450 @@ function evaluateStepCondition(
   }
 
   if (condition.fileExists) {
-    const base = worktreePath ?? basePath
-    if (condition.fileExists.path.startsWith('/')) {
-      return false // Absolute paths not allowed in step conditions
+    // Absolute paths and `..` are refused on either separator; the check used
+    // to test for a leading '/' only, which never matched on Windows.
+    const raw = condition.fileExists.path
+    if (isAbsolute(raw) || /^[a-zA-Z]:/.test(raw) || raw.startsWith('\\')) return false
+    let rel: string
+    try {
+      rel = normalizePath(raw)
+    } catch {
+      return false
     }
-    const filePath = join(base, condition.fileExists.path)
-    const resolved = resolve(filePath)
-    const resolvedBase = resolve(base)
-    if (!resolved.startsWith(resolvedBase + '/') && resolved !== resolvedBase) {
-      return false // path escapes the worktree — treat as "file doesn't exist"
-    }
-    if (!existsSync(filePath)) return false
+    if (!existsSync(join(worktreePath, rel))) return false
   }
 
   return true
 }
 
-async function executeSteps(
-  taskRecord: TaskRecord,
-  steps: TaskStep[],
-  adapter: AgentAdapter,
-  worktreePath: string | null,
-  basePath: string,
-  store: ConvoyStore,
-  convoyId: string,
-  verbose: boolean,
-  permissionMode: PermissionMode | undefined,
-): Promise<ExecuteResult> {
-  const now = () => new Date().toISOString()
-  const stepResults = new Map<string, { exitCode: number }>()
-  let combinedOutput = ''
-  let lastExitCode = 0
+// ── Usage accounting ──────────────────────────────────────────────────────────
 
-  // Track total_steps in DB
-  store.updateTaskStatus(taskRecord.id, convoyId, 'running', {})
+interface Usage {
+  /** Null when the runtime reported a total but not this part. */
+  prompt: number | null
+  completion: number | null
+  total: number
+  cacheRead: number | null
+  cacheWrite: number | null
+  cost: number | null
+  estimated: boolean
+  model: string | null
+}
 
-  for (let i = 0; i < steps.length; i++) {
-    const step = steps[i]
+/** Add `b` to `a`, keeping null when neither side knows. */
+function addNullable(a: number | null | undefined, b: number | null): number | null {
+  if (b == null) return a ?? null
+  return (a ?? 0) + b
+}
 
-    // Evaluate condition — skip step if condition is not met
-    if (step.if) {
-      const condMet = evaluateStepCondition(step.if, stepResults, worktreePath, basePath)
-      if (!condMet) {
-        store.insertTaskStep({
+/**
+ * What one agent session spent, as the runtime reported it.
+ *
+ * When it reported nothing the tokens are estimated from the text (4 characters
+ * a token) and flagged. Cost is the runtime's own figure; failing that, a price
+ * for the *model* it says it used, flagged as an estimate. It is never priced
+ * by the adapter's name — "claude" is not a model, and pricing it as Sonnet
+ * produced figures that looked measured and were not.
+ */
+function usageOf(result: ExecuteResult, promptText: string, fallbackModel: string | null): Usage {
+  const u = result.usage
+  const reported = u != null && (u.prompt_tokens != null || u.completion_tokens != null || u.total_tokens != null)
+  const prompt = reported ? (u!.prompt_tokens ?? null) : Math.ceil(promptText.length / 4)
+  const completion = reported ? (u!.completion_tokens ?? null) : Math.ceil((result.output ?? '').length / 4)
+  const total = reported ? (u!.total_tokens ?? (prompt ?? 0) + (completion ?? 0)) : (prompt ?? 0) + (completion ?? 0)
+  const model = result.model ?? fallbackModel ?? null
+  let cost: number | null = null
+  let costEstimated = false
+  if (result.costUsd != null) {
+    cost = result.costUsd
+  } else {
+    cost = calculateCost(model, prompt, completion)
+    costEstimated = true
+  }
+  return {
+    prompt,
+    completion,
+    total,
+    cacheRead: reported ? (u!.cache_read_tokens ?? null) : null,
+    cacheWrite: reported ? (u!.cache_write_tokens ?? null) : null,
+    cost,
+    estimated: !reported || costEstimated,
+    model,
+  }
+}
+
+// ── Run control ───────────────────────────────────────────────────────────────
+
+interface RunControl {
+  /** No new task starts: a task failed under `on_failure: stop`, or a stop rule fired. */
+  stopDispatch: boolean
+  /** Set by SIGINT/SIGTERM or the abort signal. */
+  interrupted: string | null
+  /** Resolves when the run is interrupted, so waits can be cut short. */
+  interruptedPromise: Promise<void>
+  /**
+   * Aborts on interrupt. Gates and hooks run in a process group of their own,
+   * out of reach of the terminal's Ctrl+C, so they are stopped through this.
+   */
+  signal: AbortSignal
+  interrupt(reason: string): void
+  /** Kill hooks for every agent session in flight. */
+  onInterrupt: Array<() => void>
+}
+
+function createRunControl(): RunControl {
+  let resolveInterrupt: () => void = () => {}
+  const abort = new AbortController()
+  const ctl: RunControl = {
+    stopDispatch: false,
+    interrupted: null,
+    interruptedPromise: new Promise<void>(r => { resolveInterrupt = r }),
+    signal: abort.signal,
+    onInterrupt: [],
+    interrupt(reason: string) {
+      if (ctl.interrupted) return
+      ctl.interrupted = reason
+      ctl.stopDispatch = true
+      for (const fn of ctl.onInterrupt) {
+        try { fn() } catch { /* best effort */ }
+      }
+      abort.abort()
+      resolveInterrupt()
+    },
+  }
+  return ctl
+}
+
+/** How long an interrupted run waits for its tasks to wind down before it lets go of them. */
+const INTERRUPT_GRACE_MS = 10_000
+
+interface RunContext {
+  convoyId: string
+  spec: TaskSpec
+  adapter: AgentAdapter
+  store: ConvoyStore
+  events: ConvoyEventEmitter
+  wtManager: WorktreeManager
+  mergeQueue: MergeQueue
+  /** The main checkout: logs, ledgers, artifacts. */
+  repoRoot: string
+  /** The checkout merges land in, on `branch`. */
+  workRoot: string
+  branch: string
+  baseRef: string | null
+  verbose: boolean
+  startTime: number
+  ndjsonPath: string
+  reviewRunner: ReviewRunner
+  progress: Progress
+  ctl: RunControl
+}
+
+// ── Core convoy execution ─────────────────────────────────────────────────────
+
+async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
+  const {
+    convoyId, spec, adapter, store, events, wtManager, mergeQueue, repoRoot, workRoot, branch,
+    verbose, ndjsonPath, reviewRunner, progress, ctl,
+  } = ctx
+  const startTime = ctx.startTime
+  const short = shortConvoyId(convoyId)
+  const specTasks = new Map((spec.tasks ?? []).map(t => [t.id, t]))
+  const reviewSemaphore = new Semaphore(spec.defaults?.max_concurrent_reviews ?? 3)
+  const adapterCache = new Map<string, Promise<AgentAdapter>>()
+  const conflictReruns = new Set<string>()
+  const running = new Map<string, Promise<void>>()
+  // Worker ids must be unique even when a retry starts in the same millisecond.
+  let workerSeq = Date.now()
+  const permissionMode = spec.defaults?.permission_mode
+  let reviewTokensTotal = store.getConvoy(convoyId)?.review_tokens_total ?? 0
+  let extraTokens = 0
+  let extraCost = 0
+  let extraEstimated = false
+
+  // ── Circuit breaker ────────────────────────────────────────────────────────
+  const circuitBreakerConfig = spec.defaults?.circuit_breaker
+  const convoyRecord = store.getConvoy(convoyId)
+  const initialCircuitState = convoyRecord?.circuit_state ? JSON.parse(convoyRecord.circuit_state) : undefined
+  const circuitBreaker = new CircuitBreakerManager(circuitBreakerConfig, initialCircuitState)
+
+  // ── Trust model ────────────────────────────────────────────────────────────
+  // Gate, hook and step commands in a spec are operator-controlled build
+  // configuration, like a Makefile or package.json scripts. They run through
+  // the platform shell and must not carry user-supplied input; the spec file is
+  // the trust boundary.
+
+  // ── Shared prompt context, built once so it is identical for every task ───
+  const sharedContext = buildSharedContext({
+    convoyName: spec.name,
+    plan: (spec.tasks ?? []).map(t => ({
+      id: t.id,
+      agent: t.agent,
+      summary: summarizeTask(t),
+      files: t.files ?? [],
+      depends_on: t.depends_on ?? [],
+    })),
+    artifactsDir: join(repoRoot, '.opencastle', 'artifacts', convoyId) + '/',
+  })
+
+  // ── Agent sessions, tracked so Ctrl+C can stop them ───────────────────────
+
+  const live = new Map<Task, { adapter: AgentAdapter; taskId: string }>()
+  ctl.onInterrupt.push(() => {
+    for (const [task, { adapter: a, taskId }] of live) {
+      try { a.kill?.(task) } catch { /* already gone */ }
+      events.emit('worker_killed', { reason: 'interrupted', task_id: taskId }, { convoy_id: convoyId, task_id: taskId })
+    }
+  })
+
+  /**
+   * One agent session with a deadline. On timeout the session is killed
+   * through the adapter and the result says so; nothing waits on a process
+   * that will not end.
+   */
+  async function runAgent(
+    taskId: string,
+    agentAdapter: AgentAdapter,
+    task: Task,
+    options: ExecuteOptions,
+    timeoutMs: number,
+  ): Promise<ExecuteResult> {
+    if (ctl.interrupted) return { success: false, output: 'Interrupted before it started', exitCode: 130 }
+    live.set(task, { adapter: agentAdapter, taskId })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const timedOut = new Promise<ExecuteResult>(res => {
+      timer = setTimeout(() => {
+        try { agentAdapter.kill?.(task) } catch { /* already gone */ }
+        res({ _timedOut: true, success: false, output: `Timed out after ${formatDuration(timeoutMs)}`, exitCode: -1 })
+      }, Math.max(1, timeoutMs))
+    })
+    const interrupted = ctl.interruptedPromise.then(
+      (): ExecuteResult => ({ success: false, output: 'Interrupted', exitCode: 130 }),
+    )
+    try {
+      const execution = agentAdapter.execute(task, { verbose, ...options }).catch(
+        (err: unknown): ExecuteResult => ({ success: false, output: (err as Error).message, exitCode: -1 }),
+      )
+      return await Promise.race([execution, timedOut, interrupted])
+    } finally {
+      if (timer) clearTimeout(timer)
+      live.delete(task)
+    }
+  }
+
+  // ── Usage bookkeeping ──────────────────────────────────────────────────────
+
+  /** Add one session's spend to the task row; attempts and steps accumulate. */
+  function addTaskUsage(taskId: string, usage: Usage): void {
+    const row = store.getTask(taskId, convoyId)
+    if (!row) return
+    const cost = usage.cost == null && row.cost_usd == null
+      ? null
+      : (row.cost_usd ?? 0) + (usage.cost ?? 0)
+    store.updateTaskStatus(taskId, convoyId, row.status, {
+      prompt_tokens: addNullable(row.prompt_tokens, usage.prompt),
+      completion_tokens: addNullable(row.completion_tokens, usage.completion),
+      total_tokens: (row.total_tokens ?? 0) + usage.total,
+      cache_read_tokens: addNullable(row.cache_read_tokens, usage.cacheRead),
+      cache_write_tokens: addNullable(row.cache_write_tokens, usage.cacheWrite),
+      cost_usd: cost,
+      cost_estimated: (row.cost_estimated ?? 0) || usage.estimated || usage.cost == null ? 1 : 0,
+      model: usage.model ?? row.model,
+    })
+  }
+
+  // ── Adapters ───────────────────────────────────────────────────────────────
+
+  /**
+   * A task's runtime. No `adapter:`, `auto`, or the run's own name means the
+   * run's adapter; `auto` used to re-run detection for every task and could
+   * land on a different runtime than the one the user chose.
+   */
+  function adapterFor(name: string | null): Promise<AgentAdapter> {
+    if (!name || name === 'auto' || name === adapter.name) return Promise.resolve(adapter)
+    let pending = adapterCache.get(name)
+    if (!pending) {
+      pending = getAdapter(name)
+      adapterCache.set(name, pending)
+    }
+    return pending
+  }
+
+  // ── Task skipping and failure cascade ──────────────────────────────────────
+
+  function skipTask(taskId: string, reason: string, visited: Set<string> = new Set()): void {
+    if (visited.has(taskId)) return
+    visited.add(taskId)
+    const allTasks = store.getTasksByConvoy(convoyId)
+    const task = allTasks.find(t => t.id === taskId)
+    if (!task || task.status !== 'pending') return
+    store.updateTaskStatus(taskId, convoyId, 'skipped', { output: reason })
+    progress.line(`  ${c.dim('⊘')} ${c.bold(`[${taskId}]`)} skipped: ${reason}`)
+    events.emit('task_skipped', { reason }, { convoy_id: convoyId, task_id: taskId })
+    for (const t of allTasks) {
+      if (parseJsonList(t.depends_on).includes(taskId)) {
+        skipTask(t.id, `dependency "${taskId}" did not finish`, visited)
+      }
+    }
+  }
+
+  function cascadeFailure(failedTaskId: string): void {
+    for (const t of store.getTasksByConvoy(convoyId)) {
+      if (parseJsonList(t.depends_on).includes(failedTaskId)) {
+        skipTask(t.id, `dependency "${failedTaskId}" failed`)
+      }
+    }
+  }
+
+  /** Dispatch nothing new; tasks already running finish. */
+  function stopDispatching(reason: string): void {
+    if (ctl.stopDispatch) return
+    ctl.stopDispatch = true
+    progress.line(`  ${c.yellow('■')} ${reason} — no new tasks will start; running tasks finish`)
+  }
+
+  function handleExhaustion(taskRecord: TaskRecord, failureType: string, errorOutput: string | null): void {
+    const exhausted = taskRecord.on_exhausted ?? 'dlq'
+
+    if (exhausted === 'dlq' || exhausted === 'stop') {
+      const dlqId = `dlq-${taskRecord.id}-${Date.now()}`
+      // Masked, then written to both the table and the ledger. Holding back
+      // both on any finding used to lose the failure record altogether; now
+      // only an entry that still flags after masking is held back — both
+      // halves, so the table and the ledger never disagree.
+      const masked = errorOutput == null ? null : redactSecrets(errorOutput)
+      const clean = masked?.text ?? null
+      if (masked && masked.patterns.length > 0) {
+        events.emit('secret_leak_prevented', {
           task_id: taskRecord.id,
+          findings_count: masked.patterns.length,
+          patterns: [...new Set(masked.patterns)],
+          context: 'dlq_redacted',
+        }, { convoy_id: convoyId, task_id: taskRecord.id })
+      }
+      const { marker, entry } = buildDlqMarkdownEntry(dlqId, taskRecord, failureType, clean)
+      const leak = scanForSecrets(entry, 'AGENT-FAILURES.md')
+      if (!leak.clean) {
+        events.emit('secret_leak_prevented', {
+          task_id: taskRecord.id,
+          findings_count: leak.findings.length,
+          patterns: leak.findings.map(f => f.pattern),
+          context: 'dlq_dual_write',
+        }, { convoy_id: convoyId, task_id: taskRecord.id })
+      } else {
+        store.insertDlqEntry({
+          id: dlqId,
+          convoy_id: convoyId,
+          task_id: taskRecord.id,
+          agent: taskRecord.agent,
+          failure_type: failureType,
+          error_output: clean,
+          attempts: taskRecord.retries + 1,
+          tokens_spent: taskRecord.total_tokens,
+          escalation_task_id: null,
+          resolved: 0,
+          resolution: null,
+          created_at: new Date().toISOString(),
+          resolved_at: null,
+        })
+        appendLedger(repoRoot, 'AGENT-FAILURES.md', marker, entry)
+        events.emit('dlq_entry_created', {
+          dlq_id: dlqId,
+          task_id: taskRecord.id,
+          agent: taskRecord.agent,
+          attempts: taskRecord.retries + 1,
+        }, { convoy_id: convoyId, task_id: taskRecord.id })
+      }
+    }
+
+    if (exhausted === 'stop') {
+      stopDispatching(`on_exhausted: stop — task "${taskRecord.id}" exhausted retries`)
+    }
+    cascadeFailure(taskRecord.id)
+
+    if (circuitBreakerConfig) {
+      const { tripped } = circuitBreaker.recordFailure(taskRecord.agent)
+      try { store.updateConvoyCircuitState(convoyId, circuitBreaker.serialize()) } catch { /* non-critical */ }
+      if (tripped) {
+        events.emit('circuit_breaker_tripped', {
+          agent: taskRecord.agent,
+          failure_count: circuitBreaker.getState(taskRecord.agent).failures,
+        }, { convoy_id: convoyId, task_id: taskRecord.id })
+      }
+    }
+  }
+
+  // ── Hooks ──────────────────────────────────────────────────────────────────
+
+  async function runHooks(
+    hooks: Hook[],
+    lifecycle: 'pre_task' | 'post_task' | 'post_convoy',
+    context: { taskId?: string; cwd: string; taskAdapter?: AgentAdapter },
+  ): Promise<{ passed: boolean; failedHook?: Hook; error?: string }> {
+    const filtered = hooks.filter(h => (h.on ?? 'post_task') === lifecycle)
+    for (const hook of filtered) {
+      if (hook.type === 'command' || hook.type === 'guard' || hook.type === 'validate') {
+        if (!hook.command) continue
+        const r = await runShell(hook.command, { cwd: context.cwd, timeoutMs: 600_000, signal: ctl.signal })
+        if (r.code !== 0) {
+          return { passed: false, failedHook: hook, error: (r.stderr || r.stdout).trim() || `exit ${r.code}` }
+        }
+      } else if (hook.type === 'agent') {
+        if (!hook.prompt) continue
+        const hookTask: Task = {
+          id: `hook-${lifecycle}-${context.taskId ?? 'convoy'}`,
+          prompt: hook.prompt,
+          agent: hook.name ?? 'developer',
+          timeout: '10m',
+          depends_on: [],
+          files: [],
+          description: `Hook: ${hook.name ?? hook.type}`,
+          max_retries: 0,
+        }
+        const hookResult = await runAgent(context.taskId ?? convoyId, context.taskAdapter ?? adapter, hookTask, {
+          cwd: context.cwd,
+          permissionMode,
+        }, 600_000)
+        if (!hookResult.success) {
+          return { passed: false, failedHook: hook, error: hookResult.output }
+        }
+      } else if (hook.type === 'review') {
+        if (!context.taskId) continue
+        const rec = store.getTask(context.taskId, convoyId)
+        if (rec) {
+          const r = await reviewRunner(rec, 'fast', spec.defaults?.reviewer_model ?? 'default')
+          if (r.verdict === 'block') {
+            return { passed: false, failedHook: hook, error: r.feedback }
+          }
+        }
+      }
+    }
+    return { passed: true }
+  }
+
+  // ── Multi-step tasks ───────────────────────────────────────────────────────
+
+  async function executeSteps(
+    rec: TaskRecord,
+    steps: TaskStep[],
+    taskAdapter: AgentAdapter,
+    worktreePath: string,
+    deadline: number,
+    baseOptions: ExecuteOptions,
+    /** Wraps a step's text in the shared context and the task's role and files. */
+    wrap: (stepPrompt: string) => string,
+  ): Promise<ExecuteResult> {
+    const now = () => new Date().toISOString()
+    const stepResults = new Map<string, { exitCode: number }>()
+    let combinedOutput = ''
+    let lastExitCode = 0
+
+    for (let i = 0; i < steps.length; i++) {
+      const step = steps[i]
+
+      if (step.if && !evaluateStepCondition(step.if, stepResults, worktreePath)) {
+        store.insertTaskStep({
+          task_id: rec.id,
           step_index: i,
           prompt: step.prompt,
           gates: step.gates ? JSON.stringify(step.gates) : null,
@@ -569,2356 +907,1129 @@ async function executeSteps(
           started_at: now(),
           finished_at: now(),
         })
-        if (step.id) {
-          stepResults.set(step.id, { exitCode: 0 })
-        }
+        if (step.id) stepResults.set(step.id, { exitCode: 0 })
         combinedOutput += `\n[Step ${i + 1} skipped: condition not met]`
         continue
       }
-    }
 
-    // Insert step record as running
-    const stepDbId = store.insertTaskStep({
-      task_id: taskRecord.id,
-      step_index: i,
-      prompt: step.prompt,
-      gates: step.gates ? JSON.stringify(step.gates) : null,
-      status: 'running',
-      exit_code: null,
-      output: null,
-      started_at: now(),
-      finished_at: null,
-    })
+      const stepDbId = store.insertTaskStep({
+        task_id: rec.id,
+        step_index: i,
+        prompt: step.prompt,
+        gates: step.gates ? JSON.stringify(step.gates) : null,
+        status: 'running',
+        exit_code: null,
+        output: null,
+        started_at: now(),
+        finished_at: null,
+      })
 
-    // Update current_step on the task record
-    store.updateTaskStatus(taskRecord.id, convoyId, 'running', {})
+      const stepMaxRetries = step.max_retries ?? rec.max_retries
+      let stepResult: ExecuteResult = { success: false, output: '', exitCode: -1 }
+      let stepAttempt = 0
 
-    const stepMaxRetries = step.max_retries ?? taskRecord.max_retries
-    let stepResult: ExecuteResult = { success: false, output: '', exitCode: -1 }
-    let stepAttempt = 0
-
-    while (stepAttempt <= stepMaxRetries) {
-      // Prepend prior failure context on retries
-      let stepPrompt = step.prompt
-      if (stepAttempt > 0 && stepResult) {
-        const failedOutput = stepResult.output || '(no output)'
-        stepPrompt = `Previous attempt failed.\nExit code: ${stepResult.exitCode}\nError output:\n${failedOutput}\n\nFix the issues and try again.\n\n` + step.prompt
-      }
-
-      const stepTask = {
-        id: taskRecord.id,
-        prompt: stepPrompt,
-        agent: taskRecord.agent,
-        timeout: `${taskRecord.timeout_ms}ms`,
-        depends_on: [],
-        files: taskRecord.files ? JSON.parse(taskRecord.files) as string[] : [],
-        description: `step ${i + 1}`,
-        max_retries: stepMaxRetries,
-      }
-
-      try {
-        stepResult = await adapter.execute(stepTask, { verbose, cwd: worktreePath ?? basePath, permissionMode })
-      } catch (err) {
-        stepResult = { success: false, output: (err as Error).message, exitCode: -1 }
-      }
-
-      if (stepResult.success) break
-
-      stepAttempt++
-      if (stepAttempt <= stepMaxRetries) {
-        process.stdout.write(`  ↺ step ${i + 1}/${steps.length} failed, retry ${stepAttempt}/${stepMaxRetries}\n`)
-      }
-    }
-
-    lastExitCode = stepResult.exitCode
-    combinedOutput += `\n[Step ${i + 1}]\n${stepResult.output}`
-
-    if (step.id) {
-      stepResults.set(step.id, { exitCode: stepResult.exitCode })
-    }
-
-    // Run step-level gates if present
-    if (step.gates && step.gates.length > 0 && stepResult.success) {
-      let gateFailure: { command: string; exitCode: number; output: string } | null = null
-      const execFileCb = (await import('node:child_process')).execFile
-      const execFileP = (await import('node:util')).promisify(execFileCb)
-      for (const command of step.gates) {
-        try {
-          // SECURITY: Gate/hook commands come from the .convoy.yml spec file, which is operator-controlled.
-          // They are NOT user-supplied and are part of the trusted build configuration.
-          await execFileP('sh', ['-c', command], { cwd: worktreePath ?? basePath })
-        } catch (gateErr) {
-          const ge = gateErr as Error & { code?: unknown; stderr?: string; stdout?: string }
-          const code = typeof ge.code === 'number' ? ge.code : 1
-          const output = ge.stderr || ge.stdout || ge.message || ''
-          gateFailure = { command, exitCode: code, output }
-          break
+      while (stepAttempt <= stepMaxRetries) {
+        let stepPrompt = step.prompt
+        if (stepAttempt > 0) {
+          stepPrompt = `Previous attempt failed.\nExit code: ${stepResult.exitCode}\nError output:\n${stepResult.output || '(no output)'}\n\nFix the issues and try again.\n\n` + step.prompt
         }
-      }
-      if (gateFailure !== null) {
-        stepResult = { success: false, output: `Gate failed: ${gateFailure.command}\nExit code: ${gateFailure.exitCode}\n${gateFailure.output}`, exitCode: gateFailure.exitCode }
-        lastExitCode = gateFailure.exitCode
-        combinedOutput += `\n[Step ${i + 1} gate failed: ${gateFailure.command}]`
-      }
-    }
-
-    // Update step record
-    store.updateTaskStep(stepDbId, {
-      status: stepResult.success ? 'done' : 'failed',
-      exit_code: stepResult.exitCode,
-      output: stepResult.output,
-      finished_at: now(),
-    })
-
-    if (!stepResult.success) {
-      return {
-        success: false,
-        output: combinedOutput.trim(),
-        exitCode: lastExitCode,
-      }
-    }
-  }
-
-  return {
-    success: true,
-    output: combinedOutput.trim(),
-    exitCode: lastExitCode,
-  }
-}
-
-// ── File-based injection ──────────────────────────────────────────────────────
-
-const INJECT_DIR = '.opencastle/convoy-inject'
-const CONVOY_ID_RE = /^[a-zA-Z0-9-]+$/
-const MAX_FILE_INJECTED_TASKS = 10
-
-function pollInjectFile(
-  convoyId: string,
-  store: ConvoyStore,
-  events: ConvoyEventEmitter,
-  basePath: string,
-): number {
-  // Path traversal guard: convoy_id must be alphanumeric + hyphens only
-  if (!CONVOY_ID_RE.test(convoyId)) return 0
-
-  const injectDir = join(basePath, INJECT_DIR, convoyId)
-  const injectPath = join(injectDir, 'inject.yml')
-
-  if (!existsSync(injectPath)) return 0
-
-  // Atomic rename to prevent double-read
-  const processingPath = injectPath + '.processing'
-  try {
-    renameSync(injectPath, processingPath)
-  } catch {
-    return 0 // Another process may have grabbed it
-  }
-
-  let raw: string
-  try {
-    raw = readFileSync(processingPath, 'utf8')
-  } catch {
-    return 0
-  } finally {
-    try { unlinkSync(processingPath) } catch { /* ignore */ }
-  }
-
-  let parsed: Record<string, unknown>
-  try {
-    parsed = parseYaml(raw)
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.tasks)) {
-      process.stderr.write(`Warning: inject file has invalid format (expected { tasks: [...] })\n`)
-      return 0
-    }
-  } catch (err) {
-    process.stderr.write(`Warning: failed to parse inject file: ${(err as Error).message}\n`)
-    return 0
-  }
-
-  const tasks = parsed.tasks as Array<Record<string, unknown>>
-  const allExisting = store.getTasksByConvoy(convoyId)
-  const existingFileInjected = allExisting.filter(t => t.provenance === 'file-injection').length
-  const remaining = MAX_FILE_INJECTED_TASKS - existingFileInjected
-  let injectedCount = 0
-
-  for (const rawTask of tasks) {
-    if (injectedCount >= remaining) {
-      process.stderr.write(`Warning: file injection limit reached (${MAX_FILE_INJECTED_TASKS}), skipping remaining tasks\n`)
-      break
-    }
-
-    // Validate required fields
-    if (!rawTask.id || typeof rawTask.id !== 'string') {
-      process.stderr.write(`Warning: skipping injected task with missing/invalid id\n`)
-      continue
-    }
-    if (!rawTask.prompt || typeof rawTask.prompt !== 'string') {
-      process.stderr.write(`Warning: skipping injected task "${rawTask.id}": missing prompt\n`)
-      continue
-    }
-    if (!rawTask.agent || typeof rawTask.agent !== 'string') {
-      process.stderr.write(`Warning: skipping injected task "${rawTask.id}": missing agent\n`)
-      continue
-    }
-
-    // Check ID uniqueness
-    if (allExisting.some(t => t.id === rawTask.id as string)) {
-      process.stderr.write(`Warning: skipping injected task "${rawTask.id}": ID already exists\n`)
-      continue
-    }
-
-    // Determine phase — inject into last scheduled phase
-    const maxPhase = allExisting.reduce((max, t) => Math.max(max, t.phase), 0)
-
-    // Validate file paths before building the record
-    let validatedFiles: string | null = null
-    if (rawTask.files && Array.isArray(rawTask.files)) {
-      try {
-        validatedFiles = JSON.stringify((rawTask.files as string[]).map(f => normalizePath(f as string)))
-      } catch (err) {
-        process.stderr.write(`Warning: skipping injected task "${rawTask.id as string}": invalid file path: ${(err as Error).message}\n`)
-        continue
-      }
-    }
-
-    const record: TaskRecord = {
-      id: rawTask.id as string,
-      convoy_id: convoyId,
-      phase: maxPhase,
-      prompt: rawTask.prompt as string,
-      agent: rawTask.agent as string,
-      adapter: null,
-      model: null,
-      timeout_ms: typeof rawTask.timeout_ms === 'number' ? rawTask.timeout_ms : 1_800_000,
-      status: 'pending',
-      worker_id: null,
-      worktree: null,
-      output: null,
-      exit_code: null,
-      started_at: null,
-      finished_at: null,
-      retries: 0,
-      max_retries: typeof rawTask.max_retries === 'number' ? rawTask.max_retries : 1,
-      files: validatedFiles,
-      depends_on: null,
-      prompt_tokens: null,
-      completion_tokens: null,
-      total_tokens: null,
-      cost_usd: null,
-      gates: null,
-      on_exhausted: 'dlq',
-      injected: 1,
-      provenance: 'file-injection',
-      idempotency_key: null,
-      current_step: null,
-      total_steps: null,
-      review_level: null,
-      review_verdict: null,
-      review_tokens: null,
-      review_model: null,
-      panel_attempts: 0,
-      dispute_id: null,
-      drift_score: null,
-      drift_retried: 0,
-      outputs: null,
-      inputs: null,
-    }
-
-    try {
-      store.insertInjectedTask(record)
-      injectedCount++
-    } catch (err) {
-      process.stderr.write(`Warning: failed to inject task "${rawTask.id}": ${(err as Error).message}\n`)
-    }
-  }
-
-  if (injectedCount > 0) {
-    events.emit('file_injection_received', {
-      task_count: injectedCount,
-      source: injectPath,
-    }, { convoy_id: convoyId })
-  }
-
-  return injectedCount
-}
-
-// ── Core convoy execution ─────────────────────────────────────────────────────
-
-async function runConvoy(
-  convoyId: string,
-  spec: TaskSpec,
-  adapter: AgentAdapter,
-  store: ConvoyStore,
-  events: ConvoyEventEmitter,
-  wtManager: WorktreeManager,
-  mergeQueue: MergeQueue,
-  basePath: string,
-  baseBranch: string,
-  verbose: boolean,
-  startTime: number,
-  ndjsonPath: string,
-  reviewRunner?: (task: TaskRecord, level: ReviewLevel, reviewerModel: string) => Promise<ReviewResult>,
-): Promise<ConvoyResult> {
-  const totalTasks = spec.tasks?.length ?? 0
-  let completedCount = 0
-  const activeTaskMap = new Map<string, Task>()
-  const reviewSemaphore = new ReviewSemaphore(spec.defaults?.max_concurrent_reviews ?? 3)
-  let reviewTokensTotal = 0
-  const taskAdapterMap = new Map<string, AgentAdapter>()
-
-  const healthMonitor = createHealthMonitor({
-    store,
-    events,
-    convoyId,
-    onKill: (_workerId, taskId) => {
-      const task = activeTaskMap.get(taskId)
-      const taskAdpt = taskAdapterMap.get(taskId) ?? adapter
-      if (task && typeof taskAdpt.kill === 'function') {
-        taskAdpt.kill(task)
-      }
-      activeTaskMap.delete(taskId)
-      taskAdapterMap.delete(taskId)
-    },
-  })
-  healthMonitor.start()
-
-  // ── Circuit breaker ────────────────────────────────────────────────────────
-  const circuitBreakerConfig = spec.defaults?.circuit_breaker
-  const convoyRecord = store.getConvoy(convoyId)
-  const initialCircuitState = convoyRecord?.circuit_state ? JSON.parse(convoyRecord.circuit_state) : undefined
-  const circuitBreaker = new CircuitBreakerManager(circuitBreakerConfig, initialCircuitState)
-
-  // ── Trust model ────────────────────────────────────────────────────────────
-  // Gate commands, hook commands, and step commands in .convoy.yml are treated
-  // as operator-controlled build configuration (analogous to Makefiles, CI
-  // configs, or package.json scripts). They are executed via sh -c and must
-  // NOT contain user-supplied input. The spec file itself is the trust boundary.
-  // ──────────────────────────────────────────────────────────────────────────
-
-  // ── Task skipping ─────────────────────────────────────────────────────────
-
-  function skipTask(taskId: string, reason: string, visited: Set<string> = new Set()): void {
-    if (visited.has(taskId)) return
-    visited.add(taskId)
-    const allTasks = store.getTasksByConvoy(convoyId)
-    const task = allTasks.find(t => t.id === taskId)
-    if (!task || task.status !== 'pending') return
-    store.updateTaskStatus(taskId, convoyId, 'skipped', { output: reason })
-    process.stdout.write(`  ${c.dim('⊘')} ${c.bold(`[${taskId}]`)} skipped\n`)
-    events.emit('task_skipped', { reason }, { convoy_id: convoyId, task_id: taskId })
-    for (const t of allTasks) {
-      const deps = t.depends_on ? (JSON.parse(t.depends_on) as string[]) : []
-      if (deps.includes(taskId)) {
-        skipTask(t.id, `dependency "${taskId}" was skipped/failed`, visited)
-      }
-    }
-  }
-
-  function cascadeFailure(failedTaskId: string): void {
-    if (spec.on_failure === 'stop') {
-      const allPending = store.getTasksByConvoy(convoyId).filter(t => t.status === 'pending')
-      for (const t of allPending) {
-        skipTask(t.id, 'execution halted due to on_failure: stop')
-      }
-    } else {
-      const allTasks = store.getTasksByConvoy(convoyId)
-      for (const t of allTasks) {
-        const deps = t.depends_on ? (JSON.parse(t.depends_on) as string[]) : []
-        if (deps.includes(failedTaskId)) {
-          skipTask(t.id, `dependency "${failedTaskId}" failed`)
-        }
-      }
-    }
-  }
-
-  function handleExhaustion(taskRecord: TaskRecord, failureType: string, errorOutput: string | null): void {
-    const exhausted = taskRecord.on_exhausted ?? 'dlq'
-
-    if (exhausted === 'dlq' || exhausted === 'stop') {
-      const dlqId = `dlq-${taskRecord.id}-${Date.now()}`
-
-      // Pre-scan: build the markdown entry and check for secrets BEFORE any
-      // writes. This keeps the SQLite DLQ row and the Markdown file in sync —
-      // either both are written or neither is (MF-2 dual-write atomicity).
-      const { marker: dlqMarker, entry: dlqMdEntry } = buildDlqMarkdownEntry(
-        dlqId,
-        taskRecord,
-        failureType,
-        errorOutput,
-      )
-      const dlqScanResult = scanForSecrets(dlqMdEntry, 'AGENT-FAILURES.md')
-
-      if (!dlqScanResult.clean) {
-        // Block BOTH writes to maintain consistent state
-        events.emit(
-          'secret_leak_prevented',
-          {
-            task_id: taskRecord.id,
-            findings_count: dlqScanResult.findings.length,
-            patterns: dlqScanResult.findings.map((f) => f.pattern),
-            context: 'dlq_dual_write',
-          },
-          { convoy_id: convoyId, task_id: taskRecord.id },
-        )
-      } else {
-        // Clean — proceed with both writes atomically
-        store.insertDlqEntry({
-          id: dlqId,
-          convoy_id: convoyId,
-          task_id: taskRecord.id,
-          agent: taskRecord.agent,
-          failure_type: failureType,
-          error_output: errorOutput,
-          attempts: taskRecord.retries + 1,
-          tokens_spent: taskRecord.total_tokens,
-          escalation_task_id: null,
-          resolved: 0,
-          resolution: null,
-          created_at: new Date().toISOString(),
-          resolved_at: null,
-        })
-        appendDlqMarkdownClean(dlqMarker, dlqMdEntry, basePath)
-        events.emit('dlq_entry_created', {
-          dlq_id: dlqId,
-          task_id: taskRecord.id,
-          agent: taskRecord.agent,
-          failure_type: failureType,
-        }, { convoy_id: convoyId, task_id: taskRecord.id })
-      }
-    }
-
-    if (exhausted === 'stop') {
-      // Skip all remaining pending tasks + set convoy to failed
-      const allPending = store.getTasksByConvoy(convoyId).filter(t => t.status === 'pending')
-      for (const t of allPending) {
-        skipTask(t.id, `on_exhausted: stop — task "${taskRecord.id}" exhausted retries`)
-      }
-      store.updateConvoyStatus(convoyId, 'failed')
-      events.emit('convoy_failed', { status: 'failed', reason: `on_exhausted: stop — task "${taskRecord.id}" exhausted retries` }, { convoy_id: convoyId })
-    } else if (exhausted === 'dlq' || exhausted === 'skip') {
-      // Default behavior: cascade failure to dependents only
-      cascadeFailure(taskRecord.id)
-    }
-
-    // ── Circuit breaker: record exhaustion failure ──────────────────────────
-    if (circuitBreakerConfig) {
-      const { tripped } = circuitBreaker.recordFailure(taskRecord.agent)
-      try { store.updateConvoyCircuitState(convoyId, circuitBreaker.serialize()) } catch { /* non-critical */ }
-      if (tripped) {
-        events.emit('circuit_breaker_tripped', {
-          agent: taskRecord.agent,
-          state: circuitBreaker.getState(taskRecord.agent),
-        }, { convoy_id: convoyId, task_id: taskRecord.id })
-      }
-    }
-  }
-
-  // ── Hook execution ────────────────────────────────────────────────────────
-
-  async function runHooks(
-    hooks: Hook[],
-    lifecycle: 'pre_task' | 'post_task' | 'post_convoy',
-    context: { taskId?: string; convoyId: string; cwd: string },
-  ): Promise<{ passed: boolean; failedHook?: Hook; error?: string }> {
-    const filtered = hooks.filter(h => (h.on ?? 'post_task') === lifecycle)
-    for (const hook of filtered) {
-      if (hook.type === 'command' || hook.type === 'guard' || hook.type === 'validate') {
-        const cmd = hook.command
-        if (!cmd) continue
-        try {
-          // SECURITY: Gate/hook commands come from the .convoy.yml spec file, which is operator-controlled.
-          // They are NOT user-supplied and are part of the trusted build configuration.
-          await execFile('sh', ['-c', cmd], { cwd: context.cwd })
-        } catch (err) {
-          const execErr = err as Error & { stderr?: string; stdout?: string }
-          const errorMsg = execErr.stderr || execErr.stdout || execErr.message || ''
-          return { passed: false, failedHook: hook, error: errorMsg }
-        }
-      } else if (hook.type === 'agent') {
-        if (!hook.prompt) continue
-        const hookTask: Task = {
-          id: `hook-${lifecycle}-${context.taskId ?? 'convoy'}-${Date.now()}`,
-          prompt: hook.prompt,
-          agent: hook.name ?? 'developer',
-          timeout: '10m',
+        stepPrompt = wrap(stepPrompt)
+        // Each step is its own Task object; it is what the adapter attaches
+        // the process to, so it is what a kill has to name.
+        const remaining = deadline - Date.now()
+        const stepTask: Task = {
+          id: rec.id,
+          prompt: stepPrompt,
+          agent: rec.agent,
+          timeout: msToTimeout(Math.max(1000, remaining)),
           depends_on: [],
-          files: [],
-          description: `Hook: ${hook.name ?? hook.type}`,
-          max_retries: 0,
+          files: parseJsonList(rec.files),
+          description: `step ${i + 1}`,
+          max_retries: stepMaxRetries,
         }
-        try {
-          const hookResult = await adapter.execute(hookTask, { verbose, cwd: context.cwd, permissionMode: spec.defaults?.permission_mode })
-          if (!hookResult.success) {
-            return { passed: false, failedHook: hook, error: hookResult.output }
-          }
-        } catch (err) {
-          return { passed: false, failedHook: hook, error: (err as Error).message }
+        stepResult = await runAgent(rec.id, taskAdapter, stepTask, baseOptions, remaining)
+        addTaskUsage(rec.id, usageOf(stepResult, stepPrompt, rec.model))
+        // A step that timed out or was killed is not retried: the task's time
+        // is spent, or someone asked it to stop.
+        if (stepResult.success || stepResult._timedOut || ctl.interrupted || Date.now() >= deadline) break
+        stepAttempt++
+        if (stepAttempt <= stepMaxRetries) {
+          progress.line(`  ${c.yellow('↺')} ${c.bold(`[${rec.id}]`)} step ${i + 1}/${steps.length} failed, retry ${stepAttempt}/${stepMaxRetries}`)
         }
-      } else if (hook.type === 'review') {
-        if (!context.taskId || !reviewRunner) continue
-        const reviewTaskRecord = store.getTask(context.taskId, context.convoyId)
-        if (reviewTaskRecord) {
-          const reviewResult = await reviewRunner(
-            reviewTaskRecord,
-            'fast',
-            spec.defaults?.reviewer_model ?? 'default',
-          )
-          if (reviewResult.verdict !== 'pass') {
-            return { passed: false, failedHook: hook, error: reviewResult.feedback }
+      }
+
+      lastExitCode = stepResult.exitCode
+      combinedOutput += `\n[Step ${i + 1}]\n${stepResult.output}`
+      if (step.id) stepResults.set(step.id, { exitCode: stepResult.exitCode })
+
+      if (step.gates && step.gates.length > 0 && stepResult.success) {
+        for (const command of step.gates) {
+          const r = await runShell(command, { cwd: worktreePath, timeoutMs: Math.max(1000, deadline - Date.now()), signal: ctl.signal })
+          if (r.code !== 0) {
+            const output = (r.stderr || r.stdout).trim()
+            stepResult = { success: false, output: `Gate failed: ${command}\nExit code: ${r.code}\n${output}`, exitCode: r.code }
+            lastExitCode = r.code
+            combinedOutput += `\n[Step ${i + 1} gate failed: ${command}]`
+            break
           }
         }
       }
+
+      store.updateTaskStep(stepDbId, {
+        status: stepResult.success ? 'done' : 'failed',
+        exit_code: stepResult.exitCode,
+        output: redactSecrets(stepResult.output).text,
+        finished_at: now(),
+      })
+
+      if (!stepResult.success) {
+        return { ...stepResult, output: combinedOutput.trim() }
+      }
     }
-    return { passed: true }
+
+    return { success: true, output: combinedOutput.trim(), exitCode: lastExitCode }
   }
 
-  // ── Single-task executor ──────────────────────────────────────────────────
+  // ── One task, start to merge ───────────────────────────────────────────────
 
-  async function executeOneTask(taskRecord: TaskRecord): Promise<void> {
-    const workerId = `worker-${taskRecord.id}-${Date.now()}`
+  const statusLabel: Record<string, string> = {
+    'failed': 'failed',
+    'timed-out': 'timed out',
+    'gate-failed': 'gate failed',
+    'review-blocked': 'review blocked',
+    'hook-failed': 'hook failed',
+  }
+
+  async function runTask(initial: TaskRecord): Promise<void> {
+    // Re-read: the snapshot this was picked from can be stale by now.
+    const rec = store.getTask(initial.id, convoyId)
+    if (!rec || rec.status !== 'pending' || ctl.stopDispatch) return
+
     const now = () => new Date().toISOString()
-
-    // Resolve per-task adapter (fallback to convoy-level adapter)
-    let taskAdapter: AgentAdapter = adapter
-    if (taskRecord.adapter && taskRecord.adapter !== adapter.name) {
-      if (taskRecord.adapter === 'auto') {
-        const detected = await detectAdapter()
-        if (detected) {
-          taskAdapter = await getAdapter(detected)
-        }
-      } else {
-        taskAdapter = await getAdapter(taskRecord.adapter)
-      }
-    }
-    taskAdapterMap.set(taskRecord.id, taskAdapter)
-
-    // ── Check inputs availability ────────────────────────────────────────────
-    if (taskRecord.inputs) {
-      const inputs: TaskInput[] = JSON.parse(taskRecord.inputs)
-      for (const input of inputs) {
-        const artifact = store.getArtifact(convoyId, input.name)
-        if (!artifact) {
-          store.updateTaskStatus(taskRecord.id, convoyId, 'wait-for-input')
-          events.emit('task_waiting_input', {
-            task_id: taskRecord.id,
-            missing_artifact: input.name,
-            from_task: input.from,
-          }, { convoy_id: convoyId, task_id: taskRecord.id })
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-      }
-    }
-
-    // ── Circuit breaker check ──────────────────────────────────────────────
-    if (circuitBreakerConfig) {
-      if (!circuitBreaker.canAssign(taskRecord.agent)) {
-        const fallback = circuitBreaker.fallback
-        if (fallback) {
-          events.emit('circuit_breaker_fallback', {
-            original_agent: taskRecord.agent,
-            fallback_agent: fallback,
-            state: circuitBreaker.getState(taskRecord.agent),
-          }, { convoy_id: convoyId, task_id: taskRecord.id })
-        } else {
-          events.emit('circuit_breaker_blocked', {
-            agent: taskRecord.agent,
-            state: circuitBreaker.getState(taskRecord.agent),
-          }, { convoy_id: convoyId, task_id: taskRecord.id })
-        }
-        store.updateTaskStatus(taskRecord.id, convoyId, 'skipped', {
-          output: `Circuit breaker open for agent "${taskRecord.agent}". ${fallback ? `No fallback available.` : `No fallback configured.`}`,
-        })
-        completedCount++
-        taskAdapterMap.delete(taskRecord.id)
-        cascadeFailure(taskRecord.id)
-        return
-      }
-    }
-
-
-    // Create worktree (skip for copilot adapter)
+    const taskStart = Date.now()
+    const specTask = specTasks.get(rec.id)
+    const files = parseJsonList(rec.files)
+    const attempt = rec.retries + 1
+    const elapsed = () => `(${formatDuration(Date.now() - taskStart)})`
+    let workerId: string | null = null
     let worktreePath: string | null = null
-    if (taskAdapter.name !== 'copilot') {
-      try {
-        worktreePath = await wtManager.create(workerId, baseBranch)
-      } catch (err) {
-        if (verbose) {
-          process.stderr.write(
-            `Warning: failed to create worktree for ${taskRecord.id}: ${(err as Error).message}\n`,
-          )
-        }
-      }
+
+    const cleanup = async (keepBranch = false): Promise<void> => {
+      if (!worktreePath) return
+      try { await wtManager.remove(worktreePath, keepBranch ? { keepBranch: true } : undefined) } catch { /* best effort */ }
+      worktreePath = null
     }
 
-    store.insertWorker({
-      id: workerId,
-      task_id: taskRecord.id,
-      adapter: taskAdapter.name,
-      pid: null,
-      session_id: null,
-      status: 'spawned',
-      worktree: worktreePath,
-      created_at: now(),
-    })
-
-    // Mark assigned then running
-    store.updateTaskStatus(taskRecord.id, convoyId, 'assigned', {
-      worker_id: workerId,
-      worktree: worktreePath,
-    })
-    store.updateTaskStatus(taskRecord.id, convoyId, 'running', { started_at: now() })
-    store.updateWorkerStatus(workerId, 'running')
-
-    const task = taskRecordToTask(taskRecord)
-    activeTaskMap.set(taskRecord.id, task)
-
-    // ── Inject inputs into prompt ────────────────────────────────────────────
-    if (taskRecord.inputs) {
-      const inputs: TaskInput[] = JSON.parse(taskRecord.inputs)
-      for (const input of inputs) {
-        const artifact = store.getArtifact(convoyId, input.name)!
-        const templateVar = input.as ?? input.name
-        task.prompt = task.prompt.replaceAll(`{{input.${templateVar}}}`, artifact.content)
-      }
+    const telemetry = (outcome: 'success' | 'failed', retries: number, filesChanged = 0): void => {
+      const row = store.getTask(rec.id, convoyId)
+      const model = row?.model ?? null
+      events.emit('session', {
+        agent: rec.agent,
+        model,
+        task: rec.id,
+        outcome,
+        duration_min: Math.round((Date.now() - taskStart) / 60_000),
+        files_changed: filesChanged,
+        retries,
+        convoy_id: convoyId,
+      }, { convoy_id: convoyId, task_id: rec.id })
+      events.emit('delegation', {
+        session_id: convoyId,
+        agent: rec.agent,
+        model,
+        tier: tierForAgent(rec.agent),
+        mechanism: 'convoy',
+        outcome,
+        retries,
+        phase: rec.phase,
+        convoy_id: convoyId,
+      }, { convoy_id: convoyId, task_id: rec.id })
     }
 
-    // ── Scratchpad template substitution (Phase 17.1) ───────────────────────
-    const scratchpadRe = /\{\{scratchpad\.([a-zA-Z0-9_.-]+)\}\}/g
-    let scratchpadMatch: RegExpExecArray | null
-    while ((scratchpadMatch = scratchpadRe.exec(task.prompt)) !== null) {
-      const spKey = scratchpadMatch[1]
-      const spVal = store.getScratchpadValue(spKey)
-      if (spVal !== null) {
-        task.prompt = task.prompt.replaceAll(`{{scratchpad.${spKey}}}`, spVal)
-        scratchpadRe.lastIndex = 0 // reset after replaceAll
-      }
+    /** Put an interrupted task back in the queue, as if it had not started. */
+    const requeue = async (): Promise<void> => {
+      await cleanup()
+      store.updateTaskStatus(rec.id, convoyId, 'pending', { worker_id: null, worktree: null, started_at: null })
+      if (workerId) store.updateWorkerStatus(workerId, 'killed', { finished_at: now() })
     }
 
-    process.stdout.write(`  ${c.cyan('▶')} ${c.bold(`[${taskRecord.id}]`)} ${taskRecord.agent}${worktreePath ? c.dim(' (worktree)') : ''}\n`)
-    events.emit(
-      'task_started',
-      { worker_id: workerId, mechanism: worktreePath ? 'background' : 'sub-agent' },
-      { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-    )
-
-    const taskStartTime = Date.now()
-
-    // ── Outbound prompt scan — NEVER send a prompt containing secrets ─────────
-    const promptScan = scanForSecrets(taskRecord.prompt, `task:${taskRecord.id}`)
-    if (!promptScan.clean) {
-      store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
-        finished_at: now(),
-        output: `Secret detected in prompt — task blocked before execution.\nFindings:\n${
-          promptScan.findings
-            .map((f) => `  ${f.pattern} at line ${f.line}: ${f.snippet}`)
-            .join('\n')
-        }`,
-      })
-      store.updateWorkerStatus(workerId, 'failed', { finished_at: now() })
-      completedCount++
-      events.emit(
-        'secret_leak_prevented',
-        {
-          task_id: taskRecord.id,
-          findings_count: promptScan.findings.length,
-          patterns: promptScan.findings.map((f) => f.pattern),
-        },
-        { convoy_id: convoyId, task_id: taskRecord.id },
-      )
-      cascadeFailure(taskRecord.id)
-      taskAdapterMap.delete(taskRecord.id)
-      return
-    }
-
-    const timeout = makeTimeoutPromise(taskRecord.timeout_ms)
-    let result: ExecuteResult
-
-    // Retrieve steps from spec if defined
-    const specTask = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
-    const steps: TaskStep[] | undefined = specTask?.steps
-    const taskHooks: Hook[] = specTask?.hooks ?? []
-
-    // ── Context isolation preamble (Phase 41) ────────────────────────────
-    try {
-      const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-      const depIds = taskRecord.depends_on ? JSON.parse(taskRecord.depends_on) as string[] : []
-      const depResults = resolveDependencyResults(store, convoyId, depIds)
-      const preamble = buildIsolationPreamble(
-        { id: taskRecord.id, description: taskRecord.prompt.slice(0, 200), prompt: taskRecord.prompt, files: taskFiles, agent: taskRecord.agent },
-        depResults,
-      )
-      task.prompt = preamble + '\n\n' + task.prompt
-    } catch { /* non-critical — isolation preamble is best-effort */ }
-
-    // ── Artifact output instructions (Phase 43) ────────────────────────────
-    try {
-      const artifactDir = getArtifactDir(convoyId, taskRecord.id, basePath)
-      const artifactInstructions = [
-        '',
-        '## Artifact Output (for large results)',
-        'If your output includes large content (>100 lines of code, full reports, data dumps),',
-        'write it to an artifact file instead of including it inline:',
-        '',
-        '1. Write the content to: ' + artifactDir + '{filename}',
-        '2. In your response, reference it: `[ARTIFACT: {filename}] {1-line summary}`',
-        '3. Keep your inline response focused on the summary and key decisions.',
-        '',
-        'Small outputs (< 100 lines) can remain inline.',
-      ].join('\n')
-      task.prompt = task.prompt + '\n' + artifactInstructions
-    } catch { /* non-critical */ }
-
-    // ── Intelligence: inject persistent agent identity (Phase 17.2) ────────
-    const specTaskForPersistent = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
-    if (specTaskForPersistent?.persistent) {
-      try {
-        const identities = store.getAgentIdentities(taskRecord.agent, 3)
-        if (identities.length > 0) {
-          const contextBlock = '\n\n[Previous work context]\n'
-            + identities.map(id => id.summary).join('\n\n')
-            + '\n[End previous context]\n\n'
-          task.prompt = contextBlock + task.prompt
-        }
-      } catch { /* non-critical */ }
-    }
-
-    // ── Output contract injection ─────────────────────────────────────────
-    const contractInstruction = buildContractInstruction(taskRecord.agent)
-    if (contractInstruction) {
-      task.prompt = task.prompt + '\n\n' + contractInstruction
-    }
-
-    // ── pre_task hooks ────────────────────────────────────────────────────────
-    if (taskHooks.length > 0) {
-      const preResult = await runHooks(taskHooks, 'pre_task', {
-        taskId: taskRecord.id,
-        convoyId,
-        cwd: worktreePath ?? basePath,
-      })
-      if (!preResult.passed) {
-        await removeWorktree()
-        const hookLabel = preResult.failedHook?.name ?? preResult.failedHook?.type ?? 'unknown'
-        store.withTransaction(() => {
-          store.updateTaskStatus(taskRecord.id, convoyId, 'hook-failed', {
-            finished_at: now(),
-            output: `pre_task hook "${hookLabel}" failed: ${preResult.error ?? ''}`,
-            exit_code: 1,
-          })
-          store.updateWorkerStatus(workerId, 'failed', { finished_at: now() })
+    /** Record a task as failed for good, and everything that follows from it. */
+    const fail = async (
+      status: ConvoyTaskStatus,
+      reason: string,
+      opts: { kind?: string; output?: string; exitCode?: number; gate?: string; hook?: string; keepBranch?: string; failureType?: string } = {},
+    ): Promise<void> => {
+      await cleanup(Boolean(opts.keepBranch))
+      const fresh = store.getTask(rec.id, convoyId) ?? rec
+      store.withTransaction(() => {
+        store.updateTaskStatus(rec.id, convoyId, status, {
+          finished_at: now(),
+          output: redactSecrets(opts.output ?? reason).text,
+          exit_code: opts.exitCode ?? 1,
+          ...(opts.keepBranch ? { branch: opts.keepBranch } : {}),
         })
-        completedCount++
-        process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} pre_task hook failed ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-        events.emit('task_failed', { reason: 'hook-failed', hook: hookLabel, worker_id: workerId }, { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId })
-        cascadeFailure(taskRecord.id)
-        taskAdapterMap.delete(taskRecord.id)
-        return
-      }
+        if (workerId) store.updateWorkerStatus(workerId, 'failed', { finished_at: now() })
+      })
+      const label = statusLabel[status] ?? status
+      progress.line(`  ${c.red('✗')} ${c.bold(`[${rec.id}]`)} ${label} ${elapsed()}: ${firstLine(redactSecrets(reason).text)}`)
+      events.emit('task_failed', {
+        reason: opts.kind ?? status,
+        message: firstLine(reason, 400),
+        ...(opts.gate ? { gate: opts.gate } : {}),
+        ...(opts.hook ? { hook: opts.hook } : {}),
+        ...(opts.exitCode !== undefined ? { exit_code: opts.exitCode } : {}),
+        ...(workerId ? { worker_id: workerId } : {}),
+      }, { convoy_id: convoyId, task_id: rec.id, ...(workerId ? { worker_id: workerId } : {}) })
+      telemetry('failed', fresh.retries)
+      handleExhaustion(fresh, opts.failureType ?? opts.kind ?? status, opts.output ?? reason)
+      if (spec.on_failure === 'stop') stopDispatching(`on_failure: stop — task "${rec.id}" failed`)
     }
 
-    // ── Symlink security scan (pre-execution) ────────────────────────────────
-    const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-    if (taskFiles.length > 0 && worktreePath) {
-      try {
-        scanSymlinks(taskFiles, worktreePath)
-      } catch (err) {
-        await removeWorktree()
-        store.withTransaction(() => {
-          store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
-            finished_at: now(),
-            output: `Symlink security check failed: ${(err as Error).message}`,
-            exit_code: 1,
-          })
-          store.updateWorkerStatus(workerId, 'failed', { finished_at: now() })
-        })
-        completedCount++
-        events.emit('task_failed', { reason: 'symlink-escape', worker_id: workerId }, { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId })
-        cascadeFailure(taskRecord.id)
-        taskAdapterMap.delete(taskRecord.id)
-        return
-      }
-    }
-
-    try {
-      if (steps && steps.length > 0) {
-        result = await Promise.race([
-          executeSteps(taskRecord, steps, taskAdapter, worktreePath, basePath, store, convoyId, verbose, spec.defaults?.permission_mode),
-          timeout.promise,
-        ])
-      } else {
-        result = await Promise.race([
-          taskAdapter.execute(task, { verbose, cwd: worktreePath ?? basePath, permissionMode: spec.defaults?.permission_mode }),
-          timeout.promise,
-        ])
-      }
-      timeout.clear()
-    } catch (err) {
-      timeout.clear()
-      result = { success: false, output: (err as Error).message, exitCode: -1 }
-    }
-
-    activeTaskMap.delete(taskRecord.id)
-    const finishedAt = now()
-    const elapsed = `(${formatDuration(Date.now() - taskStartTime)})`
-
-    async function removeWorktree(): Promise<void> {
-      if (worktreePath) {
-        try { await wtManager.remove(worktreePath) } catch { /* ignore cleanup errors */ }
-      }
-    }
-
-    // ── Timed out ───────────────────────────────────────────────────────────
-    if (result._timedOut) {
-      if (typeof taskAdapter.kill === 'function') taskAdapter.kill(task)
-      await removeWorktree()
-
-      const freshRecord = store.getTask(taskRecord.id, convoyId)!
-      if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-        const contextPrefix = `Previous attempt timed out.\n\nFix the issues and try again.\n\n`
-        store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-          retries: freshRecord.retries + 1,
+    /**
+     * Retry when the task has retries left, whatever `on_failure` says — that
+     * setting is about what happens *after* a task has failed for good. They
+     * were tangled: every retry site checked `on_failure !== 'stop'`, and the
+     * spec builder's default `stop` turned off every retry in every plan.
+     */
+    const retryOrFail = async (
+      status: ConvoyTaskStatus,
+      reason: string,
+      opts: { kind?: string; note?: string; output?: string; exitCode?: number; gate?: string; failureType?: string; noRetry?: boolean } = {},
+    ): Promise<void> => {
+      if (ctl.interrupted) return requeue()
+      const fresh = store.getTask(rec.id, convoyId) ?? rec
+      if (!opts.noRetry && fresh.retries < fresh.max_retries) {
+        await cleanup()
+        store.updateTaskStatus(rec.id, convoyId, 'pending', {
+          retries: fresh.retries + 1,
           worker_id: null,
           worktree: null,
           started_at: null,
           finished_at: null,
-          prompt: contextPrefix + taskRecord.prompt,
+          retry_note: redactSecrets(opts.note ?? reason).text,
         })
-        store.updateWorkerStatus(workerId, 'killed', { finished_at: finishedAt })
-        process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} timed out, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`)
-      } else {
-        // Estimate tokens even for timed-out tasks — you still paid for them
-        const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
-        const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
-        const timeoutModel = taskRecord.model ?? taskAdapter.name
-        const timeoutCost = calculateCost(timeoutModel, estimatedPrompt, estimatedCompletion)
-        store.withTransaction(() => {
-          store.updateTaskStatus(taskRecord.id, convoyId, 'timed-out', {
-            finished_at: finishedAt,
-            output: result.output,
-            prompt_tokens: estimatedPrompt,
-            completion_tokens: estimatedCompletion,
-            total_tokens: estimatedPrompt + estimatedCompletion,
-            model: timeoutModel,
-            cost_usd: timeoutCost,
-          })
-          store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-        })
-        completedCount++
-        process.stdout.write(`  ${c.red('⏱')} ${c.bold(`[${taskRecord.id}]`)} timed out ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-        events.emit(
-          'task_failed',
-          { reason: 'timeout', worker_id: workerId },
-          { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
+        if (workerId) store.updateWorkerStatus(workerId, 'failed', { finished_at: now() })
+        const label = statusLabel[status] ?? status
+        progress.line(
+          `  ${c.yellow('⟳')} ${c.bold(`[${rec.id}]`)} ${label}, retry ${fresh.retries + 1}/${fresh.max_retries}: ${firstLine(redactSecrets(reason).text)}`,
         )
-        events.emit('session', {
-          agent: taskRecord.agent,
-          model: taskRecord.model ?? taskAdapter.name,
-          task: taskRecord.id,
-          outcome: 'failed',
-          duration_min: Math.round((Date.now() - taskStartTime) / 60_000),
-          files_changed: 0,
-          retries: freshRecord.retries,
-          convoy_id: convoyId,
-        }, { convoy_id: convoyId, task_id: taskRecord.id })
-        events.emit('delegation', {
-          session_id: convoyId,
-          agent: taskRecord.agent,
-          model: taskRecord.model ?? taskAdapter.name,
-          tier: 'standard',
-          mechanism: 'convoy',
-          outcome: 'failed',
-          retries: freshRecord.retries,
-          phase: taskRecord.phase,
-          convoy_id: convoyId,
-        }, { convoy_id: convoyId, task_id: taskRecord.id })
-        handleExhaustion(freshRecord, 'timeout', result.output || null)
+        events.emit('task_retried', {
+          previous_status: status,
+          reason: firstLine(reason, 400),
+          attempt: fresh.retries + 2,
+        }, { convoy_id: convoyId, task_id: rec.id })
+        return
       }
-      taskAdapterMap.delete(taskRecord.id)
+      return fail(status, reason, opts)
+    }
+
+    // ── Runtime ─────────────────────────────────────────────────────────────
+    let taskAdapter: AgentAdapter
+    try {
+      taskAdapter = await adapterFor(rec.adapter)
+    } catch (err) {
+      return fail('failed', `No usable runtime "${rec.adapter}": ${(err as Error).message}`, { kind: 'adapter' })
+    }
+
+    // ── Circuit breaker ─────────────────────────────────────────────────────
+    if (circuitBreakerConfig && !circuitBreaker.canAssign(rec.agent)) {
+      const fallback = circuitBreaker.fallback
+      // The fallback agent takes the task. It used to be announced and then
+      // skipped all the same, so a configured fallback never ran anything.
+      if (fallback && fallback !== rec.agent && circuitBreaker.canAssign(fallback)) {
+        events.emit('circuit_breaker_fallback', {
+          original_agent: rec.agent,
+          fallback_agent: fallback,
+          task_id: rec.id,
+        }, { convoy_id: convoyId, task_id: rec.id })
+        progress.line(`  ${c.yellow('⟳')} ${c.bold(`[${rec.id}]`)} ${rec.agent} keeps failing; running it as ${fallback}`)
+        rec.agent = fallback
+      }
+    }
+    if (circuitBreakerConfig && !circuitBreaker.canAssign(rec.agent)) {
+      events.emit('circuit_breaker_blocked', { agent: rec.agent, task_id: rec.id }, { convoy_id: convoyId, task_id: rec.id })
+      const reason = `Circuit breaker open for agent "${rec.agent}"`
+      store.updateTaskStatus(rec.id, convoyId, 'skipped', { output: reason })
+      progress.line(`  ${c.dim('⊘')} ${c.bold(`[${rec.id}]`)} skipped: ${reason}`)
+      events.emit('task_skipped', { reason }, { convoy_id: convoyId, task_id: rec.id })
+      cascadeFailure(rec.id)
       return
     }
 
-    // ── Success ─────────────────────────────────────────────────────────────
-    if (result.success) {      // ── Per-task gates ─────────────────────────────────────────────────────
-      const taskGates = taskRecord.gates ? (JSON.parse(taskRecord.gates) as string[]) : []
-      if (taskGates.length > 0) {
-        let gateFailure: { command: string; exitCode: number; output: string } | null = null
-        for (const command of taskGates) {
-          try {
-            // SECURITY: Gate/hook commands come from the .convoy.yml spec file, which is operator-controlled.
-            // They are NOT user-supplied and are part of the trusted build configuration.
-            await execFile('sh', ['-c', command], { cwd: worktreePath ?? basePath, maxBuffer: 10 * 1024 * 1024 })
-          } catch (err) {
-            const execErr = err as Error & { code?: unknown; stderr?: string; stdout?: string }
-            const code = typeof execErr.code === 'number' ? execErr.code : 1
-            const output = [execErr.stderr, execErr.stdout].filter(Boolean).join('\n').trim() || execErr.message || ''
-            gateFailure = { command, exitCode: code, output }
-            break
-          }
-        }
-
-        if (gateFailure !== null) {
-          await removeWorktree()
-          const freshRecord = store.getTask(taskRecord.id, convoyId)!
-          if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-            const contextPrefix = `Previous attempt's gate check failed.\nGate: ${gateFailure.command}\nExit code: ${gateFailure.exitCode}\nOutput:\n${gateFailure.output || '(no output)'}\n\nFix the issues and try again.\n\n`
-            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-              retries: freshRecord.retries + 1,
-              worker_id: null,
-              worktree: null,
-              started_at: null,
-              finished_at: null,
-              prompt: contextPrefix + taskRecord.prompt,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-            process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`)
-          } else {
-            store.withTransaction(() => {
-              store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
-                finished_at: finishedAt,
-                output: `Gate failed: ${gateFailure!.command}\nExit code: ${gateFailure!.exitCode}\n${gateFailure!.output}`,
-                exit_code: gateFailure!.exitCode,
-              })
-              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-            })
-            completedCount++
-            process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} gate failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-            events.emit(
-              'task_failed',
-              { reason: 'gate-failed', gate: gateFailure.command, exit_code: gateFailure.exitCode, worker_id: workerId },
-              { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-            )
-            events.emit('session', {
-              agent: taskRecord.agent,
-              model: taskRecord.model ?? taskAdapter.name,
-              task: taskRecord.id,
-              outcome: 'failed',
-              duration_min: Math.round((Date.now() - taskStartTime) / 60_000),
-              files_changed: 0,
-              retries: freshRecord.retries,
-              convoy_id: convoyId,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-            events.emit('delegation', {
-              session_id: convoyId,
-              agent: taskRecord.agent,
-              model: taskRecord.model ?? taskAdapter.name,
-              tier: 'standard',
-              mechanism: 'convoy',
-              outcome: 'failed',
-              retries: freshRecord.retries,
-              phase: taskRecord.phase,
-              convoy_id: convoyId,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-            handleExhaustion(freshRecord, 'gate-failed', gateFailure!.output || null)
-          }
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
+    // ── Inputs ──────────────────────────────────────────────────────────────
+    const inputs: TaskInput[] = rec.inputs ? JSON.parse(rec.inputs) as TaskInput[] : []
+    for (const input of inputs) {
+      if (!store.getArtifact(convoyId, input.name)) {
+        return fail('failed', `Input "${input.name}" from task "${input.from}" was never produced`, { kind: 'missing-input' })
       }
+    }
 
-      const builtInGates = spec.defaults?.built_in_gates
+    // ── Worktree ────────────────────────────────────────────────────────────
+    workerId = `${short}-${slugify(rec.id, 24) || 'task'}-${(workerSeq++).toString(36).slice(-5)}`
+    store.updateTaskStatus(rec.id, convoyId, 'assigned', { worker_id: workerId })
+    try {
+      worktreePath = await wtManager.create(workerId, branch)
+    } catch (err) {
+      return retryOrFail('failed', `Could not create a worktree: ${firstLine((err as { stderr?: string }).stderr) || (err as Error).message}`, { kind: 'worktree' })
+    }
+    const wt: string = worktreePath
+    const startSha = wtManager.head ? await wtManager.head(wt) : null
 
-      // ── No-op gate ────────────────────────────────────────────────────────
-      // A clean exit is not proof the work happened. This one is on unless the
-      // spec turns it off, because the state it catches — a task that promised
-      // files and produced none — used to be recorded as `done` with exit 0, and
-      // a silent green is worse than a loud red.
-      const contractResult = validateOutput(taskRecord.agent, result.output)
-      if (taskFiles.length > 0 && (builtInGates ? builtInGates.no_op !== false : true)) {
-        const noOpResult = noOpGate({
-          declaredFiles: taskFiles,
-          changedFiles: worktreePath ? await collectWorktreeChanges(worktreePath, baseBranch) : null,
-          agent: taskRecord.agent,
-          contractData: contractResult.data,
+    store.insertWorker({
+      id: workerId,
+      task_id: rec.id,
+      adapter: taskAdapter.name,
+      pid: null,
+      session_id: null,
+      status: 'running',
+      worktree: wt,
+      created_at: now(),
+    })
+    store.updateTaskStatus(rec.id, convoyId, 'running', { started_at: now(), worktree: wt, worker_id: workerId })
+
+    const runtime = taskAdapter.name !== adapter.name ? ` ${c.dim(`(${taskAdapter.name})`)}` : ''
+    const attemptNote = attempt > 1 ? c.dim(` attempt ${attempt}/${rec.max_retries + 1}`) : ''
+    progress.line(`  ${c.cyan('▶')} ${c.bold(`[${rec.id}]`)} ${rec.agent}${runtime}${attemptNote}`)
+    events.emit('task_started', {
+      worker_id: workerId,
+      mechanism: 'worktree',
+      adapter: taskAdapter.name,
+      attempt,
+    }, { convoy_id: convoyId, task_id: rec.id, worker_id: workerId })
+
+    // ── Prompt ──────────────────────────────────────────────────────────────
+    let instructions = rec.prompt
+    for (const input of inputs) {
+      const artifact = store.getArtifact(convoyId, input.name)!
+      instructions = instructions.replaceAll(`{{input.${input.as ?? input.name}}}`, artifact.content)
+    }
+    instructions = instructions.replace(/\{\{scratchpad\.([a-zA-Z0-9_.-]+)\}\}/g, (whole, key: string) => {
+      const value = store.getScratchpadValue(key)
+      return value ?? whole
+    })
+    let previousWork: string[] = []
+    if (specTask?.persistent) {
+      try {
+        previousWork = store.getAgentIdentities(rec.agent, 3).map(i => i.summary)
+      } catch { /* non-critical */ }
+    }
+    const dependencyResults = resolveDependencyResults(store, convoyId, parseJsonList(rec.depends_on), repoRoot)
+    const promptFor = (text: string, retryNote: string | null | undefined): string =>
+      composePrompt(sharedContext, buildTaskSection({
+        id: rec.id,
+        agent: rec.agent,
+        files,
+        prompt: text,
+        dependencyResults,
+        previousWork,
+        retryNote,
+        contract: buildContractInstruction(rec.agent),
+      }))
+    const promptText = promptFor(instructions, rec.retry_note)
+
+    const promptScan = scanForSecrets(promptText, `task:${rec.id}`)
+    if (!promptScan.clean) {
+      events.emit('secret_leak_prevented', {
+        task_id: rec.id,
+        findings_count: promptScan.findings.length,
+        patterns: promptScan.findings.map(f => f.pattern),
+        context: 'prompt',
+      }, { convoy_id: convoyId, task_id: rec.id })
+      return fail('failed', `Secret detected in the prompt (${promptScan.findings.map(f => f.pattern).join(', ')}) — the task was not sent to the agent`, { kind: 'secret-in-prompt' })
+    }
+
+    const taskHooks: Hook[] = specTask?.hooks ?? []
+    if (taskHooks.length > 0) {
+      const pre = await runHooks(taskHooks, 'pre_task', { taskId: rec.id, cwd: wt, taskAdapter })
+      if (!pre.passed) {
+        const label = pre.failedHook?.name ?? pre.failedHook?.type ?? 'unknown'
+        return fail('hook-failed', `pre_task hook "${label}" failed: ${pre.error ?? ''}`, { kind: 'hook-failed', hook: label })
+      }
+    }
+
+    if (files.length > 0) {
+      try {
+        scanSymlinks(files, wt)
+      } catch (err) {
+        return fail('failed', `Symlink security check failed: ${(err as Error).message}`, { kind: 'symlink-escape' })
+      }
+    }
+
+    // ── The agent ───────────────────────────────────────────────────────────
+    const deadline = taskStart + rec.timeout_ms
+    // The spec's model when it names one; otherwise the runtime's model for the
+    // agent's tier, so a writer does not run on the model an architect needs.
+    const model = rec.model ?? taskAdapter.tierModels?.[tierForAgent(rec.agent)]
+    const execOptions: ExecuteOptions = {
+      cwd: wt,
+      permissionMode,
+      ...(model ? { model } : {}),
+    }
+    const steps = specTask?.steps
+    let result: ExecuteResult
+    if (steps && steps.length > 0) {
+      // Each step is sent as the task's own text would be: shared context
+      // first, then the role, the files, and the step.
+      result = await executeSteps(rec, steps, taskAdapter, wt, deadline, execOptions, (text) => promptFor(text, rec.retry_note))
+    } else {
+      const task = taskRecordToTask(rec)
+      task.prompt = promptText
+      result = await runAgent(rec.id, taskAdapter, task, execOptions, deadline - Date.now())
+      addTaskUsage(rec.id, usageOf(result, promptText, rec.model))
+    }
+
+    if (ctl.interrupted) return requeue()
+    if (result._timedOut) {
+      return retryOrFail('timed-out', `Timed out after ${formatDuration(rec.timeout_ms)}`, {
+        kind: 'timeout',
+        output: result.output,
+        note: `Your previous attempt ran out of time after ${formatDuration(rec.timeout_ms)}. Work in smaller steps and finish within the limit.`,
+      })
+    }
+    if (!result.success) {
+      const out = result.output || '(no output)'
+      return retryOrFail('failed', firstLine(out) || `exit code ${result.exitCode}`, {
+        kind: 'error',
+        output: out,
+        exitCode: result.exitCode,
+        note: `Your previous attempt failed (exit code ${result.exitCode}). Its last output:\n${out.slice(-3000)}`,
+      })
+    }
+
+    // ── Commit, so every check below sees the change ──────────────────────
+    //
+    // Gates and review sizing diffed `base..HEAD` before anything was
+    // committed, so unless the agent committed itself they saw an empty change:
+    // secret_scan scanned nothing and every review was sized as tiny.
+    const summary = summarizeTask({ id: rec.id, description: specTask?.description, prompt: rec.prompt })
+    if (wtManager.commitAll) {
+      try {
+        await wtManager.commitAll(wt, `convoy(${rec.id}): ${summary}`.slice(0, 200))
+      } catch (err) {
+        return retryOrFail('failed', `Could not commit the task's work: ${firstLine((err as { stderr?: string }).stderr) || (err as Error).message}`, { kind: 'commit' })
+      }
+    }
+    const changes = startSha && wtManager.changes ? await wtManager.changes(wt, startSha) : null
+    const changedFiles = changes?.files ?? []
+    const diff = changes?.diff ?? ''
+
+    // ── Per-task gates from the spec ────────────────────────────────────────
+    const taskGates = parseJsonList(rec.gates)
+    for (const command of taskGates) {
+      const r = await runShell(command, { cwd: wt, timeoutMs: (spec.defaults?.gate_timeout ?? 300) * 1000, signal: ctl.signal })
+      // A gate the interrupt killed did not fail; nothing is recorded for it.
+      if (ctl.interrupted) return requeue()
+      events.emit('gate_result', { command, passed: r.code === 0, exit_code: r.code, scope: 'task' }, { convoy_id: convoyId, task_id: rec.id })
+      if (r.code !== 0) {
+        const output = [r.stderr, r.stdout].filter(Boolean).join('\n').trim() || '(no output)'
+        return retryOrFail('gate-failed', `Gate "${command}" failed (exit ${r.code})`, {
+          kind: 'gate-failed',
+          gate: command,
+          exitCode: r.code,
+          output: `Gate failed: ${command}\nExit code: ${r.code}\n${output}`,
+          note: `The gate \`${command}\` failed on your previous attempt (exit ${r.code}):\n${output.slice(-3000)}\n\nMake it pass.`,
         })
-
-        if (!noOpResult.passed) {
-          events.emit(
-            'built_in_gate_result',
-            { gate: 'no_op', passed: false, output: noOpResult.output },
-            { convoy_id: convoyId, task_id: taskRecord.id },
-          )
-          await removeWorktree()
-          const freshRecord = store.getTask(taskRecord.id, convoyId)!
-          if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-              retries: freshRecord.retries + 1,
-              worker_id: null,
-              worktree: null,
-              started_at: null,
-              finished_at: null,
-              prompt: `Your previous attempt produced no changes.\n${noOpResult.output}\n\nWrite the files the task asks for. If you cannot, say why and stop.\n\n${taskRecord.prompt}`,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-            process.stdout.write(
-              `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} no changes produced, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
-            )
-          } else {
-            store.withTransaction(() => {
-              store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
-                finished_at: finishedAt,
-                output: `Built-in gate (no_op) failed:\n${noOpResult.output}`,
-                exit_code: 1,
-                contract_result: JSON.stringify(contractResult),
-              })
-              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-            })
-            completedCount++
-            process.stdout.write(
-              `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} produced no changes ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`,
-            )
-            events.emit(
-              'task_failed',
-              { reason: 'no-op', gate: 'no_op', worker_id: workerId },
-              { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-            )
-            handleExhaustion(freshRecord, 'no-op', noOpResult.output)
-          }
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
       }
+    }
 
-      // ── Built-in gates ────────────────────────────────────────────────────
-      if (builtInGates && worktreePath) {
-        if (builtInGates.browser_test) {
-          const specTask = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
-          const taskBrowserConfig = specTask?.browser_test ?? spec.defaults?.browser_test
-          if (!taskBrowserConfig) {
-            process.stderr.write(
-              `Warning: browser_test gate enabled but no browser_test config (urls) found — skipping\n`,
-            )
-          } else {
-            const browserResult = await browserTestGate({
-              mcpServers: spec.defaults?.mcp_servers ?? [],
-              taskConfig: taskBrowserConfig,
-              worktreePath,
-              approvalTimeout: spec.defaults?.mcp_server_approval_timeout,
-            })
-            events.emit(
-              'built_in_gate_result',
-              { gate: 'browser_test', passed: browserResult.passed, output: browserResult.output },
-              { convoy_id: convoyId, task_id: taskRecord.id },
-            )
-            if (!browserResult.passed) {
-              await removeWorktree()
-              const freshRecord = store.getTask(taskRecord.id, convoyId)!
-              if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-                store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-                  retries: freshRecord.retries + 1,
-                  worker_id: null,
-                  worktree: null,
-                  started_at: null,
-                  finished_at: null,
-                })
-                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-                process.stdout.write(
-                  `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} browser test gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
-                )
-              } else {
-                store.withTransaction(() => {
-                  store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
-                    finished_at: finishedAt,
-                    output: `Built-in gate (browser_test) failed:\n${browserResult.output}`,
-                    exit_code: 1,
-                  })
-                  store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-                })
-                completedCount++
-                process.stdout.write(
-                  `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} browser test gate failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`,
-                )
-                events.emit(
-                  'task_failed',
-                  { reason: 'gate-failed', gate: 'browser_test', worker_id: workerId },
-                  { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-                )
-                handleExhaustion(freshRecord, 'browser-test', browserResult.output)
-              }
-              taskAdapterMap.delete(taskRecord.id)
-              return
-            }
-          }
-        }
+    const builtInGates = spec.defaults?.built_in_gates
+    const contractResult = validateOutput(rec.agent, result.output)
 
-        let changedFiles: string[] = []
-        let diff = ''
-        try {
-          const { stdout: filesOut } = await execFile(
-            'git', ['diff', '--name-only', `${baseBranch}..HEAD`],
-            { cwd: worktreePath },
-          )
-          changedFiles = filesOut.split('\n').filter(Boolean)
-          const { stdout: diffOut } = await execFile(
-            'git', ['diff', `${baseBranch}..HEAD`],
-            { cwd: worktreePath },
-          )
-          diff = diffOut
-        } catch { /* no commits in worktree yet — skip */ }
-
-        // Secret scan gate
-        if (builtInGates.secret_scan && changedFiles.length > 0) {
-          const scanResult = await runSecretScanGate(changedFiles, worktreePath)
-          events.emit(
-            'built_in_gate_result',
-            { gate: 'secret_scan', passed: scanResult.passed, output: scanResult.output },
-            { convoy_id: convoyId, task_id: taskRecord.id },
-          )
-          if (!scanResult.passed) {
-            await removeWorktree()
-            const freshRecord = store.getTask(taskRecord.id, convoyId)!
-            if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-              store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-                retries: freshRecord.retries + 1,
-                worker_id: null,
-                worktree: null,
-                started_at: null,
-                finished_at: null,
-                prompt: `Secret scan gate failed.\n${scanResult.output}\n\nFix the issues and try again.\n\n${taskRecord.prompt}`,
-              })
-              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-              process.stdout.write(
-                `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} secret scan gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
-              )
-            } else {
-              store.withTransaction(() => {
-                store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
-                  finished_at: finishedAt,
-                  output: `Built-in gate (secret_scan) failed:\n${scanResult.output}`,
-                  exit_code: 1,
-                })
-                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-              })
-              completedCount++
-              process.stdout.write(
-                `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} secret scan gate failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`,
-              )
-              events.emit(
-                'task_failed',
-                { reason: 'gate-failed', gate: 'secret_scan', worker_id: workerId },
-                { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-              )
-              handleExhaustion(freshRecord, 'secret-scan', scanResult.output)
-            }
-            taskAdapterMap.delete(taskRecord.id)
-            return
-          }
-        }
-
-        // Blast radius gate
-        if (builtInGates.blast_radius && diff) {
-          const blastResult = runBlastRadiusGate(diff)
-          events.emit(
-            'built_in_gate_result',
-            { gate: 'blast_radius', level: blastResult.level, passed: blastResult.passed, output: blastResult.output },
-            { convoy_id: convoyId, task_id: taskRecord.id },
-          )
-          if (!blastResult.passed) {
-            await removeWorktree()
-            const freshRecord = store.getTask(taskRecord.id, convoyId)!
-            if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-              store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-                retries: freshRecord.retries + 1,
-                worker_id: null,
-                worktree: null,
-                started_at: null,
-                finished_at: null,
-                prompt: `Blast radius gate failed.\n${blastResult.output}\n\nFix the issues and try again.\n\n${taskRecord.prompt}`,
-              })
-              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-              process.stdout.write(
-                `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} blast radius gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
-              )
-            } else {
-              store.withTransaction(() => {
-                store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
-                  finished_at: finishedAt,
-                  output: `Built-in gate (blast_radius) failed:\n${blastResult.output}`,
-                  exit_code: 1,
-                })
-                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-              })
-              completedCount++
-              process.stdout.write(
-                `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} blast radius gate failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`,
-              )
-              events.emit(
-                'task_failed',
-                { reason: 'gate-failed', gate: 'blast_radius', worker_id: workerId },
-                { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-              )
-              handleExhaustion(freshRecord, 'gate-failed', blastResult.output)
-            }
-            taskAdapterMap.delete(taskRecord.id)
-            return
-          }
-        }
-
-        // Dependency audit and regression test gates
-        //
-        // Both were declared in the spec validator, implemented in full, and set to
-        // 'auto' by `spec-builder.ts` on its own — and never called from here. A
-        // spec could ask for `regression_test`, validate, run green, and never run
-        // the test suite. Nothing failed, which is the worst way for a gate to be
-        // broken. `built-in-gates.test.ts` now derives the accepted-gate list from
-        // the validator and fails if any of them is not branched on and invoked.
-        //
-        // The failure path is shared between the two rather than copied, because
-        // copying it is how the three gates above came to hold three near-identical
-        // 40-line blocks that have to be kept in step by hand.
-        const failGate = async (gate: string, label: string, output: string): Promise<void> => {
-          await removeWorktree()
-          const freshRecord = store.getTask(taskRecord.id, convoyId)!
-          if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-            store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-              retries: freshRecord.retries + 1,
-              worker_id: null,
-              worktree: null,
-              started_at: null,
-              finished_at: null,
-              prompt: `${label} gate failed.\n${output}\n\nFix the issues and try again.`,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-            process.stdout.write(
-              `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} ${label} gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
-            )
-          } else {
-            store.withTransaction(() => {
-              store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
-                finished_at: finishedAt,
-                output: `Built-in gate (${gate}) failed:\n${output}`,
-                exit_code: 1,
-              })
-              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-            })
-            completedCount++
-            process.stdout.write(
-              `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} ${label} gate failed ${elapsed} ${c.dim(`(worker ${workerId})`)}\n`,
-            )
-            events.emit(
-              'task_failed',
-              { reason: 'gate-failed', gate, worker_id: workerId },
-              { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-            )
-            handleExhaustion(freshRecord, 'gate-failed', output)
-          }
-          taskAdapterMap.delete(taskRecord.id)
-        }
-
-        // Both gates shell out to npm, and `runGateCommand` reports a spawn failure
-        // as a non-zero exit — so without this a project that is not an npm package
-        // would have every task fail on a gate it cannot possibly satisfy. Announced
-        // and skipped, the way the browser_test gate handles a missing config.
-        const pkgJsonPath = resolve(worktreePath, 'package.json')
-        let pkgScripts: Record<string, unknown> | null = null
-        if (existsSync(pkgJsonPath)) {
-          try {
-            pkgScripts = (JSON.parse(readFileSync(pkgJsonPath, 'utf8')) as { scripts?: Record<string, unknown> })
-              .scripts ?? {}
-          } catch {
-            pkgScripts = null
-          }
-        }
-
-        if (builtInGates.dependency_audit) {
-          if (pkgScripts === null) {
-            process.stderr.write(
-              `Warning: dependency_audit gate enabled but ${worktreePath} has no readable package.json — skipping\n`,
-            )
-          } else {
-            const auditResult = await runDependencyAuditGate(worktreePath)
-            events.emit(
-              'built_in_gate_result',
-              { gate: 'dependency_audit', passed: auditResult.passed, output: auditResult.output },
-              { convoy_id: convoyId, task_id: taskRecord.id },
-            )
-            if (!auditResult.passed) {
-              await failGate('dependency_audit', 'dependency audit', auditResult.output)
-              return
-            }
-          }
-        }
-
-        if (builtInGates.regression_test) {
-          if (pkgScripts === null || typeof pkgScripts.test !== 'string') {
-            process.stderr.write(
-              `Warning: regression_test gate enabled but no "test" script found in package.json — skipping\n`,
-            )
-          } else {
-            const regressionResult = await runRegressionTestGate(worktreePath)
-            events.emit(
-              'built_in_gate_result',
-              { gate: 'regression_test', passed: regressionResult.passed, output: regressionResult.output },
-              { convoy_id: convoyId, task_id: taskRecord.id },
-            )
-            if (!regressionResult.passed) {
-              await failGate('regression_test', 'regression test', regressionResult.output)
-              return
-            }
-          }
-        }
-
-        // ── Partition violation check (Phase 41) ────────────────────────────
-        if (changedFiles.length > 0) {
-          try {
-            const taskFiles = taskRecord.files ? JSON.parse(taskRecord.files) as string[] : []
-            if (taskFiles.length > 0) {
-              const violation = detectPartitionViolations(taskRecord.id, taskFiles, changedFiles)
-              if (violation) {
-                events.emit('partition_violation', {
-                  task_id: taskRecord.id,
-                  allowed: violation.allowedFiles,
-                  actual: violation.actualFiles,
-                  violations: violation.violations,
-                }, { convoy_id: convoyId, task_id: taskRecord.id })
-                process.stdout.write(`  ${c.yellow('⚠')} ${c.bold(`[${taskRecord.id}]`)} partition violation: ${violation.violations.join(', ')}\n`)
-              }
-            }
-          } catch { /* non-critical */ }
-        }
-
-        // ── TDD gate ──────────────────────────────────────────────────────────
-        if (builtInGates.tdd_check && changedFiles.length > 0) {
-          const tddConfig: TDDGateConfig = typeof builtInGates.tdd_check === 'object'
-            ? { ...DEFAULT_TDD_CONFIG, ...builtInGates.tdd_check }
-            : DEFAULT_TDD_CONFIG
-          const specTaskForTDD = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
-          const tddResult = checkTDD(changedFiles, changedFiles, tddConfig, specTaskForTDD?.agent ?? taskRecord.agent)
-
-          if (tddResult.skipped) {
-            events.emit('tdd_check_skipped', {
-              task_id: taskRecord.id,
-              reason: tddResult.skip_reason,
-              agent: specTaskForTDD?.agent ?? taskRecord.agent,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-          } else if (tddResult.passed) {
-            events.emit('tdd_check_passed', {
-              task_id: taskRecord.id,
-              new_source_files: tddResult.new_source_files.length,
-              existing_test_files: tddResult.existing_test_files.length,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-          } else {
-            const failureMsg = formatTDDFailure(tddResult)
-            events.emit('tdd_check_failed', {
-              task_id: taskRecord.id,
-              missing_test_files: tddResult.missing_test_files,
-              new_source_files: tddResult.new_source_files.length,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-            if (tddConfig.mode === 'block') {
-              await removeWorktree()
-              const freshRecord = store.getTask(taskRecord.id, convoyId)!
-              if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-                store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-                  retries: freshRecord.retries + 1,
-                  worker_id: null,
-                  worktree: null,
-                  started_at: null,
-                  finished_at: null,
-                  prompt: `TDD gate failed.\n${failureMsg}\n\nCreate the missing test files and try again.\n\n${taskRecord.prompt}`,
-                })
-                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-                process.stdout.write(
-                  `  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} TDD gate failed, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`,
-                )
-              } else {
-                store.withTransaction(() => {
-                  store.updateTaskStatus(taskRecord.id, convoyId, 'gate-failed', {
-                    finished_at: finishedAt,
-                    output: `Built-in gate (tdd_check) failed:\n${failureMsg}`,
-                    exit_code: 1,
-                  })
-                  store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-                })
-                completedCount++
-                process.stdout.write(
-                  `  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} TDD gate failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`,
-                )
-                events.emit(
-                  'task_failed',
-                  { reason: 'gate-failed', gate: 'tdd_check', worker_id: workerId },
-                  { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-                )
-                handleExhaustion(freshRecord, 'tdd-check', failureMsg)
-              }
-              taskAdapterMap.delete(taskRecord.id)
-              return
-            } else {
-              // warn mode — log but continue
-              process.stdout.write(
-                `  ${c.yellow('⚠')} ${c.bold(`[${taskRecord.id}]`)} TDD gate warning: ${tddResult.missing_test_files.length} source file(s) without tests\n`,
-              )
-            }
-          }
-        }
+    // ── No-op gate ──────────────────────────────────────────────────────────
+    // A clean exit is not proof the work happened: a worker refused write
+    // permission exits 0 having written nothing. On unless the spec turns it off.
+    if (files.length > 0 && (builtInGates ? builtInGates.no_op !== false : true)) {
+      const noOp = noOpGate({
+        declaredFiles: files,
+        changedFiles: changes ? changedFiles : null,
+        agent: rec.agent,
+        contractData: contractResult.data,
+      })
+      if (!noOp.passed) {
+        events.emit('built_in_gate_result', { gate: 'no_op', passed: false, output: noOp.output }, { convoy_id: convoyId, task_id: rec.id })
+        return retryOrFail('gate-failed', 'Produced no changes', {
+          kind: 'no-op',
+          gate: 'no_op',
+          output: `Built-in gate (no_op) failed:\n${noOp.output}`,
+          failureType: 'no-op',
+          note: `Your previous attempt produced no changes.\n${noOp.output}\n\nWrite the files the task asks for. If you cannot, say why and stop.`,
+        })
       }
+    }
 
-      // ── Drift detection ──────────────────────────────────────────────────
-      const specTaskForDrift = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
-      const isDriftEnabled = specTaskForDrift?.detect_drift ?? spec.defaults?.detect_drift ?? false
-
-      if (isDriftEnabled && taskRecord.drift_retried === 0) {
-        const driftResult = await detectDrift(taskRecord, taskAdapter)
-
-        events.emit('drift_check_result', {
-          task_id: taskRecord.id,
-          score: driftResult.score,
-          threshold: driftResult.threshold,
-          explanation: driftResult.explanation,
-          drifted: driftResult.drifted,
-        }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-        store.updateTaskDrift(taskRecord.id, convoyId, { drift_score: driftResult.score })
-
-        if (driftResult.drifted) {
-          events.emit('drift_detected', {
-            task_id: taskRecord.id,
-            score: driftResult.score,
-            threshold: driftResult.threshold,
-          }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-          await removeWorktree()
-          store.updateTaskDrift(taskRecord.id, convoyId, { drift_retried: 1 })
-          store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-            worker_id: null,
-            worktree: null,
-            started_at: null,
-            finished_at: null,
-          })
-          store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-          process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} drift detected (score: ${driftResult.score.toFixed(2)}), retrying\n`)
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-      }
-
-      // ── Review pipeline ──────────────────────────────────────────────────
-      const specTaskForReview = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
-      const taskReviewSetting: string = specTaskForReview?.review ?? spec.defaults?.review ?? 'auto'
-
-      if (taskReviewSetting !== 'none') {
-        // Compute diff stats from worktree
-        let reviewChangedFiles: string[] = []
-        let reviewDiffLines = 0
-
-        if (worktreePath) {
-          try {
-            const { stdout: filesOut } = await execFile(
-              'git', ['diff', '--name-only', `${baseBranch}..HEAD`],
-              { cwd: worktreePath },
-            )
-            reviewChangedFiles = filesOut.split('\n').filter(Boolean)
-            const { stdout: diffOut } = await execFile(
-              'git', ['diff', `${baseBranch}..HEAD`],
-              { cwd: worktreePath },
-            )
-            reviewDiffLines = diffOut.split('\n').filter(l => l.startsWith('+') || l.startsWith('-')).filter(l => !l.startsWith('+++') && !l.startsWith('---')).length
-          } catch { /* no commits yet */ }
-        }
-
-        const diffStats: DiffStats = {
-          linesChanged: reviewDiffLines,
-          filesChanged: reviewChangedFiles.length,
-          filePaths: reviewChangedFiles,
-        }
-
-        // Determine review level
-        let reviewLevel: ReviewLevel
-        if (taskReviewSetting === 'fast') {
-          reviewLevel = 'fast'
-        } else if (taskReviewSetting === 'panel') {
-          reviewLevel = 'panel'
+    // ── Built-in per-task gates ─────────────────────────────────────────────
+    if (builtInGates) {
+      if (builtInGates.browser_test) {
+        const browserConfig = specTask?.browser_test ?? spec.defaults?.browser_test
+        if (!browserConfig) {
+          progress.line(`  ${c.yellow('⚠')} ${c.bold(`[${rec.id}]`)} browser_test is on but no browser_test.urls are set — skipped`)
         } else {
-          reviewLevel = evaluateReviewLevel(taskRecord, diffStats, spec.defaults?.review_heuristics, true)
+          const browserResult = await browserTestGate({
+            mcpServers: spec.defaults?.mcp_servers ?? [],
+            taskConfig: browserConfig,
+            worktreePath: wt,
+            approvalTimeout: spec.defaults?.mcp_server_approval_timeout,
+          })
+          events.emit('built_in_gate_result', { gate: 'browser_test', passed: browserResult.passed, output: browserResult.output }, { convoy_id: convoyId, task_id: rec.id })
+          if (!browserResult.passed) {
+            return retryOrFail('gate-failed', 'Browser test gate failed', {
+              kind: 'gate-failed', gate: 'browser_test', output: `Built-in gate (browser_test) failed:\n${browserResult.output}`, failureType: 'browser-test',
+              note: `The browser test gate failed on your previous attempt:\n${browserResult.output.slice(-3000)}`,
+            })
+          }
+        }
+      }
+
+      if (builtInGates.secret_scan && changedFiles.length > 0) {
+        const scanResult = await runSecretScanGate(changedFiles, wt)
+        events.emit('built_in_gate_result', { gate: 'secret_scan', passed: scanResult.passed, output: scanResult.output }, { convoy_id: convoyId, task_id: rec.id })
+        if (!scanResult.passed) {
+          return retryOrFail('gate-failed', 'Secret scan found a credential in the change', {
+            kind: 'gate-failed', gate: 'secret_scan', output: `Built-in gate (secret_scan) failed:\n${scanResult.output}`, failureType: 'secret-scan',
+            note: `The secret scan found credentials in your previous change:\n${scanResult.output}\n\nRemove them; read secrets from the environment instead.`,
+          })
+        }
+      }
+
+      if (builtInGates.blast_radius && diff) {
+        const blast = runBlastRadiusGate(diff)
+        events.emit('built_in_gate_result', { gate: 'blast_radius', level: blast.level, passed: blast.passed, output: blast.output }, { convoy_id: convoyId, task_id: rec.id })
+        if (!blast.passed) {
+          return retryOrFail('gate-failed', blast.output, {
+            kind: 'gate-failed', gate: 'blast_radius', output: `Built-in gate (blast_radius) failed:\n${blast.output}`,
+            note: `Your previous change was too large: ${blast.output}\n\nKeep the change to what the task asks for.`,
+          })
+        }
+      }
+
+      if (builtInGates.tdd_check && changedFiles.length > 0) {
+        const tddConfig: TDDGateConfig = typeof builtInGates.tdd_check === 'object'
+          ? { ...DEFAULT_TDD_CONFIG, ...builtInGates.tdd_check }
+          : DEFAULT_TDD_CONFIG
+        const tdd = checkTDD(changedFiles, changedFiles, tddConfig, rec.agent)
+        if (tdd.skipped) {
+          events.emit('tdd_check_skipped', { task_id: rec.id, reason: tdd.skip_reason, agent: rec.agent }, { convoy_id: convoyId, task_id: rec.id })
+        } else if (tdd.passed) {
+          events.emit('tdd_check_passed', {
+            task_id: rec.id,
+            new_source_files: tdd.new_source_files.length,
+            existing_test_files: tdd.existing_test_files.length,
+          }, { convoy_id: convoyId, task_id: rec.id })
+        } else {
+          const failureMsg = formatTDDFailure(tdd)
+          events.emit('tdd_check_failed', {
+            task_id: rec.id,
+            missing_test_files: tdd.missing_test_files,
+            new_source_files: tdd.new_source_files.length,
+          }, { convoy_id: convoyId, task_id: rec.id })
+          if (tddConfig.mode === 'block') {
+            return retryOrFail('gate-failed', 'TDD gate: source files without tests', {
+              kind: 'gate-failed', gate: 'tdd_check', output: `Built-in gate (tdd_check) failed:\n${failureMsg}`, failureType: 'tdd-check',
+              note: `The TDD gate failed on your previous attempt:\n${failureMsg}\n\nCreate the missing test files.`,
+            })
+          }
+          progress.line(`  ${c.yellow('⚠')} ${c.bold(`[${rec.id}]`)} ${tdd.missing_test_files.length} source file(s) without tests`)
+        }
+      }
+    }
+
+    // ── Partition check: a warning, the work stays ─────────────────────────
+    if (files.length > 0 && changedFiles.length > 0) {
+      const violation = detectPartitionViolations(rec.id, files, changedFiles)
+      if (violation) {
+        events.emit('partition_violation', {
+          task_id: rec.id,
+          allowed: violation.allowedFiles,
+          actual: violation.actualFiles,
+          violations: violation.violations,
+        }, { convoy_id: convoyId, task_id: rec.id })
+        progress.line(`  ${c.yellow('⚠')} ${c.bold(`[${rec.id}]`)} changed files outside its list: ${violation.violations.join(', ')}`)
+      }
+    }
+
+    // ── Review ──────────────────────────────────────────────────────────────
+    const reviewSetting = specTask?.review ?? spec.defaults?.review ?? 'auto'
+    if (reviewSetting !== 'none') {
+      const diffStats: DiffStats = {
+        linesChanged: countChangedLines(diff),
+        filesChanged: changedFiles.length,
+        filePaths: changedFiles,
+      }
+      const level: ReviewLevel = reviewSetting === 'fast' || reviewSetting === 'panel'
+        ? reviewSetting
+        : evaluateReviewLevel(rec, diffStats, spec.defaults?.review_heuristics, true)
+      const reviewerModel = spec.defaults?.reviewer_model ?? 'default'
+
+      const recordSkip = (why: string): void => {
+        store.updateTaskReview(rec.id, convoyId, { review_level: level, review_verdict: 'skipped', review_tokens: 0, review_model: null })
+        events.emit('review_skipped', { level, reason: why }, { convoy_id: convoyId, task_id: rec.id })
+        progress.line(`  ${c.yellow('⚠')} ${c.bold(`[${rec.id}]`)} review skipped: ${why}`)
+      }
+
+      if (level === 'auto-pass') {
+        store.updateTaskReview(rec.id, convoyId, { review_level: 'auto-pass', review_verdict: 'pass', review_tokens: 0, review_model: null })
+        events.emit('review_verdict', { level: 'auto-pass', verdict: 'pass', tokens: 0, model: null, feedback_length: 0 }, { convoy_id: convoyId, task_id: rec.id })
+      } else if (spec.defaults?.review_budget != null && reviewTokensTotal >= spec.defaults.review_budget) {
+        if ((spec.defaults.on_review_budget_exceeded ?? 'skip') === 'stop') {
+          stopDispatching('review budget spent (on_review_budget_exceeded: stop)')
+          return fail('review-blocked', 'Review budget exceeded', { kind: 'review-blocked' })
+        }
+        recordSkip('the review budget is spent')
+      } else {
+        const reviewContext: ReviewContext = {
+          prompt: rec.prompt,
+          files,
+          diff,
+          cwd: wt,
+          adapterName: taskAdapter.name,
+          execute: (task, options) => runAgent(rec.id, taskAdapter, task, options, Math.min(rec.timeout_ms, 900_000)),
+          canRunReadOnly: supportsPermissionMode(taskAdapter.name, 'plan'),
+          timeoutMs: Math.min(rec.timeout_ms, 900_000),
+          defaultModel: taskAdapter.tierModels?.economy,
+        }
+        // The model the reviewer is asked for, not the spec's 'default' placeholder.
+        const askedModel = reviewerModel !== 'default' ? reviewerModel : (reviewContext.defaultModel ?? 'runtime default')
+        events.emit('review_started', { level, task_id: rec.id, model: askedModel }, { convoy_id: convoyId, task_id: rec.id })
+        const reviews: ReviewResult[] = level === 'panel'
+          ? await Promise.all([0, 1, 2].map(() => reviewSemaphore.use(() => reviewRunner(rec, 'panel', reviewerModel, reviewContext))))
+          : [await reviewSemaphore.use(() => reviewRunner(rec, 'fast', reviewerModel, reviewContext))]
+        if (ctl.interrupted) return requeue()
+
+        const reviewTokens = reviews.reduce((s, r) => s + (r.tokens ?? 0), 0)
+        const reviewCost = reviews.reduce((s, r) => s + (r.costUsd ?? 0), 0)
+        reviewTokensTotal += reviewTokens
+        if (reviewTokens > 0) store.updateConvoyReviewTokens(convoyId, reviewTokensTotal)
+        if (reviewCost > 0) {
+          const row = store.getTask(rec.id, convoyId)!
+          store.updateTaskStatus(rec.id, convoyId, row.status, { cost_usd: (row.cost_usd ?? 0) + reviewCost })
         }
 
-        const reviewerModel = spec.defaults?.reviewer_model ?? 'default'
-        events.emit('review_started', { level: reviewLevel, task_id: taskRecord.id, model: reviewerModel }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-        if (reviewLevel === 'auto-pass') {
-          store.updateTaskReview(taskRecord.id, convoyId, {
-            review_level: 'auto-pass',
-            review_verdict: 'pass',
-            review_tokens: 0,
-            review_model: reviewerModel,
-          })
-          events.emit('review_verdict', { level: 'auto-pass', verdict: 'pass', tokens: 0, model: reviewerModel, feedback_length: 0 }, { convoy_id: convoyId, task_id: taskRecord.id })
-        } else if (reviewLevel === 'fast') {
-          // Check review budget
-          const reviewBudget = spec.defaults?.review_budget
-          const onBudgetExceeded = spec.defaults?.on_review_budget_exceeded ?? 'skip'
-
-          if (reviewBudget != null && reviewTokensTotal >= reviewBudget) {
-            if (onBudgetExceeded === 'stop') {
-              const allPending = store.getTasksByConvoy(convoyId).filter(t => t.status === 'pending')
-              for (const t of allPending) skipTask(t.id, 'review_budget exceeded with on_review_budget_exceeded: stop')
-              store.withTransaction(() => {
-                store.updateTaskStatus(taskRecord.id, convoyId, 'review-blocked', { finished_at: finishedAt, output: 'Review budget exceeded', exit_code: 1 })
-                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-              })
-              completedCount++
-              process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} review budget exceeded (stop) ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-              events.emit('review_verdict', { level: 'fast', verdict: 'skip', tokens: 0, model: reviewerModel, feedback_length: 0, budget_exceeded: true }, { convoy_id: convoyId, task_id: taskRecord.id })
-              taskAdapterMap.delete(taskRecord.id)
-              return
-            } else if (onBudgetExceeded === 'downgrade') {
-              store.updateTaskReview(taskRecord.id, convoyId, { review_level: 'fast', review_verdict: 'pass', review_tokens: 0, review_model: reviewerModel })
-              events.emit('review_verdict', { level: 'fast', verdict: 'pass', tokens: 0, model: reviewerModel, feedback_length: 0, budget_downgrade: true }, { convoy_id: convoyId, task_id: taskRecord.id })
-            } else {
-              // 'skip': treat as passed
-              events.emit('review_verdict', { level: 'fast', verdict: 'pass', tokens: 0, model: reviewerModel, feedback_length: 0, budget_skip: true }, { convoy_id: convoyId, task_id: taskRecord.id })
-            }
-          } else {
-            await reviewSemaphore.acquire()
-            let reviewResult: ReviewResult
-            try {
-              if (reviewRunner && spec.defaults?.review_stages !== false) {
-                // Two-stage review: spec compliance first, then code quality
-                const twoStageResult = await runTwoStageReview(taskRecord, reviewRunner, reviewerModel)
-                for (const stage of twoStageResult.stages) {
-                  events.emit('review_stage_completed', { stage: stage.stage, verdict: stage.verdict, tokens: stage.tokens_used, task_id: taskRecord.id, model: reviewerModel }, { convoy_id: convoyId, task_id: taskRecord.id })
-                }
-                reviewResult = {
-                  verdict: twoStageResult.overall_verdict,
-                  feedback: twoStageResult.stages.flatMap(s => s.issues).join('\n'),
-                  tokens: twoStageResult.total_tokens,
-                  model: reviewerModel,
-                }
-              } else if (reviewRunner) {
-                reviewResult = await reviewRunner(taskRecord, 'fast', reviewerModel)
-              } else {
-                reviewResult = { verdict: 'pass', feedback: '', tokens: 0, model: reviewerModel }
-              }
-            } finally {
-              reviewSemaphore.release()
-            }
-
-            reviewTokensTotal += reviewResult.tokens
-            store.updateTaskReview(taskRecord.id, convoyId, {
-              review_level: 'fast',
-              review_verdict: reviewResult.verdict,
-              review_tokens: reviewResult.tokens,
-              review_model: reviewResult.model,
-            })
-            store.updateConvoyReviewTokens(convoyId, reviewTokensTotal)
-            events.emit('review_verdict', { level: 'fast', verdict: reviewResult.verdict, tokens: reviewResult.tokens, model: reviewResult.model, feedback_length: reviewResult.feedback.length }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-            if (reviewResult.verdict === 'block') {
-              await removeWorktree()
-              const freshRecord = store.getTask(taskRecord.id, convoyId)!
-              if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-                const contextPrefix = `Previous attempt was blocked by review.\nFeedback:\n${reviewResult.feedback}\n\nFix the issues and try again.\n\n`
-                store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-                  retries: freshRecord.retries + 1,
-                  worker_id: null,
-                  worktree: null,
-                  started_at: null,
-                  finished_at: null,
-                  prompt: contextPrefix + taskRecord.prompt,
-                })
-                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-                process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} review blocked, retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`)
-                taskAdapterMap.delete(taskRecord.id)
-                return
-              } else {
-                store.withTransaction(() => {
-                  store.updateTaskStatus(taskRecord.id, convoyId, 'review-blocked', {
-                    finished_at: finishedAt,
-                    output: `Review blocked: ${reviewResult.feedback}`,
-                    exit_code: 1,
-                  })
-                  store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-                })
-                completedCount++
-                process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} review blocked ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-                events.emit('task_failed', { reason: 'review-blocked', worker_id: workerId }, { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId })
-                handleExhaustion(freshRecord, 'review-blocked', reviewResult.feedback || null)
-                taskAdapterMap.delete(taskRecord.id)
-                return
-              }
-            }
-          }
+        const decided = reviews.filter(r => r.verdict !== 'skipped')
+        const passes = decided.filter(r => r.verdict === 'pass').length
+        const blocks = decided.filter(r => r.verdict === 'block').length
+        const needed = level === 'panel' ? 2 : 1
+        const freshForPanel = store.getTask(rec.id, convoyId)!
+        if (passes < needed && blocks < needed) {
+          recordSkip(reviews.find(r => r.verdict === 'skipped')?.feedback || 'no verdict')
         } else {
-          // panel: 3 concurrent reviewer calls, majority vote
-          await reviewSemaphore.acquire()
-          let panelResults: ReviewResult[]
-          try {
-            const noopRunner = (_t: TaskRecord, _l: ReviewLevel, m: string) => Promise.resolve({ verdict: 'pass' as const, feedback: '', tokens: 0, model: m })
-            const runner = reviewRunner ?? noopRunner
-            const twoStageEnabled = spec.defaults?.review_stages !== false
-            if (twoStageEnabled && reviewRunner) {
-              // Each panel reviewer runs both stages; majority vote on overall_verdict
-              const twoStageResults = await Promise.all([
-                runTwoStageReview(taskRecord, runner, reviewerModel),
-                runTwoStageReview(taskRecord, runner, reviewerModel),
-                runTwoStageReview(taskRecord, runner, reviewerModel),
-              ])
-              for (const tsr of twoStageResults) {
-                for (const stage of tsr.stages) {
-                  events.emit('review_stage_completed', { stage: stage.stage, verdict: stage.verdict, tokens: stage.tokens_used, task_id: taskRecord.id, model: reviewerModel }, { convoy_id: convoyId, task_id: taskRecord.id })
-                }
-              }
-              panelResults = twoStageResults.map(tsr => ({
-                verdict: tsr.overall_verdict,
-                feedback: tsr.stages.flatMap(s => s.issues).join('\n'),
-                tokens: tsr.total_tokens,
-                model: reviewerModel,
-              }))
-            } else {
-              panelResults = await Promise.all([
-                runner(taskRecord, 'panel', reviewerModel),
-                runner(taskRecord, 'panel', reviewerModel),
-                runner(taskRecord, 'panel', reviewerModel),
-              ])
-            }
-          } finally {
-            reviewSemaphore.release()
-          }
-
-          const panelPasses = panelResults.filter(r => r.verdict === 'pass').length
-          const panelBlocks = panelResults.filter(r => r.verdict === 'block').length
-          const totalPanelTokens = panelResults.reduce((sum, r) => sum + r.tokens, 0)
-          reviewTokensTotal += totalPanelTokens
-
-          const freshForPanel = store.getTask(taskRecord.id, convoyId)!
-          store.updateTaskReview(taskRecord.id, convoyId, {
-            review_level: 'panel',
-            review_verdict: panelPasses >= 2 ? 'pass' : 'block',
-            review_tokens: totalPanelTokens,
-            review_model: reviewerModel,
-            panel_attempts: freshForPanel.panel_attempts + 1,
+          const verdict = blocks >= needed ? 'block' : 'pass'
+          const model = decided.find(r => r.model)?.model ?? null
+          store.updateTaskReview(rec.id, convoyId, {
+            review_level: level,
+            review_verdict: verdict,
+            review_tokens: reviewTokens,
+            review_model: model,
+            ...(level === 'panel' ? { panel_attempts: freshForPanel.panel_attempts + 1 } : {}),
           })
-          if (totalPanelTokens > 0) store.updateConvoyReviewTokens(convoyId, reviewTokensTotal)
-          events.emit('review_verdict', { level: 'panel', verdict: panelPasses >= 2 ? 'pass' : 'block', tokens: totalPanelTokens, model: reviewerModel, feedback_length: panelResults.map(r => r.feedback).join('').length, passes: panelPasses, blocks: panelBlocks }, { convoy_id: convoyId, task_id: taskRecord.id })
+          events.emit('review_verdict', {
+            level,
+            verdict,
+            tokens: reviewTokens,
+            model,
+            feedback_length: decided.map(r => r.feedback).join('').length,
+            ...(level === 'panel' ? { passes, blocks } : {}),
+          }, { convoy_id: convoyId, task_id: rec.id })
 
-          if (panelBlocks >= 2) {
-            const blockFeedback = panelResults.filter(r => r.verdict === 'block').map(r => r.feedback).join('\n\n---\n\n')
-            await removeWorktree()
-
-            // Check for dispute trigger
-            const updatedTask = store.getTask(taskRecord.id, convoyId)!
-            if (updatedTask.panel_attempts >= 3) {
-              const disputeId = `dispute-${taskRecord.id}-${Date.now()}`
-              const onDispute = spec.defaults?.on_dispute ?? 'stop'
-
-              store.updateTaskDisputeStatus(taskRecord.id, convoyId, 'disputed', disputeId)
-              writeDisputeToMarkdown(disputeId, convoyId, taskRecord, panelResults, basePath, events)
-
+          if (verdict === 'block') {
+            const feedback = decided.filter(r => r.verdict === 'block').map(r => r.feedback).join('\n\n---\n\n')
+            if (level === 'panel' && freshForPanel.panel_attempts + 1 >= 3) {
+              const disputeId = `dispute-${rec.id}-${Date.now()}`
+              await cleanup()
+              store.updateTaskDisputeStatus(rec.id, convoyId, 'disputed', disputeId)
+              writeDispute(disputeId, rec, decided, freshForPanel.panel_attempts + 1)
               events.emit('dispute_opened', {
                 dispute_id: disputeId,
-                task_id: taskRecord.id,
-                agent: taskRecord.agent,
-                panel_attempts: updatedTask.panel_attempts,
-              }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-              if (onDispute === 'stop') {
-                const allPending = store.getTasksByConvoy(convoyId).filter(t => t.status === 'pending')
-                for (const t of allPending) {
-                  skipTask(t.id, `on_dispute: stop — task "${taskRecord.id}" disputed`)
-                }
-              }
-
-              completedCount++
-              process.stdout.write(`  ${c.red('⚡')} ${c.bold(`[${taskRecord.id}]`)} disputed after ${updatedTask.panel_attempts} panel attempts\n`)
-              taskAdapterMap.delete(taskRecord.id)
+                task_id: rec.id,
+                agent: rec.agent,
+                panel_attempts: freshForPanel.panel_attempts + 1,
+                reason: firstLine(feedback, 400),
+              }, { convoy_id: convoyId, task_id: rec.id })
+              progress.line(`  ${c.red('⚡')} ${c.bold(`[${rec.id}]`)} disputed after ${freshForPanel.panel_attempts + 1} panel reviews`)
+              if ((spec.defaults?.on_dispute ?? 'stop') === 'stop') stopDispatching(`on_dispute: stop — task "${rec.id}" disputed`)
+              cascadeFailure(rec.id)
               return
             }
-
-            const freshRecord = store.getTask(taskRecord.id, convoyId)!
-            if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-              const contextPrefix = `Previous attempt was blocked by panel review (${panelBlocks}/3 reviewers).\nMUST-FIX:\n${blockFeedback}\n\nFix the issues and try again.\n\n`
-              store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-                retries: freshRecord.retries + 1,
-                worker_id: null,
-                worktree: null,
-                started_at: null,
-                finished_at: null,
-                prompt: contextPrefix + taskRecord.prompt,
-              })
-              store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-              process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} panel blocked (${panelBlocks}/3), retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`)
-              taskAdapterMap.delete(taskRecord.id)
-              return
-            } else {
-              store.withTransaction(() => {
-                store.updateTaskStatus(taskRecord.id, convoyId, 'review-blocked', {
-                  finished_at: finishedAt,
-                  output: `Panel review blocked (${panelBlocks}/3): ${blockFeedback}`,
-                  exit_code: 1,
-                })
-                store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-              })
-              completedCount++
-              process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} panel blocked ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-              events.emit('task_failed', { reason: 'review-blocked', worker_id: workerId }, { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId })
-              handleExhaustion(freshRecord, 'review-blocked', blockFeedback || null)
-              taskAdapterMap.delete(taskRecord.id)
-              return
-            }
-          }
-        }
-      }
-
-
-      // ── post_task hooks ───────────────────────────────────────────────────
-      if (taskHooks.length > 0) {
-        const postResult = await runHooks(taskHooks, 'post_task', {
-          taskId: taskRecord.id,
-          convoyId,
-          cwd: worktreePath ?? basePath,
-        })
-        if (!postResult.passed) {
-          await removeWorktree()
-          const hookLabel = postResult.failedHook?.name ?? postResult.failedHook?.type ?? 'unknown'
-          store.withTransaction(() => {
-            store.updateTaskStatus(taskRecord.id, convoyId, 'hook-failed', {
-              finished_at: finishedAt,
-              output: `post_task hook "${hookLabel}" failed: ${postResult.error ?? ''}`,
-              exit_code: 1,
+            return retryOrFail('review-blocked', firstLine(feedback) || 'no reason given', {
+              kind: 'review-blocked',
+              output: `Review blocked: ${firstLine(feedback) || 'no reason given'}\n\n${feedback}`,
+              note: `A reviewer blocked your previous change:\n${feedback}\n\nFix these and finish the task.`,
             })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-          })
-          completedCount++
-          process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} post_task hook failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-          events.emit('task_failed', { reason: 'hook-failed', hook: hookLabel, worker_id: workerId }, { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId })
-          cascadeFailure(taskRecord.id)
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-      }
-
-      // ── Symlink security scan (post-execution) ───────────────────────────
-      if (taskFiles.length > 0 && worktreePath) {
-        try {
-          scanNewSymlinks(worktreePath, taskFiles)
-        } catch (err) {
-          await removeWorktree()
-          store.withTransaction(() => {
-            store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
-              finished_at: finishedAt,
-              output: `Post-execution symlink security check failed: ${(err as Error).message}`,
-              exit_code: 1,
-            })
-            store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-          })
-          completedCount++
-          events.emit('task_failed', { reason: 'symlink-escape-post', worker_id: workerId }, { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId })
-          cascadeFailure(taskRecord.id)
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-      }
-
-      if (worktreePath) {
-        let mergeAttempt = 0
-        const maxMergeAttempts = 2
-        let merged = false
-
-        while (mergeAttempt < maxMergeAttempts && !merged) {
-          try {
-            await mergeQueue.merge(worktreePath, `convoy-${workerId}`, baseBranch)
-            merged = true
-          } catch (err) {
-            if (err instanceof MergeConflictError) {
-              mergeAttempt++
-              events.emit('merge_conflict_detected', {
-                attempt: mergeAttempt,
-                conflicting_files: err.conflictingFiles,
-              }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-              if (mergeAttempt >= maxMergeAttempts) {
-                events.emit('merge_conflict_failed', {
-                  attempts: mergeAttempt,
-                  conflicting_files: err.conflictingFiles,
-                }, { convoy_id: convoyId, task_id: taskRecord.id })
-
-                const freshRecord = store.getTask(taskRecord.id, convoyId)!
-                store.withTransaction(() => {
-                  store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
-                    finished_at: now(),
-                    output: `Merge conflict could not be resolved after ${mergeAttempt} attempts. Files: ${err.conflictingFiles.join(', ')}`,
-                    exit_code: 1,
-                  })
-                  store.updateWorkerStatus(workerId, 'failed', { finished_at: now() })
-                })
-                completedCount++
-                process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} merge conflict unresolved ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-                events.emit('task_failed', { reason: 'merge-conflict', worker_id: workerId }, { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId })
-                cascadeFailure(taskRecord.id)
-                handleExhaustion(freshRecord, 'merge-conflict', err.conflictingFiles.join(', '))
-                break
-              }
-
-              // Per spec: backoff on second attempt (unreachable with maxMergeAttempts=2 but follows spec)
-              if (mergeAttempt === 2) {
-                await new Promise<void>(resolve => setTimeout(resolve, 30_000))
-              }
-
-              // Inject a resolution task
-              const fileHash = createHash('sha256')
-                .update(err.conflictingFiles.sort().join(','))
-                .digest('hex')
-                .slice(0, 12)
-              const idempotencyKey = `merge-conflict:${taskRecord.phase}:${fileHash}`
-              const resolutionTaskId = `merge-fix-${taskRecord.id}-${mergeAttempt}`
-              const conflictPrompt = `Resolve merge conflicts in: ${err.conflictingFiles.join(', ')}. Ensure no conflict markers remain (<<<<<<<, =======, >>>>>>>), syntax is valid, no duplicate imports.`
-
-              const resolutionRecord: TaskRecord = {
-                id: resolutionTaskId,
-                convoy_id: convoyId,
-                phase: taskRecord.phase,
-                prompt: conflictPrompt,
-                agent: taskRecord.agent,
-                adapter: null,
-                model: null,
-                timeout_ms: 600_000,
-                status: 'pending',
-                worker_id: null,
-                worktree: null,
-                output: null,
-                exit_code: null,
-                started_at: null,
-                finished_at: null,
-                retries: 0,
-                max_retries: 1,
-                files: JSON.stringify(err.conflictingFiles),
-                depends_on: null,
-                prompt_tokens: null,
-                completion_tokens: null,
-                total_tokens: null,
-                cost_usd: null,
-                gates: null,
-                on_exhausted: 'dlq',
-                injected: 1,
-                provenance: 'merge-conflict',
-                idempotency_key: idempotencyKey,
-                current_step: null,
-                total_steps: null,
-                review_level: null,
-                review_verdict: null,
-                review_tokens: null,
-                review_model: null,
-                panel_attempts: 0,
-                dispute_id: null,
-                drift_score: null,
-                drift_retried: 0,
-                outputs: null,
-                inputs: null,
-              }
-
-              store.insertInjectedTask(resolutionRecord)
-              const storedResolutionRecord = store.getTask(resolutionTaskId, convoyId)!
-              await executeOneTask(storedResolutionRecord)
-              // Next loop iteration will retry the merge
-            } else {
-              // Non-conflict merge error — log warning and continue to done path
-              if (verbose) {
-                process.stderr.write(
-                  `Warning: merge failed for ${taskRecord.id}: ${(err as Error).message}\n`,
-                )
-              }
-              merged = true // Preserve original behavior: continue despite error
-              break
-            }
-          }
-        }
-
-        await removeWorktree()
-
-        if (!merged) {
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-      }
-
-      const usageExtra: Partial<{ prompt_tokens: number; completion_tokens: number; total_tokens: number }> = {}
-      if (result.usage) {
-        if (result.usage.prompt_tokens != null) usageExtra.prompt_tokens = result.usage.prompt_tokens
-        if (result.usage.completion_tokens != null) usageExtra.completion_tokens = result.usage.completion_tokens
-        if (result.usage.total_tokens != null) usageExtra.total_tokens = result.usage.total_tokens
-      } else {
-        // Estimate tokens from prompt/output text length (~4 chars per token)
-        const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
-        const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
-        usageExtra.prompt_tokens = estimatedPrompt
-        usageExtra.completion_tokens = estimatedCompletion
-        usageExtra.total_tokens = estimatedPrompt + estimatedCompletion
-        if (verbose) {
-          process.stdout.write(`    ${c.dim('ℹ')} Estimated ${usageExtra.total_tokens} tokens (adapter ${taskAdapter.name} returned no usage data)\n`)
-        }
-      }
-
-
-      // ── Capture outputs as artifacts ────────────────────────────────────────
-      if (taskRecord.outputs) {
-        const outputs: TaskOutput[] = JSON.parse(taskRecord.outputs)
-        for (const output of outputs) {
-          let content: string
-          if (output.type === 'summary') {
-            content = result.output.slice(-4096)
-          } else if (output.type === 'json') {
-            const jsonMatch = result.output.match(/```json\n([\s\S]*?)```/)
-            content = jsonMatch ? jsonMatch[1].trim() : result.output
-          } else {
-            content = result.output
-          }
-          try {
-            store.insertArtifact({
-              id: `artifact-${taskRecord.id}-${output.name}-${Date.now()}`,
-              convoy_id: convoyId,
-              task_id: taskRecord.id,
-              name: output.name,
-              type: output.type,
-              content,
-              created_at: new Date().toISOString(),
-            })
-          } catch (err) {
-            if (err instanceof ConvoyArtifactLimitError) {
-              events.emit('artifact_limit_reached', {
-                task_id: taskRecord.id,
-                artifact_name: output.name,
-              }, { convoy_id: convoyId, task_id: taskRecord.id })
-            } else {
-              throw err
-            }
           }
         }
       }
+    }
 
-      // ── Extract filesystem artifacts (Phase 43) ────────────────────────
+    // ── post_task hooks and the post-run symlink scan ───────────────────────
+    if (taskHooks.length > 0) {
+      const post = await runHooks(taskHooks, 'post_task', { taskId: rec.id, cwd: wt, taskAdapter })
+      if (!post.passed) {
+        const label = post.failedHook?.name ?? post.failedHook?.type ?? 'unknown'
+        return fail('hook-failed', `post_task hook "${label}" failed: ${post.error ?? ''}`, { kind: 'hook-failed', hook: label })
+      }
+    }
+    if (files.length > 0) {
       try {
-        const fsArtifactRefs = extractArtifactRefs(taskRecord.id, convoyId, result.output)
-        if (fsArtifactRefs.length > 0) {
-          events.emit('artifacts_extracted', {
-            task_id: taskRecord.id,
-            count: fsArtifactRefs.length,
-            artifacts: fsArtifactRefs.map(r => ({ filename: r.filename, summary: r.summary })),
-          }, { convoy_id: convoyId, task_id: taskRecord.id })
-        }
+        scanNewSymlinks(wt, files)
       } catch (err) {
-        process.stderr.write(`[artifacts] Warning: extraction failed for task ${taskRecord.id}: ${(err as Error).message}\n`)
+        return fail('failed', `Post-execution symlink security check failed: ${(err as Error).message}`, { kind: 'symlink-escape-post' })
       }
+    }
 
-      // ── Create file artifacts from task file list ────────────────────────
-      if (taskRecord.files && !taskRecord.outputs) {
-        try {
-          const fileList: string[] = JSON.parse(taskRecord.files)
-          for (const filePath of fileList.slice(0, 20)) {
-            try {
-              store.insertArtifact({
-                id: `artifact-${taskRecord.id}-file-${filePath.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}`,
-                convoy_id: convoyId,
-                task_id: taskRecord.id,
-                name: filePath,
-                type: 'file',
-                content: '',
-                created_at: new Date().toISOString(),
-              })
-            } catch (err) {
-              if (err instanceof ConvoyArtifactLimitError) break
-              // Other errors are non-critical
-            }
-          }
-        } catch { /* files not parseable */ }
+    // ── Output contract: a warning, never a re-run ──────────────────────────
+    // The re-run used to happen after the first attempt had already merged,
+    // so a missing block ran — and merged — the whole task twice.
+    if (!contractResult.valid) {
+      const missing = contractResult.missing.filter(m => m !== '__contract_block')
+      events.emit('contract_violation', {
+        task_id: rec.id,
+        agent: rec.agent,
+        missing: contractResult.missing,
+        warnings: contractResult.warnings,
+      }, { convoy_id: convoyId, task_id: rec.id })
+      if (verbose) {
+        progress.line(`  ${c.dim(`  [${rec.id}] no complete output summary${missing.length ? ` (missing ${missing.join(', ')})` : ''}`)}`)
       }
+    }
 
-      // ── Output contract validation ────────────────────────────────────────
-      // Validated once, up at the no-op gate, which reads the same block.
-      if (!contractResult.valid) {
-        const freshRecordForContract = store.getTask(taskRecord.id, convoyId)!
-        if (freshRecordForContract.retries < freshRecordForContract.max_retries) {
-          const retryPrefix = buildContractRetryPrompt(contractResult) + '\n\n'
-          store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-            retries: freshRecordForContract.retries + 1,
-            worker_id: null,
-            worktree: null,
-            started_at: null,
-            finished_at: null,
-            prompt: retryPrefix + taskRecord.prompt,
-          })
-          store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-          process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} contract retry ${freshRecordForContract.retries + 1}/${freshRecordForContract.max_retries}\n`)
-          taskAdapterMap.delete(taskRecord.id)
-          return
-        }
-        events.emit('contract_violation', {
-          task_id: taskRecord.id,
-          agent: taskRecord.agent,
-          missing: contractResult.missing,
-          warnings: contractResult.warnings,
-        }, { convoy_id: convoyId, task_id: taskRecord.id })
-        process.stdout.write(`  ${c.yellow('⚠')} ${c.bold(`[${taskRecord.id}]`)} contract violation: missing ${contractResult.missing.join(', ')}\n`)
-      }
+    if (ctl.interrupted) return requeue()
 
-      // ── Intelligence: capture persistent agent identity (Phase 17.2) ─────
-      const specTaskForCapture = (spec.tasks ?? []).find(t => t.id === taskRecord.id)
-      if (specTaskForCapture?.persistent && result.output) {
-        try {
-          // Extract last 300 words, cap at 4KB
-          const words = result.output.split(/\s+/)
-          const lastWords = words.slice(-300).join(' ')
-          let summary = lastWords.length > 4096 ? lastWords.slice(-4096) : lastWords
-
-          // Secret-scan the summary before storing
-          const summaryScan = scanForSecrets(summary, `identity:${taskRecord.id}`)
-          if (summaryScan.clean) {
-            store.insertAgentIdentity({
-              id: `identity-${taskRecord.id}-${Date.now()}`,
-              agent: taskRecord.agent,
-              convoy_id: convoyId,
-              task_id: taskRecord.id,
-              summary,
-              created_at: new Date().toISOString(),
-              retention_days: 90,
+    // ── Merge ───────────────────────────────────────────────────────────────
+    const workerBranch = workerBranchName(workerId)
+    const nothingToMerge = changes !== null && changedFiles.length === 0
+    if (!nothingToMerge) {
+      try {
+        await mergeQueue.merge(wt, workerBranch, branch)
+      } catch (err) {
+        const fresh = store.getTask(rec.id, convoyId) ?? rec
+        if (err instanceof MergeConflictError) {
+          events.emit('merge_conflict_detected', {
+            attempt,
+            conflicting_files: err.conflictingFiles,
+          }, { convoy_id: convoyId, task_id: rec.id })
+          // Once, from the current tip — which now holds the change it collided
+          // with — and named, so the agent knows what moved under it. Aborting
+          // and handing the conflict to a fresh worktree cut from the old base,
+          // as before, recreated the same conflict every time.
+          if (!conflictReruns.has(rec.id) && fresh.retries < fresh.max_retries) {
+            conflictReruns.add(rec.id)
+            const listed = err.conflictingFiles.join(', ') || 'files another task changed'
+            return retryOrFail('failed', `Merge conflict in ${listed}`, {
+              kind: 'merge-conflict',
+              note:
+                `Your previous change conflicted with work merged while you ran, in: ${listed}.\n` +
+                'Your worktree now starts from the convoy branch with that work in it. Make your change on top of it — keep what is there.',
             })
-            events.emit('agent_identity_captured', {
-              agent: taskRecord.agent,
-              summary_length: summary.length,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
-          } else {
-            events.emit('agent_identity_rejected', {
-              agent: taskRecord.agent,
-              reason: 'secrets_detected',
-              findings_count: summaryScan.findings.length,
-            }, { convoy_id: convoyId, task_id: taskRecord.id })
           }
-        } catch { /* non-critical */ }
-      }
-
-      const taskModel = taskRecord.model ?? taskAdapter.name
-      const taskCost = calculateCost(taskModel, usageExtra.prompt_tokens, usageExtra.completion_tokens)
-
-      store.withTransaction(() => {
-        store.updateTaskStatus(taskRecord.id, convoyId, 'done', {
-          finished_at: finishedAt,
-          output: result.output,
-          exit_code: result.exitCode,
-          ...usageExtra,
-          model: taskModel,
-          cost_usd: taskCost,
-          contract_result: JSON.stringify(contractResult),
+        }
+        const conflicting = err instanceof MergeConflictError ? err.conflictingFiles : undefined
+        const message = err instanceof MergeConflictError
+          ? `conflict in ${conflicting!.join(', ') || 'unknown files'}`
+          : (err as Error).message
+        events.emit('merge_failed', {
+          branch: workerBranch,
+          error: message,
+          ...(conflicting ? { conflicting_files: conflicting } : {}),
+        }, { convoy_id: convoyId, task_id: rec.id })
+        return fail('failed', `Merge failed (${message}); the work is kept on branch ${workerBranch}`, {
+          kind: 'merge-failed',
+          keepBranch: workerBranch,
+          failureType: 'merge-failed',
         })
-        store.updateWorkerStatus(workerId, 'done', { finished_at: finishedAt })
-      })
-      // ── Circuit breaker: record success ────────────────────────────────────
-      if (circuitBreakerConfig) {
-        circuitBreaker.recordSuccess(taskRecord.agent)
-        try { store.updateConvoyCircuitState(convoyId, circuitBreaker.serialize()) } catch { /* non-critical */ }
       }
-      completedCount++
-      process.stdout.write(`  ${c.green('✓')} ${c.bold(`[${taskRecord.id}]`)} ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-      events.emit(
-        'task_done',
-        { exit_code: result.exitCode, worker_id: workerId },
-        { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-      )
-      events.emit('session', {
-        agent: taskRecord.agent,
-        model: taskRecord.model ?? taskAdapter.name,
-        task: taskRecord.id,
-        outcome: 'success',
-        duration_min: Math.round((Date.now() - taskStartTime) / 60_000),
-        files_changed: 0,
-        retries: taskRecord.retries,
-        convoy_id: convoyId,
-      }, { convoy_id: convoyId, task_id: taskRecord.id })
-      events.emit('delegation', {
-        session_id: convoyId,
-        agent: taskRecord.agent,
-        model: taskRecord.model ?? taskAdapter.name,
-        tier: 'standard',
-        mechanism: 'convoy',
-        outcome: 'success',
-        retries: taskRecord.retries,
-        phase: taskRecord.phase,
-        convoy_id: convoyId,
-      }, { convoy_id: convoyId, task_id: taskRecord.id })
-      taskAdapterMap.delete(taskRecord.id)
+      events.emit('task_merged', { branch, files: changedFiles.length }, { convoy_id: convoyId, task_id: rec.id })
+    }
+    await cleanup()
+    if (rec.branch && rec.branch !== workerBranch && wtManager.commitAll) {
+      // A branch kept from an earlier failed merge is superseded now.
+      try { await git(['branch', '-D', rec.branch], repoRoot) } catch { /* already gone */ }
+    }
+
+    // ── Outputs and artifacts ──────────────────────────────────────────────
+    if (rec.outputs) {
+      const outputs: TaskOutput[] = JSON.parse(rec.outputs) as TaskOutput[]
+      for (const output of outputs) {
+        let content: string
+        if (output.type === 'summary') {
+          content = result.output.slice(-4096)
+        } else if (output.type === 'json') {
+          const jsonMatch = result.output.match(/```json\n([\s\S]*?)```/)
+          content = jsonMatch ? jsonMatch[1].trim() : result.output
+        } else {
+          content = result.output
+        }
+        try {
+          store.insertArtifact({
+            id: `artifact-${rec.id}-${output.name}-${Date.now()}`,
+            convoy_id: convoyId,
+            task_id: rec.id,
+            name: output.name,
+            type: output.type,
+            content: redactSecrets(content).text,
+            created_at: now(),
+          })
+        } catch (err) {
+          if (!(err instanceof ConvoyArtifactLimitError)) throw err
+          events.emit('artifact_limit_reached', { task_id: rec.id, limit: 50 }, { convoy_id: convoyId, task_id: rec.id })
+        }
+      }
+    } else if (files.length > 0) {
+      for (const filePath of files.slice(0, 20)) {
+        try {
+          store.insertArtifact({
+            id: `artifact-${rec.id}-file-${filePath.replace(/[^a-z0-9]/gi, '-')}-${Date.now()}`,
+            convoy_id: convoyId,
+            task_id: rec.id,
+            name: filePath,
+            type: 'file',
+            content: '',
+            created_at: now(),
+          })
+        } catch (err) {
+          if (err instanceof ConvoyArtifactLimitError) break
+        }
+      }
+    }
+    try {
+      const refs = extractArtifactRefs(rec.id, convoyId, result.output, repoRoot)
+      if (refs.length > 0) {
+        events.emit('artifacts_extracted', {
+          task_id: rec.id,
+          count: refs.length,
+          artifacts: refs.map(r => ({ filename: r.filename, summary: r.summary })),
+        }, { convoy_id: convoyId, task_id: rec.id })
+      }
+    } catch { /* non-critical */ }
+
+    if (specTask?.persistent && result.output) {
+      try {
+        const words = result.output.split(/\s+/)
+        const lastWords = words.slice(-300).join(' ')
+        const identitySummary = lastWords.length > 4096 ? lastWords.slice(-4096) : lastWords
+        const summaryScan = scanForSecrets(identitySummary, `identity:${rec.id}`)
+        if (summaryScan.clean) {
+          store.insertAgentIdentity({
+            id: `identity-${rec.id}-${Date.now()}`,
+            agent: rec.agent,
+            convoy_id: convoyId,
+            task_id: rec.id,
+            summary: identitySummary,
+            created_at: now(),
+            retention_days: 90,
+          })
+          events.emit('agent_identity_captured', { agent: rec.agent, task_id: rec.id }, { convoy_id: convoyId, task_id: rec.id })
+        } else {
+          events.emit('agent_identity_rejected', { agent: rec.agent, task_id: rec.id, reason: 'secrets_detected' }, { convoy_id: convoyId, task_id: rec.id })
+        }
+      } catch { /* non-critical */ }
+    }
+
+    // ── Done ────────────────────────────────────────────────────────────────
+    store.withTransaction(() => {
+      store.updateTaskStatus(rec.id, convoyId, 'done', {
+        finished_at: now(),
+        output: redactSecrets(result.output).text,
+        exit_code: result.exitCode,
+        contract_result: JSON.stringify(contractResult),
+        branch: null,
+        retry_note: null,
+      })
+      store.updateWorkerStatus(workerId!, 'done', { finished_at: now() })
+    })
+    if (circuitBreakerConfig) {
+      circuitBreaker.recordSuccess(rec.agent)
+      try { store.updateConvoyCircuitState(convoyId, circuitBreaker.serialize()) } catch { /* non-critical */ }
+    }
+    const row = store.getTask(rec.id, convoyId)!
+    const cost = formatCost(row.cost_usd, Boolean(row.cost_estimated))
+    progress.line(`  ${c.green('✓')} ${c.bold(`[${rec.id}]`)} ${elapsed()}${cost ? c.dim(` · ${cost}`) : ''}`)
+    events.emit('task_done', {
+      exit_code: result.exitCode,
+      worker_id: workerId!,
+      tokens: row.total_tokens,
+      cost_usd: row.cost_usd,
+      estimated: Boolean(row.cost_estimated),
+      model: row.model,
+    }, { convoy_id: convoyId, task_id: rec.id, worker_id: workerId! })
+    telemetry('success', row.retries, changedFiles.length)
+  }
+
+  function writeDispute(disputeId: string, task: TaskRecord, panelResults: ReviewResult[], attempts: number): void {
+    const marker = `<!-- dispute:${disputeId} -->`
+    const blockingReasons = panelResults.filter(r => r.verdict === 'block').map(r => r.feedback).join('\n\n')
+    const entry = `\n${marker}\n## Dispute: ${task.id}\n\n| Field | Value |\n|-------|-------|\n| Convoy | ${convoyId} |\n| Task | ${task.id} |\n| Date | ${new Date().toISOString()} |\n| Panel attempts | ${attempts} |\n| Agent | ${task.agent} |\n| Status | Open |\n\n**Blocking reasons:**\n\n${redactSecrets(blockingReasons).text}\n`
+    const scan = scanForSecrets(entry, '.opencastle/DISPUTES.md')
+    if (!scan.clean) {
+      events.emit('secret_leak_prevented', {
+        task_id: task.id,
+        findings_count: scan.findings.length,
+        patterns: scan.findings.map(f => f.pattern),
+        context: 'dispute_markdown_write',
+      }, { convoy_id: convoyId, task_id: task.id })
       return
     }
-
-    // ── Failure ─────────────────────────────────────────────────────────────
-    if (typeof taskAdapter.kill === 'function') taskAdapter.kill(task)
-    await removeWorktree()
-
-    const freshRecord = store.getTask(taskRecord.id, convoyId)!
-    if (freshRecord.retries < freshRecord.max_retries && spec.on_failure !== 'stop') {
-      const failedOutput = result.output || '(no output)'
-      const contextPrefix = `Previous attempt failed.\nExit code: ${result.exitCode}\nError output:\n${failedOutput}\n\nFix the issues and try again.\n\n`
-      store.updateTaskStatus(taskRecord.id, convoyId, 'pending', {
-        retries: freshRecord.retries + 1,
-        worker_id: null,
-        worktree: null,
-        started_at: null,
-        finished_at: null,
-        prompt: contextPrefix + taskRecord.prompt,
-      })
-      store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-      process.stdout.write(`  ${c.yellow('⟳')} ${c.bold(`[${taskRecord.id}]`)} retry ${freshRecord.retries + 1}/${freshRecord.max_retries}\n`)
-    } else {
-      // Estimate tokens even for failed tasks — you still paid for them
-      const estimatedPrompt = Math.ceil(taskRecord.prompt.length / 4)
-      const estimatedCompletion = Math.ceil((result.output?.length ?? 0) / 4)
-      const failModel = taskRecord.model ?? taskAdapter.name
-      const failCost = calculateCost(failModel, estimatedPrompt, estimatedCompletion)
-      store.withTransaction(() => {
-        store.updateTaskStatus(taskRecord.id, convoyId, 'failed', {
-          finished_at: finishedAt,
-          output: result.output,
-          exit_code: result.exitCode,
-          prompt_tokens: estimatedPrompt,
-          completion_tokens: estimatedCompletion,
-          total_tokens: estimatedPrompt + estimatedCompletion,
-          model: failModel,
-          cost_usd: failCost,
-        })
-        store.updateWorkerStatus(workerId, 'failed', { finished_at: finishedAt })
-      })
-      // ── Circuit breaker: record failure ────────────────────────────────────
-      if (circuitBreakerConfig) {
-        const { tripped } = circuitBreaker.recordFailure(taskRecord.agent)
-        try { store.updateConvoyCircuitState(convoyId, circuitBreaker.serialize()) } catch { /* non-critical */ }
-        if (tripped) {
-          events.emit('circuit_breaker_tripped', {
-            agent: taskRecord.agent,
-            state: circuitBreaker.getState(taskRecord.agent),
-          }, { convoy_id: convoyId, task_id: taskRecord.id })
-        }
-      }
-      completedCount++
-      process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${taskRecord.id}]`)} failed ${elapsed} ${c.dim(`[${completedCount}/${totalTasks}]`)}\n`)
-      if (verbose) {
-        const outputPreview = result.output.split('\n').slice(0, 5).join('\n')
-        process.stdout.write(`${outputPreview}\n`)
-      }
-      events.emit(
-        'task_failed',
-        { reason: 'error', exit_code: result.exitCode, worker_id: workerId },
-        { convoy_id: convoyId, task_id: taskRecord.id, worker_id: workerId },
-      )
-      events.emit('session', {
-        agent: taskRecord.agent,
-        model: taskRecord.model ?? taskAdapter.name,
-        task: taskRecord.id,
-        outcome: 'failed',
-        duration_min: Math.round((Date.now() - taskStartTime) / 60_000),
-        files_changed: 0,
-        retries: freshRecord.retries,
-        convoy_id: convoyId,
-      }, { convoy_id: convoyId, task_id: taskRecord.id })
-      events.emit('delegation', {
-        session_id: convoyId,
-        agent: taskRecord.agent,
-        model: taskRecord.model ?? taskAdapter.name,
-        tier: 'standard',
-        mechanism: 'convoy',
-        outcome: 'failed',
-        retries: freshRecord.retries,
-        phase: taskRecord.phase,
-        convoy_id: convoyId,
-      }, { convoy_id: convoyId, task_id: taskRecord.id })
-      handleExhaustion(freshRecord, 'error', result.output || null)
-    }
-    taskAdapterMap.delete(taskRecord.id)
+    appendLedger(repoRoot, 'DISPUTES.md', marker, entry)
   }
 
-  // ── Main execution loop ───────────────────────────────────────────────────
+  // ── Scheduler: a ready queue, not phase barriers ──────────────────────────
+  //
+  // Waves used to run in fixed batches and the next wave waited for the whole
+  // previous one, so a task whose dependency finished early sat idle behind the
+  // slowest task of its wave. Now any finished task frees its slot and the
+  // ready set is recomputed at once.
 
-  let lastPhase = -1
-  const isSwarmMode = spec.concurrency === 'auto'
-  const maxSwarmConcurrency = spec.defaults?.max_swarm_concurrency ?? 8
-  let lastInjectPoll = 0
-  const INJECT_POLL_INTERVAL = 2000 // 2 seconds
+  const slots = typeof spec.concurrency === 'number' && spec.concurrency >= 1
+    ? spec.concurrency
+    : (spec.defaults?.max_swarm_concurrency ?? 4)
+
+  function prerequisites(t: TaskRecord): string[] {
+    // An input names the task that produces it; that is a dependency too.
+    const inputs = t.inputs ? (JSON.parse(t.inputs) as TaskInput[]).map(i => i.from) : []
+    return [...parseJsonList(t.depends_on), ...inputs]
+  }
+
+  /**
+   * Ready tasks, most-blocking first: a task that others wait on starts before
+   * one nobody needs, and ties keep the spec's order. Picking alphabetically
+   * could leave the run's longest task for the second round.
+   */
+  const specOrder = new Map((spec.tasks ?? []).map((t, i) => [t.id, i]))
+  function readyTasks(all: TaskRecord[]): TaskRecord[] {
+    const ids = new Set(all.map(t => t.id))
+    const done = new Set(all.filter(t => t.status === 'done').map(t => t.id))
+    const dependents = new Map<string, string[]>()
+    for (const t of all) {
+      for (const d of prerequisites(t)) dependents.set(d, [...(dependents.get(d) ?? []), t.id])
+    }
+    const reach = (id: string, seen = new Set<string>()): number => {
+      for (const next of dependents.get(id) ?? []) {
+        if (!seen.has(next)) { seen.add(next); reach(next, seen) }
+      }
+      return seen.size
+    }
+    return all
+      .filter(t => t.status === 'pending' && !running.has(t.id) && prerequisites(t).every(d => done.has(d) || !ids.has(d)))
+      .map(t => ({ t, weight: reach(t.id), order: specOrder.get(t.id) ?? Number.MAX_SAFE_INTEGER }))
+      .sort((a, b) => b.weight - a.weight || a.order - b.order)
+      .map(x => x.t)
+  }
+
+  progress.setStatus(() => {
+    const all = store.getTasksByConvoy(convoyId)
+    const names = all.filter(t => running.has(t.id)).map(t => t.id)
+    const queued = all.filter(t => t.status === 'pending' && !running.has(t.id)).length
+    const done = all.filter(t => t.status === 'done').length
+    let cost = extraCost
+    let anyCost = extraCost > 0
+    let estimated = extraEstimated
+    for (const t of all) {
+      if (t.cost_usd != null) { cost += t.cost_usd; anyCost = true }
+      if (t.cost_estimated) estimated = true
+    }
+    const parts = [
+      names.length > 0 ? names.join(', ') : (ctl.stopDispatch ? 'stopping' : 'idle'),
+      `${queued} queued`,
+      `${done}/${all.length} done`,
+      formatDuration(Date.now() - startTime).replace(/ /g, ''),
+    ]
+    const costText = anyCost ? formatCost(cost, estimated) : null
+    if (costText) parts.push(costText)
+    return `  ${c.cyan('▸')} ${parts.join(' · ')}`
+  })
+
+  let graceTimer: ReturnType<typeof setTimeout> | undefined
+  const graceExpired = ctl.interruptedPromise.then(
+    () => new Promise<'grace'>(res => { graceTimer = setTimeout(() => res('grace'), INTERRUPT_GRACE_MS) }),
+  )
+
   try {
-    let ready = store.getReadyTasks(convoyId)
-    while (ready.length > 0) {
-      // Compute effective concurrency for this phase
-      const effectiveConcurrency = isSwarmMode
-        ? Math.min(ready.length, maxSwarmConcurrency)
-        : (typeof spec.concurrency === 'number' ? spec.concurrency : 1)
-
-      for (const t of ready) {
-        if (t.phase !== lastPhase) {
-          lastPhase = t.phase
-          const tasksInPhase = ready.filter(r => r.phase === t.phase)
-          const ids = tasksInPhase.map(r => r.id).join(', ')
-          process.stdout.write(`\n  ${c.bold(`Phase ${t.phase + 1}:`)} ${c.dim(ids)}\n`)
-          if (isSwarmMode) {
-            events.emit('swarm_concurrency_update', {
-              phase: t.phase,
-              pending_count: ready.length,
-              effective_concurrency: effectiveConcurrency,
-            }, { convoy_id: convoyId })
-          }
+    for (;;) {
+      if (!ctl.stopDispatch) {
+        const all = store.getTasksByConvoy(convoyId)
+        const runningRecords = all.filter(t => running.has(t.id))
+        const startable = pickStartable(readyTasks(all), runningRecords, slots - running.size)
+        for (const t of startable) {
+          const p = runTask(t)
+            .catch(async (err: unknown) => {
+              // An unexpected throw fails the one task, not the convoy.
+              const msg = (err as Error)?.message ?? String(err)
+              try {
+                const row = store.getTask(t.id, convoyId)
+                if (row && (row.status === 'running' || row.status === 'assigned' || row.status === 'pending')) {
+                  store.updateTaskStatus(t.id, convoyId, ctl.interrupted ? 'pending' : 'failed', {
+                    finished_at: ctl.interrupted ? null : new Date().toISOString(),
+                    output: redactSecrets(`Engine error: ${msg}`).text,
+                  })
+                  if (!ctl.interrupted) {
+                    progress.line(`  ${c.red('✗')} ${c.bold(`[${t.id}]`)} failed: engine error: ${firstLine(msg)}`)
+                    events.emit('task_failed', { reason: 'engine-error', message: firstLine(msg, 400) }, { convoy_id: convoyId, task_id: t.id })
+                    cascadeFailure(t.id)
+                  }
+                }
+              } catch { /* store closed */ }
+            })
+            .finally(() => { running.delete(t.id) })
+          running.set(t.id, p)
         }
       }
-      for (let i = 0; i < ready.length; i += effectiveConcurrency) {
-        // Poll for file-based injection between batches
-        const now = Date.now()
-        if (now - lastInjectPoll >= INJECT_POLL_INTERVAL) {
-          pollInjectFile(convoyId, store, events, basePath)
-          lastInjectPoll = now
-        }
-        await Promise.all(ready.slice(i, i + effectiveConcurrency).map(t => executeOneTask(t)))
-      }
-      // Reset wait-for-input tasks to pending so they are re-evaluated after
-      // upstream artifacts may have been captured in this batch
-      const waitingTasks = store.getTasksByConvoy(convoyId).filter(t => t.status === ('wait-for-input' as ConvoyTaskStatus))
-      for (const wt of waitingTasks) {
-        store.updateTaskStatus(wt.id, convoyId, 'pending')
-      }
-      ready = store.getReadyTasks(convoyId)
+      if (running.size === 0) break
+      const winner = await Promise.race([
+        ...running.values(),
+        ctl.interruptedPromise.then(() => (ctl.interrupted ? graceExpired : undefined)),
+      ])
+      if (winner === 'grace') break
     }
   } finally {
-    healthMonitor.stop()
+    if (graceTimer) clearTimeout(graceTimer)
   }
 
-  // ── Validation gates ──────────────────────────────────────────────────────
+  // ── After the queue ───────────────────────────────────────────────────────
 
+  if (ctl.interrupted) {
+    return finishInterrupted()
+  }
+
+  // Tasks never started because dispatch stopped are skipped, with the reason.
+  if (ctl.stopDispatch) {
+    for (const t of store.getTasksByConvoy(convoyId).filter(x => x.status === 'pending')) {
+      skipTask(t.id, 'not started: the run stopped dispatching after a failure')
+    }
+  }
+  for (const t of store.getTasksByConvoy(convoyId).filter(x => x.status === 'pending')) {
+    skipTask(t.id, 'its dependencies never finished')
+  }
+
+  // ── Run-once gates ────────────────────────────────────────────────────────
+  //
+  // `npm test` and `npm audit` used to run once per task, in each worktree —
+  // N copies of the test suite. They run once, here, on the merged result,
+  // together with the spec's own gates.
   const maxGateRetries = spec.gate_retries ?? 0
   let gateAttempt = 0
   let gateResults: Array<{ command: string; exitCode: number; passed: boolean; output?: string }> = []
+  const anyDone = store.getTasksByConvoy(convoyId).some(t => t.status === 'done')
+  const builtInGates = spec.defaults?.built_in_gates ?? {}
+  const pkgScripts = readPackageScripts(workRoot)
+  const wantRegression = Boolean(builtInGates.regression_test)
+  const wantAudit = Boolean(builtInGates.dependency_audit)
+  // npm is the only runner these two know; a project that is not an npm
+  // package is told so once, not failed on a gate it cannot satisfy.
+  const runRegression = wantRegression && pkgScripts !== null && typeof pkgScripts.test === 'string'
+  const runAudit = wantAudit && pkgScripts !== null
+  const hasGates = (spec.gates?.length ?? 0) > 0 || runRegression || runAudit
+  const gateTimeoutMs = (builtInGates.gate_timeout ?? spec.defaults?.gate_timeout ?? 300) * 1000
 
-  while (gateAttempt <= maxGateRetries) {
-    if (!spec.gates || spec.gates.length === 0) break
+  if (wantRegression && !runRegression) {
+    progress.line(`  ${c.dim('regression_test is on but there is no "test" script in package.json — skipped')}`)
+  }
+  if (wantAudit && !runAudit) {
+    progress.line(`  ${c.dim('dependency_audit is on but there is no package.json — skipped')}`)
+  }
 
+  while (hasGates && anyDone && !ctl.interrupted) {
     gateResults = []
-    process.stdout.write(`\n  ${c.bold(gateAttempt === 0 ? 'Gates:' : `Gates (retry ${gateAttempt}/${maxGateRetries}):`)}\n`)
+    progress.line(`\n  ${c.bold(gateAttempt === 0 ? 'Gates:' : `Gates (fix ${gateAttempt}/${maxGateRetries}):`)}`)
 
-    for (const command of spec.gates) {
-      try {
-        // SECURITY: Gate/hook commands come from the .convoy.yml spec file, which is operator-controlled.
-        // They are NOT user-supplied and are part of the trusted build configuration.
-        await execFile('sh', ['-c', command], { cwd: basePath, maxBuffer: 10 * 1024 * 1024 })
-        gateResults.push({ command, exitCode: 0, passed: true })
-        process.stdout.write(`  ${c.green('✓')} ${c.dim(command)}\n`)
-      } catch (err) {
-        const execErr = err as Error & { code?: unknown; stderr?: string; stdout?: string }
-        const code = typeof execErr.code === 'number' ? execErr.code : 1
-        const output = [execErr.stderr, execErr.stdout].filter(Boolean).join('\n').trim() || execErr.message || ''
-        gateResults.push({ command, exitCode: code, passed: false, output })
-        process.stdout.write(`  ${c.red('✗')} ${c.dim(command)}\n`)
-      }
+    for (const command of spec.gates ?? []) {
+      const r = await runShell(command, { cwd: workRoot, timeoutMs: gateTimeoutMs, signal: ctl.signal })
+      // A gate the interrupt killed did not fail; nothing is recorded for it.
+      if (ctl.interrupted) break
+      const output = [r.stderr, r.stdout].filter(Boolean).join('\n').trim()
+      gateResults.push({ command, exitCode: r.code, passed: r.code === 0, ...(r.code !== 0 ? { output } : {}) })
+      events.emit('gate_result', { command, passed: r.code === 0, exit_code: r.code, scope: 'convoy', ...(r.code !== 0 ? { output: output.slice(-2000) } : {}) }, { convoy_id: convoyId })
+      progress.line(`  ${r.code === 0 ? c.green('✓') : c.red('✗')} ${c.dim(command)}${r.code !== 0 && output ? `: ${firstLine(output)}` : ''}`)
+    }
+    if (runRegression && !ctl.interrupted) {
+      const reg = await runRegressionTestGate(workRoot, 'npm test', gateTimeoutMs, ctl.signal)
+      gateResults.push({ command: 'npm test', exitCode: reg.passed ? 0 : 1, passed: reg.passed, ...(reg.passed ? {} : { output: reg.output }) })
+      events.emit('built_in_gate_result', { gate: 'regression_test', passed: reg.passed, output: reg.output.slice(-2000) }, { convoy_id: convoyId })
+      progress.line(`  ${reg.passed ? c.green('✓') : c.red('✗')} ${c.dim('npm test (regression_test)')}`)
+    }
+    if (runAudit && !ctl.interrupted) {
+      const audit = await runDependencyAuditGate(workRoot, gateTimeoutMs, ctl.signal)
+      gateResults.push({ command: 'npm audit', exitCode: audit.passed ? 0 : 1, passed: audit.passed, ...(audit.passed ? {} : { output: audit.output }) })
+      events.emit('built_in_gate_result', { gate: 'dependency_audit', passed: audit.passed, output: audit.output.slice(-2000) }, { convoy_id: convoyId })
+      progress.line(`  ${audit.passed ? c.green('✓') : c.red('✗')} ${c.dim('npm audit (dependency_audit)')}`)
     }
 
     const failedGates = gateResults.filter(g => !g.passed)
-    if (failedGates.length === 0) break // All gates passed
+    if (ctl.interrupted || failedGates.length === 0 || gateAttempt >= maxGateRetries) break
 
-    // Can we retry?
-    if (gateAttempt >= maxGateRetries) break // No more retries
-
-    // Create and execute a fix task
     gateAttempt++
     const failureSummary = failedGates
-      .map(g => `Command: ${g.command}\nExit code: ${g.exitCode}\nOutput:\n${g.output ?? '(no output)'}`)
+      .map(g => `Command: ${g.command}\nExit code: ${g.exitCode}\nOutput:\n${(g.output ?? '(no output)').slice(-4000)}`)
       .join('\n\n---\n\n')
-
-    // Gather files touched by convoy tasks to give the fix agent context
-    const allTasks = store.getTasksByConvoy(convoyId)
-    const touchedFiles = allTasks
-      .filter(t => t.files)
-      .flatMap(t => { try { return JSON.parse(t.files as string) as string[] } catch { return [] } })
+    const touchedFiles = store.getTasksByConvoy(convoyId).flatMap(t => parseJsonList(t.files))
     const filesContext = touchedFiles.length > 0
-      ? `\n\nFiles modified by the convoy tasks:\n${touchedFiles.map(f => `- ${f}`).join('\n')}\n`
+      ? `\n\nFiles changed by the convoy's tasks:\n${touchedFiles.map(f => `- ${f}`).join('\n')}\n`
       : ''
-
-    const fixPrompt = `The following validation gates failed after all convoy tasks completed. Fix the issues so these commands pass.${filesContext}\n\n${failureSummary}`
     const fixTaskId = `gate-fix-${gateAttempt}`
-
-    process.stdout.write(`\n  ${c.yellow('⟳')} ${c.bold(`[${fixTaskId}]`)} fixing gate failures (attempt ${gateAttempt}/${maxGateRetries})\n`)
-
+    progress.line(`\n  ${c.yellow('⟳')} ${c.bold(`[${fixTaskId}]`)} fixing the failed gates (attempt ${gateAttempt}/${maxGateRetries})`)
     const fixTask: Task = {
       id: fixTaskId,
-      prompt: fixPrompt,
+      prompt: `${sharedContext}\n\n---\n\n## Your task: ${fixTaskId}\nThese checks failed after every task was merged. Fix the code so they pass.${filesContext}\n\n${failureSummary}\n`,
       agent: spec.defaults?.agent ?? 'developer',
       timeout: spec.defaults?.timeout ?? '30m',
       depends_on: [],
       files: [],
-      description: `Auto-fix gate failures (attempt ${gateAttempt})`,
+      description: `Fix gate failures (attempt ${gateAttempt})`,
       max_retries: 0,
     }
-
-    const fixResult = await adapter.execute(fixTask, { verbose, cwd: basePath, permissionMode: spec.defaults?.permission_mode })
-
-    if (fixResult.success) {
-      process.stdout.write(`  ${c.green('✓')} ${c.bold(`[${fixTaskId}]`)} fix applied\n`)
-    } else {
-      process.stdout.write(`  ${c.red('✗')} ${c.bold(`[${fixTaskId}]`)} fix failed\n`)
-      break // Don't retry if the fix task itself fails
+    const fixResult = await runAgent(fixTaskId, adapter, fixTask, { cwd: workRoot, permissionMode }, parseTimeout(fixTask.timeout))
+    const fixUsage = usageOf(fixResult, fixTask.prompt, spec.defaults?.model ?? null)
+    extraTokens += fixUsage.total
+    extraCost += fixUsage.cost ?? 0
+    extraEstimated = extraEstimated || fixUsage.estimated
+    if (ctl.interrupted) break
+    if (!fixResult.success) {
+      progress.line(`  ${c.red('✗')} ${c.bold(`[${fixTaskId}]`)} the fix attempt failed: ${firstLine(fixResult.output)}`)
+      break
     }
+    if (wtManager.commitAll) {
+      try {
+        await commitAllIn(workRoot, `convoy: fix gates (attempt ${gateAttempt})`)
+      } catch (err) {
+        progress.line(`  ${c.red('✗')} could not commit the gate fix: ${firstLine((err as Error).message)}`)
+        break
+      }
+    }
+    progress.line(`  ${c.green('✓')} ${c.bold(`[${fixTaskId}]`)} fix applied`)
   }
+
+  if (ctl.interrupted) return finishInterrupted()
 
   // ── post_convoy hooks ─────────────────────────────────────────────────────
-
   const specLevelHooks: Hook[] = spec.hooks ?? []
   if (specLevelHooks.length > 0) {
-    const postConvoyResult = await runHooks(specLevelHooks, 'post_convoy', {
-      convoyId,
-      cwd: basePath,
-    })
-    if (!postConvoyResult.passed) {
-      const hookLabel = postConvoyResult.failedHook?.name ?? postConvoyResult.failedHook?.type ?? 'unknown'
-      events.emit('post_convoy_hook_failed', {
-        hook: hookLabel,
-        error: postConvoyResult.error,
-      }, { convoy_id: convoyId })
-      process.stdout.write(`  ${c.red('✗')} post_convoy hook "${hookLabel}" failed\n`)
+    const post = await runHooks(specLevelHooks, 'post_convoy', { cwd: workRoot })
+    if (!post.passed) {
+      const hookLabel = post.failedHook?.name ?? post.failedHook?.type ?? 'unknown'
+      events.emit('post_convoy_hook_failed', { hook: hookLabel, error: post.error }, { convoy_id: convoyId })
+      progress.line(`  ${c.red('✗')} post_convoy hook "${hookLabel}" failed: ${firstLine(post.error)}`)
     }
   }
 
-  // ── Intelligence: post-convoy consolidation ──────────────────────────────
-  // ── Final status & summary ────────────────────────────────────────────────
-
+  // ── Final status ──────────────────────────────────────────────────────────
   const allTasksFinal = store.getTasksByConvoy(convoyId)
-  const summary = {
-    total: allTasksFinal.length,
-    done: allTasksFinal.filter(t => t.status === 'done').length,
-    failed: allTasksFinal.filter(t => t.status === 'failed' || t.status === 'gate-failed' || t.status === 'review-blocked' || t.status === 'disputed').length,
-    skipped: allTasksFinal.filter(t => t.status === 'skipped').length,
-    timedOut: allTasksFinal.filter(t => t.status === 'timed-out').length,
-  }
-
+  const summary = summarize(allTasksFinal)
   const anyGateFailed = gateResults.some(g => !g.passed)
-  const finalStatus: ConvoyStatus = anyGateFailed
-    ? 'gate-failed'
-    : summary.failed > 0 || summary.timedOut > 0
-      ? 'failed'
-      : 'done'
-
-  // Aggregate token usage and cost across completed tasks
-  let convoyTotalTokens: number | null = null
-  let convoyTotalCost: number | null = null
-  for (const t of allTasksFinal) {
-    if (t.total_tokens != null) {
-      convoyTotalTokens = (convoyTotalTokens ?? 0) + t.total_tokens
-    }
-    if (t.cost_usd != null) {
-      convoyTotalCost = (convoyTotalCost ?? 0) + (typeof t.cost_usd === 'number' ? t.cost_usd : parseFloat(t.cost_usd))
-    }
-  }
-
-  store.updateConvoyStatus(convoyId, finalStatus, {
-    finished_at: new Date().toISOString(),
-    total_tokens: convoyTotalTokens,
-    total_cost_usd: convoyTotalCost,
-  })
+  const notDone = allTasksFinal.filter(t => t.status !== 'done')
+  // A skipped task is not done: the run is not finished while one remains.
+  const finalStatus: ConvoyStatus = anyGateFailed ? 'gate-failed' : notDone.length > 0 ? 'failed' : 'done'
+  const totals = persistTotals(allTasksFinal, finalStatus)
 
   if (finalStatus === 'done') {
     events.emit('convoy_finished', { status: 'done' }, { convoy_id: convoyId })
   } else {
-    events.emit('convoy_failed', { status: finalStatus, reason: finalStatus === 'gate-failed' ? 'Gate check failed' : 'One or more tasks failed' }, { convoy_id: convoyId })
+    events.emit('convoy_failed', {
+      status: finalStatus,
+      reason: anyGateFailed ? 'Gate check failed' : `${notDone.length} task(s) not done`,
+    }, { convoy_id: convoyId })
   }
 
-  // Run convoy guard checks
-  const guardResult = runConvoyGuard(store, convoyId, wtManager, ndjsonPath, spec.guard)
-  if (guardResult.warnings.length > 0) {
-    process.stdout.write(`\n  ${c.yellow('Guard warnings:')}\n`)
-    for (const w of guardResult.warnings) {
-      process.stdout.write(`    ${c.dim('⚠')} ${w}\n`)
-    }
-    events.emit('convoy_guard', {
-      passed: guardResult.passed,
-      warnings: guardResult.warnings,
-    }, { convoy_id: convoyId })
+  const guard = runConvoyGuard(store, convoyId, wtManager, ndjsonPath, spec.guard)
+  if (guard.warnings.length > 0) {
+    events.emit('convoy_guard', { passed: guard.passed, warnings: guard.warnings }, { convoy_id: convoyId })
+    if (verbose) for (const w of guard.warnings) progress.line(`  ${c.dim(`guard: ${w}`)}`)
   }
 
   return {
@@ -2926,10 +2037,150 @@ async function runConvoy(
     status: finalStatus,
     summary,
     duration: formatDuration(Date.now() - startTime),
-    gateResults: spec.gates && spec.gates.length > 0 ? gateResults : undefined,
-    cost: convoyTotalTokens != null || convoyTotalCost != null
-      ? { total_tokens: convoyTotalTokens ?? 0, total_cost_usd: convoyTotalCost ?? undefined }
-      : undefined,
+    gateResults: hasGates && gateResults.length > 0 ? gateResults : undefined,
+    cost: totals,
+    exitCode: finalStatus === 'done' ? 0 : 1,
+    branch,
+    baseRef: ctx.baseRef,
+    logPath: ndjsonPath,
+    keptBranches: allTasksFinal.filter(t => t.branch).map(t => ({ taskId: t.id, branch: t.branch! })),
+  }
+
+  function summarize(tasks: TaskRecord[]): ConvoyResult['summary'] {
+    return {
+      total: tasks.length,
+      done: tasks.filter(t => t.status === 'done').length,
+      failed: tasks.filter(t => ['failed', 'gate-failed', 'review-blocked', 'disputed', 'hook-failed'].includes(t.status)).length,
+      skipped: tasks.filter(t => t.status === 'skipped').length,
+      timedOut: tasks.filter(t => t.status === 'timed-out').length,
+    }
+  }
+
+  function persistTotals(tasks: TaskRecord[], status: ConvoyStatus): ConvoyResult['cost'] {
+    let tokens: number | null = extraTokens > 0 ? extraTokens : null
+    let cost: number | null = extraCost > 0 ? extraCost : null
+    let estimated = extraEstimated
+    for (const t of tasks) {
+      const taskTokens = (t.total_tokens ?? 0) + (t.review_tokens ?? 0)
+      if (t.total_tokens != null || t.review_tokens) tokens = (tokens ?? 0) + taskTokens
+      if (t.cost_usd != null) cost = (cost ?? 0) + t.cost_usd
+      if (t.cost_estimated) estimated = true
+    }
+    store.updateConvoyStatus(convoyId, status, {
+      finished_at: new Date().toISOString(),
+      total_tokens: tokens,
+      total_cost_usd: cost,
+      cost_estimated: estimated,
+    })
+    return tokens != null || cost != null
+      ? { total_tokens: tokens ?? 0, total_cost_usd: cost ?? undefined, estimated }
+      : undefined
+  }
+
+  function finishInterrupted(): ConvoyResult {
+    const requeued: string[] = []
+    for (const t of store.getTasksByConvoy(convoyId)) {
+      if (t.status === 'running' || t.status === 'assigned') {
+        store.updateTaskStatus(t.id, convoyId, 'pending', { worker_id: null, worktree: null, started_at: null })
+        if (t.worker_id) {
+          try { store.updateWorkerStatus(t.worker_id, 'killed', { finished_at: new Date().toISOString() }) } catch { /* gone */ }
+        }
+        requeued.push(t.id)
+      }
+    }
+    const all = store.getTasksByConvoy(convoyId)
+    const totals = persistTotals(all, 'interrupted')
+    events.emit('convoy_interrupted', { signal: ctl.interrupted ?? 'abort', requeued }, { convoy_id: convoyId })
+    return {
+      convoyId,
+      status: 'interrupted',
+      summary: summarize(all),
+      duration: formatDuration(Date.now() - startTime),
+      cost: totals,
+      exitCode: 130,
+      branch,
+      baseRef: ctx.baseRef,
+      logPath: ndjsonPath,
+      keptBranches: all.filter(t => t.branch).map(t => ({ taskId: t.id, branch: t.branch! })),
+    }
+  }
+}
+
+function readPackageScripts(dir: string): Record<string, unknown> | null {
+  try {
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }
+    return pkg.scripts ?? {}
+  } catch {
+    return null
+  }
+}
+
+// ── The summary a run ends with ───────────────────────────────────────────────
+
+function printSummary(progress: Progress, result: ConvoyResult, store: ConvoyStore, repoRoot: string): void {
+  const tasks = store.getTasksByConvoy(result.convoyId)
+  const icon = result.status === 'done' ? c.green('✓') : result.status === 'interrupted' ? c.yellow('■') : c.red('✗')
+  const s = result.summary
+  const lines: string[] = ['', `  ${c.dim('──────────────────────────────────────')}`]
+  lines.push(`  ${icon} ${c.bold(`Convoy ${result.status}`)} in ${result.duration} — ${s.done}/${s.total} tasks done` +
+    (s.failed ? `, ${s.failed} failed` : '') + (s.timedOut ? `, ${s.timedOut} timed out` : '') + (s.skipped ? `, ${s.skipped} skipped` : ''))
+  for (const t of tasks.filter(x => x.status !== 'done')) {
+    const why = t.status === 'pending'
+      ? (result.status === 'interrupted' ? 'stopped; runs again on resume' : 'not started')
+      : firstLine(t.output, 120) || t.status
+    lines.push(`    ${c.dim('•')} ${t.id} ${c.dim(`(${t.status})`)}: ${why}`)
+  }
+  if (result.gateResults) {
+    const passed = result.gateResults.filter(g => g.passed).length
+    lines.push(`  Gates: ${passed}/${result.gateResults.length} passed`)
+    for (const g of result.gateResults.filter(x => !x.passed)) {
+      lines.push(`    ${c.dim('•')} ${g.command} ${c.dim(`(exit ${g.exitCode})`)}: ${firstLine(g.output, 120) || 'no output'}`)
+    }
+  }
+  if (result.cost) {
+    const cost = formatCost(result.cost.total_cost_usd, Boolean(result.cost.estimated))
+    lines.push(`  Spent: ${formatTokens(result.cost.total_tokens)} tokens${result.cost.estimated && !cost ? ' (est.)' : ''}${cost ? ` · ${cost}` : ''}`)
+  }
+  lines.push(`  Convoy: ${result.convoyId}`)
+  if (result.branch) {
+    lines.push(`  Branch: ${c.bold(result.branch)}${result.baseRef ? c.dim(` (from ${result.baseRef})`) : ''}`)
+    if (s.done > 0) {
+      if (result.baseRef) lines.push(`    Review: git diff ${result.baseRef}...${result.branch}`)
+      lines.push(`    Merge:  git merge ${result.branch}`)
+    }
+  }
+  for (const k of result.keptBranches ?? []) {
+    lines.push(`  Kept: ${k.branch} ${c.dim(`— ${k.taskId}'s work, which could not be merged`)}`)
+  }
+  if (result.logPath) {
+    const rel = relative(repoRoot, result.logPath)
+    lines.push(`  Log: ${rel.startsWith('..') ? result.logPath : rel}`)
+  }
+  if (result.status !== 'done') {
+    lines.push(`  Resume with: ${c.cyan('opencastle convoy resume')}`)
+  }
+  for (const l of lines) progress.line(l)
+}
+
+/**
+ * Refuse a spec the run would fail on, before anything is recorded:
+ * overlapping files within a phase, globs, `..`, an unknown per-task runtime.
+ * These used to surface mid-run, after earlier tasks had merged, or after a
+ * failed row was already written. Exported so `--dry-run` refuses exactly what
+ * a run refuses.
+ */
+export async function checkConvoyPlan(spec: TaskSpec, runAdapterName: string): Promise<void> {
+  const tasks = spec.tasks ?? []
+  const partition = validateFilePartitions(tasks, buildPhases(tasks))
+  if (!partition.valid) {
+    const conflictSummary = partition.conflicts
+      .map(cf => `Phase ${cf.phase + 1}: tasks "${cf.taskA}" and "${cf.taskB}" overlap on [${cf.overlapping.join(', ')}]`)
+      .join('\n')
+    throw new Error(`File partition conflicts detected:\n${conflictSummary}`)
+  }
+  const names = new Set(tasks.map(t => t.adapter).filter((a): a is string => Boolean(a) && a !== 'auto' && a !== runAdapterName))
+  for (const name of names) {
+    await getAdapter(name)
   }
 }
 
@@ -2939,55 +2190,21 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
   const { spec, specYaml, adapter, verbose = false } = options
   const basePath = resolve(options.basePath ?? process.cwd())
   const dbPath = options.dbPath ?? join(basePath, '.opencastle', 'convoy.db')
+  const injectedCheckout = options._convoyWorktreeDir !== undefined || options._ensureBranch !== undefined
 
-  async function getCurrentBranch(): Promise<string> {
-    try {
-      const { stdout } = await execFile('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-        cwd: basePath,
-      })
-      return stdout.trim()
-    } catch {
-      return 'main'
-    }
+  /**
+   * The main checkout, where `.opencastle/` lives — never a worktree that is
+   * about to be removed. A caller that supplies its own checkout (tests) says
+   * where with `repoRoot`, or gets `basePath`.
+   */
+  async function resolveRepoRoot(): Promise<string> {
+    if (options.repoRoot) return resolve(options.repoRoot)
+    if (injectedCheckout) return basePath
+    return (await mainRepoRoot(basePath)) ?? basePath
   }
 
-  async function run(): Promise<ConvoyResult> {
-    const startTime = Date.now()
-    const convoyId = `convoy-${startTime}`
-    const specHash = createHash('sha256').update(specYaml).digest('hex')
-    const baseBranch = spec.branch ?? (await getCurrentBranch())
-
-    // Create convoy-level worktree for branch isolation.
-    // Skipped when _convoyWorktreeDir is null or _ensureBranch is injected (test mode).
-    let effectiveBasePath = basePath
-    let convoyWorktreeDir: string | undefined
-    if (spec.branch !== undefined) {
-      const skipWorktree = options._convoyWorktreeDir === null || options._ensureBranch !== undefined
-      if (!skipWorktree) {
-        if (typeof options._convoyWorktreeDir === 'string') {
-          effectiveBasePath = options._convoyWorktreeDir
-          convoyWorktreeDir = options._convoyWorktreeDir
-        } else {
-          const worktreeId = `convoy-root-${Date.now()}`
-          convoyWorktreeDir = join(basePath, '.opencastle', 'worktrees', worktreeId)
-          mkdirSync(dirname(convoyWorktreeDir), { recursive: true })
-          let branchExists = false
-          try {
-            await execFile('git', ['rev-parse', '--verify', spec.branch], { cwd: basePath })
-            branchExists = true
-          } catch { /* branch doesn't exist */ }
-          if (branchExists) {
-            await execFile('git', ['worktree', 'add', convoyWorktreeDir, spec.branch], { cwd: basePath })
-          } else {
-            await execFile('git', ['worktree', 'add', '-b', spec.branch, convoyWorktreeDir], { cwd: basePath })
-          }
-          effectiveBasePath = convoyWorktreeDir
-        }
-      }
-    }
-
+  function openLock(): { release(): void } {
     mkdirSync(dirname(dbPath), { recursive: true })
-
     const lockDb = new DatabaseSync(dbPath)
     lockDb.exec('PRAGMA journal_mode = WAL')
     lockDb.exec(`CREATE TABLE IF NOT EXISTS engine_lock (
@@ -2997,16 +2214,13 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       started_at TEXT NOT NULL,
       last_heartbeat TEXT NOT NULL
     )`)
-
-    const lock = (() => {
-      try {
-        return acquireEngineLock(lockDb, dbPath)
-      } catch (err) {
-        lockDb.close()
-        throw err
-      }
-    })()
-
+    let lock: ReturnType<typeof acquireEngineLock>
+    try {
+      lock = acquireEngineLock(lockDb, dbPath)
+    } catch (err) {
+      lockDb.close()
+      throw err
+    }
     const versionRow = lockDb.prepare('SELECT sqlite_version() as v').get() as { v: string }
     const [major, minor] = versionRow.v.split('.').map(Number)
     if (major < 3 || (major === 3 && minor < 35)) {
@@ -3014,50 +2228,142 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       lockDb.close()
       throw new Error(`SQLite version ${versionRow.v} is too old. Requires >= 3.35.0`)
     }
-
     lock.startHeartbeat()
+    return {
+      release() {
+        lock.release()
+        lockDb.close()
+      },
+    }
+  }
 
-    const store = createConvoyStore(dbPath)
-    const ndjsonPath = options.logsDir
-      ? join(options.logsDir, 'convoys', `${convoyId}.ndjson`)
-      : ndjsonPathForConvoy(convoyId, effectiveBasePath)
-    const events = createEventEmitter(store, { ndjsonPath })
-    const wtManager = options._worktreeManager ?? createWorktreeManager(effectiveBasePath)
-    const mergeQueue = options._mergeQueue ?? createMergeQueue(effectiveBasePath)
+  const validatePlan = (): Promise<void> => checkConvoyPlan(spec, adapter.name)
 
-    let result: ConvoyResult
+  /** Stop on SIGINT/SIGTERM or the abort signal; a second Ctrl+C stops at once. */
+  function installInterrupts(ctl: RunControl, progress: Progress): () => void {
+    const disposers: Array<() => void> = []
+    const onSignal = (sig: NodeJS.Signals): void => {
+      if (ctl.interrupted) {
+        // A second Ctrl+C means "now". Agents get SIGKILL through their
+        // adapters; the exit is unavoidable, because the person has said they
+        // will not wait for the cleanup the first signal started. The rows
+        // already read pending or running, and `resume` handles both.
+        for (const fn of ctl.onInterrupt) {
+          try { fn() } catch { /* best effort */ }
+        }
+        process.exit(130)
+      }
+      progress.line(`\n  ${c.yellow('■')} ${sig} — stopping: killing running agents, no new tasks. Press Ctrl+C again to quit at once.`)
+      ctl.interrupt(sig)
+    }
+    if (options.handleSignals !== false) {
+      process.on('SIGINT', onSignal)
+      process.on('SIGTERM', onSignal)
+      disposers.push(() => {
+        process.removeListener('SIGINT', onSignal)
+        process.removeListener('SIGTERM', onSignal)
+      })
+    }
+    if (options.signal) {
+      const onAbort = (): void => ctl.interrupt('abort')
+      if (options.signal.aborted) onAbort()
+      else options.signal.addEventListener('abort', onAbort, { once: true })
+      disposers.push(() => options.signal?.removeEventListener('abort', onAbort))
+    }
+    return () => { for (const d of disposers) d() }
+  }
+
+  /** The integration checkout for `branch`, and whether this run owns it. */
+  async function integrationCheckout(repoRoot: string, branch: string, base: string, dirName: string): Promise<{ path: string; owned: boolean }> {
+    if (typeof options._convoyWorktreeDir === 'string') return { path: resolve(options._convoyWorktreeDir), owned: false }
+    if (injectedCheckout) {
+      // `basePath` is the merge target here. That must never be the user's own
+      // checkout — the main worktree — however the caller got there. (Tests
+      // that inject `_ensureBranch` use a scratch directory and are spared the
+      // git call.)
+      let main: string | undefined
+      if (options._ensureBranch === undefined) {
+        try {
+          main = (await listAllWorktrees(basePath))[0]?.path
+        } catch { /* not a git repository */ }
+      }
+      const real = (p: string): string => { try { return realpathSync(p) } catch { return resolve(p) } }
+      if (main && real(main) === real(basePath)) {
+        throw new Error(
+          `Refusing to merge convoy work into ${basePath}, the repository's own checkout. ` +
+            'Give the convoy a worktree of its branch (_convoyWorktreeDir), or let it create one.',
+        )
+      }
+      return { path: basePath, owned: false }
+    }
+    return { path: await ensureRootWorktree({ repoRoot, branch, base, dirName }), owned: true }
+  }
+
+  /** The branch checked out in the user's own checkout, which a convoy must not merge into. */
+  async function userBranch(repoRoot: string): Promise<string | null> {
     try {
+      const main = (await listAllWorktrees(repoRoot))[0]
+      return main?.branch ? main.branch.replace(/^refs\/heads\//, '') : null
+    } catch {
+      return null
+    }
+  }
+
+  async function run(): Promise<ConvoyResult> {
+    const startTime = Date.now()
+    const convoyId = `convoy-${startTime}`
+    const specHash = createHash('sha256').update(specYaml).digest('hex')
+    await validatePlan()
+
+    const lock = openLock()
+    const store = createConvoyStore(dbPath)
+    const progress = createProgress({ stream: options.output })
+    const ctl = createRunControl()
+    let events: ConvoyEventEmitter | null = null
+    let checkout: { path: string; owned: boolean } | null = null
+    let repoRoot = basePath
+    let disposeInterrupts: () => void = () => {}
+    let inserted = false
+
+    try {
+      repoRoot = await resolveRepoRoot()
+      const branch = spec.branch ?? defaultBranchName(spec.name, convoyId)
+      let baseRef: string | null = injectedCheckout ? null : await currentRef(basePath)
+      if (!injectedCheckout) {
+        // Work lands on a branch of its own. A spec naming the branch the
+        // user has checked out would have the convoy commit into their tree.
+        const mine = await userBranch(repoRoot)
+        if (mine && mine === branch) throw new BranchInUseError(branch, repoRoot)
+        checkout = await integrationCheckout(repoRoot, branch, baseRef ?? 'HEAD', shortConvoyId(convoyId))
+      } else {
+        checkout = await integrationCheckout(repoRoot, branch, 'HEAD', shortConvoyId(convoyId))
+        baseRef = null
+      }
+
+      const ndjsonPath = options.logsDir
+        ? join(options.logsDir, 'convoys', `${convoyId}.ndjson`)
+        : ndjsonPathForConvoy(convoyId, repoRoot)
+      events = createEventEmitter(store, { ndjsonPath })
+      const wtManager = options._worktreeManager ?? createWorktreeManager(repoRoot)
+      const mergeQueue = options._mergeQueue ?? createMergeQueue(checkout.path, { worktreesDir: worktreesDirFor(repoRoot) })
+
+      // From here on a throw is a crash of this convoy, and its row is marked so.
+      inserted = true
       store.insertConvoy({
         id: convoyId,
         name: spec.name,
         spec_hash: specHash,
         status: 'pending',
-        branch: baseBranch,
+        branch,
+        base_ref: baseRef,
+        adapter: adapter.name,
         created_at: new Date().toISOString(),
         spec_yaml: specYaml,
-        pipeline_id: options.pipelineId ?? null,
+        pipeline_id: null,
       })
 
       const tasks = spec.tasks ?? []
       const phases = buildPhases(tasks)
-
-      // Validate file partitions before inserting tasks
-      const partitionResult = validateFilePartitions(tasks, phases)
-      if (!partitionResult.valid) {
-        const conflictSummary = partitionResult.conflicts
-          .map(
-            (cf) =>
-              `Phase ${cf.phase}: tasks "${cf.taskA}" and "${cf.taskB}" overlap on [${cf.overlapping.join(', ')}]`,
-          )
-          .join('\n')
-        events.emit(
-          'file_partition_conflict',
-          { conflicts: partitionResult.conflicts },
-          { convoy_id: convoyId },
-        )
-        throw new Error(`File partition conflicts detected:\n${conflictSummary}`)
-      }
-
       for (let phaseIdx = 0; phaseIdx < phases.length; phaseIdx++) {
         for (const task of phases[phaseIdx]) {
           store.insertTask({
@@ -3081,200 +2387,127 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         }
       }
 
+      const concurrency = typeof spec.concurrency === 'number' ? spec.concurrency : (spec.defaults?.max_swarm_concurrency ?? 4)
       store.updateConvoyStatus(convoyId, 'running', { started_at: new Date().toISOString() })
-      events.emit('convoy_started', { name: spec.name }, { convoy_id: convoyId })
+      events.emit('convoy_started', { name: spec.name, branch, base: baseRef, concurrency }, { convoy_id: convoyId })
+      progress.line(`  ${c.dim('Branch')} ${branch}${baseRef ? c.dim(` (from ${baseRef})`) : ''} ${c.dim(`· ${tasks.length} tasks · up to ${concurrency} at once`)}`)
 
-      result = await runConvoy(
-        convoyId, spec, adapter, store, events,
-        wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
-        options._reviewRunner,
-      )
+      disposeInterrupts = installInterrupts(ctl, progress)
+      const result = await runConvoy({
+        convoyId, spec, adapter, store, events, wtManager, mergeQueue, repoRoot,
+        workRoot: checkout.path, branch, baseRef, verbose, startTime, ndjsonPath,
+        reviewRunner: options._reviewRunner ?? defaultReviewer, progress, ctl,
+      })
+      progress.stop()
+      printSummary(progress, result, store, repoRoot)
+      return result
     } catch (err) {
-      // Without this, an unexpected throw from runConvoy leaves the convoy row
-      // reading 'running' forever, and a later resume() refuses to touch it.
-      markConvoyCrashed(store, events, convoyId, err)
+      if (inserted) markConvoyCrashed(store, events, convoyId, err)
       throw err
     } finally {
-      events.close()
+      disposeInterrupts()
+      progress.stop()
+      events?.close()
       store.close()
       lock.release()
-      lockDb.close()
-      if (convoyWorktreeDir) {
-        try {
-          await execFile('git', ['worktree', 'remove', convoyWorktreeDir, '--force'], { cwd: basePath })
-        } catch { /* ignore cleanup errors */ }
-      }
+      if (checkout?.owned) await removeRootWorktree(repoRoot, checkout.path)
     }
-    return result
   }
 
+  /**
+   * Continue whatever is not done.
+   *
+   * Everything `retry` used to do happens here: failed, timed-out, gate-failed,
+   * review-blocked, disputed, interrupted (running/assigned) and skipped tasks
+   * go back to pending. A stale integration worktree is reused or pruned, a dead
+   * owner's lock is taken over, and a convoy recorded without a branch of its
+   * own gets one.
+   */
   async function resume(convoyId: string): Promise<ConvoyResult> {
     const startTime = Date.now()
-
-    mkdirSync(dirname(dbPath), { recursive: true })
-
-    const lockDb = new DatabaseSync(dbPath)
-    lockDb.exec('PRAGMA journal_mode = WAL')
-    lockDb.exec(`CREATE TABLE IF NOT EXISTS engine_lock (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      pid INTEGER NOT NULL,
-      hostname TEXT NOT NULL,
-      started_at TEXT NOT NULL,
-      last_heartbeat TEXT NOT NULL
-    )`)
-
-    const lock = (() => {
-      try {
-        return acquireEngineLock(lockDb, dbPath)
-      } catch (err) {
-        lockDb.close()
-        throw err
-      }
-    })()
-
-    const versionRow = lockDb.prepare('SELECT sqlite_version() as v').get() as { v: string }
-    const [major, minor] = versionRow.v.split('.').map(Number)
-    if (major < 3 || (major === 3 && minor < 35)) {
-      lock.release()
-      lockDb.close()
-      throw new Error(`SQLite version ${versionRow.v} is too old. Requires >= 3.35.0`)
-    }
-
-    lock.startHeartbeat()
-
+    const lock = openLock()
     const store = createConvoyStore(dbPath)
-    let effectiveBasePath = basePath
-    let convoyWorktreeDir: string | undefined
-    let events: ConvoyEventEmitter | undefined
+    const progress = createProgress({ stream: options.output })
+    const ctl = createRunControl()
+    let events: ConvoyEventEmitter | null = null
+    let checkout: { path: string; owned: boolean } | null = null
+    let repoRoot = basePath
+    let disposeInterrupts: () => void = () => {}
 
-    let result: ConvoyResult
     try {
       const convoy = store.getConvoy(convoyId)
       if (!convoy) {
         throw new Error(`Convoy "${convoyId}" not found in store`)
       }
+      repoRoot = await resolveRepoRoot()
 
-      const baseBranch = convoy.branch ?? spec.branch ?? (await getCurrentBranch())
-      const convoyBranch = convoy.branch ?? spec.branch
-
-      // Create convoy-level worktree for branch isolation.
-      if (convoyBranch !== undefined) {
-        const skipWorktree = options._convoyWorktreeDir === null || options._ensureBranch !== undefined
-        if (!skipWorktree) {
-          if (typeof options._convoyWorktreeDir === 'string') {
-            effectiveBasePath = options._convoyWorktreeDir
-            convoyWorktreeDir = options._convoyWorktreeDir
-          } else {
-            const worktreeId = `convoy-root-${Date.now()}`
-            convoyWorktreeDir = join(basePath, '.opencastle', 'worktrees', worktreeId)
-            mkdirSync(dirname(convoyWorktreeDir), { recursive: true })
-            let branchExists = false
-            try {
-              await execFile('git', ['rev-parse', '--verify', convoyBranch], { cwd: basePath })
-              branchExists = true
-            } catch { /* branch doesn't exist */ }
-            if (branchExists) {
-              await execFile('git', ['worktree', 'add', convoyWorktreeDir, convoyBranch], { cwd: basePath })
-            } else {
-              await execFile('git', ['worktree', 'add', '-b', convoyBranch, convoyWorktreeDir], { cwd: basePath })
-            }
-            effectiveBasePath = convoyWorktreeDir
-          }
+      let branch = convoy.branch ?? spec.branch ?? defaultBranchName(convoy.name, convoyId)
+      let baseRef = convoy.base_ref ?? null
+      if (!injectedCheckout) {
+        // Older runs recorded the user's own branch here even when the spec
+        // named none, and merged into their checkout. Such a run continues on a
+        // branch of its own, cut from where it left off.
+        const mine = await userBranch(repoRoot)
+        if (!convoy.branch || convoy.branch === mine) {
+          baseRef = convoy.branch ?? (await currentRef(basePath))
+          branch = defaultBranchName(convoy.name, convoyId)
+          store.updateConvoyBranch(convoyId, branch, baseRef)
+          progress.line(`  ${c.dim(`This run had no branch of its own; continuing on ${branch}.`)}`)
         }
       }
 
       const ndjsonPath = options.logsDir
         ? join(options.logsDir, 'convoys', `${convoyId}.ndjson`)
-        : ndjsonPathForConvoy(convoyId, effectiveBasePath)
+        : ndjsonPathForConvoy(convoyId, repoRoot)
       events = createEventEmitter(store, { ndjsonPath })
-      const wtManager = options._worktreeManager ?? createWorktreeManager(effectiveBasePath)
-      const mergeQueue = options._mergeQueue ?? createMergeQueue(effectiveBasePath)
 
-      // Reset interrupted tasks and mark their workers as killed
-      const allTasks = store.getTasksByConvoy(convoyId)
-      for (const task of allTasks) {
-        if (task.status === 'running' || task.status === 'assigned') {
-          if (task.worker_id) {
-            try {
-              store.updateWorkerStatus(task.worker_id, 'killed', {
-                finished_at: new Date().toISOString(),
-              })
-            } catch {
-              // worker record may already be absent
-            }
-          }
-          store.updateTaskStatus(task.id, convoyId, 'pending', {
-            worker_id: null,
-            worktree: null,
-            started_at: null,
-            finished_at: null,
-          })
-        }
-      }
+      checkout = await integrationCheckout(repoRoot, branch, baseRef ?? 'HEAD', shortConvoyId(convoyId))
+      const wtManager = options._worktreeManager ?? createWorktreeManager(repoRoot)
+      const mergeQueue = options._mergeQueue ?? createMergeQueue(checkout.path, { worktreesDir: worktreesDirFor(repoRoot) })
 
-      // Remove all orphaned worktrees from the crashed run
-      await wtManager.removeAll()
+      const reset = resetForResume(store, events, convoyId)
 
-      // NDJSON recovery: truncate partial lines, replay missing events
+      // Worktrees left by a run that died — not the integration checkout.
+      await wtManager.removeAll({ except: [checkout.path] })
+
       recoverNdjson(store, convoyId, ndjsonPath)
+      store.updateConvoyStatus(convoyId, 'running', {})
+      events.emit('convoy_resumed', { original_created_at: convoy.created_at, reset }, { convoy_id: convoyId })
+      const pendingCount = store.getTasksByConvoy(convoyId).filter(t => t.status === 'pending').length
+      progress.line(`  ${c.dim('Branch')} ${branch}${baseRef ? c.dim(` (from ${baseRef})`) : ''} ${c.dim(`· ${pendingCount} task(s) to run`)}`)
 
-      events.emit(
-        'convoy_resumed',
-        { original_created_at: convoy.created_at },
-        { convoy_id: convoyId },
-      )
-
-      result = await runConvoy(
-        convoyId, spec, adapter, store, events,
-        wtManager, mergeQueue, effectiveBasePath, baseBranch, verbose, startTime, ndjsonPath,
-        options._reviewRunner,
-      )
+      disposeInterrupts = installInterrupts(ctl, progress)
+      const result = await runConvoy({
+        convoyId, spec, adapter, store, events, wtManager, mergeQueue, repoRoot,
+        workRoot: checkout.path, branch, baseRef, verbose, startTime, ndjsonPath,
+        reviewRunner: options._reviewRunner ?? defaultReviewer, progress, ctl,
+      })
+      progress.stop()
+      printSummary(progress, result, store, repoRoot)
+      return result
     } catch (err) {
-      markConvoyCrashed(store, events ?? null, convoyId, err)
+      markConvoyCrashed(store, events, convoyId, err)
       throw err
     } finally {
+      disposeInterrupts()
+      progress.stop()
       events?.close()
       store.close()
       lock.release()
-      lockDb.close()
-      if (convoyWorktreeDir) {
-        try {
-          await execFile('git', ['worktree', 'remove', convoyWorktreeDir, '--force'], { cwd: basePath })
-        } catch { /* ignore cleanup errors */ }
-      }
+      if (checkout?.owned) await removeRootWorktree(repoRoot, checkout.path)
     }
-    return result
   }
 
   async function retryFailed(convoyId: string, taskIds?: string[]): Promise<void> {
     mkdirSync(dirname(dbPath), { recursive: true })
     const store = createConvoyStore(dbPath)
+    const repoRoot = await resolveRepoRoot()
     const ndjsonPath = options.logsDir
       ? join(options.logsDir, 'convoys', `${convoyId}.ndjson`)
-      : ndjsonPathForConvoy(convoyId, basePath)
+      : ndjsonPathForConvoy(convoyId, repoRoot)
     const events = createEventEmitter(store, { ndjsonPath })
     try {
-      const allTasks = store.getTasksByConvoy(convoyId)
-      const retryableStatuses = ['failed', 'gate-failed', 'timed-out', 'review-blocked', 'disputed']
-
-      const tasksToRetry = allTasks.filter(t => {
-        if (!retryableStatuses.includes(t.status)) return false
-        if (taskIds && taskIds.length > 0) return taskIds.includes(t.id)
-        return true
-      })
-
-      for (const task of tasksToRetry) {
-        store.updateTaskStatus(task.id, convoyId, 'pending', {
-          retries: 0,
-          worker_id: null,
-          worktree: null,
-          started_at: null,
-          finished_at: null,
-        })
-        events.emit('task_retried', { previous_status: task.status }, { convoy_id: convoyId, task_id: task.id })
-      }
-
-      // Reset convoy status to running so resume can pick it up
+      resetForResume(store, events, convoyId, taskIds)
       store.updateConvoyStatus(convoyId, 'running', {})
     } finally {
       events.close()
@@ -3298,7 +2531,6 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
     mkdirSync(dirname(dbPath), { recursive: true })
     const store = createConvoyStore(dbPath)
     try {
-      // Idempotency check
       if (task.idempotency_key) {
         const existing = store.getTaskByIdempotencyKey(convoyId, task.idempotency_key)
         if (existing) return existing
@@ -3306,18 +2538,15 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
 
       const allTasks = store.getTasksByConvoy(convoyId)
 
-      // Check max injectable tasks (10)
       const injectedCount = allTasks.filter(t => t.injected === 1).length
       if (injectedCount >= 10) {
         throw new Error(`Max injectable tasks (10) reached for convoy ${convoyId}`)
       }
 
-      // Validate ID uniqueness
       if (allTasks.some(t => t.id === task.id)) {
         throw new Error(`Task ID "${task.id}" already exists in convoy ${convoyId}`)
       }
 
-      // Validate depends_on references exist
       const deps = task.depends_on ?? []
       for (const dep of deps) {
         if (!allTasks.some(t => t.id === dep)) {
@@ -3325,26 +2554,19 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         }
       }
 
-      // Validate no file partition overlap with pending/running tasks
-      const taskFiles = task.files ?? []
-      if (taskFiles.length > 0) {
-        // Normalize injected task file paths
-        const normalizedTaskFiles = taskFiles.map(normalizePath)
-
-        // Symlink pre-scan on injected files
-        const basePath = options.basePath ?? process.cwd()
+      const taskFilesIn = task.files ?? []
+      if (taskFilesIn.length > 0) {
+        const normalizedTaskFiles = taskFilesIn.map(normalizePath)
         try {
           scanSymlinks(normalizedTaskFiles, basePath)
         } catch (err) {
           throw new Error(`Injected task "${task.id}" failed symlink check: ${(err as Error).message}`)
         }
 
-        // Full partition validation against active tasks
         const activeTasks = allTasks.filter(t => t.status === 'pending' || t.status === 'running' || t.status === 'assigned')
         for (const other of activeTasks) {
-          const otherFiles = other.files ? (JSON.parse(other.files) as string[]) : []
-          if (otherFiles.length === 0) continue
-          const normalizedOther = otherFiles.map(normalizePath)
+          const normalizedOther = taskFiles(other)
+          if (normalizedOther.length === 0) continue
           const overlapping: string[] = []
           for (const fileA of normalizedTaskFiles) {
             for (const fileB of normalizedOther) {
@@ -3359,19 +2581,17 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         }
       }
 
-      // Detect dependency cycles
       const depGraph = new Map<string, string[]>()
-      for (const t of allTasks) {
-        depGraph.set(t.id, t.depends_on ? (JSON.parse(t.depends_on) as string[]) : [])
-      }
+      for (const t of allTasks) depGraph.set(t.id, parseJsonList(t.depends_on))
       depGraph.set(task.id, deps)
-
-      function hasCycle(nodeId: string, visited: Set<string>, stack: Set<string>): boolean {
+      const visited = new Set<string>()
+      const stack = new Set<string>()
+      const hasCycle = (nodeId: string): boolean => {
         visited.add(nodeId)
         stack.add(nodeId)
         for (const dep of depGraph.get(nodeId) ?? []) {
           if (!visited.has(dep)) {
-            if (hasCycle(dep, visited, stack)) return true
+            if (hasCycle(dep)) return true
           } else if (stack.has(dep)) {
             return true
           }
@@ -3379,18 +2599,12 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         stack.delete(nodeId)
         return false
       }
-
-      const visited = new Set<string>()
-      const stack = new Set<string>()
       for (const nodeId of depGraph.keys()) {
-        if (!visited.has(nodeId)) {
-          if (hasCycle(nodeId, visited, stack)) {
-            throw new Error(`Dependency cycle detected when injecting task "${task.id}"`)
-          }
+        if (!visited.has(nodeId) && hasCycle(nodeId)) {
+          throw new Error(`Dependency cycle detected when injecting task "${task.id}"`)
         }
       }
 
-      // Insert the task
       const record: TaskRecord = {
         id: task.id,
         convoy_id: convoyId,
@@ -3409,7 +2623,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         finished_at: null,
         retries: 0,
         max_retries: task.max_retries ?? 1,
-        files: taskFiles.length > 0 ? JSON.stringify(taskFiles) : null,
+        files: taskFilesIn.length > 0 ? JSON.stringify(taskFilesIn) : null,
         depends_on: deps.length > 0 ? JSON.stringify(deps) : null,
         prompt_tokens: null,
         completion_tokens: null,
@@ -3435,7 +2649,6 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       }
 
       store.insertInjectedTask(record)
-
       return record
     } finally {
       store.close()
@@ -3443,4 +2656,59 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
   }
 
   return { run, resume, retryFailed, injectTask }
+}
+
+/**
+ * Put every unfinished task back to pending. Returns the ids it reset.
+ *
+ * With `taskIds`, only those and the tasks skipped because of them. A failed
+ * task gets its retry budget back; an interrupted one keeps the retries it had.
+ */
+function resetForResume(
+  store: ConvoyStore,
+  events: ConvoyEventEmitter,
+  convoyId: string,
+  taskIds?: string[],
+): string[] {
+  const all = store.getTasksByConvoy(convoyId)
+  let selected: Set<string> | null = null
+  if (taskIds && taskIds.length > 0) {
+    selected = new Set(taskIds)
+    // The dependents a failure skipped come along with it.
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const t of all) {
+        if (selected.has(t.id) || t.status !== 'skipped') continue
+        if (parseJsonList(t.depends_on).some(d => selected!.has(d))) {
+          selected.add(t.id)
+          grew = true
+        }
+      }
+    }
+  }
+  const reset: string[] = []
+  for (const task of all) {
+    if (!RESUME_RESET_STATUSES.includes(task.status)) continue
+    if (selected && !selected.has(task.id)) continue
+    if (task.worker_id && (task.status === 'running' || task.status === 'assigned')) {
+      try {
+        store.updateWorkerStatus(task.worker_id, 'killed', { finished_at: new Date().toISOString() })
+      } catch { /* worker record may already be absent */ }
+    }
+    store.updateTaskStatus(task.id, convoyId, 'pending', {
+      worker_id: null,
+      worktree: null,
+      started_at: null,
+      finished_at: null,
+      ...(FAILED_STATUSES.has(task.status) ? { retries: 0 } : {}),
+      ...(task.status === 'skipped' ? { retry_note: null } : {}),
+    })
+    if (task.status === 'disputed') {
+      store.updateTaskReview(task.id, convoyId, { panel_attempts: 0 })
+    }
+    events.emit('task_retried', { previous_status: task.status }, { convoy_id: convoyId, task_id: task.id })
+    reset.push(task.id)
+  }
+  return reset
 }

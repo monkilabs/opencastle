@@ -67,7 +67,9 @@ CONFIDENCE: low | medium | high
 > **⛔ HARD GATE — Log the review before proceeding.**
 
 ```sh
-npx opencastle log --type review --skill <name> --outcome pass|fail --reviewer "Reviewer" --mechanism sub-agent
+npx opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
+  --verdict pass --attempt 1 --issues_critical 0 --issues_major 0 --issues_minor 2 \
+  --confidence high --escalated false --duration_sec 45
 ```
 
 ## Integration & Overnight Mode

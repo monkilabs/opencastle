@@ -262,138 +262,288 @@ commit, push, open a pull request, never merge.
 | **Browser testing** | Chrome DevTools MCP at project-defined responsive breakpoints |
 | **Secret scan** | Post-execution scan for leaked credentials (API keys, tokens, passwords) |
 | **Blast radius** | Detects risky file patterns (migrations, auth changes, RLS policies) |
-| **TDD gate** | New source files must have corresponding test files |
-| **No-op gate** | A task that declared `files` and produced none fails instead of reporting done |
+
+These are the gates the Team Lead follows in a session (the `validation-gates`
+skill). The convoy engine runs its own; see [Gates](#gates).
 
 ---
 
 ## Convoy Architecture
 
-A **convoy** is the structured execution engine for multi-agent workflows. It provides deterministic, crash-recoverable orchestration with file isolation, DAG-based scheduling, and layered validation. It is experimental.
-
-Workers run on one of five runtimes ([`src/cli/run/adapters/`](src/cli/run/adapters/)): `claude`, `copilot`, `cursor`, `opencode` and `codex`. A convoy can mix them — each task is assigned a runtime independently. Windsurf and Antigravity are compile targets only.
-
-### Lifecycle
+A **convoy** runs multi-step work with several agents at once. It plans the
+work, runs each task in a git worktree of its own, reviews and merges each
+result onto one branch, and runs the project's checks once at the end. It is
+experimental. Its commands and flags are on the
+[CLI page](https://www.opencastle.dev/docs/cli#convoy), and real runs are on
+[Use cases](https://www.opencastle.dev/docs/use-cases).
 
 ```mermaid
 graph LR
-    S[".convoy.yml"] --> V["Validate & Build DAG"]
-    V --> I["Initialize Engine"]
-    I --> E["Execute Phases"]
-    E --> G["Post-Convoy Gates"]
-    G --> D["Deliver"]
-
-    E -->|crash| R["Resume from checkpoint"]
-    R --> E
+    T["convoy 'task'"] --> P["Planner, read-only"]
+    P --> S[".convoy.yml"]
+    R["convoy run spec"] --> S
+    S --> Q["Ready queue"]
+    Q --> W["Task worktree: agent, commit, checks, review"]
+    W --> M["Merge into the convoy branch"]
+    M --> Q
+    M --> G["Gates, once"]
+    G --> B["Branch to review and merge"]
 ```
 
-1. **Spec** — A `.convoy.yml` file defines tasks, agents, file partitions, dependencies, and orchestration rules
-2. **DAG validation** — Tasks form a directed acyclic graph; phase assignment is computed from dependencies
-3. **Initialization** — Engine creates convoy record in SQLite (`.opencastle/convoy.db`), starts health monitor, configures event emitter
-4. **Execution** — Tasks run phase-by-phase; within a phase, up to `concurrency: N` tasks run in parallel
-5. **Completion** — Post-convoy gates run, convoy guard validates logs, worktrees are cleaned up
-6. **Recovery** — On crash, `resume(convoyId)` replays from the last checkpoint using SQLite + NDJSON recovery
+### Planner
 
-### Per-Task Execution
+`opencastle convoy "<task>"` and `convoy plan --prd <file>`
+([`pipeline.ts`](src/cli/pipeline.ts)) turn a request into a spec. Every
+planning session is read-only and runs on the run's runtime. Where the runtime
+maps tiers to models, the writing steps run on the standard tier's model and the
+checking steps on the economy tier's ([`plan.ts`](src/cli/plan.ts)). The prompts
+are the seven pipeline templates in
+[`src/orchestrator/prompts/`](src/orchestrator/prompts/).
 
-Each task follows this flow:
+1. **Sizing.** `assess-complexity` sizes the request first, on the economy
+   model. A change sized `low`, with no split into groups, is planned straight
+   from the request: no PRD (two sessions, three with `--yes`).
+2. **PRD, for larger work.** `generate-prd` writes `.opencastle/prds/<name>.prd.md`,
+   and `validate-prd` reviews it; a PRD that fails review gets up to two
+   `fix-prd` rounds. The request's sizing is reused, unless it recommended
+   groups: then the PRD is sized again, beside its review, so the groups can
+   name its phases. `convoy plan --prd <file>` starts here, with a PRD you
+   edited, and sizes it beside its review; that sizing is cached beside the PRD
+   and reused only for the same text.
+3. **The plan.** `generate-convoy` answers with a JSON task plan. When the
+   sizing splits a large PRD into groups, each group is planned at the same time
+   and the plans are joined into one spec. An unreadable answer is asked for
+   once more.
+4. **Code checks** ([`spec-builder.ts`](src/cli/convoy/spec-builder.ts)). A glob
+   in `files` becomes the directory before its first wildcard. A task whose
+   files are all tests, and which waits on exactly one other task (once
+   dependencies implied by others are dropped), is folded into that task, so
+   the agent that writes the code writes its tests. Then the spec is validated
+   (ids, dependencies, cycles), paths must be relative, and no two tasks that
+   can run at once may claim the same file.
+5. **Fixes only when a check fails.** Up to two `fix-convoy` rounds. Overlaps
+   still left are sequenced: the later task waits for the earlier.
 
-```
-Check dependencies → Resolve upstream outputs → Build isolation preamble
-→ Assign to adapter → Execute with timeout → Run post-execution gates
-→ Validate output contract → Run review → Update status → Emit events
-```
+With `--yes` nobody reads the plan, so `validate-convoy` reviews it once, and
+one `fix-convoy` round applies its issues if the result still passes the
+checks. The plan is printed as a table, with what planning spent, before
+`Run it? [Y/n]`. A closed stdin is a no.
 
-**Failure handling:**
-- Max retries exceeded → Dead Letter Queue (DLQ)
-- Gate failure → `gate-failed` status, optional gate retry
-- No changes produced → `gate-failed` status; a clean adapter exit is not proof the work happened, so a task that declared `files` and left nothing behind is retried and then failed. Git evidence from the worktree decides it; where there is none, the agent's own `OUTPUT_CONTRACT` does. Switch it off with `defaults.built_in_gates.no_op: false`
-- Review block → `review-blocked` status, can escalate to dispute
-- Cascade → `on_failure: stop` skips all pending tasks; `on_failure: continue` skips only dependents
+### Spec defaults
 
-### File Isolation
+The planner decides the tasks, their prompts, agents, files and dependencies.
+The code sets everything about how the run behaves:
 
-Each task operates in an isolated git worktree confined to its file partition:
+| Field | Planned spec | Hand-written spec, when left out |
+|-------|--------------|----------------------------------|
+| `branch` | `convoy/<slug>`, the spec file's name | `convoy/<name>-<6 hex>` |
+| `concurrency` | the plan's widest dependency level, at most 4 | 4 |
+| `on_failure` | `continue` | `continue` |
+| `adapter` | the runtime that planned it | resolved at run time (below) |
+| `gates` | the project's `typecheck`, `lint`, `test` and `build` scripts, with its package manager | none |
+| `gate_retries` | 1 when there are gates | 0 |
+| `defaults` | `timeout: 30m`, `max_retries: 1`, `review: fast` | `timeout: 30m`, `max_retries: 1`, review `auto` |
 
-- Tasks declare `files: [...]` (directories or specific files)
-- Engine validates no two concurrent tasks have overlapping partitions
-- Post-execution scan detects partition violations
-- Isolation preamble warns the agent: *"You may ONLY read and modify files within this partition"*
+A planned task with a `complexity` score takes its timeout, retries and review
+level from the effort table in
+[`effort-scaling.ts`](src/cli/convoy/effort-scaling.ts): 1–2 is 5–10 minutes, one
+retry and `review: auto`; 3–8 is 15–30 minutes, two retries and `review: fast`;
+13 is 45 minutes, three retries and `review: panel`.
 
-This enables safe parallel execution and deterministic merging of results.
+`on_failure: continue` means a failed task blocks only what depends on it;
+`stop` starts no new task after the first failure. The package manager comes
+from `packageManager` in `package.json`, else the lockfile. A `test` script
+that `npm init` wrote, or one that watches, is not used as a gate. A spec
+without `version` is version 1; a version 2 spec (a chain of specs) is refused
+with what to do instead ([`schema.ts`](src/cli/run/schema.ts)).
 
-### Worker Permissions
+### Scheduler
 
-A convoy worker runs with no terminal attached, so a permission prompt is not a question it can answer — it is a refusal. Workers therefore run with edits pre-accepted (`acceptEdits`), which is the least authority that lets one do the job it was given, and matches the other CLI adapters (`codex -a never -s workspace-write`, `cursor --force`).
+[`engine.ts`](src/cli/convoy/engine.ts) runs a ready queue. A task is ready when
+every task it depends on is done. Ready tasks start as slots free up, up to
+`concurrency`, the task that most others wait on first and ties in spec order.
+A ready task does not start beside a running task whose `files` overlap its own
+([`schedule.ts`](src/cli/convoy/schedule.ts)).
 
-Set it per spec, or per run:
+A failed attempt goes back to the queue while it has retries left, with the
+reason told to the next attempt: the exit and the end of its output, the gate
+that failed, or the reviewer's issues. A task out of retries fails, its
+dependents are skipped, and its record goes to `.opencastle/AGENT-FAILURES.md`.
 
-```yaml
-defaults:
-  permission_mode: bypassPermissions   # default | acceptEdits | auto | dontAsk | bypassPermissions | plan
-```
+The agent for a task runs on the spec's `model` when it names one, otherwise on
+the runtime's model for the agent's capability tier. Claude Code maps premium,
+standard and economy to its `opus`, `sonnet` and `haiku` aliases; the other
+runtimes have no mapping and use their own default model. Every task's prompt
+starts with the same shared context — the whole plan and the rules every worker
+follows, among them to leave `.opencastle/` to the convoy even where the
+project's instructions ask for an edit there — and ends with the task's own part: its role, its files, what the tasks
+before it produced, and any note from a failed attempt. Runtimes with a prompt
+cache can reuse the shared part ([`isolation.ts`](src/cli/convoy/isolation.ts)).
 
-```
-npx opencastle convoy run -f .opencastle/convoys/my-feature.convoy.yml --permission-mode bypassPermissions
-```
+### Worktrees and merging
 
-`bypassPermissions` gives a worker a free hand and is a sandbox-shaped choice; `default` restores the prompt-driven behavior, which in a non-interactive run means the worker writes nothing. Isolation still comes from the per-task worktree and the `files` partition either way.
+Every worktree lives directly under `.opencastle/worktrees/`, with a short name,
+to stay under Windows' path limit ([`worktree.ts`](src/cli/convoy/worktree.ts)):
 
-Not every runtime can express every mode, so not every adapter accepts every mode:
+- **The integration worktree** checks out the run's branch, created from the
+  current branch when it does not exist yet. Merges happen here, never in your
+  checkout, and a spec naming the branch you have checked out is refused.
+- **A task worktree** is cut from the tip of the run's branch on a worker branch
+  of its own. When the agent finishes, its work is committed there
+  (`--no-verify`) before any check or review reads the change.
 
-| Adapter | Honours | How |
-|---------|---------|-----|
-| `claude` | all six | passed through as `--permission-mode` |
-| `codex` | all six | mapped onto the `exec -s` sandbox: `read-only`, `workspace-write`, `danger-full-access` |
-| `cursor`, `opencode`, `copilot` | `acceptEdits`, `auto`, `dontAsk` | these runtimes run unattended with edits accepted and offer no read-only or wider grant |
+Commands that add, remove or list worktrees, and branch deletions, queue per
+repository: a `git worktree add` reads every other worktree's entry, and one
+still being written by a concurrent add fails it. A git refusal over a lock is
+retried with backoff.
 
-Asking an adapter for a mode it cannot honour is refused before the run starts, naming the modes it does support. It is never accepted and ignored.
+The merge queue ([`merge.ts`](src/cli/convoy/merge.ts)) merges one worker branch
+at a time into the integration worktree. A conflict re-runs the task once, from
+the current tip, told which files moved under it. A second conflict, or any
+other merge error, fails the task and keeps its worker branch, which the summary
+names. The integration worktree is removed when the run ends; the branch is the
+result.
 
-### Effort Scaling
+### Gates
 
-Task complexity (Fibonacci 1–13) maps to execution profiles:
+Two kinds of check, both run through the platform's own shell
+([`platform.ts`](src/cli/run/platform.ts)):
 
-| Complexity | Tier | Timeout | Max Retries | Review Level |
-|------------|------|---------|-------------|--------------|
-| 1–2 | Economy | 5–10m | 1 | Auto-pass |
-| 3 | Standard | 15m | 2 | Fast |
-| 5 | Standard | 20m | 2 | Fast |
-| 8 | Standard | 30m | 2 | Fast |
-| 13 | Premium | 45m | 3 | Panel |
+- **Project gates.** The spec's `gates` run once, after every task has merged,
+  on the integration worktree. With `gate_retries`, failing gates get that many
+  fix attempts by one agent working on the merged result. A task may list its
+  own `gates`, which run in its worktree before review.
+- **Built-in gates** ([`gates.ts`](src/cli/convoy/gates.ts)). `no_op` is on unless
+  the spec turns it off: a task that declared `files` and changed nothing fails,
+  because a clean exit is not proof the work happened. The others run only when
+  `defaults.built_in_gates` turns them on: `secret_scan`, `blast_radius`,
+  `browser_test` and `tdd_check` per task, and `regression_test` and
+  `dependency_audit` once at the end.
 
-### Agent Expertise & Circuit Breakers
+Changes outside a task's `files`, and an answer without its role's output
+summary, are recorded as warnings; the work is kept.
 
-The engine tracks agent failures over the life of a convoy:
+### Reviewer
 
-- **Circuit breaker** opens after repeated failures (default: 3), preventing new task assignment
-- After cooldown, a probe task tests recovery; success closes the circuit
-- Optional fallback agent handles work while the primary is in cooldown
-- Breaker state is serialized to the convoy record, so it survives a resume
+[`reviewer.ts`](src/cli/convoy/reviewer.ts) reviews a task's committed change
+before it merges.
 
-### Event System
+- `review: auto` passes a `writer`'s change, and a change of at most 10 lines in
+  at most 2 files, without a reviewer. Paths under `auth/`, `security/`,
+  `migrations/` or `rls/`, and the `security-expert` and `data-engineer` agents,
+  always get one.
+- `review: fast` (and anything `auto` does not pass) gets one review: a
+  read-only session of the task's runtime, in the task's worktree, given the
+  task and the diff, on the spec's `reviewer_model` or the runtime's economy
+  model. It ends with a `pass` or `block` verdict.
+- `review: panel` asks three reviewers; two blocks block. A third blocked panel
+  opens a dispute in `.opencastle/DISPUTES.md`.
+- `review: none` skips review.
 
-46 canonical event types cover the convoy and task lifecycle, reviews and disputes, gates, safety checks, circuit breakers, watch mode and worker health. [TELEMETRY.md](src/cli/convoy/TELEMETRY.md) lists every one with its data fields.
+A `block` sends the task back with the reviewer's issues as a failed attempt. A
+review that cannot run, times out or gives no verdict is recorded as skipped,
+never as a pass. Reviews run at most `max_concurrent_reviews` (3) at once, and
+`review_budget` caps the tokens they may spend.
 
-Events are dual-written to **SQLite** (`.opencastle/convoy.db`; queryable, durable) and **NDJSON** (`.opencastle/logs/convoys/<convoy-id>.ndjson`; append-only, crash-safe via `fsyncSync`). Secret scanning runs on every NDJSON write.
+### Store and events
 
-### Contracts & Output Validation
+[`store.ts`](src/cli/convoy/store.ts) keeps runs, tasks, workers and events in
+SQLite (`.opencastle/convoy.db`, WAL mode, `node:sqlite`). A lock row with a
+10-second heartbeat lets one engine at a time write to the database; one left by
+a process that has died on this machine is taken over at once
+([`lock.ts`](src/cli/convoy/lock.ts)).
 
-Each agent type has a defined output contract with required fields:
+Every event is written twice ([`events.ts`](src/cli/convoy/events.ts)): to SQLite,
+and to `.opencastle/logs/convoys/<convoy-id>.ndjson`, fsynced per event.
+Secrets are masked before either copy is written, and in task output, failure
+records and disputes ([`redact.ts`](src/cli/convoy/redact.ts)).
+[TELEMETRY.md](src/cli/convoy/TELEMETRY.md) lists every event type and its data.
 
-- `developer` → `files_changed[]`, `tests_added[]`, `summary`
-- `security-expert` → `findings[]`, `severity`, `files_reviewed[]`, `summary`
-- After task completion, output is validated against the contract schema
-- Invalid output triggers a retry with a corrected prompt
+Tokens and cost are what the runtime reports. Where it reports none, tokens are
+estimated from the text and cost from the model it names, and both are marked
+as estimates ([`pricing.ts`](src/cli/convoy/pricing.ts)).
 
-### Artifacts
+### Read model and viewer
 
-Tasks can write artifacts to `.opencastle/artifacts/{convoy-id}/{task-id}/`:
+[`read-model.ts`](src/cli/convoy/read-model.ts) is the one read path into a
+project's runs. It opens the database read-only, selects only the columns the
+database has, and never migrates it. A run is live while its status is pending
+or running and the lock's heartbeat is under a minute old. Bare
+`opencastle convoy` and `convoy resume` read through it, and so does the viewer.
 
-- Named files with metadata (type, summary, size)
-- Downstream tasks can read upstream artifacts via dependency resolution
-- Only the most recent convoys' artifacts are kept
+The viewer is one HTML page ([`src/cli/viewer/index.html`](src/cli/viewer/index.html),
+no build step) served by [`dashboard.ts`](src/cli/dashboard.ts) on 127.0.0.1,
+with four JSON endpoints: the runs, one run with its tasks, a run's events after
+a cursor, and the agent sessions recorded with `opencastle log`. It answers only
+GET and HEAD, and only for a local Host header. The page polls every 2 seconds
+while a run is live. A run started on a terminal outside CI starts the viewer
+on port 4300, or the next free port, and prints its address.
+
+[`tools/viewer-demo/export.mjs`](tools/viewer-demo/export.mjs) writes the same
+page in a static mode over a snapshot of one project's runs; the website
+publishes it at [opencastle.dev/dashboard](https://www.opencastle.dev/dashboard).
+
+### Adapters and platform
+
+Workers run on one of five runtimes ([`src/cli/run/adapters/`](src/cli/run/adapters/)):
+
+| Adapter | Command | Assistant `init` configured |
+|---------|---------|-----------------------------|
+| `claude` | `claude -p` | Claude Code |
+| `copilot` | `copilot` | VS Code (GitHub Copilot) |
+| `cursor` | `cursor-agent -p` (or Cursor's `agent`) | Cursor |
+| `opencode` | `opencode run` | OpenCode |
+| `codex` | `codex exec` | Codex CLI |
+
+Windsurf and Antigravity have no command-line agent, so they are compile targets
+only. `resolveAdapter` picks the runtime: `--adapter`, then the spec's `adapter`,
+then the assistants in `.opencastle/manifest.json` in order, then the first of
+`claude`, `codex`, `cursor`, `opencode` and `copilot` found on PATH. A runtime
+named by flag or spec that is not installed is an error, never a switch to
+another. A task's own `adapter:` overrides the run's.
+
+Each adapter sends the prompt on stdin and records the usage, cost and model the
+runtime reports. Permission modes are Claude Code's names, translated for each
+CLI in [`permission-modes.ts`](src/cli/run/adapters/permission-modes.ts): workers
+run with edits accepted (`acceptEdits`), planning and review read-only. Claude
+Code's read-only is its default mode with `Edit`, `Write` and `NotebookEdit`
+disallowed, because its plan mode changes the model. `defaults.permission_mode`
+in a spec sets the workers' mode; every adapter accepts every mode.
+
+[`platform.ts`](src/cli/run/platform.ts) keeps this the same on macOS, Linux and
+Windows: commands are found on PATH without `which`, honouring `PATHEXT`; npm's
+`.cmd` shims are spawned through the shell; gates run in the platform shell; and
+a stop takes the whole process tree, SIGTERM then SIGKILL after 5 seconds, or
+`taskkill /T /F` on Windows.
+
+### Interrupt and resume
+
+The first Ctrl+C (or SIGTERM) stops every agent session, starts no new task and
+stops running gates and hooks, which sit in a process group of their own. Running
+tasks go back to pending, the run is marked `interrupted`, and the command prints
+`Resume with: opencastle convoy resume` and exits 130. Tasks get 10 seconds to
+wind down; a second Ctrl+C exits at once.
+
+`convoy resume` continues the newest run that is not done, with the spec and
+runtime recorded when it started. Every task not done goes back to pending:
+failed, timed out, interrupted, or skipped because of a failure. Failed tasks
+get their retries back, interrupted ones keep theirs, and finished tasks are
+kept. It reuses or
+prunes the integration worktree a killed run left, removes stale task
+worktrees, and copies events missing from the NDJSON log back from SQLite.
+`convoy resume --dry-run` lists what would run.
+
+### Spec options the planner does not write
+
+A hand-written spec can also use these, all off by default:
+`defaults.circuit_breaker` (an agent that fails too often gets no new tasks for a
+cooldown; its tasks run as the `fallback_agent` when one is named), per-task `steps` (prompts run in order in one worktree, each with
+`gates` and an `if`), `hooks` (`pre_task`, `post_task`, `post_convoy`), `outputs`
+and `inputs` (text one task produces for another), `persistent: true` (an agent
+remembers its last tasks), and per-task `adapter` and `model`.
 
 ---
+
 
 ## MCP Servers
 
@@ -437,12 +587,12 @@ defaults are held to the rules a supply-chain review would apply:
 ## Observability
 
 Agents append sessions, delegations, reviews, panels and disputes to
-`.opencastle/logs/events.ndjson` with `opencastle log`; the record schema is in
-[logs/README.md](src/orchestrator/customizations/logs/README.md). Convoy events
-go to `.opencastle/convoy.db` and `.opencastle/logs/convoys/<convoy-id>.ndjson`
-([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)).
-
-The [dashboard](src/dashboard/) (`opencastle convoy dashboard`, experimental) provides a web UI for exploring convoy runs, task timelines, agent performance, and event streams.
+`.opencastle/logs/events.ndjson` with `opencastle log`, which checks every record
+against the schema in [logs/README.md](src/orchestrator/customizations/logs/README.md)
+and refuses one that does not match. Convoy events go to `.opencastle/convoy.db`
+and `.opencastle/logs/convoys/<convoy-id>.ndjson`
+([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The convoy viewer shows both; see
+[Read model and viewer](#read-model-and-viewer).
 
 ---
 
@@ -463,7 +613,7 @@ The [dashboard](src/dashboard/) (`opencastle convoy dashboard`, experimental) pr
 | `plugin` | Check an Agent Plugin, build Claude Code's files from it (`build`), write marketplace files for a directory of them (`index`) |
 | `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or Claude Code's auto memory for this repository into lessons (`memory`) |
 | `fleet` | OpenCastle and baseline versions, and MCP server spread, across many repositories' locks |
-| `convoy` | Experimental: plan and run multi-step work |
+| `convoy` | Experimental: plan multi-step work and run it with agents in parallel |
 
 On GitHub Actions, `sync --check` also writes an `::error` annotation on each
 drifted file and a table to `$GITHUB_STEP_SUMMARY`

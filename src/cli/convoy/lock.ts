@@ -12,16 +12,33 @@ export class EngineAlreadyRunningError extends Error {
 
 type LockRow = { pid: number; hostname: string; last_heartbeat: string }
 
-function checkStaleness(row: LockRow): boolean {
-  const heartbeatAge = Date.now() - new Date(row.last_heartbeat).getTime()
-  if (heartbeatAge <= 30_000) return false
-  if (row.hostname !== getHostname()) return true
+/** False only when the process is certainly gone (ESRCH); EPERM means it exists. */
+function pidAlive(pid: number): boolean {
   try {
-    process.kill(row.pid, 0)
-    return false // PID is alive on this host
-  } catch {
-    return true // PID is dead
+    process.kill(pid, 0)
+    return true
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'EPERM'
   }
+}
+
+/**
+ * Whether a lock row may be taken over.
+ *
+ * On this host the pid answers the question outright: a dead owner is stale
+ * at once. It used to count as live until its heartbeat was 30 s old, so a run
+ * killed with Ctrl+C could not be resumed straight away — `resume` said
+ * "another opencastle process is already running" about a process that no
+ * longer existed. Another host's pid means nothing here, so only the heartbeat
+ * can tell.
+ */
+function checkStaleness(row: LockRow): boolean {
+  if (row.hostname === getHostname()) {
+    if (row.pid === process.pid) return false
+    return !pidAlive(row.pid)
+  }
+  const heartbeatAge = Date.now() - new Date(row.last_heartbeat).getTime()
+  return heartbeatAge > 30_000
 }
 
 export function isLockStale(db: DatabaseSync): boolean {

@@ -232,20 +232,26 @@ can reach and what they cost today. A pinned model name can only be wrong later.
 
 ## Convoy Engine (experimental)
 
-For work too long to sit and watch, the convoy engine runs tasks in dependency
-order across isolated git worktrees, with SQLite persistence so a crash resumes
-instead of restarting. This part is experimental and may change; the compiler
-above does not depend on it.
+For multi-step work you would rather not sit and watch. `opencastle convoy "<task>"`
+plans the work without changing anything, shows you the plan and asks once. Then it
+runs independent tasks at the same time, each in its own git worktree, on the
+runtime `opencastle init` set up: Claude Code, Codex, Cursor, OpenCode or Copilot.
+Each finished task is merged onto a branch of its own, your project's checks run
+once at the end, and your checkout is never touched. This part is experimental
+and may change; the compiler above does not depend on it.
 
 ```bash
-opencastle convoy "Add user reviews to the place detail page"
-opencastle convoy                    # where did the last run get to?
-opencastle convoy resume             # continue after an interruption
+opencastle convoy "Add tags to notes, and reject a note without a title"  # plan, show, ask, run
+opencastle convoy                     # the last run and the one next step
+opencastle convoy resume              # continue whatever is not done
+opencastle convoy dashboard           # the live viewer
+opencastle convoy run my.convoy.yml   # run a spec you wrote
 ```
 
-It plans the work, executes it on Claude Code, Copilot, Cursor, OpenCode or
-Codex, and runs your gates. Inspired by Steve Yegge's
-[Gas Town](https://github.com/steveyegge/gastown).
+Real runs, with their time and cost: [Use cases](https://www.opencastle.dev/docs/use-cases).
+Every command and flag: [CLI reference](https://www.opencastle.dev/docs/cli#convoy).
+How it works: [ARCHITECTURE.md](ARCHITECTURE.md#convoy-architecture). Inspired by
+Steve Yegge's [Gas Town](https://github.com/gastownhall/gastown).
 
 <br>
 

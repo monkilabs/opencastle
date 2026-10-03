@@ -211,8 +211,8 @@ describe('shipped content instructs only commands that exist', () => {
     // catches an invention.
     const real = new Set([...visibleCommands(), ...hiddenCommands()])
     // Subcommands of `convoy`, which the dispatcher never sees directly.
-    // `run` belongs here after all: `convoy run --file <spec>` is the form that
-    // reads a spec, and it is what the runtime's own resume hint prints. Removing
+    // `run` belongs here after all: `convoy run <spec>` is the form that reads
+    // a spec, and it is what the planner's own hint prints. Removing
     // it from this list, on the reasoning that `convoy --help` did not name it,
     // sent every mention to `convoy --file` — a form the parser never read, which
     // answered a missing file with the status screen and exit 0.
@@ -492,7 +492,7 @@ describe('quickstart stays runnable', () => {
 describe.skipIf(!cliBuilt)('documented flags are flags the command declares', () => {
   const GLOBAL = new Set(['--help', '-h', '--debug', '--version', '-v'])
 
-  // The command *path*, not the first word. `convoy run --file` is read by `run`,
+  // The command *path*, not the first word. `convoy run --dry-run` is read by `run`,
   // and asking `convoy --help` about it says the flag does not exist — which is
   // how a correct line came to be reported as an error, and how the wrong "fix"
   // (rewriting every mention to `convoy --file`) got made.

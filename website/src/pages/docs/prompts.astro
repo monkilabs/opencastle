@@ -23,7 +23,7 @@ const categories = [
     label: 'Convoy pipeline',
     title: 'Convoy pipeline (experimental)',
     icon: categoryIcons.pipeline,
-    intro: `<p><code>npx opencastle convoy "&lt;task&gt;"</code> runs these seven steps in order and fills in their input itself; <code>npx opencastle convoy plan --prd &lt;path&gt;</code> starts at step 2 with a PRD you already have. Each step returns something the CLI reads — a PRD, a VALID or INVALID verdict, or JSON — so you rarely run one yourself. Run by hand, a step returns that output and nothing else: no file is written. The convoy engine is experimental; its commands are on the <a href="/docs/cli#convoy">CLI page</a>.</p>`,
+    intro: `<p><code>npx opencastle convoy "&lt;task&gt;"</code> runs these steps and fills in their input itself. Step 1 sizes the request: a small change goes straight to step 5, with no PRD, and larger work gets one first. <code>npx opencastle convoy plan --prd &lt;path&gt;</code> starts from a PRD you already have, sizing and reviewing it side by side. Every step runs read-only. The fix steps run only when a check fails, and step 6 only with <code>--yes</code>, when nobody reads the plan before it runs. Each step returns something the CLI reads — a PRD, a VALID or INVALID verdict, or JSON — so you rarely run one yourself. Run by hand, a step returns that output and nothing else: no file is written. The convoy engine is experimental; its commands are on the <a href="/docs/cli#convoy">CLI page</a>.</p>`,
   },
 ];
 
@@ -53,7 +53,7 @@ const prompts = [
       { heading: 'What it does', content: `<ol>
         <li><strong>Research &amp; context gathering</strong> — reads the roadmap, known issues, lessons learned and related code</li>
         <li><strong>Task board setup</strong> — creates one tracker issue per subtask before any code is written</li>
-        <li><strong>Convoy spec</strong> — writes a convoy spec for the work, whatever its size, checks it with <code>--dry-run</code>, and asks you to run <code>npx opencastle convoy run -f .opencastle/convoys/&lt;name&gt;.convoy.yml</code> (the convoy engine is experimental)</li>
+        <li><strong>Convoy spec</strong> — writes a convoy spec for the work, whatever its size, checks it with <code>--dry-run</code>, and asks you to run <code>npx opencastle convoy run .opencastle/convoys/&lt;name&gt;.convoy.yml</code> (the convoy engine is experimental)</li>
         <li><strong>Validation &amp; testing</strong> — after the run: secret scan, lint, tests, build, fast review, browser checks</li>
         <li><strong>Delivery via PR</strong> — opens a pull request from the convoy's branch, linked to the tracker issues</li>
       </ol>` },
@@ -72,7 +72,7 @@ const prompts = [
         <li><strong>Triage &amp; reproduce</strong> — confirms the bug, gathers context</li>
         <li><strong>Create tracker issue</strong> — opens a bug ticket with reproduction steps</li>
         <li><strong>Root cause analysis</strong> — traces the defect to its origin</li>
-        <li><strong>Fix via convoy</strong> — writes a convoy spec for the fix, even a single task, and asks you to run it with <code>npx opencastle convoy run -f …</code> (experimental)</li>
+        <li><strong>Fix via convoy</strong> — writes a convoy spec for the fix, even a single task, and asks you to run it with <code>npx opencastle convoy run …</code> (experimental)</li>
         <li><strong>Validate</strong> — verifies with tests and browser checks before delivering the PR</li>
       </ol>` },
     ],
@@ -132,10 +132,19 @@ const prompts = [
     ],
   },
   {
+    id: 'assess-complexity',
+    category: 'pipeline',
+    name: '1. Assess Complexity',
+    summary: 'Sizes the work, first on your request. A change sized low, and not split into groups, is planned straight from the request, with no PRD. Larger work gets a PRD and keeps this sizing, unless it splits the work into groups: then the PRD is sized again beside its review, so each group can name its phases, and the groups are planned at the same time and joined into one spec. A sizing of a PRD is saved beside it as <name>.complexity.json and reused while the PRD is unchanged.',
+    agent: 'Reviewer',
+    input: 'your request, or the PRD and your request',
+    details: [],
+  },
+  {
     id: 'generate-prd',
     category: 'pipeline',
-    name: '1. Generate PRD',
-    summary: 'Turns a feature request into a product requirements document. The CLI writes it to .opencastle/prds/<name>.prd.md, named after the PRD\'s title.',
+    name: '2. Generate PRD',
+    summary: 'Turns a request that is not small into a product requirements document. The CLI writes it to .opencastle/prds/<name>.prd.md, named after the PRD\'s title.',
     agent: 'Team Lead (OpenCastle)',
     input: 'the task you gave opencastle convoy',
     details: [],
@@ -143,8 +152,8 @@ const prompts = [
   {
     id: 'validate-prd',
     category: 'pipeline',
-    name: '2. Validate PRD',
-    summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Answers VALID or INVALID with the issues.',
+    name: '3. Validate PRD',
+    summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Runs beside a second sizing when there is one. Answers VALID or INVALID with the issues.',
     agent: 'Reviewer',
     input: 'the PRD',
     details: [],
@@ -152,35 +161,26 @@ const prompts = [
   {
     id: 'fix-prd',
     category: 'pipeline',
-    name: '3. Fix PRD',
-    summary: 'Rewrites the PRD to fix the issues validate-prd found. Runs only when validation fails, up to two attempts.',
+    name: '4. Fix PRD',
+    summary: 'Rewrites the PRD to fix the issues validate-prd found. Runs only when validation fails, up to two rounds.',
     agent: 'Team Lead (OpenCastle)',
     input: 'the PRD and the issues',
-    details: [],
-  },
-  {
-    id: 'assess-complexity',
-    category: 'pipeline',
-    name: '4. Assess Complexity',
-    summary: 'Scores the PRD and decides between one convoy and a chain of convoys. Runs at the same time as validate-prd; the CLI saves its JSON beside the PRD as <name>.complexity.json and reuses it on the next run.',
-    agent: 'Reviewer',
-    input: 'the PRD and your original task',
     details: [],
   },
   {
     id: 'generate-convoy',
     category: 'pipeline',
     name: '5. Generate Convoy',
-    summary: 'Turns the PRD into a JSON task plan. The CLI converts it and writes .opencastle/convoys/<name>.convoy.yml; run by hand, it returns the JSON only.',
+    summary: 'Turns the request, or the PRD, into a JSON task plan. The CLI folds a task that only writes tests into the task it tests, checks the plan in code — ids, dependencies, cycles, file paths, and tasks that could run at once on the same files — and writes .opencastle/convoys/<name>.convoy.yml; run by hand, it returns the JSON only.',
     agent: 'Team Lead (OpenCastle)',
-    input: 'your task, and the PRD with its complexity scores',
+    input: 'your task, the PRD when there is one, and the complexity scores',
     details: [],
   },
   {
     id: 'validate-convoy',
     category: 'pipeline',
     name: '6. Validate Convoy',
-    summary: 'After the CLI\'s own schema check, looks for tasks that run in parallel on the same files, missing dependencies, and missing or redundant tasks. Answers VALID or INVALID.',
+    summary: 'Reviews a plan that will run without a person reading it first (--yes): tasks that run in parallel on the same files, missing dependencies, and missing or redundant tasks. Answers VALID or INVALID.',
     agent: 'Reviewer',
     input: 'the convoy spec',
     details: [],
@@ -189,7 +189,7 @@ const prompts = [
     id: 'fix-convoy',
     category: 'pipeline',
     name: '7. Fix Convoy',
-    summary: 'Returns JSON patches for the issues the schema check or validate-convoy found; the CLI applies them and rewrites the spec. Up to two attempts.',
+    summary: 'Returns JSON patches for the problems the code checks or validate-convoy found; the CLI applies them. Up to two rounds after the checks, one after a review.',
     agent: 'Team Lead (OpenCastle)',
     input: 'the task plan and the issues',
     details: [],

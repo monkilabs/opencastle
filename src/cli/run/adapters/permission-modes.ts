@@ -2,65 +2,146 @@ import { PERMISSION_MODES } from '../../convoy/spec-types.js'
 import type { PermissionMode } from '../../convoy/spec-types.js'
 
 /**
- * Which permission modes each adapter can actually honour.
+ * What each permission mode means on each agent CLI.
  *
- * `--permission-mode` was validated against the enum, stored on the spec,
- * threaded through four call sites in the engine, handed to the adapter — and
- * then read by exactly one of the five. On `codex`, `cursor`, `opencode` and
- * `copilot` it was accepted in full and dropped, so a run asked to hold a worker
- * to `plan` went ahead and wrote files, saying nothing.
+ * The modes are Claude Code's. Every other CLI spells authority differently,
+ * and this file is the one place that translates. Three meanings matter:
  *
- * Silently ignoring an authority setting is the worst of the three options. The
- * other two are honouring it and refusing it, and this table is what decides
- * which of those happens: a mode listed here is honoured by that adapter, and a
- * mode absent from it is refused before the run starts, naming the alternatives.
+ * - **read-only** (`plan`, and `default`, which in a headless run can only
+ *   refuse what it would have asked about): the agent reads and answers. It
+ *   edits no file, and runs no command beyond what the CLI itself treats as
+ *   read-only. The planner runs its agents this way.
+ * - **edits** (`acceptEdits` — the default — and `auto`, `dontAsk`): the agent
+ *   edits files in its working directory without asking. Whether it may also
+ *   run commands is each CLI's own rule, noted per CLI below.
+ * - **everything** (`bypassPermissions`): no prompts and no sandbox.
  *
- * `ExecuteOptions.permissionMode` used to carry a note saying adapters that
- * cannot express a mode ignore it. They no longer may.
+ * A mode an adapter cannot express is refused before the run starts, never
+ * dropped: a run told to stay read-only that writes anyway is the worst
+ * outcome there is.
  */
 
 /** Every mode, for an adapter that maps the whole enum. */
 const ALL: readonly PermissionMode[] = PERMISSION_MODES
 
-/**
- * The modes that all mean "do the work without asking".
- *
- * `cursor --force`, `opencode`'s unattended run, and the Copilot SDK session
- * with `onPermissionRequest` approving everything are each exactly this and
- * nothing else: there is no flag on any of them for read-only or for a wider
- * grant. They accept the modes that describe what they already do, and refuse
- * the ones that would be a lie.
- */
-const EDITS_ONLY: readonly PermissionMode[] = ['acceptEdits', 'auto', 'dontAsk']
+type Meaning = 'read-only' | 'edits' | 'everything'
+
+/** The three meanings the modes reduce to on a CLI that is not Claude Code. */
+export function meaningOf(mode: PermissionMode | undefined): Meaning {
+  switch (mode) {
+    case 'plan':
+    case 'default':
+      return 'read-only'
+    case 'bypassPermissions':
+      return 'everything'
+    // acceptEdits, auto, dontAsk, and no mode at all.
+    default:
+      return 'edits'
+  }
+}
 
 export const ADAPTER_PERMISSION_MODES: Record<string, readonly PermissionMode[]> = {
-  // Passed straight through as `--permission-mode`.
+  // Passed through as `claude -p --permission-mode <mode>`, except read-only
+  // (`plan`), which is default mode with Edit, Write and NotebookEdit denied —
+  // see `claudePermissionArgs`. A headless run refuses whatever it would have
+  // asked about. `acceptEdits` allows edits and simple filesystem commands
+  // (mkdir, mv, cp …) in the working directory.
   claude: ALL,
-  // Mapped onto the sandbox setting — see `codexSandboxFor`.
+  // `codex exec` never asks for approval; the sandbox is the whole policy.
+  // See `codexSandboxFor`. Edits mode can run commands, inside the sandbox.
   codex: ALL,
-  cursor: EDITS_ONLY,
-  opencode: EDITS_ONLY,
-  copilot: EDITS_ONLY,
+  // `copilot` tool rules. See `copilotPermissionArgs`. Edits mode runs only
+  // read-only commands.
+  copilot: ALL,
+  // `opencode run` allows edits and commands by default and rejects what it
+  // would ask about. See `opencodePermission`.
+  opencode: ALL,
+  // `cursor-agent -p` applies edits only with `--force`, which also allows
+  // commands. See `cursorPermissionArgs`.
+  cursor: ALL,
 }
 
 /**
- * The sandbox `codex exec -s` should run under for a given mode.
+ * The sandbox `codex exec -s` runs under.
  *
- * `acceptEdits` keeps `workspace-write`, which is what the adapter has always
- * passed, so the default run is byte-for-byte what it was. The other modes stop
- * being silently equal to it.
+ * `codex exec` always runs with approval policy "never" — it has no `-a` of
+ * its own, and the `-a never` this adapter used to pass before `exec` was
+ * parsed as an option of the interactive CLI and ignored — so the sandbox is
+ * all there is. `read-only` writes nothing and runs commands read-only;
+ * `workspace-write` writes inside the working directory, with no network;
+ * `danger-full-access` is unrestricted.
  */
 export function codexSandboxFor(mode: PermissionMode | undefined): string {
-  switch (mode) {
-    // "writes nothing unattended" and "plan only" are both read-only to codex.
-    case 'default':
-    case 'plan':
+  switch (meaningOf(mode)) {
+    case 'read-only':
       return 'read-only'
-    case 'bypassPermissions':
+    case 'everything':
       return 'danger-full-access'
-    // acceptEdits, auto, dontAsk, and no mode at all.
     default:
       return 'workspace-write'
+  }
+}
+
+/**
+ * Copilot CLI tool rules for a headless run.
+ *
+ * In prompt mode Copilot cannot ask, so whatever no rule allows is refused;
+ * reads inside the working directory, and read-only shell commands, need no
+ * rule. `write` is every file-editing tool and `shell` every command. Deny
+ * rules beat allow rules — even `--allow-all` and `COPILOT_ALLOW_ALL` in the
+ * environment — so read-only is stated as denials rather than left to the
+ * absence of an allow. Edits mode allows `write` and leaves commands to that
+ * default, which is close to Claude Code's `acceptEdits`.
+ */
+export function copilotPermissionArgs(mode: PermissionMode | undefined): string[] {
+  switch (meaningOf(mode)) {
+    case 'read-only':
+      return ['--deny-tool=write', '--deny-tool=shell']
+    case 'everything':
+      return ['--allow-all']
+    default:
+      return ['--allow-tool=write']
+  }
+}
+
+/**
+ * OpenCode's permission settings for a headless `opencode run`.
+ *
+ * `run` already allows edits and commands, and rejects whatever would need a
+ * question (paths outside the project, a detected loop). Read-only denies the
+ * edit and bash tools through `OPENCODE_PERMISSION` — the built-in `plan`
+ * agent alone still runs shell commands. `--auto` approves the questions too.
+ */
+export function opencodePermission(mode: PermissionMode | undefined): { args: string[]; permission?: Record<string, string> } {
+  switch (meaningOf(mode)) {
+    case 'read-only':
+      return { args: [], permission: { edit: 'deny', bash: 'deny' } }
+    case 'everything':
+      return { args: ['--auto'] }
+    default:
+      return { args: [] }
+  }
+}
+
+/**
+ * Cursor Agent flags for a headless `cursor-agent -p`.
+ *
+ * In print mode the agent proposes changes and applies none unless `--force`
+ * is given, and `--mode ask` keeps it to read-only questions and answers. A
+ * headless run in a workspace Cursor has not been told to trust — every new
+ * worktree — exits at once, so read-only passes `--trust`; `--force` implies
+ * it. Cursor has no grant narrower than `--force`, which also lets it run
+ * commands. Everything also turns Cursor's sandbox off and approves the
+ * project's MCP servers.
+ */
+export function cursorPermissionArgs(mode: PermissionMode | undefined): string[] {
+  switch (meaningOf(mode)) {
+    case 'read-only':
+      return ['--trust', '--mode', 'ask']
+    case 'everything':
+      return ['--force', '--sandbox', 'disabled', '--approve-mcps']
+    default:
+      return ['--force']
   }
 }
 

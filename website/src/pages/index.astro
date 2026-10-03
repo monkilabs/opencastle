@@ -629,18 +629,18 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
       <div class="container">
         <span class="section__label">Convoy Engine · Experimental</span>
         <h2 class="section__title">
-          Convoy Engine. Crash-safe. Isolated. Observable.
+          Describe the work. Review the branch.
         </h2>
         <p class="section__subtitle">
-          Inspired by Steve Yegge's <a href="https://github.com/steveyegge/gastown" target="_blank" rel="noopener noreferrer">Gas Town</a>, the Convoy Engine is a deterministic,
-          crash-recoverable orchestrator backed by SQLite WAL-mode persistence.
-          Each worker gets its own git worktree — no shared mutable state.
-          Define your batch in <code>convoy.yml</code>, run it overnight, and resume exactly where you left off.
+          <code>npx opencastle convoy "&lt;task&gt;"</code> plans multi-step work, shows you the plan and
+          asks once. Agents then work in parallel, each in a git worktree of its own, on the agent CLI
+          <code>opencastle init</code> set up. Each finished task is merged onto one branch, your checks run
+          once at the end, and your checkout is never touched. Inspired by Steve Yegge's
+          <a href="https://github.com/gastownhall/gastown" target="_blank" rel="noopener noreferrer">Gas Town</a>.
         </p>
         <p class="section__subtitle">
-          <strong>This part is experimental and may change.</strong> The compiler above
-          does not depend on it — native background and cloud agents now cover much of
-          what it was built for.
+          <strong>This part is experimental and may change.</strong> The compiler above does not depend
+          on it. Real runs, with their time and cost, are in <a href="/docs/use-cases">Use cases</a>.
         </p>
         <div class="autonomous-grid">
           <div class="code-block">
@@ -648,96 +648,78 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span class="code-block__dot" />
               <span class="code-block__dot" />
               <span class="code-block__dot" />
-              <span class="code-block__filename">convoy.yml</span>
+              <span class="code-block__filename">A real run, on Claude Code</span>
             </div>
             <div class="code-block__body">
-              <pre><span class="code-key">name:</span> <span class="code-string">"Overnight feature batch"</span>
-<span class="code-key">version:</span> 1
-<span class="code-key">concurrency:</span> 2
-<span class="code-key">adapter:</span> claude
-<span class="code-key">branch:</span> feat/reviews
+              <pre><span class="code-folder">$ npx opencastle convoy "Add tags to notes…" --yes</span>
+  …
+  Branch convoy/note-tags (from main) · 5 tasks · up to 3 at once
+  ▶ [notes-http-layer] developer
+  ▶ [notes-data-layer] developer
+  ✓ [notes-http-layer] (1m 40s) · $0.67
+  ✓ [notes-data-layer] (2m 27s) · $0.91
+  ▶ [readme-docs] writer
+  ▶ [notes-http-tests] testing-expert
+  ▶ [notes-unit-tests] testing-expert
+  ✓ [readme-docs] (39s) · $0.13
+  ✓ [notes-http-tests] (1m 47s) · $0.67
+  ✓ [notes-unit-tests] (2m 25s) · $0.83
 
-<span class="code-key">defaults:</span>
-  <span class="code-key">timeout:</span> 30m
-  <span class="code-key">max_retries:</span> 1
-
-<span class="code-key">tasks:</span>
-  - <span class="code-key">id:</span> migrate-db
-    <span class="code-key">agent:</span> data-engineer
-    <span class="code-key">prompt:</span> <span class="code-string">|
-      Create a new migration for a reviews table.</span>
-    <span class="code-key">timeout:</span> 10m
-    <span class="code-key">files:</span> <span class="code-string">["db/migrations/"]</span>
-
-  - <span class="code-key">id:</span> build-component
-    <span class="code-key">agent:</span> ui-ux-expert
-    <span class="code-key">prompt:</span> <span class="code-string">|
-      Build a ReviewCard component.</span>
-    <span class="code-key">timeout:</span> 15m
-    <span class="code-key">files:</span> <span class="code-string">["src/components/reviews/"]</span>
-
-  - <span class="code-key">id:</span> wire-page
-    <span class="code-key">agent:</span> developer
-    <span class="code-key">depends_on:</span> [migrate-db, build-component]
-    <span class="code-key">prompt:</span> <span class="code-string">|
-      Add reviews to the place detail page.</span>
-    <span class="code-key">files:</span> <span class="code-string">["src/pages/places/"]</span>
-
-<span class="code-key">gates:</span>
-  - <span class="code-string">npm run lint</span>
-  - <span class="code-string">npm run type-check</span>
-  - <span class="code-string">npm run test</span></pre>
+  Gates:
+  ✓ npm run test
+  …
+  ✓ Convoy done in 4m 53s — 5/5 tasks done
+  Gates: 1/1 passed
+  Spent: 3.2M tokens · $3.21
+  …
+    Review: git diff main...convoy/note-tags
+    Merge:  git merge convoy/note-tags</pre>
             </div>
           </div>
           <div class="autonomous-details">
             <div class="autonomous-feature">
-              <h3 class="autonomous-feature__title">Crash-Safe Execution</h3>
+              <h3 class="autonomous-feature__title">A plan you read first</h3>
               <p class="autonomous-feature__desc">
-                SQLite WAL-mode persistence means convoy state survives crashes,
-                power loss, and OOM kills. Resume exactly where you left off
-                with <code>--resume</code>.
+                Planning changes no code: agents size the request and draft the tasks, with a PRD
+                first when the work is not small, and code checks the plan. You see who does what, after what, touching which files, and answer
+                <code>Run it? [Y/n]</code>.
               </p>
             </div>
             <div class="autonomous-feature">
-              <h3 class="autonomous-feature__title">Worktree Isolation</h3>
+              <h3 class="autonomous-feature__title">Worktrees and one branch</h3>
               <p class="autonomous-feature__desc">
-                Each worker gets its own git worktree — no shared mutable state.
-                Changes merge back in dependency order once the convoy
-                completes.
+                Each task runs in its own git worktree and is merged onto the run's branch as it
+                finishes, one at a time. You review and merge that branch like any other.
               </p>
             </div>
             <div class="autonomous-feature">
-              <h3 class="autonomous-feature__title">Health Monitoring</h3>
+              <h3 class="autonomous-feature__title">No waiting on the slowest</h3>
               <p class="autonomous-feature__desc">
-                Stuck and zombie workers are detected automatically. Failed tasks
-                retry up to configurable limits before the convoy marks them
-                as permanently failed.
+                A task starts as soon as the tasks it depends on are done. Tasks that touch the same
+                files never run side by side.
               </p>
             </div>
             <div class="autonomous-feature">
-              <h3 class="autonomous-feature__title">Mixed Runtimes</h3>
+              <h3 class="autonomous-feature__title">Reviewed, then checked</h3>
               <p class="autonomous-feature__desc">
-                Per-task adapter overrides let you run <strong>Copilot</strong>,
-                <strong>Claude Code</strong>, <strong>Cursor</strong>,
-                <strong>OpenCode</strong> and <strong>Codex</strong>
-                workers in the same convoy.
+                Changes get a read-only review before they merge; small ones can pass on size. Your <code>typecheck</code>,
+                <code>lint</code>, <code>test</code> and <code>build</code> scripts run once on the
+                merged result.
               </p>
             </div>
             <div class="autonomous-feature">
-              <h3 class="autonomous-feature__title">Validation Gates</h3>
+              <h3 class="autonomous-feature__title">Stop and resume</h3>
               <p class="autonomous-feature__desc">
-                Run lint, tests, and builds after all tasks complete.
-                Gates must pass before the convoy is marked done — no
-                silent failures.
+                Runs are recorded in SQLite. After Ctrl+C, a failure or a crash,
+                <code>opencastle convoy resume</code> runs what is not done and keeps the rest.
               </p>
             </div>
             <div class="autonomous-feature">
-              <h3 class="autonomous-feature__title">Generate Convoy</h3>
+              <h3 class="autonomous-feature__title">Five runtimes, by tier</h3>
               <p class="autonomous-feature__desc">
-                Describe your goal in plain language. The Team Lead
-                decomposes it into a valid <code>convoy.yml</code> spec
-                with dependencies, file partitions, and self-contained
-                agent instructions.
+                <strong>Claude Code</strong>, <strong>Copilot</strong>, <strong>Cursor</strong>,
+                <strong>OpenCode</strong> or <strong>Codex</strong>, on macOS, Linux and Windows. On
+                Claude Code each agent runs on the model its tier needs, and reviews on the cheapest.
               </p>
             </div>
           </div>
@@ -750,12 +732,13 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
       <div class="container">
         <span class="section__label">Observability · Experimental</span>
         <h2 class="section__title">
-          Track every delegation, every session, every lesson.
+          Every run, task and event, on one page.
         </h2>
         <p class="section__subtitle">
-          <code>npx opencastle convoy dashboard</code> (experimental) shows agent performance,
-          capability-tier distribution, session timelines and panel outcomes, from the logs
-          agents write to <code>.opencastle/logs/</code>.
+          <code>npx opencastle convoy dashboard</code> (experimental) is a read-only page over a project's
+          convoy runs: each run's branch, runtime, models, time, tokens and cost; every task with what it
+          waits for and why it failed; and the event feed, live while a run works. A run started in a
+          terminal starts it for you.
         </p>
         <a
           href={DEMO_URL}
@@ -775,7 +758,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
           <img
             src={dashboardSnapshot.src}
-            alt="OpenCastle Observability Dashboard — showing session metrics, capability-tier distribution, and recent agent sessions"
+            alt="The convoy viewer showing a real five-task run, Note tags: done in 4m 52s for $3.21, with each task's agent, model, dependencies, duration, tokens and cost, and the event feed"
           />
           <div class="dashboard-preview__overlay">
             View live demo →
@@ -853,8 +836,8 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         <p class="section__subtitle">
           Layered validation — secret scanning through final smoke test. In an interactive
           session the gates are instructions the Team Lead follows (the validation-gates skill);
-          when the experimental convoy engine runs the work, it enforces them — escalating to a
-          structured dispute when agents cannot converge.
+          when the experimental convoy engine runs the work, it reviews changes and runs your
+          checks itself.
         </p>
         <div class="quality-grid">
           <div class="quality-card">

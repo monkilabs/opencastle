@@ -1,9 +1,12 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { devNull } from 'node:os'
 import { join } from 'node:path'
 import { inflateSync } from 'node:zlib'
 import { filePathFields } from './contracts.js'
+import { maskSecretLine } from './redact.js'
+import { runShell } from '../run/platform.js'
 import type { BrowserTestConfig, MCPServerConfig } from './types.js'
 // Secret scanning is shared with the compiler's commands, so it lives outside the engine.
 import { scanForSecrets, type SecretScanResult } from '../secret-scan.js'
@@ -240,7 +243,10 @@ export async function runSecretScanGate(
     return { passed: true, output: `Secret scan: clean (${changedFiles.length} files scanned)` }
   }
 
-  const lines = allFindings.map((f) => `  [${f.pattern}] ${f.file}:${f.line}: ${f.snippet}`)
+  // The snippet is masked: this output is fed back to the agent, stored on the
+  // task and shown in the viewer, and quoting the secret there is the leak the
+  // gate exists to stop.
+  const lines = allFindings.map((f) => `  [${f.pattern}] ${f.file}:${f.line}: ${maskSecretLine(f.snippet, f.pattern)}`)
   return {
     passed: false,
     output: `Secret scan: ${allFindings.length} finding(s) detected\n${lines.join('\n')}`,
@@ -294,11 +300,22 @@ export function runBlastRadiusGate(diff: string): {
 
 // ── runDependencyAuditGate ────────────────────────────────────────────────────
 
-/** Run npm audit in the worktree to detect high/critical vulnerabilities. */
+/**
+ * Run npm audit to detect high/critical vulnerabilities.
+ *
+ * Through the platform shell: npm is a `.cmd` shim on Windows, which Node
+ * refuses to spawn without one.
+ */
 export async function runDependencyAuditGate(
   worktreePath: string,
+  timeoutMs = 300_000,
+  signal?: AbortSignal,
 ): Promise<{ passed: boolean; output: string }> {
-  const result = await runGateCommand('npm', ['audit', '--json'], worktreePath, 300_000)
+  const shell = await runShell('npm audit --json', { cwd: worktreePath, timeoutMs, signal })
+  const result = { exitCode: shell.code, stdout: shell.stdout, stderr: shell.stderr }
+  if (shell.timedOut) {
+    return { passed: false, output: `Dependency audit timed out after ${Math.round(timeoutMs / 1000)}s` }
+  }
   if (result.exitCode === 0) {
     return { passed: true, output: 'Dependency audit: no vulnerabilities found' }
   }
@@ -328,21 +345,23 @@ export async function runDependencyAuditGate(
 
 // ── runRegressionTestGate ─────────────────────────────────────────────────────
 
-/** Run the test suite in the worktree directory. */
+/** Run the test suite, through the platform shell (see `runDependencyAuditGate`). */
 export async function runRegressionTestGate(
   worktreePath: string,
   testCommand = 'npm test',
+  timeoutMs = 300_000,
+  signal?: AbortSignal,
 ): Promise<{ passed: boolean; output: string }> {
-  const parts = testCommand.split(' ')
-  const cmd = parts[0]
-  const args = parts.slice(1)
-  const result = await runGateCommand(cmd, args, worktreePath, 300_000)
-  if (result.exitCode === 0) {
-    return { passed: true, output: `Regression test passed\n${result.stdout}` }
+  const result = await runShell(testCommand, { cwd: worktreePath, timeoutMs, signal })
+  if (result.timedOut) {
+    return { passed: false, output: `Regression test timed out after ${Math.round(timeoutMs / 1000)}s` }
+  }
+  if (result.code === 0) {
+    return { passed: true, output: `Regression test passed\n${result.stdout.slice(-4000)}` }
   }
   return {
     passed: false,
-    output: `Regression test failed (exit ${result.exitCode}):\n${result.stderr || result.stdout}`,
+    output: `Regression test failed (exit ${result.code}):\n${(result.stderr || result.stdout).slice(-8000)}`,
   }
 }
 
@@ -668,7 +687,7 @@ export async function browserTestGate(
   for (const url of taskConfig.urls) {
     const curlResult = await runGateCommand(
       'curl',
-      ['-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '30', url],
+      ['-sS', '-o', devNull, '-w', '%{http_code}', '--max-time', '30', url],
       worktreePath,
       35_000,
     )

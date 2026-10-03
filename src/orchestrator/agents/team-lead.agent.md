@@ -73,7 +73,7 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 | Path | When | Action |
 |------|------|--------|
 | Compact | score ≤2, single subtask | Sub-agent directly; fast review + logs still required |
-| Convoy (experimental) | score 3+ or multi-task | plan by `generate-convoy`'s rules → write `.opencastle/convoys/<name>.convoy.yml` → user runs `npx opencastle convoy run -f <spec>` → validation gates → PR |
+| Convoy (experimental) | score 3+ or multi-task | plan by `generate-convoy`'s rules → write `.opencastle/convoys/<name>.convoy.yml` → user runs `npx opencastle convoy run <spec>` → validation gates → PR |
 | Utility | `create-skill`, `brainstorm`, `quick-refinement` | Direct delegation, no convoy |
 
 ## Workflow

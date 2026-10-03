@@ -76,8 +76,8 @@ export function writeArtifact(
   return { task_id: taskId, convoy_id: convoyId, filename: safeFilename, type, size_bytes, summary, path: filePath }
 }
 
-export function listArtifacts(convoyId: string, taskId: string): ArtifactRef[] {
-  const dir = getArtifactDir(convoyId, taskId)
+export function listArtifacts(convoyId: string, taskId: string, basePath?: string): ArtifactRef[] {
+  const dir = getArtifactDir(convoyId, taskId, basePath)
   if (!existsSync(dir)) return []
 
   const refs: ArtifactRef[] = []
@@ -111,7 +111,14 @@ export function readArtifact(ref: ArtifactRef): string {
   return readFileSync(ref.path, 'utf8')
 }
 
-export function extractArtifactRefs(taskId: string, convoyId: string, output: string): ArtifactRef[] {
+/**
+ * The artifacts an agent's answer points at that actually exist.
+ *
+ * A reference to a missing file is dropped rather than reported on stderr: the
+ * engine prints a status line on the same terminal, and the answer itself is
+ * stored for anyone who wants to see what the agent claimed.
+ */
+export function extractArtifactRefs(taskId: string, convoyId: string, output: string, basePath?: string): ArtifactRef[] {
   const pattern = /\[ARTIFACT:\s*([^\]]+)\]\s*(.+)/g
   const refs: ArtifactRef[] = []
   let match: RegExpExecArray | null
@@ -121,18 +128,12 @@ export function extractArtifactRefs(taskId: string, convoyId: string, output: st
     const filename = basename(match[1].trim())
     const summary = match[2].trim()
 
-    if (!filename || filename === '..') {
-      process.stderr.write('[artifacts] Warning: invalid artifact filename from agent output\n')
-      continue
-    }
+    if (!filename || filename === '..') continue
 
-    const dir = getArtifactDir(convoyId, taskId)
+    const dir = getArtifactDir(convoyId, taskId, basePath)
     const filePath = join(dir, filename)
 
-    if (!existsSync(filePath)) {
-      process.stderr.write(`[artifacts] Warning: referenced artifact not found: ${filePath}\n`)
-      continue
-    }
+    if (!existsSync(filePath)) continue
 
     refs.push({ task_id: taskId, filename, summary, path: filePath })
   }

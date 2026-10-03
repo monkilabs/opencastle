@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseYaml, parseTimeout, validateSpec, applyDefaults, isConvoySpec, isPipelineSpec, parseTaskSpecText } from './schema.js'
+import { parseYaml, parseTimeout, validateSpec, applyDefaults, parseTaskSpecText } from './schema.js'
 import { PERMISSION_MODES } from '../convoy/spec-types.js'
 
 // ── parseYaml ──────────────────────────────────────────────────
@@ -274,12 +274,19 @@ describe('validateSpec', () => {
 // ── applyDefaults ──────────────────────────────────────────────
 
 describe('applyDefaults', () => {
-  it('applies default concurrency', () => {
+  it('leaves concurrency to the engine when the spec does not set it', () => {
+    // 'auto' lets the engine apply defaults.max_swarm_concurrency, else 4;
+    // a default of 1 ran every task of a spec that said nothing one at a time.
     const spec = applyDefaults({
       name: 'test',
       tasks: [{ id: 'a', prompt: 'x' }],
     })
-    expect(spec.concurrency).toBe(1)
+    expect(spec.concurrency).toBe('auto')
+  })
+
+  it('reads a spec without a version as version 1', () => {
+    const spec = applyDefaults({ name: 'test', tasks: [{ id: 'a', prompt: 'x' }] })
+    expect(spec.version).toBe(1)
   })
 
   it('applies default on_failure', () => {
@@ -372,10 +379,11 @@ describe('validateSpec — version field', () => {
     expect(result.errors).toContainEqual(expect.stringContaining('version'))
   })
 
-  it('accepts version 2', () => {
+  it('refuses version 2, and says what to do instead', () => {
     const result = validateSpec({ ...validSpec, version: 2 })
-    expect(result.valid).toBe(true)
-    expect(result.errors).toHaveLength(0)
+    expect(result.valid).toBe(false)
+    expect(result.errors.join('\n')).toMatch(/no longer supported/)
+    expect(result.errors.join('\n')).toMatch(/one version 1 spec/)
   })
 
   it('rejects non-integer version', () => {
@@ -390,7 +398,7 @@ describe('validateSpec — version field', () => {
     expect(result.errors).toContainEqual(expect.stringContaining('version'))
   })
 
-  it('omitting version is valid (legacy spec)', () => {
+  it('omitting version is valid: it is a version 1 spec', () => {
     const result = validateSpec(validSpec)
     expect(result.valid).toBe(true)
   })
@@ -625,44 +633,6 @@ describe('validateSpec — per-task model and max_retries', () => {
   })
 })
 
-// ── isConvoySpec ───────────────────────────────────────────────
-
-describe('isConvoySpec', () => {
-  it('returns true for version 1 spec', () => {
-    expect(
-      isConvoySpec({ name: 'test', version: 1, tasks: [{ id: 'a', prompt: 'x' }] })
-    ).toBe(true)
-  })
-
-  it('returns true for version 2 spec', () => {
-    expect(
-      isConvoySpec({ name: 'test', version: 2, depends_on_convoy: ['other-convoy'] })
-    ).toBe(true)
-  })
-
-  it('returns false for legacy spec without version', () => {
-    expect(
-      isConvoySpec({ name: 'test', tasks: [{ id: 'a', prompt: 'x' }] })
-    ).toBe(false)
-  })
-
-  it('returns false for version 3', () => {
-    expect(isConvoySpec({ name: 'test', version: 3 })).toBe(false)
-  })
-
-  it('returns false for null input', () => {
-    expect(isConvoySpec(null)).toBe(false)
-  })
-
-  it('returns false for non-object input', () => {
-    expect(isConvoySpec('string')).toBe(false)
-  })
-
-  it('returns false for undefined', () => {
-    expect(isConvoySpec(undefined)).toBe(false)
-  })
-})
-
 // ── applyDefaults — convoy spec (version: 1) ───────────────────
 
 describe('applyDefaults — convoy spec (version: 1)', () => {
@@ -874,17 +844,16 @@ describe('backward compatibility — legacy specs', () => {
     expect(task.files).toEqual(['src/'])
   })
 
-  it('defaults block is ignored without version:1', () => {
-    // Without version:1, the defaults block should not be merged
+  it('applies the defaults block of a spec without a version', () => {
+    // A spec without `version` went to a second, older executor that ignored
+    // `defaults` altogether. There is one executor now, and one reading.
     const spec = applyDefaults({
       name: 'test',
-      defaults: { agent: 'ui-ux-expert', model: 'gpt-4' },
+      defaults: { agent: 'ui-ux-expert', model: 'm' },
       tasks: [{ id: 'a', prompt: 'x' }],
     })
-    // agent falls back to hardcoded 'developer', not defaults.agent
-    expect(spec.tasks![0].agent).toBe('developer')
-    // model is not set
-    expect(spec.tasks![0].model).toBeUndefined()
+    expect(spec.tasks![0].agent).toBe('ui-ux-expert')
+    expect(spec.tasks![0].model).toBe('m')
   })
 })
 
@@ -928,7 +897,7 @@ tasks:
     prompt: Do something
 `
     const spec = parseTaskSpecText(yaml)
-    expect(spec.concurrency).toBe(1)
+    expect(spec.concurrency).toBe('auto')
     expect(spec.on_failure).toBe('continue')
     expect(spec.tasks![0].agent).toBe('developer')
     expect(spec.tasks![0].timeout).toBe('30m')
@@ -944,234 +913,36 @@ tasks:
 `
     const spec = parseTaskSpecText(yaml)
     expect(spec.version).toBe(1)
-    expect(isConvoySpec(spec)).toBe(true)
   })
 })
 
-// ── validateSpec — depends_on_convoy / pipeline specs ──────────
+// ── chained specs (version 2) ──────────────────────────────────
 
-describe('validateSpec — depends_on_convoy field', () => {
-  it('accepts depends_on_convoy as an array of strings', () => {
-    const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1', 'phase-2'],
-      tasks: [{ id: 'a', prompt: 'x' }],
-    })
-    expect(result.valid).toBe(true)
-    expect(result.errors).toHaveLength(0)
+describe('a chain of specs (version: 2 with depends_on_convoy)', () => {
+  it('is refused, with what to do instead', () => {
+    const result = validateSpec({ name: 'pipeline', version: 2, depends_on_convoy: ['phase-1.yml', 'phase-2.yml'] })
+    expect(result.valid).toBe(false)
+    expect(result.errors).toHaveLength(1)
+    expect(result.errors[0]).toMatch(/no longer supported/)
+    expect(result.errors[0]).toMatch(/depends_on/)
+    expect(result.errors[0]).toMatch(/opencastle convoy "<task>"/)
   })
 
-  it('rejects depends_on_convoy as a string (not array)', () => {
+  it('is refused when it carries tasks of its own too', () => {
     const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: 'phase-1',
-      tasks: [{ id: 'a', prompt: 'x' }],
+      name: 'pipeline', version: 2, depends_on_convoy: ['phase-1.yml'], tasks: [{ id: 'a', prompt: 'x' }],
     })
     expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('depends_on_convoy'))
   })
 
-  it('rejects depends_on_convoy with non-string elements', () => {
-    const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1', 42],
-      tasks: [{ id: 'a', prompt: 'x' }],
-    })
+  it('is refused for depends_on_convoy under any version', () => {
+    const result = validateSpec({ name: 'x', version: 1, depends_on_convoy: ['a.yml'], tasks: [{ id: 'a', prompt: 'x' }] })
     expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('depends_on_convoy'))
+    expect(result.errors.join('\n')).toMatch(/depends_on_convoy/)
   })
 
-  it('rejects depends_on_convoy as a non-array object', () => {
-    const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: { convoy: 'phase-1' },
-      tasks: [{ id: 'a', prompt: 'x' }],
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('depends_on_convoy'))
-  })
-
-  it('accepts omitting depends_on_convoy entirely (optional field)', () => {
-    const result = validateSpec({
-      name: 'convoy-run',
-      version: 1,
-      tasks: [{ id: 'a', prompt: 'x' }],
-    })
-    expect(result.valid).toBe(true)
-  })
-})
-
-// ── validateSpec — pipeline spec (v2 tasks-optional) ──────────
-
-describe('validateSpec — pipeline spec (version:2, no tasks)', () => {
-  it('pipeline spec with no tasks is valid when depends_on_convoy is set', () => {
-    const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1'],
-    })
-    expect(result.valid).toBe(true)
-    expect(result.errors).toHaveLength(0)
-  })
-
-  it('pipeline spec with tasks AND depends_on_convoy is valid', () => {
-    const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1'],
-      tasks: [{ id: 'a', prompt: 'do local work' }],
-    })
-    expect(result.valid).toBe(true)
-    expect(result.errors).toHaveLength(0)
-  })
-
-  it('version:2 without depends_on_convoy still requires tasks', () => {
-    const result = validateSpec({
-      name: 'convoy-v2',
-      version: 2,
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('tasks'))
-  })
-
-  it('pipeline spec with empty depends_on_convoy still requires tasks', () => {
-    const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: [],
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('tasks'))
-  })
-
-  it('pipeline spec with explicitly empty tasks array is invalid', () => {
-    const result = validateSpec({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1'],
-      tasks: [],
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('non-empty'))
-  })
-})
-
-// ── isPipelineSpec ─────────────────────────────────────────────
-
-describe('isPipelineSpec', () => {
-  it('returns true for version:2 spec with non-empty depends_on_convoy', () => {
-    expect(
-      isPipelineSpec({ name: 'pipeline', version: 2, depends_on_convoy: ['phase-1'] })
-    ).toBe(true)
-  })
-
-  it('returns true when depends_on_convoy has multiple entries', () => {
-    expect(
-      isPipelineSpec({ name: 'pipeline', version: 2, depends_on_convoy: ['a', 'b', 'c'] })
-    ).toBe(true)
-  })
-
-  it('returns false for v1 spec without depends_on_convoy', () => {
-    expect(
-      isPipelineSpec({ name: 'convoy', version: 1, tasks: [{ id: 'a', prompt: 'x' }] })
-    ).toBe(false)
-  })
-
-  it('returns false for v1 spec even with depends_on_convoy (wrong version)', () => {
-    expect(
-      isPipelineSpec({ name: 'convoy', version: 1, depends_on_convoy: ['phase-1'] })
-    ).toBe(false)
-  })
-
-  it('returns false for version:2 with empty depends_on_convoy', () => {
-    expect(
-      isPipelineSpec({ name: 'pipeline', version: 2, depends_on_convoy: [] })
-    ).toBe(false)
-  })
-
-  it('returns false for version:2 without depends_on_convoy', () => {
-    expect(
-      isPipelineSpec({ name: 'convoy', version: 2, tasks: [{ id: 'a', prompt: 'x' }] })
-    ).toBe(false)
-  })
-
-  it('returns false for legacy spec (no version)', () => {
-    expect(
-      isPipelineSpec({ name: 'legacy', tasks: [{ id: 'a', prompt: 'x' }] })
-    ).toBe(false)
-  })
-
-  it('returns false for null input', () => {
-    expect(isPipelineSpec(null)).toBe(false)
-  })
-
-  it('returns false for non-object input', () => {
-    expect(isPipelineSpec('string')).toBe(false)
-  })
-})
-
-// ── isConvoySpec — version 1 and 2 ────────────────────────────
-
-describe('isConvoySpec — version 1 and 2', () => {
-  it('returns true for version 1 spec', () => {
-    expect(isConvoySpec({ version: 1, tasks: [] })).toBe(true)
-  })
-
-  it('returns true for version 2 pipeline spec', () => {
-    expect(isConvoySpec({ version: 2, depends_on_convoy: ['phase-1'] })).toBe(true)
-  })
-
-  it('returns true for version 2 spec with tasks', () => {
-    expect(isConvoySpec({ version: 2, tasks: [{ id: 'a', prompt: 'x' }] })).toBe(true)
-  })
-
-  it('returns false for legacy spec (no version)', () => {
-    expect(isConvoySpec({ name: 'legacy', tasks: [] })).toBe(false)
-  })
-
-  it('returns false for version 3', () => {
-    expect(isConvoySpec({ version: 3 })).toBe(false)
-  })
-})
-
-// ── applyDefaults — pipeline spec (version:2, no tasks) ────────
-
-describe('applyDefaults — pipeline spec (version:2, no tasks)', () => {
-  it('pipeline spec with no tasks produces empty tasks array', () => {
-    const spec = applyDefaults({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1'],
-    })
-    expect(spec.tasks).toBeUndefined()
-    expect(spec.name).toBe('pipeline')
-    expect(spec.version).toBe(2)
-    expect(spec.depends_on_convoy).toEqual(['phase-1'])
-  })
-
-  it('pipeline spec with tasks applies defaults normally', () => {
-    const spec = applyDefaults({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1'],
-      tasks: [{ id: 'a', prompt: 'x' }],
-    })
-    expect(spec.tasks).toHaveLength(1)
-    expect(spec.tasks![0].agent).toBe('developer')
-    expect(spec.tasks![0].timeout).toBe('30m')
-  })
-
-  it('preserves depends_on_convoy through applyDefaults', () => {
-    const spec = applyDefaults({
-      name: 'pipeline',
-      version: 2,
-      depends_on_convoy: ['phase-1', 'phase-2'],
-    })
-    expect(spec.depends_on_convoy).toEqual(['phase-1', 'phase-2'])
+  it('throws the same message from the parser, so `convoy run` prints it', () => {
+    expect(() => parseTaskSpecText('name: p\nversion: 2\ndepends_on_convoy: [a.yml]\n')).toThrow(/no longer supported/)
   })
 })
 
@@ -1698,50 +1469,6 @@ describe('validateSpec — MCP server config in defaults', () => {
   })
 })
 
-// ── validateSpec — mcp_approve_all in defaults ────────────────
-
-describe('validateSpec — mcp_approve_all in defaults', () => {
-  const validSpec = {
-    name: 'test-run',
-    version: 1,
-    tasks: [{ id: 'task-1', prompt: 'Do something' }],
-  }
-
-  it('accepts mcp_approve_all as true', () => {
-    const result = validateSpec({
-      ...validSpec,
-      defaults: { mcp_approve_all: true },
-    })
-    expect(result.valid).toBe(true)
-  })
-
-  it('accepts mcp_approve_all as false', () => {
-    const result = validateSpec({
-      ...validSpec,
-      defaults: { mcp_approve_all: false },
-    })
-    expect(result.valid).toBe(true)
-  })
-
-  it('rejects mcp_approve_all as string', () => {
-    const result = validateSpec({
-      ...validSpec,
-      defaults: { mcp_approve_all: 'yes' },
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('mcp_approve_all'))
-  })
-
-  it('rejects mcp_approve_all as number', () => {
-    const result = validateSpec({
-      ...validSpec,
-      defaults: { mcp_approve_all: 1 },
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('mcp_approve_all'))
-  })
-})
-
 // ── validateSpec — mcp_server_approval_timeout in defaults ────
 
 describe('validateSpec — mcp_server_approval_timeout in defaults', () => {
@@ -1868,39 +1595,6 @@ describe('validateSpec — built_in_gates config', () => {
     })
     expect(result.valid).toBe(false)
     expect(result.errors).toContainEqual(expect.stringContaining('tdd_check'))
-  })
-})
-
-describe('validateSpec — review_stages', () => {
-  const validSpec = {
-    name: 'test-run',
-    version: 1,
-    tasks: [{ id: 'task-1', prompt: 'Do something' }],
-  }
-
-  it('accepts review_stages as true', () => {
-    const result = validateSpec({
-      ...validSpec,
-      defaults: { review_stages: true },
-    })
-    expect(result.valid).toBe(true)
-  })
-
-  it('accepts review_stages as false', () => {
-    const result = validateSpec({
-      ...validSpec,
-      defaults: { review_stages: false },
-    })
-    expect(result.valid).toBe(true)
-  })
-
-  it('rejects review_stages with non-boolean value', () => {
-    const result = validateSpec({
-      ...validSpec,
-      defaults: { review_stages: 'yes' },
-    })
-    expect(result.valid).toBe(false)
-    expect(result.errors).toContainEqual(expect.stringContaining('review_stages'))
   })
 })
 
@@ -2070,6 +1764,31 @@ describe('retired spec keys', () => {
     expect(result.warnings).toHaveLength(3)
   })
 
+  it('names each key the engine retired, and says why it does nothing', () => {
+    const result = validateSpec({
+      ...base,
+      defaults: { detect_drift: true, review_stages: true, mcp_approve_all: true },
+    })
+    expect(result.valid).toBe(true)
+    const text = result.warnings?.join('\n') ?? ''
+    expect(text).toContain('defaults.detect_drift')
+    expect(text).toContain('defaults.review_stages')
+    expect(text).toContain('defaults.mcp_approve_all')
+    expect(result.warnings).toHaveLength(3)
+  })
+
+  it('warns on a retired per-task key and on watch mode', () => {
+    const result = validateSpec({
+      ...base,
+      watch: { triggers: [] },
+      tasks: [{ id: 't1', agent: 'developer', prompt: 'p', detect_drift: true }],
+    })
+    expect(result.valid).toBe(true)
+    const text = result.warnings?.join('\n') ?? ''
+    expect(text).toContain('`watch` is ignored')
+    expect(text).toContain('tasks[0].detect_drift')
+  })
+
   it('says nothing about keys the spec does not use', () => {
     const result = validateSpec({ ...base, defaults: { timeout: '10m' } })
     expect(result.valid).toBe(true)
@@ -2177,7 +1896,6 @@ describe('unrecognised spec keys', () => {
         review: 'fast',
         permission_mode: 'acceptEdits',
         circuit_breaker: { threshold: 3, cooldown_ms: 1000 },
-        detect_drift: true,
         max_concurrent_reviews: 2,
       }),
     )

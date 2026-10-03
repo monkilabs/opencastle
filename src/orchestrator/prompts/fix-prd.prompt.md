@@ -1,5 +1,5 @@
 ---
-description: 'Fix validation errors in PRD. Goal is broken PRD markdown; context is error list from validation step.'
+description: 'Fix the issues a PRD review found. Goal is the PRD, context is the list of issues; answers with the whole corrected PRD.'
 agent: 'Team Lead (OpenCastle)'
 output: prd
 ---
@@ -8,46 +8,50 @@ output: prd
 
 # Fix PRD
 
-You are the Team Lead. The PRD below failed validation. Fix **every reported issue**; output complete, corrected PRD.
+You are the Team Lead. The PRD at the end of this prompt failed review. Fix **every reported issue** and return the complete, corrected PRD.
+
+## What Happens to Your Answer
+
+When `opencastle convoy` runs this step, your answer replaces the PRD file exactly as written, and the reviewer checks it again. That happens at most twice, so fix everything in one go.
+
+This session is read-only; answer in text.
+
+## Fix Instructions
+
+1. Read every reported issue before changing anything.
+2. Fix **all** of them; do not fix some.
+3. Do not change the feature's intent, goals or scope. Change only what the reviewer flagged.
+4. Keep everything else as it was, including every section heading and each `Phase N —` line in the Task Breakdown: the planner reads them, and the work was already sized from them.
+
+### Common Fix Patterns
+
+**Missing sections**
+- Add the section with concrete content, not placeholder text.
+- If it needs facts you cannot infer, write a reasonable default and mark it `<!-- TODO: verify -->`.
+
+**Conflicting requirements**
+- Resolve the contradiction in favour of what best matches the feature's goals.
+
+**File partition conflicts**
+- If two workstreams in the same phase claim the same file, move one to a later phase and say what it depends on.
+- Or split the file's responsibilities so each workstream touches different files.
+
+**Broad implementation scope**
+- Replace broad paths (`src/`, "the frontend") with specific subdirectories or files.
+
+**Placeholder text**
+- Replace template filler ("2–3 sentences about…", "Description here") with real content drawn from the feature request.
+
+## Output
+
+Return the **complete corrected PRD** as raw Markdown, starting with the `#` heading. No code fence, no notes before or after it.
+
+---
 
 ## Failing PRD
 
 {{goal}}
 
-## Validation Errors
+## Issues to Fix
 
 {{context}}
-
----
-
-## Fix Instructions
-
-1. Read every reported issue before making changes.
-2. Fix **all** reported issues; do not partially fix.
-3. Do not change intent, goals, or scope of feature. Only fix what validator flagged.
-4. Preserve all content not part of reported issues.
-
-### Common Fix Patterns
-
-**Missing sections**
-- Add missing section with concrete, specific content — not placeholder text
-- If section needs real data you cannot infer, write reasonable default; mark with `<!-- TODO: verify -->`
-
-**Conflicting requirements**
-- Resolve contradictions between sections — pick intent that best matches feature goals
-
-**File partition conflicts**
-- If two parallel workstreams claim same file, move one to later phase with explicit dependency
-- Or split file's responsibilities across two workstreams so each touches distinct files
-
-**Broad implementation scope**
-- Replace excessively broad paths (`src/`, `the frontend`) with specific subdirectories or file names
-
-**Placeholder text**
-- Replace template filler ("2–3 sentences about…", "Description here") with real content derived from feature description
-
----
-
-## Output
-
-Return **complete corrected PRD** as raw Markdown starting with `#` heading. Do not wrap output in code fence. Do not add explanatory prose before or after PRD.

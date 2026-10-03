@@ -34,21 +34,14 @@
   "license": "MIT",
   "author": "Filip Mares",
   "scripts": {
-    "build": "npm run cli:build && npm run dashboard:etl:empty && npm run dashboard:build",
+    "build": "npm run cli:build",
     "cli:build": "rm -rf dist && tsc",
     "test": "vitest run",
     "plugins:build": "tsx scripts/pack-plugins.ts",
-    "dashboard:generate-demo-db": "tsx src/dashboard/scripts/generate-demo-db.ts --out .opencastle/convoy-demo.db --events-out .opencastle/convoy-demo.events.ndjson",
-    "dashboard:etl": "tsx src/dashboard/scripts/etl.ts --db .opencastle/convoy-demo.db --out src/dashboard/public/data --events .opencastle/convoy-demo.events.ndjson",
-    "dashboard:test": "tsx src/dashboard/scripts/integration-test.ts",
-    "dashboard:dev": "astro dev --root src/dashboard --port 4300",
-    "dashboard:build": "astro build --root src/dashboard",
-    "dashboard:preview": "astro preview --root src/dashboard --port 4300",
     "website:dev": "astro dev --root website",
     "website:build": "astro build --root website",
     "website:preview": "astro preview --root website",
     "prepublishOnly": "npm run build",
-    "dashboard:etl:empty": "tsx src/dashboard/scripts/etl.ts --db .opencastle/__no_demo_db__ --out src/dashboard/public/data",
     "verify:claims": "npm run cli:build && bash scripts/verify-claims.sh",
     "mcp:check": "node scripts/mcp-pins.mjs",
     "mcp:bump": "node scripts/mcp-pins.mjs --bump",
@@ -72,7 +65,6 @@
     "vitest": "^4.0.18"
   },
   "dependencies": {
-    "@github/copilot-sdk": "^0.1.30",
     "smol-toml": "^1.9.0",
     "valibot": "^1.2.0",
     "yaml": "^2.8.2"

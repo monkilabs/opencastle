@@ -1,4 +1,8 @@
-export type ConvoyStatus = 'pending' | 'running' | 'done' | 'failed' | 'gate-failed' | 'hook-failed'
+/**
+ * `interrupted` is a run stopped by SIGINT or SIGTERM: its running tasks went
+ * back to pending, and `convoy resume` carries on from there.
+ */
+export type ConvoyStatus = 'pending' | 'running' | 'done' | 'failed' | 'gate-failed' | 'hook-failed' | 'interrupted'
 
 export type ConvoyTaskStatus =
   | 'pending'
@@ -34,6 +38,12 @@ export interface ConvoyRecord {
   circuit_state: string | null
   review_tokens_total: number | null
   review_budget: number | null
+  /** What the convoy branch was cut from, so a run can say how to review it. */
+  base_ref?: string | null
+  /** 1 when any token or cost figure in the totals is an estimate. */
+  cost_estimated?: number
+  /** The runtime the run used (claude, codex, …). */
+  adapter?: string | null
 }
 
 export interface TaskRecord {
@@ -78,6 +88,16 @@ export interface TaskRecord {
   outputs?: string | null          // JSON array of TaskOutput
   inputs?: string | null           // JSON array of TaskInput
   contract_result?: string | null  // JSON ContractResult
+  /** Input tokens the runtime served from its prompt cache. */
+  cache_read_tokens?: number | null
+  /** Input tokens the runtime wrote to its prompt cache. */
+  cache_write_tokens?: number | null
+  /** 1 when the token or cost figures are an estimate, not what the runtime reported. */
+  cost_estimated?: number
+  /** Why the last attempt failed, told to the next one. Kept apart from `prompt` so retries never stack. */
+  retry_note?: string | null
+  /** A worker branch kept because its work could not be merged. */
+  branch?: string | null
 }
 
 export interface WorkerRecord {
@@ -248,20 +268,6 @@ export interface TaskStepRecord {
   finished_at: string | null
 }
 
-export interface WatchTrigger {
-  type: 'file-change' | 'cron' | 'git-push'
-  glob?: string        // for file-change: glob pattern to watch
-  schedule?: string    // for cron: 5-field cron expression
-  branch?: string      // for git-push: branch name pattern
-  debounce_ms?: number // file-change debounce (default: 500ms)
-}
-
-export interface WatchConfig {
-  triggers: WatchTrigger[]
-  clear_scratchpad?: boolean // clear scratchpad on watch start
-  scratchpad_retention_days?: number // auto-clear scratchpad entries older than N days
-}
-
 export interface ScratchpadRecord {
   key: string
   value: string
@@ -278,38 +284,33 @@ export interface MCPServerConfig {
   config?: Record<string, unknown>
 }
 
-// ── Two-stage review ─────────────────────────────────────────────────────────
-
-export type ReviewStage = 'spec-compliance' | 'code-quality'
-
-export interface StageVerdict {
-  stage: ReviewStage
-  verdict: 'pass' | 'block'
-  issues: string[]
-  tokens_used: number
-}
-
-export interface TwoStageReviewResult {
-  stages: StageVerdict[]
-  overall_verdict: 'pass' | 'block'
-  total_tokens: number
-}
-
 // ---------------------------------------------------------------------------
 // Discriminated union covering every canonical convoy event type.
 // Each variant constrains the `data` shape that callers may pass to emit().
 // ---------------------------------------------------------------------------
 export type ConvoyEventType =
-  | { type: 'convoy_started'; data?: { name?: string } }
+  | { type: 'convoy_started'; data?: { name?: string; branch?: string; base?: string | null; concurrency?: number } }
   | { type: 'convoy_finished'; data?: { status: string } }
   | { type: 'convoy_failed'; data?: { status: string; reason?: string } }
-  | { type: 'convoy_guard'; data?: { checks?: string[]; [key: string]: unknown } }
-  | { type: 'task_started'; data?: { worker_id?: string } }
-  | { type: 'task_done'; data?: { status?: string; retries?: number; worker_id?: string } }
-  | { type: 'task_failed'; data?: { reason: string; worker_id?: string; gate?: string; hook?: string } }
+  | { type: 'convoy_interrupted'; data?: { signal?: string; requeued?: string[] } }
+  | { type: 'convoy_guard'; data?: { passed?: boolean; warnings?: string[] } }
+  | { type: 'convoy_resumed'; data?: { original_created_at?: string; reset?: string[] } }
+  | { type: 'task_started'; data?: { worker_id?: string; mechanism?: string; adapter?: string; attempt?: number } }
+  | {
+      type: 'task_done'
+      data?: {
+        exit_code?: number
+        worker_id?: string
+        tokens?: number | null
+        cost_usd?: number | null
+        estimated?: boolean
+        model?: string | null
+      }
+    }
+  | { type: 'task_failed'; data?: { reason: string; message?: string; worker_id?: string; gate?: string; hook?: string; exit_code?: number } }
   | { type: 'task_skipped'; data?: { reason: string } }
-  | { type: 'task_retried'; data?: { previous_status: string } }
-  | { type: 'task_waiting_input'; data?: { task_id?: string; reason?: string } }
+  | { type: 'task_retried'; data?: { previous_status: string; reason?: string; attempt?: number } }
+  | { type: 'task_merged'; data?: { branch?: string; files?: number } }
   | { type: 'review_started'; data?: { level: string; task_id?: string; model?: string } }
   | {
       type: 'review_verdict'
@@ -317,99 +318,86 @@ export type ConvoyEventType =
         level: string
         verdict: string
         tokens: number
-        model?: string
+        model?: string | null
         feedback_length?: number
-        budget_exceeded?: boolean
-        budget_downgrade?: boolean
-        budget_skip?: boolean
         passes?: number
         blocks?: number
       }
     }
+  | { type: 'review_skipped'; data?: { level: string; reason: string } }
   | { type: 'dispute_opened'; data?: { dispute_id: string; task_id: string; agent?: string; reason?: string } }
   | { type: 'dlq_entry_created'; data?: { dlq_id: string; task_id: string; agent?: string; attempts?: number } }
-  | { type: 'drift_check_result'; data?: { score?: number; threshold?: number; passed?: boolean } }
-  | { type: 'drift_detected'; data?: { score?: number; files?: string[] } }
   | { type: 'circuit_breaker_tripped'; data?: { agent?: string; failure_count?: number; threshold?: number } }
   | { type: 'circuit_breaker_fallback'; data?: { original_agent?: string; fallback_agent?: string; task_id?: string } }
   | { type: 'circuit_breaker_blocked'; data?: { agent?: string; task_id?: string } }
-  | { type: 'merge_conflict_detected'; data?: { task_id?: string; files?: string[] } }
-  | { type: 'merge_conflict_failed'; data?: { task_id?: string; error?: string } }
-  | { type: 'file_injection_received'; data?: { task_id?: string; from_task?: string; name?: string } }
+  | { type: 'merge_conflict_detected'; data?: { attempt?: number; conflicting_files?: string[] } }
+  | { type: 'merge_failed'; data?: { branch: string; error: string; conflicting_files?: string[] } }
+  | { type: 'gate_result'; data?: { command: string; passed: boolean; exit_code?: number; scope?: string; output?: string } }
   | { type: 'artifact_limit_reached'; data?: { task_id?: string; limit?: number; current?: number } }
   | { type: 'agent_identity_captured'; data?: { agent?: string; task_id?: string } }
   | { type: 'agent_identity_rejected'; data?: { agent?: string; task_id?: string; reason?: string } }
-  | { type: 'swarm_concurrency_update'; data?: { new_concurrency?: number; reason?: string } }
   | { type: 'post_convoy_hook_failed'; data?: { hook?: string; error?: string } }
-  | { type: 'session'; data?: { agent?: string; model?: string; task?: string; outcome?: string; duration_min?: number } }
-  | { type: 'delegation'; data?: { agent?: string; model?: string; tier?: string; mechanism?: string; outcome?: string } }
+  | {
+      type: 'session'
+      data?: { agent?: string; model?: string | null; task?: string; outcome?: string; duration_min?: number; [key: string]: unknown }
+    }
+  | {
+      type: 'delegation'
+      data?: { agent?: string; model?: string | null; tier?: string; mechanism?: string; outcome?: string; [key: string]: unknown }
+    }
   | {
       type: 'secret_leak_prevented'
       data?: { original_type?: string; patterns?: string[]; task_id?: string; findings_count?: number; context?: string }
     }
   | { type: 'ndjson_write_failed'; data?: { original_type?: string } }
   | { type: 'built_in_gate_result'; data?: { gate: string; passed: boolean; output?: string; level?: string } }
-  | { type: 'watch_started'; data?: { trigger_type?: string; pid?: number } }
-  | { type: 'watch_cycle_start'; data?: { cycle_number?: number; triggered_by?: string } }
-  | { type: 'watch_cycle_end'; data?: { cycle_number?: number; status?: string } }
-  | { type: 'watch_stopped'; data?: { reason?: string } }
   | { type: 'worker_killed'; data?: { reason?: string; worker_id?: string; task_id?: string } }
   | { type: 'contract_violation'; data?: { task_id?: string; agent?: string; missing?: string[]; warnings?: string[] } }
-  | { type: 'review_stage_completed'; data?: { stage: string; verdict: string; tokens: number; task_id?: string; model?: string } }
   | { type: 'partition_violation'; data?: { task_id?: string; allowed?: string[]; actual?: string[]; violations?: string[] } }
   | { type: 'tdd_check_passed'; data?: { task_id?: string; new_source_files?: number; existing_test_files?: number } }
   | { type: 'tdd_check_failed'; data?: { task_id?: string; missing_test_files?: string[]; new_source_files?: number } }
   | { type: 'tdd_check_skipped'; data?: { task_id?: string; reason?: string; agent?: string } }
-  | { type: 'convoy_resumed'; data?: { original_created_at?: string } }
   | { type: 'artifacts_extracted'; data?: { task_id?: string; count?: number; artifacts?: Array<{ filename: string; summary?: string }> } }
-  | { type: 'file_partition_conflict'; data?: { conflicts?: Array<{ phase: number; taskA: string; taskB: string; overlapping: string[] }> } }
 
 /** All canonical convoy event type strings. Used for runtime validation. */
 export const KNOWN_EVENT_TYPES: Set<string> = new Set<ConvoyEventType['type']>([
   'convoy_started',
   'convoy_finished',
   'convoy_failed',
+  'convoy_interrupted',
   'convoy_guard',
+  'convoy_resumed',
   'task_started',
   'task_done',
   'task_failed',
   'task_skipped',
   'task_retried',
-  'task_waiting_input',
+  'task_merged',
   'review_started',
   'review_verdict',
+  'review_skipped',
   'dispute_opened',
   'dlq_entry_created',
-  'drift_check_result',
-  'drift_detected',
   'circuit_breaker_tripped',
   'circuit_breaker_fallback',
   'circuit_breaker_blocked',
   'merge_conflict_detected',
-  'merge_conflict_failed',
-  'file_injection_received',
+  'merge_failed',
+  'gate_result',
   'artifact_limit_reached',
   'agent_identity_captured',
   'agent_identity_rejected',
-  'swarm_concurrency_update',
   'post_convoy_hook_failed',
   'session',
   'delegation',
   'secret_leak_prevented',
   'ndjson_write_failed',
   'built_in_gate_result',
-  'watch_started',
-  'watch_cycle_start',
-  'watch_cycle_end',
-  'watch_stopped',
   'worker_killed',
   'contract_violation',
-  'review_stage_completed',
   'partition_violation',
   'tdd_check_passed',
   'tdd_check_failed',
   'tdd_check_skipped',
-  'convoy_resumed',
   'artifacts_extracted',
-  'file_partition_conflict',
 ])
