@@ -1134,15 +1134,20 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     // ── Circuit breaker ─────────────────────────────────────────────────────
     if (circuitBreakerConfig && !circuitBreaker.canAssign(rec.agent)) {
       const fallback = circuitBreaker.fallback
-      if (fallback) {
+      // The fallback agent takes the task. It used to be announced and then
+      // skipped all the same, so a configured fallback never ran anything.
+      if (fallback && fallback !== rec.agent && circuitBreaker.canAssign(fallback)) {
         events.emit('circuit_breaker_fallback', {
           original_agent: rec.agent,
           fallback_agent: fallback,
           task_id: rec.id,
         }, { convoy_id: convoyId, task_id: rec.id })
-      } else {
-        events.emit('circuit_breaker_blocked', { agent: rec.agent, task_id: rec.id }, { convoy_id: convoyId, task_id: rec.id })
+        progress.line(`  ${c.yellow('⟳')} ${c.bold(`[${rec.id}]`)} ${rec.agent} keeps failing; running it as ${fallback}`)
+        rec.agent = fallback
       }
+    }
+    if (circuitBreakerConfig && !circuitBreaker.canAssign(rec.agent)) {
+      events.emit('circuit_breaker_blocked', { agent: rec.agent, task_id: rec.id }, { convoy_id: convoyId, task_id: rec.id })
       const reason = `Circuit breaker open for agent "${rec.agent}"`
       store.updateTaskStatus(rec.id, convoyId, 'skipped', { output: reason })
       progress.line(`  ${c.dim('⊘')} ${c.bold(`[${rec.id}]`)} skipped: ${reason}`)

@@ -550,7 +550,7 @@ export function readRunSpec(projectRoot: string, convoyId: string): { specYaml: 
  * hid the real ones under "All".
  */
 export function eventCategory(type: string): EventCategory {
-  if (type.startsWith('merge_')) return 'merge'
+  if (type.startsWith('merge_') || type === 'task_merged') return 'merge'
   if (/^(review_|dispute_)/.test(type)) return 'review'
   if (/^(gate_|built_in_gate|tdd_|drift_|contract_|partition_|file_partition_|secret_|circuit_breaker_)/.test(type)) return 'check'
   if (/^(task_|worker_|dlq_|file_injection_|artifact|agent_identity_)|^(session|delegation)$/.test(type)) return 'task'

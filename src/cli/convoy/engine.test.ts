@@ -3348,6 +3348,31 @@ describe('circuit breaker', () => {
     expect(result.summary.skipped).toBeGreaterThanOrEqual(2)
   })
 
+  it('hands the task to the fallback agent instead of skipping it', async () => {
+    const adapter = makeAdapter()
+    adapter.execute
+      .mockResolvedValueOnce({ success: false, output: 'err', exitCode: 1 })
+      .mockResolvedValue({ success: true, output: 'ok', exitCode: 0 })
+    const spec = makeSpec({
+      on_failure: 'continue',
+      concurrency: 1,
+      defaults: { circuit_breaker: { threshold: 1, cooldown_ms: 999_999_999, fallback_agent: 'architect' } },
+    }, [
+      { id: 'task-1', agent: 'developer', max_retries: 0 },
+      { id: 'task-2', agent: 'developer', max_retries: 0 },
+    ])
+    const engine = makeEngine({
+      spec, specYaml: 'name: test', adapter, dbPath,
+      _worktreeManager: makeWorktreeManager(), _mergeQueue: makeMergeQueue(),
+    })
+    const result = await engine.run()
+    // task-2 ran, as the fallback agent, and was not skipped.
+    expect(adapter.execute).toHaveBeenCalledTimes(2)
+    const second = adapter.execute.mock.calls[1][0] as { id: string; agent: string }
+    expect(second).toMatchObject({ id: 'task-2', agent: 'architect' })
+    expect(result.summary.skipped ?? 0).toBe(0)
+  })
+
   it('records success and persists closed circuit state to store', async () => {
     const adapter = makeAdapter()
     const spec = makeSpec({
