@@ -61,7 +61,7 @@ All 6 must pass before the sub-agent is dispatched. See [HOOKS-REFERENCE.md](HOO
 
 | # | Action |
 |---|--------|
-| 1 | **⛔** `opencastle log --type=delegation --issue=TAS-XX --status=complete` |
+| 1 | **⛔** `opencastle log --type delegation …` (the record in **observability-logging**) |
 | 2 | Run **fast-review** skill |
 | 3 | Lint, typecheck, and test (commands via the **codebase-tool** slot) |
 | 4 | `gh issue view TAS-XX --json body -q '.body'` — verify each AC met |

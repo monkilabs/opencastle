@@ -22,14 +22,14 @@ In addition to the four checks in SKILL.md:
 | 5 | Self-improvement | Add `Read .opencastle/LESSONS-LEARNED.md` to prompt text |
 | 6 | Context map | Load the **context-map** skill for 5+ files |
 
-Log delegation: `opencastle log --type=delegation --issue=TAS-123 --status=started --details "spawned subagent for feature X"`
+The delegation is logged once, when it finishes (on-post-delegate) — a delegation record carries its outcome.
 
 ## on-post-delegate (detailed verification)
 
 | # | Action | Command |
 |---|--------|---------|
-| 1 | Log completion | `opencastle log --type=delegation --issue=TAS-XX --status=complete` |
-| 2 | Fast review | `opencastle log --type=review --issue=TAS-XX --verdict=PASS` |
+| 1 | Log completion | `opencastle log --type delegation …` — the delegation record in the **observability-logging** skill |
+| 2 | Fast review | `opencastle log --type review …` — the review record in the **observability-logging** skill |
 | 3 | CI checks | Lint, typecheck, and test (commands via the **codebase-tool** slot) |
 | 4 | Verify ACs | Check each acceptance criterion against tracker issue |
 | 5 | Track issues | `rg -n "Discovered issue" KNOWN-ISSUES.md || gh issue create` |
