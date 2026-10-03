@@ -2142,6 +2142,28 @@ function printSummary(progress: Progress, result: ConvoyResult, store: ConvoySto
   for (const l of lines) progress.line(l)
 }
 
+/**
+ * Refuse a spec the run would fail on, before anything is recorded:
+ * overlapping files within a phase, globs, `..`, an unknown per-task runtime.
+ * These used to surface mid-run, after earlier tasks had merged, or after a
+ * failed row was already written. Exported so `--dry-run` refuses exactly what
+ * a run refuses.
+ */
+export async function checkConvoyPlan(spec: TaskSpec, runAdapterName: string): Promise<void> {
+  const tasks = spec.tasks ?? []
+  const partition = validateFilePartitions(tasks, buildPhases(tasks))
+  if (!partition.valid) {
+    const conflictSummary = partition.conflicts
+      .map(cf => `Phase ${cf.phase + 1}: tasks "${cf.taskA}" and "${cf.taskB}" overlap on [${cf.overlapping.join(', ')}]`)
+      .join('\n')
+    throw new Error(`File partition conflicts detected:\n${conflictSummary}`)
+  }
+  const names = new Set(tasks.map(t => t.adapter).filter((a): a is string => Boolean(a) && a !== 'auto' && a !== runAdapterName))
+  for (const name of names) {
+    await getAdapter(name)
+  }
+}
+
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
@@ -2195,26 +2217,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
     }
   }
 
-  /**
-   * Refuse a spec the run would fail on, before anything is recorded: overlapping
-   * files within a phase, globs, an unknown per-task runtime. These used to
-   * surface mid-run, after earlier tasks had merged, or after a failed row was
-   * already written.
-   */
-  async function validatePlan(): Promise<void> {
-    const tasks = spec.tasks ?? []
-    const partition = validateFilePartitions(tasks, buildPhases(tasks))
-    if (!partition.valid) {
-      const conflictSummary = partition.conflicts
-        .map(cf => `Phase ${cf.phase + 1}: tasks "${cf.taskA}" and "${cf.taskB}" overlap on [${cf.overlapping.join(', ')}]`)
-        .join('\n')
-      throw new Error(`File partition conflicts detected:\n${conflictSummary}`)
-    }
-    const names = new Set(tasks.map(t => t.adapter).filter((a): a is string => Boolean(a) && a !== 'auto' && a !== adapter.name))
-    for (const name of names) {
-      await getAdapter(name)
-    }
-  }
+  const validatePlan = (): Promise<void> => checkConvoyPlan(spec, adapter.name)
 
   /** Stop on SIGINT/SIGTERM or the abort signal; a second Ctrl+C stops at once. */
   function installInterrupts(ctl: RunControl, progress: Progress): () => void {

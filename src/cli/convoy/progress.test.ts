@@ -28,6 +28,14 @@ describe('createProgress', () => {
     expect(out.endsWith('\r\x1b[2K')).toBe(true)
   })
 
+  it('treats a terminal that reports 0 columns as of unknown width, not 20', () => {
+    const { chunks, stream } = sink(true, 0)
+    const p = createProgress({ stream })
+    p.setStatus(() => '▸ build-api, write-tests · 2 queued · 5/11 done · 4m12s · $0.84 (est.)')
+    p.stop()
+    expect(chunks.some(ch => ch.includes('$0.84 (est.)'))).toBe(true)
+  })
+
   it('keeps the status line within the terminal width', () => {
     const { chunks, stream } = sink(true, 30)
     const p = createProgress({ stream })

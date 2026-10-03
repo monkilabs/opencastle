@@ -32,7 +32,8 @@ const CLEAR_LINE = '\r\x1b[2K'
 const ANSI = /\x1b\[[0-9;]*m/g
 
 function fitToWidth(text: string, columns: number | undefined): string {
-  const width = Math.max(20, (columns ?? 100) - 1)
+  // A pseudo-terminal with no size reports 0 columns; that means "unknown".
+  const width = Math.max(20, (columns && columns > 0 ? columns : 100) - 1)
   const visible = text.replace(ANSI, '')
   if (visible.length <= width) return text
   return visible.slice(0, width - 1) + '…'
