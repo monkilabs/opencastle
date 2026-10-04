@@ -105,7 +105,7 @@ Summarize the brainstorm as **Brainstorm Report** — becomes input for planning
 ### Affected Areas
 - Apps: [list]
 - Libs: [list]
-- Data: [which data layers are affected — see `project.instructions.md` for tech stack]
+- Data: [which data layers are affected — see `.opencastle/project.instructions.md` for tech stack]
 - Routes: [list]
 
 ### Open Questions

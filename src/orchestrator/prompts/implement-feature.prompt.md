@@ -84,7 +84,7 @@ Every subtask must pass ALL gates before being marked Done:
 
 ### 5. Delivery
 
-Follow **Delivery Outcome** in **git-workflow** skill — commit, push, open PR (not merged), link to tracker. Convoy engine creates commits on configured `branch` directly; open PR from that branch after validation passes.
+Follow the **Delivery Checklist** in the **git-workflow** skill — commit, push, open PR (not merged), link to tracker. Convoy engine creates commits on configured `branch` directly; open PR from that branch after validation passes.
 
 ### 6. Documentation & Traceability
 
@@ -106,5 +106,5 @@ Roadmap task is complete when:
 - [ ] Documentation updated (roadmap, known issues, decisions)
 - [ ] Panel review passed for any high-stakes changes
 - [ ] Roadmap item marked complete in `.opencastle/project/roadmap.md`
-- [ ] Delivery Outcome completed (see **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery Checklist completed (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
 - [ ] Lessons learned captured if any retries occurred

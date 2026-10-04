@@ -18,7 +18,7 @@ Phase 5: Delivery               (direct, Team Lead)
 
 ## Branch & Delivery Strategy
 
-Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ownership** rules in `team-lead.agent.md`. Branch naming: `fix/<ticket-id>-<short-description>`.
+The Team Lead creates the branch before any delegation and delivers it as the Delivery phase below describes. Branch naming: `fix/<ticket-id>-<short-description>`.
 
 ---
 
@@ -46,7 +46,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 - [ ] Bug **confirmed reproduced** with screenshot evidence (or documented as non-reproducible with investigation notes)
 - [ ] Severity assessed
 - [ ] Tracker issue created with reproduction steps and screenshot
-- [ ] Affected apps identified (see `project.instructions.md` for inventory)
+- [ ] Affected apps identified (see `.opencastle/project.instructions.md` for inventory)
 
 ---
 
@@ -119,7 +119,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 - [ ] No regressions introduced
 - [ ] Tracker issue moved to Done
 - [ ] Known issues updated (if applicable)
-- [ ] Delivery Outcome completed (see `general.instructions.md`) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery phase completed — branch pushed, PR opened (not merged), tracker linked
 
 ---
 

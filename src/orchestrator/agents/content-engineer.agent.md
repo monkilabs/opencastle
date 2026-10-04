@@ -12,7 +12,7 @@ CMS schema design, content queries and modeling, releases, studio customization.
 
 ## Skills
 
-Resolve skills (slots, direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
+Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 
 ## Rules
 

@@ -43,7 +43,6 @@ Load on-demand **only when the phase is reached**.
 | **agent-hooks** | Step 3 — delegation prompt templates |
 | **task-management** | Step 2 — tracker conventions |
 | **decomposition** | Step 2–3 — dependency resolution, delegation specs |
-| **agent-routing** | Step 2 — task-to-agent routing, anti-patterns |
 | **orchestration-protocols** | Step 4+ — steering, background agents, health-checks, escalation |
 | **context-map** | Step 2, 5+ files affected |
 | **validation-gates** | Step 4 — deterministic checks, browser testing, regression |
@@ -55,7 +54,7 @@ Load on-demand **only when the phase is reached**.
 
 Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | Security Expert | Performance Expert | DevOps & Release | Architect | Writer | Researcher | Reviewer.
 
-> **⛔ Developer is LAST resort.** Load **agent-routing** before assigning. Decompose multi-domain tasks across agent boundaries.
+> **⛔ Developer is LAST resort.** Route each task by the **Best For** column of `.opencastle/agents/agent-registry.md` before assigning. Decompose multi-domain tasks across agent boundaries.
 
 ## Delegation
 
@@ -63,7 +62,7 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 
 **⛔ Hard gates:**
 - Log delegation record immediately after each return/spawn — **observability-logging** (`--mechanism sub-agent` or `--mechanism background`).
-- `model` and `tier` from agent registry only.
+- `tier` from the agent registry only; `model` is the one the assistant actually ran, when it says.
 - Empty/off-topic: retry max 3 → DLQ. Log failures (`--outcome failed`).
 
 **Partitioning:** Parallel agents never touch the same files. **Budget:** Target 5–7/session; 8 → warn; 9 → checkpoint; 10+ → STOP. **Pre-Delegation:** (1) Tracker issue, (2) clean partition, (3) dependencies Done, (4) file paths + criteria, (5) self-improvement reminder.
@@ -86,7 +85,7 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 
 **Step 4 — Execute:** Per task: move → In Progress → delegate → log delegation ⛔ → monitor → verify (partition, lint/test/build, fast review PASS, UI browser-verified, high-stakes → panel, issues tracked, lessons captured) → log review ⛔ → Done. FAIL → re-delegate (max 3 → DLQ). Auto-PASS: research/docs-only, or ≤10 lines/≤2 files with gates passing.
 
-**Step 5 — Deliver:** See [shared-delivery-phase.md](../agent-workflows/shared-delivery-phase.md). Verify all Done → build/lint/test → commit feature branch → `GH_PAGER=cat gh pr create` — do NOT merge → link PR → clean checkpoint → call **Reviewer**.
+**Step 5 — Deliver:** Follow the workflow template's Delivery phase. Verify all Done → build/lint/test → commit feature branch → `GH_PAGER=cat gh pr create` — do NOT merge → link PR → clean checkpoint → call **Reviewer**.
 
 **On Resume:** Read `SESSION-CHECKPOINT.md`. Check `AGENT-FAILURES.md`, `DISPUTES.md`. List In Progress / Todo → continue.
 

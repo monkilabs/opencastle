@@ -7,7 +7,7 @@ description: "Run and generate NX targets, configure project.json, and visualize
 
 # NX Workspace
 
-Docs: https://nx.dev/getting-started/intro. Project name → location mapping: `project.instructions.md`.
+Docs: https://nx.dev/getting-started/intro. Project name → location mapping: `.opencastle/project.instructions.md`.
 
 ## Never bypass NX
 

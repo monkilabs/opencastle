@@ -35,7 +35,7 @@ You are the Team Lead. Investigate and fix the bug described below. Bugs are rea
 2. **Check tracker** — Search for existing bug tickets. If one exists, take it over instead of creating duplicate
 3. **Read lessons learned** — Check `.opencastle/LESSONS-LEARNED.md` for related pitfalls
 4. **Reproduce the bug** — Start the dev server (see **codebase-tool** skill), navigate to the affected page in Chrome, follow the repro steps, and screenshot the broken state
-5. **Determine scope** — Which apps are affected? (see `project.instructions.md` for the app inventory)
+5. **Determine scope** — Which apps are affected? (see `.opencastle/project.instructions.md` for the app inventory)
 6. **Assess severity**: Critical (crash/data loss/auth bypass) | High (broken + workaround) | Medium (minor functional) | Low (edge case/cosmetic)
 
 ### 2. Create Tracker Issue
@@ -91,7 +91,7 @@ All bug fixes execute via OpenCastle's convoy engine — even single-task fixes 
 
 ### 6. Delivery
 
-Follow **Delivery Outcome** in **git-workflow** skill — commit, push, open PR (not merged), link to tracker.
+Follow the **Delivery Checklist** in the **git-workflow** skill — commit, push, open PR (not merged), link to tracker.
 
 ### 7. Wrap Up
 
@@ -109,7 +109,7 @@ Bug fix is complete when:
 - [ ] Test added covering the bug scenario
 - [ ] Bug verified fixed in the browser
 - [ ] Both apps checked if shared code was modified
-- [ ] Delivery Outcome completed (see **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery Checklist completed (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
 - [ ] Tracker issue moved to Done
 - [ ] Known issues updated if applicable
 - [ ] Lessons learned captured if any retries occurred

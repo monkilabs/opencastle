@@ -13,10 +13,11 @@ import { createSingleFileAdapter } from './single-file-base.js'
  *   prompts/*.prompt.md        -> .agents/prompts/<name>.md
  *   mcp.json                   -> .agents/mcp_config.json  (mcpServers format)
  *
- * Note: Antigravity's MCP integration officially reads ~/.gemini/antigravity/mcp_config.json
- * (global only); per-workspace MCP support is a known gap. The workspace
- * mcp_config.json is scaffolded for parity with other adapters and so users
- * can copy/symlink it globally if desired.
+ * MCP: Antigravity — the IDE, the CLI and 2.0 alike — reads a workspace's
+ * servers from .agents/mcp_config.json and the user's from
+ * ~/.gemini/config/mcp_config.json (antigravity.google/docs/mcp). It expands
+ * no variables there, so a `${NAME}` in a header is sent as written; doctor
+ * flags one.
  */
 
 export const IDE_ID = 'antigravity'

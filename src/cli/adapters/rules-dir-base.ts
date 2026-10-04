@@ -7,6 +7,7 @@ import { scaffoldMcpConfigInto } from '../mcp.js'
 import type { CopyResults, DoctorCheck, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { splitFrontmatter, parseFrontmatterString } from './frontmatter.js'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
+import { SHARED_PHASE_FILE, inlineSharedPhase, pointAtWorkflows, readSharedPhase } from './workflows.js'
 
 /**
  * Shared implementation for IDEs that take a root rules file plus a directory of
@@ -128,14 +129,17 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   interface ConvertFileOptions {
     alwaysApply?: boolean
     descriptionFallback?: string
+    /** Rewrites the body for this target before it is written. */
+    transform?: (body: string) => string
   }
 
   async function convertFile(
     srcPath: string,
-    { alwaysApply = false, descriptionFallback = '' }: ConvertFileOptions = {},
+    { alwaysApply = false, descriptionFallback = '', transform }: ConvertFileOptions = {},
   ): Promise<string> {
     const content = await readFile(srcPath, 'utf8')
-    const { frontmatter, body } = splitFrontmatter(content)
+    const { frontmatter, body: source } = splitFrontmatter(content)
+    const body = transform ? transform(source) : source
     const meta = parseFrontmatterString(frontmatter)
 
     // Description: frontmatter > fallback > first heading
@@ -203,6 +207,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     removeExt?: string
     overwrite?: boolean
     excludeFiles?: Set<string>
+    transform?: (body: string) => string
   }
 
   async function convertDir(
@@ -210,7 +215,7 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     dirName: string,
     destDir: string,
     results: CopyResults,
-    { alwaysApply, descriptionPrefix, removeExt, overwrite, excludeFiles }: ConvertDirOptions = {},
+    { alwaysApply, descriptionPrefix, removeExt, overwrite, excludeFiles, transform }: ConvertDirOptions = {},
   ): Promise<void> {
     const srcDir = resolve(srcRoot, dirName)
     if (!existsSync(srcDir)) return
@@ -226,10 +231,27 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       await writeConverted(
         resolve(srcDir, file),
         resolve(destDir, ruleName(file)),
-        { alwaysApply: alwaysApply ?? false, descriptionFallback: fallback },
+        { alwaysApply: alwaysApply ?? false, descriptionFallback: fallback, transform },
         results,
         overwrite,
       )
+    }
+  }
+
+  /** Agents, pointed at the templates where this target writes them. */
+  const agentOptions: ConvertDirOptions = {
+    descriptionPrefix: 'Agent: ',
+    removeExt: '.agent.md',
+    transform: (body) => pointAtWorkflows(body, `${rulesPrefix}/agent-workflows/`),
+  }
+
+  /** The templates, each with the shared delivery phase in it, and not the phase on its own. */
+  function workflowOptions(srcRoot: string): ConvertDirOptions {
+    const shared = readSharedPhase(srcRoot)
+    return {
+      descriptionPrefix: 'Workflow: ',
+      excludeFiles: new Set(['README.md', SHARED_PHASE_FILE]),
+      transform: (body) => inlineSharedPhase(body, shared),
     }
   }
 
@@ -276,15 +298,9 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     await mkdir(rulesRoot, { recursive: true })
 
     await convertDir(srcRoot, 'instructions', rulesRoot, results, { alwaysApply: true })
-    await convertDir(srcRoot, 'agents', resolve(rulesRoot, 'agents'), results, {
-      descriptionPrefix: 'Agent: ',
-      removeExt: '.agent.md',
-    })
+    await convertDir(srcRoot, 'agents', resolve(rulesRoot, 'agents'), results, agentOptions)
     await copySkills(srcRoot, projectRoot, results, false)
-    await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
-      descriptionPrefix: 'Workflow: ',
-      excludeFiles: new Set(['README.md']),
-    })
+    await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, workflowOptions(srcRoot))
     await convertDir(srcRoot, 'prompts', resolve(rulesRoot, 'prompts'), results, {
       descriptionPrefix: 'Prompt: ',
       removeExt: '.prompt.md',
@@ -336,16 +352,11 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       alwaysApply: true,
       overwrite: true,
     })
-    await convertDir(srcRoot, 'agents', resolve(rulesRoot, 'agents'), results, {
-      descriptionPrefix: 'Agent: ',
-      removeExt: '.agent.md',
-      overwrite: true,
-    })
+    await convertDir(srcRoot, 'agents', resolve(rulesRoot, 'agents'), results, { ...agentOptions, overwrite: true })
     await copySkills(srcRoot, projectRoot, results, true)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
-      descriptionPrefix: 'Workflow: ',
+      ...workflowOptions(srcRoot),
       overwrite: true,
-      excludeFiles: new Set(['README.md']),
     })
     await convertDir(srcRoot, 'prompts', resolve(rulesRoot, 'prompts'), results, {
       descriptionPrefix: 'Prompt: ',

@@ -12,7 +12,7 @@ Accessible, consistent UI components built against the project design system.
 
 ## Skills
 
-Resolve skills (slots, direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
+Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 
 ## Rules
 

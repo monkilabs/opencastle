@@ -14,7 +14,7 @@ architecture, performance at scale, i18n, monetization.
 
 ## Skills
 
-Resolve skills (slots, direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
+Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 
 ## Rules
 

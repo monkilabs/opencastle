@@ -11,7 +11,7 @@ Project test app, selectors, suites, and breakpoints: `.opencastle/stack/testing
 
 ## Context budget — the main constraint
 
-Screenshots are expensive. **MAX 3 per session**, reserved for failures. Assert with `evaluate_script` instead — element counts, `window.location.href`, `!!document.querySelector(...)`, `textContent`, `new URL(location.href).searchParams.toString()`. `take_snapshot` (DOM) is far lighter than `take_screenshot`. One focus area per session; clear browser state between unrelated flows.
+Screenshots are expensive. **MAX 3 per session**, reserved for evidence: a failure, a bug before and after its fix, a layout at its breakpoints. Assert everything else with `evaluate_script` — element counts, `window.location.href`, `!!document.querySelector(...)`, `textContent`, `new URL(location.href).searchParams.toString()`. `take_snapshot` (DOM) is far lighter than `take_screenshot`. One focus area per session; clear browser state between unrelated flows.
 
 ## Tools
 

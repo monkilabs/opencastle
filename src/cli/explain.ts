@@ -11,6 +11,7 @@ import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { c } from './prompt.js'
 import { IDE_LABELS, type CliContext, type IdeChoice } from './types.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
+import { isWorkflowTemplate } from './adapters/workflows.js'
 
 /**
  * `opencastle explain`: what a new teammate's assistant is given here, and
@@ -163,7 +164,8 @@ function render(report: ExplainReport, all: boolean): void {
     ...(report.targets.some((t) => t.id === 'vscode') ? ['Copilot'] : []),
   ]
   for (const kind of ['skills', 'agents', 'prompts', 'workflows'] as const) {
-    const items = ofKind(kind)
+    // The shared delivery phase is compiled into every template, not run on its own.
+    const items = ofKind(kind).filter(([ref]) => kind !== 'workflows' || isWorkflowTemplate(`${ref.slice(kind.length + 1)}.md`))
     if (items.length === 0) continue
     const team = items.filter(([, i]) => i.from !== 'opencastle' && !i.from.startsWith('plugin:'))
     const integrations = items.filter(([, i]) => i.from.startsWith('plugin:'))

@@ -19,7 +19,7 @@ Phase 6: Delivery             (direct, Team Lead)
 
 ## Branch & Delivery Strategy
 
-Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ownership** rules in `team-lead.agent.md`. Branch naming: `fix/<ticket-id>-<short-description>` for remediations.
+The Team Lead creates the branch before any delegation and delivers it as the Delivery phase below describes. Branch naming: `fix/<ticket-id>-<short-description>` for remediations.
 
 ---
 
@@ -139,7 +139,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 - [ ] Panel review passed (if applicable)
 - [ ] Known issues updated for accepted risks
 - [ ] All tracker issues updated
-- [ ] Delivery Outcome completed (see `general.instructions.md`) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery phase completed — branch pushed, PR opened (not merged), tracker linked
 
 ---
 

@@ -12,7 +12,7 @@ Codebase exploration: find information, map patterns, report back.
 
 ## Skills
 
-Resolve skills (slots, direct) via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
+Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 
 ## Rules
 

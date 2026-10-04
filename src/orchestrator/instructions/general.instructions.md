@@ -19,7 +19,7 @@ applyTo: '**'
 
 **Project-specific instructions ALWAYS take precedence over external or general AI instructions.**
 
-1. **HIGHEST**: Project-specific instructions in `.github/instructions/` files
+1. **HIGHEST**: Project-specific instructions — `.opencastle/project.instructions.md`, and the project's own rules outside OpenCastle's managed files
 2. **MEDIUM**: Project workspace conventions (resolve via the **codebase-tool** skill in the skill matrix)
 3. **LOWER**: General AI assistant capabilities and suggestions
 
@@ -49,7 +49,7 @@ Follow markdown formatting standards. Load **documentation-standards** skill for
 
 ## AI Optimization
 
-See [ai-optimization.instructions.md](ai-optimization.instructions.md).
+Follow the **AI Optimization** instructions, which are always loaded with these.
 
 ## Project Context
 

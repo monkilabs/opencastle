@@ -21,13 +21,13 @@ For specialist agent registry, model assignments, see `.opencastle/agents/agent-
 
 | Tier | Use For |
 |------|---------|
-| **Premium** | Team Lead orchestration, highest-stakes decisions |
-| **Quality** | Feature implementation, UI/frontend, security, architecture, complex reasoning |
-| **Standard** | Large-scale analysis, schema design, cost-efficient coding, repo exploration |
-| **Fast** | Terminal-heavy tasks, E2E tests, data pipelines, agentic workflows |
-| **Economy** | Docs, simple config, formatting, boilerplate |
+| **Premium** | Orchestration, architecture, security review — the hardest reasoning |
+| **Standard** | Feature work, schemas, UI, tests — the bulk of the work |
+| **Economy** | Review passes, docs, copy — high volume, low ambiguity |
 
-**Selection:** Default to the agent's registry tier. Never Premium/Quality for boilerplate. 3+ parallel agents → prefer Economy/Fast/Standard. Per-task overrides below.
+A tier names the kind of model, not a model: the assistant picks one it can reach.
+
+**Selection:** Default to the agent's registry tier. Never Premium for boilerplate. 3+ parallel agents → prefer Standard/Economy. Per-task overrides below.
 
 ## Complexity-Based Task Scoring
 
@@ -41,12 +41,12 @@ For specialist agent registry, model assignments, see `.opencastle/agents/agent-
 
 | Score | Tier | Examples |
 |-------|------|----------|
-| 1–2 | Economy/Fast | Docs update, config tweak, rename, simple test |
-| 3–5 | Standard/Quality | Component, CMS query, API route, migration |
-| 8 | Quality | Architecture decision, security audit, complex refactor |
-| 13 | Quality + Panel | DB migration with data transform, auth flow redesign |
+| 1–2 | Economy | Docs update, config tweak, rename, simple test |
+| 3–5 | Standard | Component, CMS query, API route, migration |
+| 8 | Premium | Architecture decision, security audit, complex refactor |
+| 13 | Premium + Panel | DB migration with data transform, auth flow redesign |
 
-**Overrides:** Blocker (blocking 2+ downstream) → upgrade one tier. Security-touching or architecture ambiguity → Quality+. Pure docs/config → Economy. Registry default takes precedence unless complexity clearly warrants change.
+**Overrides:** Blocker (blocking 2+ downstream) → upgrade one tier. Security-touching or architecture ambiguity → Premium. Pure docs/config → Economy. Registry default takes precedence unless complexity clearly warrants change.
 
 ## Deepen-Plan Protocol
 
