@@ -2,6 +2,7 @@
 description: 'Size the work in a PRD, score each workstream, and say whether to plan it in one go or as groups planned side by side. Returns JSON.'
 agent: 'Reviewer'
 output: json
+pipeline: true
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->

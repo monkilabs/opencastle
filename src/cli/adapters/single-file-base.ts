@@ -90,11 +90,20 @@ function commandDescription(content: string): string | undefined {
   return stripFrontmatter(content).match(/^#\s+(.+)$/m)?.[1]?.trim()
 }
 
-/** A command file: the body, under a description when the assistant lists one. */
+/**
+ * A command file: the body, under a description when the assistant lists one.
+ *
+ * A convoy pipeline step (`pipeline: true`) is run by the CLI with its input
+ * filled in, never chosen by the model, so it is marked
+ * `disable-model-invocation`: Claude Code then leaves its description out of
+ * every session's context, and a person can still type it.
+ */
 function commandFile(content: string, withDescription: boolean): string {
   const body = stripFrontmatter(content) + '\n'
   const description = withDescription ? commandDescription(content) : undefined
-  return description ? `---\ndescription: ${JSON.stringify(description)}\n---\n\n${body}` : body
+  if (!description) return body
+  const pipeline = parseFrontmatterMeta(content).pipeline === 'true'
+  return `---\ndescription: ${JSON.stringify(description)}\n${pipeline ? 'disable-model-invocation: true\n' : ''}---\n\n${body}`
 }
 
 /**

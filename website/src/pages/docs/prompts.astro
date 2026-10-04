@@ -280,7 +280,8 @@ const assistants = [
           and the seven steps of the convoy pipeline. In Claude Code and VS Code Copilot Chat each one is a
           slash command under one namespace — <code>/oc:bug-fix</code> — so it never collides with a command
           of your own. Each tells your assistant to act as the Team Lead (three pipeline steps, as the
-          Reviewer); in Copilot Chat it also selects that agent.
+          Reviewer); in Copilot Chat it also selects that agent. Claude Code is not told about six of the
+          pipeline steps, which only the CLI runs, so they take no room in a session; you can still type them.
         </p>
 
         <!-- How to use -->

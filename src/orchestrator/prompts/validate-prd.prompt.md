@@ -2,6 +2,7 @@
 description: 'Check a PRD for the structure the convoy planner needs. Answers with a JSON verdict: valid, or the issues to fix.'
 agent: 'Reviewer'
 output: validation
+pipeline: true
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
