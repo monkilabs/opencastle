@@ -7,17 +7,11 @@
       "panel-majority-vote"
     ],
     "fast-review": [
-      "observability-logging",
       "panel-majority-vote"
     ],
     "decomposition": [
       "panel-majority-vote",
       "project-consistency",
-      "self-improvement"
-    ],
-    "agent-hooks": [
-      "session-checkpoints",
-      "observability-logging",
       "self-improvement"
     ],
     "orchestration-protocols": [
@@ -238,7 +232,6 @@
         "panel-majority-vote",
         "context-map",
         "memory-merger",
-        "agent-hooks",
         "decomposition",
         "orchestration-protocols"
       ]

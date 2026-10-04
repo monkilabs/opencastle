@@ -842,9 +842,7 @@
     return `<div class="table-wrap"><table class="sessions-table cards">
       <thead><tr>${withSource ? '<th scope="col">Source</th>' : ''}<th scope="col">When</th><th scope="col">Task</th><th scope="col">Agent</th><th scope="col">Outcome</th><th scope="col" class="td-num">Minutes</th><th scope="col" class="td-num">Files</th><th scope="col" class="td-num">Retries</th><th scope="col">Model</th></tr></thead>
       <tbody>${rows.map((s) => {
-        const src = s.source === 'convoy'
-          ? `<span class="kind-badge" title="The engine's session event for a finished task">convoy run</span>${s.convoy_id ? `<span class="td-sub"><a href="#run=${encodeURIComponent(s.convoy_id)}" title="${esc(s.convoy_id)}">${esc(runName(s.convoy_id))}</a></span>` : ''}`
-          : '<span class="kind-badge" title="Appended with opencastle log">opencastle log</span>'
+        const src = `<span class="kind-badge" title="The engine's session event for a finished task">convoy run</span>${s.convoy_id ? `<span class="td-sub"><a href="#run=${encodeURIComponent(s.convoy_id)}" title="${esc(s.convoy_id)}">${esc(runName(s.convoy_id))}</a></span>` : ''}`
         const num = (v) => (v == null ? nr() : esc(v))
         return `<tr>
           ${withSource ? `<td data-label="Source">${src}</td>` : ''}
@@ -872,7 +870,7 @@
       return
     }
     if (!state.sessions.length) {
-      el.innerHTML = `<div style="padding:16px 24px">${empty('table', 'No sessions recorded yet', 'Agents append sessions with <code>opencastle log --type session</code>, and a convoy run records one per task it finishes.')}</div>`
+      el.innerHTML = `<div style="padding:16px 24px">${empty('table', 'No sessions recorded yet', 'A convoy run records one per task it finishes.')}</div>`
       return
     }
     el.innerHTML = sessionsTable(state.sessions.slice(0, 20), true)

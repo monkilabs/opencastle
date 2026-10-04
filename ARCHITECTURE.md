@@ -658,13 +658,12 @@ defaults are held to the rules a supply-chain review would apply:
 
 ## Observability
 
-Agents append sessions, delegations, reviews, panels and disputes to
-`.opencastle/logs/events.ndjson` with `opencastle log`, which checks every record
-against the schema in [LOG-SCHEMA.md](src/orchestrator/skills/observability-logging/LOG-SCHEMA.md)
-and refuses one that does not match. Convoy events go to `.opencastle/convoy.db`
-and `.opencastle/logs/convoys/<convoy-id>.ndjson`
-([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The Observability dashboard
-shows both; see [Read model and dashboard](#read-model-and-dashboard).
+Convoy runs log themselves: every event goes to `.opencastle/convoy.db` and
+`.opencastle/logs/convoys/<convoy-id>.ndjson`, with a `session` event per task
+it finishes ([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The Observability
+dashboard shows them; see [Read model and dashboard](#read-model-and-dashboard).
+Work outside a convoy is not logged: agents were once told to log every session
+by hand, and the record never came out consistent enough to rely on.
 
 ---
 

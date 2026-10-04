@@ -45,6 +45,3 @@ Fixing bugs · refactoring production code · DB migrations · performance optim
 3. **Browser Validation** — screenshots, what they prove
 4. **Edge Cases** — covered and gaps
 5. **Regressions** — adjacent features verified
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

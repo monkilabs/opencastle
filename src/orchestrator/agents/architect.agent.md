@@ -56,6 +56,3 @@ Implementing changes · writing tests · DB/schema changes · deploying infrastr
 
 1. **Assessment** — APPROVE / CONCERNS / RETHINK + rationale
 2. **Strengths** · **Risks** (likelihood + impact) · **Alternatives** · **Action Items**
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

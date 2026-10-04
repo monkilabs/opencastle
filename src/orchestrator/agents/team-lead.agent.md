@@ -40,7 +40,6 @@ Load on-demand **only when the phase is reached**.
 |-------|---------|
 | **team-lead-reference** | Session start — model routing, registry, pre-delegation, cost, DLQ, deepen-plan |
 | **session-checkpoints** | Session resume or checkpoint save |
-| **agent-hooks** | Session start/end, pre- and post-delegation checklists |
 | **task-management** | Step 2 — tracker conventions |
 | **decomposition** | Step 2–3 — dependency resolution, delegation spec templates |
 | **orchestration-protocols** | Step 4+ — steering, background agents, health-checks, escalation |
@@ -61,7 +60,6 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 **Sub-agents**: synchronous, critical-path, dispatched through whichever sub-agent mechanism the assistant exposes. **Background agents**: async in isolated worktrees, parallel work. Always name agent explicitly. Include: issue ID, objective, file paths, acceptance criteria, self-improvement reminder.
 
 **⛔ Hard gates:**
-- Log delegation record immediately after each return/spawn — **observability-logging** (`--mechanism sub-agent` or `--mechanism background`).
 - `tier` from the agent registry only; `model` is the one the assistant actually ran, when it says.
 - Retries and escalation (FAIL, empty/off-topic output, DLQ): **fast-review**'s Handle Verdict table. Log failures (`--outcome failed`).
 
@@ -88,10 +86,6 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 **Step 5 — Deliver:** Follow the workflow template's Delivery phase. Verify all Done → build/lint/test → commit feature branch → `GH_PAGER=cat gh pr create` — do NOT merge → link PR → clean checkpoint → call **Reviewer**.
 
 **On Resume:** Read `SESSION-CHECKPOINT.md`. Check `.opencastle/AGENT-FAILURES.md` and `.opencastle/DISPUTES.md` when they exist. List In Progress / Todo → continue.
-
-## Observability
-
-> **⛔ HARD GATE.** Load **observability-logging** for schemas, commands, pre-response quality gate. Before Reviewer: delegation count + review count = records written.
 
 ## Rules
 

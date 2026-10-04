@@ -24,7 +24,6 @@ import {
   readRunInsights,
   readRunSpec,
   readRuns,
-  readSessions,
 } from './read-model.js'
 
 let root: string
@@ -108,7 +107,7 @@ describe('with no database', () => {
     expect(readRun(root, 'x')).toBeNull()
     expect(readEventsSince(root, 'x', 0)).toEqual([])
     expect(isRunAlive(root, 'x')).toBe(false)
-    expect(readSessions(root)).toEqual([])
+    expect(readAllSessions(root)).toEqual([])
     expect(readdirSync(join(root, '.opencastle'))).toEqual([])
   })
 })
@@ -388,28 +387,6 @@ describe('isRunAlive', () => {
   })
 })
 
-describe('sessions', () => {
-  it('reads session records newest first and skips everything else', () => {
-    const logs = join(root, '.opencastle', 'logs')
-    mkdirSync(logs, { recursive: true })
-    writeFileSync(
-      join(logs, 'events.ndjson'),
-      [
-        JSON.stringify({ type: 'session', timestamp: T0, agent: 'Developer', task: 'first', outcome: 'success', duration_min: 3 }),
-        'not json',
-        JSON.stringify({ type: 'review', timestamp: T1, agent: 'Developer', verdict: 'pass' }),
-        JSON.stringify({ type: 'session', timestamp: T2, agent: 'Writer', task: 'second', outcome: 'partial', model: 'm' }),
-        '',
-      ].join('\n'),
-    )
-    const sessions = readSessions(root)
-    expect(sessions.map((s) => s.task)).toEqual(['second', 'first'])
-    expect(sessions[0]).toMatchObject({ agent: 'Writer', outcome: 'partial', model: 'm', duration_min: null })
-    expect(sessions[1]).toMatchObject({ duration_min: 3, model: null })
-    expect(readSessions(root, 1)).toHaveLength(1)
-  })
-})
-
 describe('findProjectRoot', () => {
   it('walks up to the nearest .opencastle directory', () => {
     const deep = join(root, 'src', 'a', 'b')
@@ -670,16 +647,15 @@ describe('run insights', () => {
   })
 })
 
-describe('sessions from both sources', () => {
-  it('merges `opencastle log` records with the engine’s session events, newest first, each labelled', () => {
+describe('sessions', () => {
+  it('are the engine’s session events, newest first — a log written by hand is not read', () => {
     seedHistory()
     const logs = join(root, '.opencastle', 'logs')
     mkdirSync(logs, { recursive: true })
     writeFileSync(join(logs, 'events.ndjson'), JSON.stringify({ type: 'session', timestamp: at(D1, 45), agent: 'Developer', task: 'by hand', outcome: 'success' }) + '\n')
     const all = readAllSessions(root)
-    expect(all.map((s) => [s.source, s.task])).toEqual([['convoy', 'b'], ['log', 'by hand'], ['convoy', 'a']])
-    expect(all[1]).toMatchObject({ convoy_id: null, agent: 'Developer' })
+    expect(all.map((s) => [s.source, s.task])).toEqual([['convoy', 'b'], ['convoy', 'a']])
     expect(readEngineSessions(root, 'r2')).toEqual([])
-    expect(readAllSessions(root, 2)).toHaveLength(2)
+    expect(readAllSessions(root, 1)).toHaveLength(1)
   })
 })

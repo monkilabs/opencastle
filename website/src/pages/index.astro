@@ -281,7 +281,7 @@ const integrations = Object.keys(integrationBlurbs).map((id) => ({
 const integrationCount = Object.keys(PLUGINS).length;
 // The skills in src/orchestrator/skills/ (website-plugins.test.ts counts them),
 // plus the one every integration ships.
-const coreSkillCount = 31;
+const coreSkillCount = 29;
 const skillCount = coreSkillCount + Object.values(PLUGINS).filter((p) => p.skillName).length;
 // Counted the way docs-accuracy.test.ts counts it: every Markdown file the
 // compiler ships, split on whitespace.

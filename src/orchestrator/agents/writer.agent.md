@@ -63,6 +63,3 @@ paid search · architectural decisions · code changes beyond the strings themse
 2. **Variants** — alternatives for headlines and calls to action
 3. **Limits met** — character counts, casing, validation results
 4. **Divergence** — anything where the code contradicted the docs
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

@@ -51,6 +51,3 @@ Database migrations · security policy changes · CMS schema changes · E2E/brow
 2. **Verification Results** — lint/test/build pass/fail + error count
 3. **Acceptance Criteria Status** — checklist, each item ✅ or ❌
 4. **Assumptions Made** — decisions not explicitly specified
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

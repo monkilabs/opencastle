@@ -57,20 +57,10 @@ CONFIDENCE: low | medium | high
 | Outcome | Action |
 |---------|--------|
 | PASS | Log review; continue |
-| FAIL 1–2 | Log; re-delegate same agent with the reviewer's feedback: "Retry N/2 — address listed issues" |
-| FAIL 3 | Log `escalated: true`; load **panel-majority-vote** skill |
+| FAIL 1–2 | Re-delegate same agent with the reviewer's feedback: "Retry N/2 — address listed issues" |
+| FAIL 3 | Load **panel-majority-vote** skill |
 | Panel BLOCK ×3 | Dispute in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol) |
 | Tool/runtime failure ×2 (crash, timeout, empty or off-topic output) | Entry in `.opencastle/AGENT-FAILURES.md` (see **team-lead-reference** § Dead Letter Queue Format) |
-
-## Logging
-
-> **⛔ HARD GATE — Log the review before proceeding.**
-
-```sh
-npx opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
-  --verdict pass --attempt 1 --issues_critical 0 --issues_major 0 --issues_minor 2 \
-  --confidence high --escalated false --duration_sec 45
-```
 
 ## Integration & Overnight Mode
 

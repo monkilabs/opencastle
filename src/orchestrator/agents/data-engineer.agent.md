@@ -60,6 +60,3 @@ production deployment
 3. **Rollback** — the reverse SQL
 4. **Data impact** — rows affected, records skipped and why
 5. **Verification** — apply results, test queries, pipeline counts
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

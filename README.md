@@ -209,7 +209,7 @@ Reviewer, and others), each with a defined scope and output contract. A project
 gets the ones its stack needs: Content Engineer comes with a CMS, Data Engineer
 with a database.
 
-**Skills** — 31 domain skills plus 31 tool integrations, loaded on demand so
+**Skills** — 29 domain skills plus 31 tool integrations, loaded on demand so
 they don't sit in the context window. Selected during init from what your
 repository actually uses.
 

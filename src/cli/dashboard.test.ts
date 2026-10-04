@@ -123,10 +123,11 @@ describe('startDashboard', () => {
 
   it('serves runs with the overview, one run with its insights, events after a cursor, and sessions', async () => {
     seed()
+    // A log an earlier release had agents write by hand: no longer read.
     mkdirSync(join(root, '.opencastle', 'logs'), { recursive: true })
     writeFileSync(
       join(root, '.opencastle', 'logs', 'events.ndjson'),
-      JSON.stringify({ type: 'session', timestamp: '2026-10-01T10:00:00.000Z', agent: 'Developer', task: 't', outcome: 'success' }) + '\n',
+      JSON.stringify({ type: 'session', timestamp: '2026-10-01T11:00:00.000Z', agent: 'Writer', task: 'by hand', outcome: 'success' }) + '\n',
     )
     const v = await dashboard()
 
@@ -155,8 +156,15 @@ describe('startDashboard', () => {
     expect((rest.body.events as Array<{ type: string }>).map((e) => e.type)).toEqual(['convoy_finished'])
     expect(rest.body.more).toBe(false)
 
+    // Recorded last, so the event pages above stay the run's own four.
+    const store = createConvoyStore(join(root, '.opencastle', 'convoy.db'))
+    store.insertEvent({
+      convoy_id: 'convoy-1', task_id: 'a', worker_id: null, type: 'session',
+      data: JSON.stringify({ agent: 'Developer', task: 'a', outcome: 'success' }), created_at: '2026-10-01T10:00:00.000Z',
+    })
+    store.close()
     const sessions = await json(`${v.url}/api/sessions`)
-    expect(sessions.body.sessions).toMatchObject([{ source: 'log', agent: 'Developer', outcome: 'success' }])
+    expect(sessions.body.sessions).toMatchObject([{ source: 'convoy', convoy_id: 'convoy-1', agent: 'Developer', outcome: 'success' }])
   })
 
   it('answers unknown runs and paths with 404, and a bad cursor with 400', async () => {

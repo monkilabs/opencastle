@@ -66,9 +66,13 @@ describe('visible command surface', () => {
 
 describe('hidden commands', () => {
   it('keeps the agent-invoked commands reachable', () => {
-    // Generated instructions call these; removing them would break installs.
-    expect(HIDDEN).toContain('log')
+    // Generated instructions call it; removing it would break installs.
     expect(HIDDEN).toContain('lesson')
+  })
+
+  it('answers log, which agents no longer call, as removed', () => {
+    expect(HIDDEN).not.toContain('log')
+    expect(source).toMatch(/\n  log: null,\n/)
   })
 
   it('keeps update working as the previous name for sync', () => {

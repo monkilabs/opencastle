@@ -13,7 +13,6 @@ description: "Team Lead delegation reference: complexity scoring, model tier rou
 4. **Check** pre-delegation policy (5-point checklist below)
 5. **Delegate** using Compact Delegation Envelope
 6. **Handle** output per Status Handling table
-7. **Log** via **observability-logging** skill
 
 For specialist agent registry, model assignments, see `.opencastle/agents/agent-registry.md`.
 
@@ -119,7 +118,6 @@ Create in `.opencastle/DISPUTES.md` (create the file on the first dispute). Entr
 1. Number (`DSP-XXX`), set priority, document both perspectives with file references
 2. Build attempt history; present ≥2 options with rationale/risk
 3. Link panel reports, DLQ entries, changed files
-4. Log with **observability-logging** dispute command
 
 **After resolution:** `resolved` → re-delegate with decision as constraint. `deferred` → follow-up issue.
 

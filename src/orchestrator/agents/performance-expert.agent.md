@@ -41,6 +41,3 @@ Architecture rewrites · database query optimization · infrastructure and CDN c
 3. **Verification** — profiling results, Lighthouse scores, build analysis
 4. **Trade-offs** — DX or functionality costs
 5. **Further Opportunities** — optimizations identified but not implemented
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

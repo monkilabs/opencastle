@@ -49,6 +49,3 @@ Application code · business logic · DB migrations · RLS policies · CMS schem
 3. **Verification** — build result, deployment status, health check
 4. **Rollback Plan** — how to revert if the deployment causes issues
 5. **Monitoring** — what to watch after deployment
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

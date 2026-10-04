@@ -39,6 +39,3 @@ UI components · DB migrations mirroring CMS data · E2E tests for CMS pages · 
 2. **Queries** — new/modified queries with purpose
 3. **Verification** — schema deploy result, query test results
 4. **Migration Notes** — any data migration needed
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

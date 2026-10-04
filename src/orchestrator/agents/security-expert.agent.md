@@ -42,6 +42,3 @@ Feature code beyond security-specific changes · comprehensive test suites · sc
 3. **Verification** — tests run, RLS checks, header validation
 4. **Residual Risk** — known risks remaining after the fix
 5. **Recommendations** — follow-up improvements to consider
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

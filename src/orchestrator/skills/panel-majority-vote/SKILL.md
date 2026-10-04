@@ -44,8 +44,6 @@ jq -n --arg panel_key "run123-panel" --arg verdict "$verdict" --argjson pass_cou
 
 6. **Print summary** — overall verdict + vote tally + report path.
 
-7. **Log (⛔ hard gate)** — call the **observability-logging** skill with `panel_key`, `verdict`, `pass_count`, `block_count`, `must_fix`, `should_fix`, `reviewer_model`, `weighted`, `attempt`, `tracker_issue`, `artifacts_count`, `report_path` for verification.
-
 ## Notes
 
 - On BLOCK: change underlying work; re-run; do not re-word question.
