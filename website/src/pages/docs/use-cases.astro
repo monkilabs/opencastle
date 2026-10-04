@@ -186,9 +186,9 @@ $ git commit -m "Add OpenCastle"</code></pre>
               Say what you want, with the details that matter to you. Planning changes no code. One short
               session sizes the request; this one came out small, so the tasks were planned straight from it.
               Larger work gets a PRD in <code>.opencastle/prds/</code> first, which is reviewed, and fixed if
-              needed, before the tasks are planned. Either way the plan is then checked in code. This run passed
-              <code>--yes</code>, so one more session reviewed the plan (<code>Plan reviewed</code>) and the run
-              started without asking.
+              needed, while the tasks are planned from it. Either way the plan is then checked in code. This run
+              passed <code>--yes</code>, so one more session reviewed the plan (<code>Plan reviewed</code>) and the
+              run started without asking.
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
@@ -216,6 +216,12 @@ $ git commit -m "Add OpenCastle"</code></pre>
   Spec   .opencastle/convoys/notes-pagination-delete.convoy.yml
   Planned in 2m 59s · 3 sessions · 334K tokens · $0.66</code></pre>
             </div>
+            <p class="recipe-section__body">
+              This output is from an earlier build. The current one sizes the request, plans it and drafts a PRD
+              at the same time, keeps whichever the size calls for, and asks the model for less reasoning while it
+              plans. It planned the same request in 24 to 28 seconds for about $0.22, without the
+              <code>--yes</code> review.
+            </p>
             <p class="recipe-section__body">
               The table is the plan: who does what, after what, touching which files (cut to the terminal's
               width; the spec has them all). Each task here owns the code and its tests. Under the table are the
@@ -362,10 +368,14 @@ $ git merge convoy/notes-pagination-delete</code></pre>
             </table>
             <ul class="recipe-section__list">
               <li><strong>Planning a small change without a PRD costs less.</strong> The second and third runs
-                were planned by builds that wrote a PRD for every request, and both were sized low from it. The
-                current build sizes the request first and writes no PRD for a low one, as in the first run. A PRD
+                were planned by builds that wrote a PRD for every request, and both were sized low from it. A PRD
                 and its review took 5m 41s and $1.56, or 7m 25s and $1.67 with a fix; without them, 2m 59s and
                 $0.66.</li>
+              <li><strong>Planning is now much shorter.</strong> All of the times above are from earlier builds,
+                whose planning sessions spent most of their time thinking, one after another. The current build
+                asks for less reasoning and starts the steps that do not wait for each other together. Planning
+                only, on the same project: the pagination request in 24–28 seconds and $0.22, and a tags feature
+                that needed a PRD, five tasks folded into three, in 1m 41s and $0.59.</li>
               <li><strong>Fewer tasks are not always faster.</strong> The two tasks of the first run touched the
                 same files, so they ran one after the other; the third run's four tasks ran up to two at once. How
                 many tests the agents write varies from run to run.</li>

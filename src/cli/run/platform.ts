@@ -130,6 +130,56 @@ export function killTree(pid: number | undefined, graceMs = 5000): void {
   timer.unref()
 }
 
+/** Help text by the resolved path of the command that printed it. */
+const helpCache = new Map<string, Promise<string>>()
+
+/**
+ * What `<command> --help` prints, read once per process.
+ *
+ * An agent CLI fails a whole session on a flag it does not know, and the flags
+ * that make a session faster arrive release by release. An adapter passes one
+ * only when the installed version lists it. Keyed by the path the command
+ * resolves to, so a different install on PATH is asked again. Empty when the
+ * command cannot be run or does not answer within `timeoutMs`.
+ */
+export function helpText(command: string, timeoutMs = 10_000): Promise<string> {
+  const key = resolveCommand(command) ?? command
+  const known = helpCache.get(key)
+  if (known) return known
+  const asked = new Promise<string>((done) => {
+    let out = ''
+    let child: ChildProcess
+    try {
+      child = spawnCommand(command, ['--help'], { stdio: ['ignore', 'pipe', 'pipe'] })
+    } catch {
+      done('')
+      return
+    }
+    const timer = setTimeout(() => {
+      killTree(child.pid, 0)
+      done(out)
+    }, timeoutMs)
+    timer.unref()
+    child.stdout?.on('data', (d) => (out += String(d)))
+    child.stderr?.on('data', (d) => (out += String(d)))
+    child.on('error', () => {
+      clearTimeout(timer)
+      done('')
+    })
+    child.on('close', () => {
+      clearTimeout(timer)
+      done(out)
+    })
+  })
+  helpCache.set(key, asked)
+  return asked
+}
+
+/** Forget every help text read so far — for tests that swap a CLI. */
+export function forgetHelpText(): void {
+  helpCache.clear()
+}
+
 export interface ShellResult {
   code: number
   stdout: string

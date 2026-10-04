@@ -125,6 +125,15 @@ describe.skipIf(!posix)('codex adapter — against a stub `codex`', () => {
     expect(argv[argv.indexOf('-m') + 1]).toBe('gpt-5.1-codex')
   })
 
+  it('sets the reasoning effort as a config override, quoted as TOML', async () => {
+    await execute(makeTask(), { cwd: stub.work })
+    expect(stub.argv()).not.toContain('-c')
+    await execute(makeTask(), { cwd: stub.work, effort: 'medium' })
+    const argv = stub.argv()
+    expect(argv[argv.indexOf('-c') + 1]).toBe('model_reasoning_effort="medium"')
+    expect(argv.at(-1)).toBe('-')
+  })
+
   it('reports the failure messages on a non-zero exit', async () => {
     process.env.STUB_EXIT = '1'
     delete process.env.STUB_LAST_MESSAGE

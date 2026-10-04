@@ -1,5 +1,5 @@
 import type { Task, ExecuteOptions, ExecuteResult, TokenUsage } from '../../convoy/spec-types.js'
-import { commandExists } from '../platform.js'
+import { commandExists, helpText } from '../platform.js'
 import { runAgent, stopTask, promptOf, interruptedMessage, OUTPUT_LIMIT } from './agent-process.js'
 
 /**
@@ -134,11 +134,37 @@ export function claudePermissionArgs(mode: ExecuteOptions['permissionMode']): st
   return ['--permission-mode', mode ?? 'acceptEdits']
 }
 
+/** The tools a lean session keeps: reading files, nothing else. */
+export const LEAN_TOOLS = 'Read,Grep,Glob'
+
+/**
+ * The flags that make a session cheaper and faster, each passed only when the
+ * installed Claude Code lists it in `--help`: a version without one fails the
+ * whole session on the unknown flag.
+ *
+ * A lean session starts no MCP server, loads no skill or command, and keeps
+ * only the tools that read files. Measured on a planning step it cost less than
+ * half as much — the skills, MCP tool schemas and sub-agent definitions no
+ * longer went into its context — and it could not wander into a web search.
+ */
+export function claudeSessionArgs(options: Pick<ExecuteOptions, 'effort' | 'lean'>, help: string): string[] {
+  const has = (flag: string) => new RegExp(`(^|\\s)${flag}(\\s|,|=|$)`, 'm').test(help)
+  const args: string[] = []
+  if (options.effort && has('--effort')) args.push('--effort', options.effort)
+  if (options.lean) {
+    if (has('--strict-mcp-config')) args.push('--strict-mcp-config')
+    if (has('--disable-slash-commands')) args.push('--disable-slash-commands')
+    if (has('--tools')) args.push('--tools', LEAN_TOOLS)
+  }
+  return args
+}
+
 export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
   // A worker has no terminal, so a permission prompt is a refusal it cannot
   // answer: without a mode it tries to write, is denied, and exits 0 having
   // written nothing. `acceptEdits` is the least that lets it do the work.
   const args = ['-p', '--output-format', 'json', ...claudePermissionArgs(options.permissionMode)]
+  if (options.effort || options.lean) args.push(...claudeSessionArgs(options, await helpText('claude')))
   if (options.model) args.push('--model', options.model)
   // No --max-turns: the task's timeout bounds a session, and a turn cap only
   // cut long tasks short with a result that looked like an ordinary failure.

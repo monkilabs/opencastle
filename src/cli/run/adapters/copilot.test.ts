@@ -124,6 +124,17 @@ describe.skipIf(!posix)('copilot adapter — against a stub `copilot`', () => {
     expect(argv[argv.indexOf('--model') + 1]).toBe('gpt-5.2')
   })
 
+  it('asks for less effort only when this version has --effort', async () => {
+    stub.help('  --effort, --reasoning-effort <level>  Set the reasoning effort level')
+    await execute(makeTask(), { cwd: stub.work, effort: 'low' })
+    const argv = stub.argv()
+    expect(argv[argv.indexOf('--effort') + 1]).toBe('low')
+
+    stub.help('  --model <model>  Set the AI model to use')
+    await execute(makeTask(), { cwd: stub.work, effort: 'low' })
+    expect(stub.argv()).not.toContain('--effort')
+  })
+
   it('lets Copilot load the project\'s MCP config from an untrusted worktree', async () => {
     const script = join(stub.bin, 'copilot')
     writeFileSync(script, readFileSync(script, 'utf8').replace('pwd > "$log/cwd"', 'pwd > "$log/cwd"; printf %s "$GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP" > "$log/mcp"'))

@@ -95,10 +95,17 @@ interface Call {
   permissionMode?: string
   cwd?: string
   prompt: string
+  effort?: string
+  lean?: boolean
 }
 
-function stubAdapter(answers: Record<string, Answer> = {}): { adapter: AgentAdapter; calls: Call[] } {
+/** An answer that never comes: the session runs until it is stopped. */
+const never = (): Promise<string> => new Promise(() => {})
+
+function stubAdapter(answers: Record<string, Answer> = {}): { adapter: AgentAdapter; calls: Call[]; killed: string[] } {
   const calls: Call[] = []
+  const killed: string[] = []
+  const stoppers = new Map<string, Array<() => void>>()
   const seen = new Map<string, number>()
   const defaults: Record<string, Answer> = {
     'generate-prd': PRD,
@@ -113,15 +120,30 @@ function stubAdapter(answers: Record<string, Answer> = {}): { adapter: AgentAdap
     name: 'stub',
     isAvailable: async () => true,
     async execute(task: Task, options?: ExecuteOptions) {
-      calls.push({ template: task.id, permissionMode: options?.permissionMode, cwd: options?.cwd, prompt: task.prompt })
+      calls.push({
+        template: task.id,
+        permissionMode: options?.permissionMode,
+        cwd: options?.cwd,
+        prompt: task.prompt,
+        effort: options?.effort,
+        lean: options?.lean,
+      })
       const nth = (seen.get(task.id) ?? 0) + 1
       seen.set(task.id, nth)
       const answer = answers[task.id] ?? defaults[task.id]
-      const output = typeof answer === 'function' ? await answer(task.prompt, nth) : answer
+      // Stopped like a real runtime: the process ends and reports a failure.
+      const stopped = new Promise<null>((r) => stoppers.set(task.id, [...(stoppers.get(task.id) ?? []), () => r(null)]))
+      const output = await Promise.race([typeof answer === 'function' ? answer(task.prompt, nth) : answer, stopped])
+      if (output === null) return { success: false, output: 'stopped', exitCode: 143 }
       return { success: true, output, exitCode: 0 }
     },
+    kill(task: Task) {
+      killed.push(task.id)
+      for (const stop of stoppers.get(task.id) ?? []) stop()
+      stoppers.delete(task.id)
+    },
   }
-  return { adapter, calls }
+  return { adapter, calls, killed }
 }
 
 const templates = (calls: Call[]): string[] => calls.map((c) => c.template)
@@ -157,10 +179,14 @@ function plan(adapter: AgentAdapter, extra: Partial<Parameters<typeof planConvoy
 // ── Sessions ────────────────────────────────────────────────────────────────
 
 describe('planConvoy: sessions', () => {
-  it('needs four sessions when every answer is good, with no semantic review of the plan', async () => {
+  it('starts five sessions when every answer is good, with no semantic review of the plan', async () => {
     const { adapter, calls } = stubAdapter()
     const outcome = await plan(adapter)
-    expect([...templates(calls)].sort()).toEqual(['assess-complexity', 'generate-convoy', 'generate-prd', 'validate-prd'])
+    // The plan from the request is dropped once the size says a PRD is needed;
+    // the plan from the PRD is the one kept.
+    expect([...templates(calls)].sort()).toEqual([
+      'assess-complexity', 'generate-convoy', 'generate-convoy', 'generate-prd', 'validate-prd',
+    ])
     expect(outcome.problems).toEqual([])
   })
 
@@ -177,26 +203,96 @@ describe('planConvoy: sessions', () => {
   it('sends the PRD to generate-convoy once', async () => {
     const { adapter, calls } = stubAdapter()
     await plan(adapter)
-    const prompt = calls.find((c) => c.template === 'generate-convoy')!.prompt
-    expect(prompt.match(/PRD-MARKER/g)).toHaveLength(1)
-    expect(prompt).not.toMatch(/\{\{(goal|context)\}\}/)
+    const fromPrd = calls.filter((c) => c.template === 'generate-convoy' && c.prompt.includes('PRD-MARKER'))
+    expect(fromPrd).toHaveLength(1)
+    expect(fromPrd[0].prompt.match(/PRD-MARKER/g)).toHaveLength(1)
+    expect(fromPrd[0].prompt).not.toMatch(/\{\{(goal|context)\}\}/)
   })
 
   it('plans a small change straight from the request, with no PRD', async () => {
     const { adapter, calls } = stubAdapter({ 'assess-complexity': fence({ ...SINGLE, complexity: 'low' }) })
     const outcome = await plan(adapter)
-    expect(templates(calls)).toEqual(['assess-complexity', 'generate-convoy'])
+    // The PRD starts beside the size too; here it finished first, and is not kept.
+    expect([...templates(calls)].sort()).toEqual(['assess-complexity', 'generate-convoy', 'generate-prd'])
     expect(outcome.prdPath).toBeNull()
     expect(existsSync(join(root, '.opencastle', 'prds'))).toBe(false)
-    expect(calls[1].prompt).toContain('There is no PRD: this is a small change')
+    expect(calls.find((c) => c.template === 'generate-convoy')!.prompt).toContain('There is no PRD: this is a small change')
     expect(outcome.problems).toEqual([])
+  })
+
+  it('sizes a request and plans it at the same time', async () => {
+    let inFlight = 0
+    let most = 0
+    const overlap = (answer: string) => async () => {
+      inFlight++
+      most = Math.max(most, inFlight)
+      await new Promise((r) => setTimeout(r, 20))
+      inFlight--
+      return answer
+    }
+    const { adapter } = stubAdapter({
+      'assess-complexity': overlap(fence({ ...SINGLE, complexity: 'low' })),
+      'generate-convoy': overlap(fence(PLAN)),
+    })
+    await plan(adapter)
+    expect(most).toBe(2)
+  })
+
+  it('stops the PRD as soon as the size says the change is small', async () => {
+    const { adapter, killed } = stubAdapter({
+      'assess-complexity': fence({ ...SINGLE, complexity: 'low' }),
+      'generate-prd': never,
+    })
+    const outcome = await plan(adapter)
+    expect(killed).toEqual(['generate-prd'])
+    expect(outcome.prdPath).toBeNull()
+    expect(outcome.plan.name).toBe('Dark mode')
+  })
+
+  it('stops the plan from the request as soon as the size says a PRD is needed', async () => {
+    const { adapter, calls, killed } = stubAdapter({
+      'generate-convoy': (prompt) => (prompt.includes('PRD-MARKER') ? fence(PLAN) : never()),
+    })
+    const outcome = await plan(adapter)
+    expect(killed).toEqual(['generate-convoy'])
+    expect(outcome.prdPath).not.toBeNull()
+    expect(outcome.plan.name).toBe('Dark mode')
+    // A stopped session counts, and makes the cost a lower bound.
+    expect(outcome.planning?.sessions).toBe(calls.length)
+    expect(outcome.planning?.costComplete).toBe(false)
+  })
+
+  it('plans from the PRD beside its review, and again from the fixed PRD when the review fails', async () => {
+    const fixedPrd = PRD.replace('PRD-MARKER', 'FIXED-MARKER')
+    const { adapter, calls, killed } = stubAdapter({
+      'validate-prd': (_p, n) => fence({ valid: n > 1, issues: ['US-1: unclear'] }),
+      'fix-prd': fixedPrd,
+      // The plan from the request ends at once; the one from the draft PRD
+      // runs until it is stopped.
+      'generate-convoy': (prompt) => (prompt.includes('PRD-MARKER') ? never() : fence(PLAN)),
+    })
+    const outcome = await plan(adapter)
+    expect(killed).toEqual(['generate-convoy'])
+    const last = calls.filter((c) => c.template === 'generate-convoy').at(-1)!
+    expect(last.prompt).toContain('FIXED-MARKER')
+    expect(outcome.problems).toEqual([])
+  })
+
+  it('asks for medium effort for the plan and low for every other step, all lean', async () => {
+    const { adapter, calls } = stubAdapter({ 'validate-prd': (_p, n) => fence({ valid: n > 1, issues: ['x'] }) })
+    await plan(adapter, { critic: true })
+    expect(new Set(calls.map((c) => c.template)).size).toBeGreaterThanOrEqual(6)
+    for (const call of calls) {
+      expect(call.effort, call.template).toBe(call.template === 'generate-convoy' ? 'medium' : 'low')
+      expect(call.lean, call.template).toBe(true)
+    }
   })
 
   it('sizes a larger request once, and does not size its PRD again', async () => {
     const { adapter, calls } = stubAdapter()
     await plan(adapter)
     expect(count(calls, 'assess-complexity')).toBe(1)
-    expect(templates(calls)[0]).toBe('assess-complexity')
+    expect(templates(calls).slice(0, 3).sort()).toEqual(['assess-complexity', 'generate-convoy', 'generate-prd'])
   })
 
   it('fixes an invalid PRD at most twice, then plans from it anyway', async () => {
@@ -204,7 +300,10 @@ describe('planConvoy: sessions', () => {
     const outcome = await plan(adapter)
     expect(count(calls, 'fix-prd')).toBe(2)
     expect(count(calls, 'validate-prd')).toBe(3)
-    expect(calls).toHaveLength(8)
+    // Planned from the request, from the draft beside its review, and from the PRD as fixed.
+    expect(count(calls, 'generate-convoy')).toBe(3)
+    expect(calls).toHaveLength(10)
+    expect(templates(calls).at(-1)).toBe('generate-convoy')
     expect(outcome.problems).toEqual([])
   })
 
@@ -212,7 +311,7 @@ describe('planConvoy: sessions', () => {
     const { adapter, calls } = stubAdapter({ 'validate-prd': (_p, n) => fence({ valid: n > 1, issues: ['x'] }) })
     await plan(adapter)
     expect(count(calls, 'fix-prd')).toBe(1)
-    expect(calls).toHaveLength(6)
+    expect(calls).toHaveLength(8)
   })
 
   it('asks fix-convoy only when the checks fail, and never validate-convoy', async () => {
@@ -224,14 +323,21 @@ describe('planConvoy: sessions', () => {
     const outcome = await plan(adapter)
     expect(count(calls, 'fix-convoy')).toBe(1)
     expect(count(calls, 'validate-convoy')).toBe(0)
-    expect(calls).toHaveLength(5)
+    expect(calls).toHaveLength(6)
     expect(outcome.problems).toEqual([])
   })
 
   it('retries an unreadable plan once', async () => {
-    const { adapter, calls } = stubAdapter({ 'generate-convoy': (_p, n) => (n === 1 ? 'Sorry, here you go: {' : fence(PLAN)) })
-    await plan(adapter)
-    expect(count(calls, 'generate-convoy')).toBe(2)
+    // The plan that is kept, from the PRD; the one from the request is dropped
+    // as soon as the size is known, whether or not it got to its own retry.
+    let fromPrd = 0
+    const { adapter, calls } = stubAdapter({
+      'generate-convoy': (prompt) =>
+        prompt.includes('PRD-MARKER') && fromPrd++ === 0 ? 'Sorry, here you go: {' : fence(PLAN),
+    })
+    const outcome = await plan(adapter)
+    expect(calls.filter((c) => c.template === 'generate-convoy' && c.prompt.includes('PRD-MARKER'))).toHaveLength(2)
+    expect(outcome.plan.name).toBe('Dark mode')
   })
 
   it('keeps the unreadable answer for inspection when the retry fails too', async () => {
@@ -242,14 +348,21 @@ describe('planConvoy: sessions', () => {
 
   it('is bounded in the worst case, and reports what is left', async () => {
     const bad = { ...PLAN, tasks: [PLAN.tasks[0], { ...PLAN.tasks[1], timeout: 'soon' }] }
+    let fromFixed = 0
     const { adapter, calls } = stubAdapter({
       'validate-prd': fence({ valid: false, issues: ['x'] }),
-      'generate-convoy': (_p, n) => (n === 1 ? '```json\n{ "name": "x", "tasks": [\n```' : fence(bad)),
+      // Only the plan that is kept, from the PRD as fixed, is unreadable once.
+      'generate-convoy': (prompt) =>
+        prompt.includes('PRD-MARKER') && calls.some((c) => c.template === 'fix-prd') && fromFixed++ === 0
+          ? '```json\n{ "name": "x", "tasks": [\n```'
+          : fence(bad),
       'fix-convoy': fence([{ task_id: 'toggle', field: 'timeout', value: 'later' }]),
     })
     const outcome = await plan(adapter, { critic: true })
-    // generate-prd, validate-prd ‖ assess, 2 × (fix-prd + validate-prd), 2 × generate-convoy, 2 × fix-convoy.
-    expect(calls).toHaveLength(11)
+    // assess ‖ the plan from the request, generate-prd, validate-prd ‖ the plan
+    // from the draft, 2 × (fix-prd + validate-prd), 2 × generate-convoy (one
+    // unreadable), 2 × fix-convoy.
+    expect(calls).toHaveLength(13)
     expect(count(calls, 'validate-convoy')).toBe(0) // no review of a plan that cannot run
     expect(outcome.problems.join('\n')).toContain('timeout')
   })
@@ -276,7 +389,7 @@ describe('planConvoy: sessions', () => {
     })
     const outcome = await plan(adapter, { critic: true })
     expect(templates(calls).slice(-2)).toEqual(['validate-convoy', 'fix-convoy'])
-    expect(calls).toHaveLength(6)
+    expect(calls).toHaveLength(7)
     expect(outcome.plan.tasks[1].prompt).toBe('Add the toggle; read docs first.')
 
     const broken = stubAdapter({
@@ -342,9 +455,10 @@ describe('planConvoy: groups', () => {
     const { adapter, calls } = stubAdapter({ 'assess-complexity': fence(CHAIN), 'generate-convoy': groups.answer })
     await plan(adapter)
     expect(groups.most()).toBe(3)
-    expect(count(calls, 'generate-convoy')).toBe(3)
-    // The request is sized, then the PRD again: groups name the PRD's phases.
-    expect(calls).toHaveLength(7)
+    expect(calls.filter((c) => c.template === 'generate-convoy' && c.prompt.includes('**Group name:**'))).toHaveLength(3)
+    // The request is sized (beside its dropped plan), then the PRD again:
+    // groups name the PRD's phases.
+    expect(calls).toHaveLength(8)
     const docs = calls.find((c) => c.template === 'generate-convoy' && c.prompt.includes('**Group name:** docs'))!
     expect(docs.prompt).not.toContain('Phase 1 — Theme')
   })
@@ -528,7 +642,7 @@ describe('convoy "<task>": show the plan, ask once', () => {
     await planTask({ args: [], pkgRoot }, 'add dark mode')
     expect(adapters.resolveAdapter).toHaveBeenCalledTimes(1)
     expect(adapters.resolveAdapter).toHaveBeenCalledWith({ projectRoot: root, explicit: null })
-    expect(stub.calls.length).toBe(4)
+    expect(stub.calls.length).toBe(5)
   })
 
   it('stops before planning when no runtime can be found', async () => {
@@ -600,8 +714,9 @@ describe('the plan says what planning spent', () => {
   })
 
   it('counts the sessions planConvoy ran', async () => {
-    const { adapter } = stubAdapter()
+    const { adapter, calls } = stubAdapter()
     const outcome = await plan(adapter)
-    expect(outcome.planning?.sessions).toBe(4)
+    expect(outcome.planning?.sessions).toBe(5)
+    expect(calls).toHaveLength(5)
   })
 })

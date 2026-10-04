@@ -1,5 +1,5 @@
 import type { Task, ExecuteOptions, ExecuteResult } from '../../convoy/spec-types.js'
-import { commandExists } from '../platform.js'
+import { commandExists, helpText } from '../platform.js'
 import { copilotPermissionArgs } from './permission-modes.js'
 import { runAgent, stopTask, promptOf, interruptedMessage, OUTPUT_LIMIT } from './agent-process.js'
 
@@ -91,6 +91,8 @@ export function parseCopilotOutput(stdout: string): ParsedCopilot {
 export async function execute(task: Task, options: ExecuteOptions = {}): Promise<ExecuteResult> {
   const args = ['--output-format', 'json', '--no-ask-user', '--no-auto-update']
   if (options.model) args.push('--model', options.model)
+  // Only when this version has it: an unknown flag fails the session.
+  if (options.effort && /(^|\s)--effort[\s,]/m.test(await helpText('copilot'))) args.push('--effort', options.effort)
   args.push(...copilotPermissionArgs(options.permissionMode))
 
   const exit = await runAgent(task, {
