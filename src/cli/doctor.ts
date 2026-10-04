@@ -967,7 +967,7 @@ export async function runAdapterChecks(
     const loader = IDE_ADAPTERS[ide];
     if (!loader) continue;
     const adapter = await loader();
-    for (const check of adapter.getDoctorChecks()) {
+    for (const check of adapter.getDoctorChecks(ides as IdeChoice[])) {
       try {
         out.push(await runDoctorCheck(projectRoot, check));
       } catch (err) {
@@ -1104,7 +1104,7 @@ export default async function doctor({ pkgRoot, args }: CliContext): Promise<voi
       const loader = IDE_ADAPTERS[ide];
       if (!loader) continue;
       const adapter = await loader();
-      const doctorChecks = adapter.getDoctorChecks();
+      const doctorChecks = adapter.getDoctorChecks(ides as IdeChoice[]);
       const managedPaths = adapter.getManagedPaths();
 
       const checkResults = await Promise.all(

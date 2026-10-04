@@ -153,6 +153,14 @@ Claude Code is the exception: it lists its subagents and skills itself, from
 repeating them — about 3k tokens a session would otherwise load twice, and again in every
 subagent.
 
+An assistant that also reads another target's root file does not get the
+instructions twice. Antigravity reads `AGENTS.md` beside `GEMINI.md`, and Cursor
+applies `CLAUDE.md` and `AGENTS.md` to every conversation, so with a target that
+writes one of those selected, `GEMINI.md` points to it and Cursor writes no
+instruction rules of its own (`alsoReads` in
+[`single-file-base.ts`](src/cli/adapters/single-file-base.ts) and
+[`rules-dir-base.ts`](src/cli/adapters/rules-dir-base.ts)).
+
 ---
 
 ## Team Sources

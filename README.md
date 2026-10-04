@@ -181,7 +181,7 @@ still open, and why things are the way they are: **[docs/teams.md](docs/teams.md
 |-----------|--------------|--------|------------|
 | **Claude Code** | `CLAUDE.md`, `.claude/agents/`, commands in `.claude/commands/oc/` | `.claude/skills/` | `.mcp.json` |
 | **VS Code** (GitHub Copilot) | `.github/copilot-instructions.md`, `.github/instructions/`, `.github/agents/`, prompts `.github/prompts/oc.*.prompt.md` | `.github/skills/` | `.vscode/mcp.json` |
-| **Cursor** | `.cursorrules`, `.cursor/rules/*.mdc` | `.agents/skills/` | `.cursor/mcp.json` |
+| **Cursor** | `.cursorrules`, `.cursor/rules/*.mdc` (instructions from `CLAUDE.md` or `AGENTS.md` instead, which Cursor also reads, when Claude Code, Codex or OpenCode is also selected) | `.agents/skills/` | `.cursor/mcp.json` |
 | **Windsurf** (Devin Desktop) | `.windsurfrules`, `.windsurf/rules/*.md` | `.agents/skills/` | `.devin/mcp_config.json` |
 | **OpenCode** | `AGENTS.md`, `.opencode/` | `.agents/skills/` | `opencode.json` |
 | **Codex CLI** | `AGENTS.md`, `.codex/` | `.agents/skills/` | `.codex/config.toml` (trusted projects only) |

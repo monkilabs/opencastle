@@ -83,8 +83,10 @@ removes it.
 ```
 
 Moving `.cursor/rules/team.mdc` to `.opencastle/instructions/team.md` and
-running `opencastle sync` puts it back in `.cursor/rules/`, and in every other
-assistant's instructions too.
+running `opencastle sync` compiles it into every assistant's instructions. Here
+that includes `CLAUDE.md`, which Cursor also applies to every conversation, so
+Cursor reads it from there, once; in a project without Claude Code, Codex or
+OpenCode it goes back to `.cursor/rules/`.
 
 ## 2. See where you stand
 

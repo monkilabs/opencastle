@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import * as cursor from './cursor.js'
 import * as windsurf from './windsurf.js'
+import type { IdeChoice, StackConfig } from '../types.js'
 
 /** Minimal orchestrator source tree: just enough for install() to walk. */
 function makePkgRoot(): string {
@@ -257,6 +258,46 @@ describe('frontmatter dialects differ per IDE', () => {
 
     // agents are description-triggered
     expect(readFileSync(join(rules, 'agents', 'developer.mdc'), 'utf8')).toContain('alwaysApply: false')
+  })
+
+  describe('cursor beside a target that writes a root file it also applies', () => {
+    const stack = (...ides: IdeChoice[]): StackConfig => ({ ides: ['cursor', ...ides], techTools: [], teamTools: [] })
+    const rules = () => join(projectRoot, '.cursor', 'rules')
+
+    it('leaves the instructions to CLAUDE.md, so they load once', async () => {
+      await cursor.install(pkgRoot, projectRoot, stack('claude-code'))
+      expect(existsSync(join(rules(), 'general.mdc'))).toBe(false)
+      expect(readdirSync(rules()).filter((f) => f.endsWith('.mdc'))).toEqual([])
+      // Agents are still Cursor's own.
+      expect(existsSync(join(rules(), 'agents', 'developer.mdc'))).toBe(true)
+      expect(readFileSync(join(projectRoot, '.cursorrules'), 'utf8')).toContain('instructions are in `CLAUDE.md`, which Cursor also applies')
+    })
+
+    it('leaves them to AGENTS.md with Codex or OpenCode', async () => {
+      await cursor.install(pkgRoot, projectRoot, stack('opencode'))
+      expect(existsSync(join(rules(), 'general.mdc'))).toBe(false)
+      expect(readFileSync(join(projectRoot, '.cursorrules'), 'utf8')).toContain('`AGENTS.md`')
+    })
+
+    it('writes them as rules on its own, and with a target whose file it does not read', async () => {
+      await cursor.install(pkgRoot, projectRoot, stack('windsurf'))
+      expect(readFileSync(join(rules(), 'general.mdc'), 'utf8')).toContain('alwaysApply: true')
+    })
+
+    it('removes the copies an earlier sync wrote once Claude Code is added', async () => {
+      await cursor.install(pkgRoot, projectRoot, stack())
+      expect(existsSync(join(rules(), 'general.mdc'))).toBe(true)
+      const out = await cursor.update(pkgRoot, projectRoot, stack('claude-code'))
+      expect(existsSync(join(rules(), 'general.mdc'))).toBe(false)
+      expect(out.deleted).toContain('.cursor/rules/general.mdc')
+    })
+
+    it('has doctor check the shared file instead of an instruction rule', () => {
+      const labels = (ides?: IdeChoice[]) => cursor.getDoctorChecks(ides).map((c) => `${c.label}:${c.path}`)
+      expect(labels(['cursor', 'claude-code'])).toContain('Instructions (in CLAUDE.md):CLAUDE.md')
+      expect(labels(['cursor'])).toContain('Instruction rules:.cursor/rules/')
+      expect(labels()).toContain('Instruction rules:.cursor/rules/')
+    })
   })
 
   it('windsurf expresses scope with a single trigger enum', async () => {

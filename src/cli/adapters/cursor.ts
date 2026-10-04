@@ -19,6 +19,12 @@ const adapter = createRulesDirAdapter({
   configDir: '.cursor',
   ruleExt: '.mdc',
   skillsDir: '.agents/skills',
+  // Cursor applies CLAUDE.md to every conversation and reads AGENTS.md; see
+  // cursor.com/docs/rules.
+  alsoReads: [
+    { rootFile: 'CLAUDE.md', writtenBy: ['claude-code'] },
+    { rootFile: 'AGENTS.md', writtenBy: ['codex', 'opencode'] },
+  ],
   renderFrontmatter({ description, applyTo, alwaysApply, tier }) {
     const lines: string[] = []
     if (description) lines.push(`description: "${description}"`)

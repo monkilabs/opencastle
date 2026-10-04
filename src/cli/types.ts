@@ -220,7 +220,8 @@ export interface IdeAdapter {
     _source?: CompileSource,
   ): Promise<CopyResults>;
   getManagedPaths(): ManagedPaths;
-  getDoctorChecks(): DoctorCheck[];
+  /** `ides`: every assistant the project is set up for, when a check depends on the others. */
+  getDoctorChecks(_ides?: readonly IdeChoice[]): DoctorCheck[];
   /**
    * Files an earlier release wrote under a name this one no longer uses —
    * `/bug-fix` before it became `/oc:bug-fix` — present on disk now, relative to
