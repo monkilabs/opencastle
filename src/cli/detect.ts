@@ -196,7 +196,7 @@ const AUTH: DetectionRule[] = [
 ];
 
 // Mapping of npm package names to detection labels
-const PACKAGE_DETECTIONS: Record<string, { category: string; label: string }> = {
+export const PACKAGE_DETECTIONS: Record<string, { category: string; label: string }> = {
   'next': { category: 'frameworks', label: 'next' },
   'nuxt': { category: 'frameworks', label: 'nuxt' },
   'astro': { category: 'frameworks', label: 'astro' },

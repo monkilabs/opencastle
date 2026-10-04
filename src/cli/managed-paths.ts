@@ -179,7 +179,6 @@ export function removeOwnedFiles(projectRoot: string, dir: string, owns: (_rel: 
  */
 export const REQUIRED_CUSTOMIZATIONS = [
   'agents/skill-matrix.json',
-  'agents/skill-matrix.md',
   'agents/agent-registry.md',
 ] as const
 

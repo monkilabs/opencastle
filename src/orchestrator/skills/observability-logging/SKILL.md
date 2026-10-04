@@ -11,7 +11,7 @@ description: "Logs sessions, tracks activity, records delegation decisions, and 
 |------|------------|-----|------|
 | `events.ndjson` | `session`, `delegation`, `review`, `panel`, `dispute` | All agents / Team Lead / Panel runner | After each applicable event |
 
-See `.opencastle/logs/README.md` for full schema.
+Full schema: [LOG-SCHEMA.md](./LOG-SCHEMA.md), beside this file; `opencastle log --help` lists the fields too.
 
 Use `opencastle log` CLI. One record per task; never batch-log retrospectively.
 

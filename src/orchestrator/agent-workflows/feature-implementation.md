@@ -212,7 +212,7 @@ If there are no open questions, explicitly state: "No open questions — plan is
    - Final responsive sweep at all breakpoints (if UI changes)
 7. Move all issues to Done
 8. Update session checkpoint → delete checkpoint
-9. Update `.opencastle/project/roadmap.md`
+9. Update `.opencastle/project/roadmap.md`, when the project keeps one
 
 ### Exit Criteria
 

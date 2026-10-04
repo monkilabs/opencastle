@@ -49,7 +49,7 @@ const prompts = [
     agent: 'Team Lead (OpenCastle)',
     input: 'the roadmap task',
     details: [
-      { heading: 'When to use', content: `<p>When implementing a task from <code>.opencastle/project/roadmap.md</code>. Provides full orchestration with issue tracking, validation gates, and multi-agent delegation.</p>` },
+      { heading: 'When to use', content: `<p>When implementing a task, as you describe it or from <code>.opencastle/project/roadmap.md</code> when the project keeps one. Provides full orchestration with issue tracking, validation gates, and multi-agent delegation.</p>` },
       { heading: 'What it does', content: `<ol>
         <li><strong>Research &amp; context gathering</strong> — reads the roadmap, known issues, lessons learned and related code</li>
         <li><strong>Task board setup</strong> — creates one tracker issue per subtask before any code is written</li>
@@ -111,12 +111,12 @@ const prompts = [
     id: 'bootstrap-customizations',
     category: 'setup',
     name: 'Bootstrap Customizations',
-    summary: 'Fills in what opencastle init could not detect — schemas, API routes, environment variables — in the .opencastle/ files init pre-filled, so skills have project-specific context to work from.',
+    summary: 'Checks what opencastle init read from the code into .opencastle/, and fills in the "Still to describe" list at the end of each file — architecture, access rules, test conventions, environments — by reading the code.',
     agent: 'Team Lead (OpenCastle)',
     input: 'optional extra context',
     details: [
       { heading: 'When to use', content: `<p>Once, right after <code>opencastle init</code>, on an existing codebase. Skip it in an empty project: there is nothing to read yet.</p>` },
-      { heading: 'What it does', content: `<p>Reads <code>.opencastle/manifest.json</code> for what init detected, then reads the real config files, schemas and route handlers, and completes the files init created — <code>project.instructions.md</code>, <code>stack/*-config.md</code>, the tracker config — instead of regenerating them. Anything it cannot determine is marked <code>&lt;!-- TODO: verify --&gt;</code>.</p>` },
+      { heading: 'What it does', content: `<p><code>init</code> writes <code>.opencastle/project.instructions.md</code> and <code>stack/*-config.md</code> from the code: the stack with versions, the structure, commands, routes and API endpoints, models and migrations, environment variable names and the test setup. What it cannot read from files, each file lists at its end under <em>Still to describe</em>. This prompt checks what init wrote, then reads the code to answer that list, and says what only a person can fill in.</p>` },
     ],
   },
   {

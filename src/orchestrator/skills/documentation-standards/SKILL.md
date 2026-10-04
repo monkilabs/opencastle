@@ -5,7 +5,7 @@ description: "Scaffolds issue docs, ADRs, README outlines, changelog entries, ro
 
 # Documentation Standards
 
-Project directory structure and practices: `.opencastle/project/docs-structure.md`. Writing guidelines, formatting rules, anti-patterns: `WRITING-GUIDE.md`, beside this file.
+The project's own documents: Key Documentation in `.opencastle/project.instructions.md`. Writing guidelines, formatting rules, anti-patterns: `WRITING-GUIDE.md`, beside this file.
 
 ## Templates
 

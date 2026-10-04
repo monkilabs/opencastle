@@ -17,7 +17,7 @@ Base weight: 1. Add bonuses:
 |--------|-------|
 | Domain expertise (relevant to review) | +2 |
 | Confidence high / med / low | +1 / 0 / -1 |
-| Prior success rate >80% (AGENT-PERFORMANCE.md) | +1 |
+| Prior success rate >80% (`opencastle convoy dashboard`, or `review` records in `.opencastle/logs/events.ndjson`) | +1 |
 
 Example: Security Expert + high = 4; Architect + med = 2.
 

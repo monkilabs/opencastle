@@ -389,15 +389,22 @@ function buildDlqMarkdownEntry(
   return { marker, entry }
 }
 
+/** The heading a ledger starts with: `init` no longer installs the files empty, so the first entry creates them. */
+const LEDGER_TITLE: Record<string, string> = {
+  'AGENT-FAILURES.md': '# Agent Failures\n\nDelegations that failed for good: the dead-letter queue. Format: the **team-lead-reference** skill.\n',
+  'DISPUTES.md': '# Disputes\n\nDisagreements review could not settle, for a person to decide. Format: the **team-lead-reference** skill.\n',
+}
+
 function appendLedger(repoRoot: string, file: string, marker: string, entry: string): void {
   const mdPath = join(resolve(repoRoot), '.opencastle', file)
+  let exists = true
   try {
     if (readFileSync(mdPath, 'utf8').includes(marker)) return
   } catch {
-    // File doesn't exist yet — will create
+    exists = false
   }
   mkdirSync(dirname(mdPath), { recursive: true })
-  appendFileSync(mdPath, entry)
+  appendFileSync(mdPath, (exists ? '' : LEDGER_TITLE[file] ?? '') + entry)
 }
 
 /**

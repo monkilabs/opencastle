@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import log, { LOG_RECORDS, parseLogArgs } from './log.js'
 
 const repoRoot = resolve(import.meta.dirname, '..', '..')
-const README = join(repoRoot, 'src', 'orchestrator', 'customizations', 'logs', 'README.md')
+const README = join(repoRoot, 'src', 'orchestrator', 'skills', 'observability-logging', 'LOG-SCHEMA.md')
 const SKILL = join(repoRoot, 'src', 'orchestrator', 'skills', 'observability-logging', 'SKILL.md')
 
 /** The `opencastle log …` command lines in a document's sh blocks, continuation lines joined. */

@@ -35,7 +35,7 @@ Before exploring solutions, ensure problem is well-understood:
 Research before proposing. Gather data, don't guess:
 
 1. **Search existing code** — is there already a partial implementation, similar pattern, or relevant utility?
-2. **Check documentation** — read `.opencastle/project.instructions.md`, `.opencastle/project/decisions.md`, `.opencastle/KNOWN-ISSUES.md` for constraints
+2. **Check documentation** — read `.opencastle/project.instructions.md`, `.opencastle/KNOWN-ISSUES.md` and, when the project keeps one, `.opencastle/project/decisions.md` for constraints
 3. **Check lessons learned** — read `.opencastle/LESSONS-LEARNED.md` for pitfalls in this area
 4. **Identify affected layers** — which apps, libs, data stores, third-party services are involved?
 5. **Research unknown topics** — if the request involves a real-world person, place, organization, or topic you don't have confident knowledge about, **search the internet** using any available web search or fetch tools (e.g. `fetch_webpage`, web search MCP, or similar) to gather accurate facts. Never fabricate content about real-world subjects.

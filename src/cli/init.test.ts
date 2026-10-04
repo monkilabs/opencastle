@@ -396,15 +396,14 @@ describe('VS Code adapter install', () => {
     expect(existsSync(join(tempDir, '.vscode', 'mcp.json'))).toBe(true)
   })
 
-  it('creates all observability log files in .opencastle/logs', async () => {
+  it('installs no empty logs or ledgers: the first record creates them', async () => {
     const adapter = await IDE_ADAPTERS['vscode']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
     await scaffoldCustomizations(PKG_ROOT, tempDir, STACK_EMPTY)
 
-    const logsDir = join(tempDir, '.opencastle', 'logs')
-    expect(existsSync(logsDir)).toBe(true)
-    for (const file of ['events.ndjson']) {
-      expect(existsSync(join(logsDir, file))).toBe(true)
+    const dir = join(tempDir, '.opencastle')
+    for (const file of ['logs', 'AGENT-FAILURES.md', 'DISPUTES.md', 'AGENT-EXPERTISE.md', 'AGENT-PERFORMANCE.md', 'KNOWLEDGE-GRAPH.md']) {
+      expect(existsSync(join(dir, file)), file).toBe(false)
     }
   })
 

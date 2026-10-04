@@ -2,7 +2,7 @@
 
 # Knowledge Graph Reference
 
-File dependency graph and cross-agent relationships stored in `.opencastle/KNOWLEDGE-GRAPH.md`.
+File dependency graph and cross-agent relationships stored in `.opencastle/KNOWLEDGE-GRAPH.md`, which the first entry creates: a `# Knowledge Graph` heading and a `| Source | Relationship | Target | Added | Context |` table.
 
 ## Entity Types
 

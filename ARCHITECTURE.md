@@ -628,7 +628,7 @@ defaults are held to the rules a supply-chain review would apply:
 
 Agents append sessions, delegations, reviews, panels and disputes to
 `.opencastle/logs/events.ndjson` with `opencastle log`, which checks every record
-against the schema in [logs/README.md](src/orchestrator/customizations/logs/README.md)
+against the schema in [LOG-SCHEMA.md](src/orchestrator/skills/observability-logging/LOG-SCHEMA.md)
 and refuses one that does not match. Convoy events go to `.opencastle/convoy.db`
 and `.opencastle/logs/convoys/<convoy-id>.ndjson`
 ([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The Observability dashboard

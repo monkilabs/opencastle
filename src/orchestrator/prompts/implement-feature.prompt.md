@@ -7,7 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Implement Roadmap Task
 
-You are the Team Lead. Implement the roadmap task described below following this strict workflow. Task comes from `.opencastle/project/roadmap.md`.
+You are the Team Lead. Implement the task described below following this strict workflow. It may be an item of `.opencastle/project/roadmap.md`, when the project keeps one.
 
 ## Task
 
@@ -21,9 +21,9 @@ You are the Team Lead. Implement the roadmap task described below following this
 
 ### 1. Research & Context Gathering
 
-1. **Read the roadmap** — Confirm scope, status, and acceptance criteria in `.opencastle/project/roadmap.md`
+1. **Read the roadmap** — Confirm scope, status, and acceptance criteria in `.opencastle/project/roadmap.md`, if there is one; otherwise from the task as given
 2. **Check blockers** — Read `.opencastle/KNOWN-ISSUES.md` and `.opencastle/LESSONS-LEARNED.md` for pitfalls and workarounds
-3. **Read architecture docs** — Check `.opencastle/project.instructions.md` and `.opencastle/project/decisions.md` for constraints
+3. **Read architecture docs** — Check `.opencastle/project.instructions.md` and, when it exists, `.opencastle/project/decisions.md` for constraints
 4. **Search existing code** — Find related files, components, queries, and tests; check for reusable implementations before creating anything new
 
 ### 2. Task Board Setup (BLOCKING — must complete before Step 3)
@@ -88,9 +88,9 @@ Follow the **Delivery Checklist** in the **git-workflow** skill — commit, push
 
 ### 6. Documentation & Traceability
 
-1. **Update roadmap** — Mark completed items with ✅ and date; include tracker issue IDs next to each scope item (e.g., `[PREFIX-6](<url>) — Description ✅ Done`)
+1. **Update roadmap** (when the project keeps one) — Mark completed items with ✅ and date; include tracker issue IDs next to each scope item (e.g., `[PREFIX-6](<url>) — Description ✅ Done`)
 2. **Update known issues** — Add new limitations to `.opencastle/KNOWN-ISSUES.md`
-3. **Update architecture docs** — Add ADRs for architectural decisions to `.opencastle/project/decisions.md`
+3. **Update architecture docs** — Add ADRs for architectural decisions to `.opencastle/project/decisions.md`, creating it with the first one
 4. **Link tracker issues** — Reference roadmap section, partition files, and related issues in each description
 5. **Close issues properly** — Move to Done only after independent verification passes all gates
 
@@ -105,6 +105,6 @@ Roadmap task is complete when:
 - [ ] Visual consistency maintained across all affected pages, apps
 - [ ] Documentation updated (roadmap, known issues, decisions)
 - [ ] Panel review passed for any high-stakes changes
-- [ ] Roadmap item marked complete in `.opencastle/project/roadmap.md`
+- [ ] Roadmap item marked complete in `.opencastle/project/roadmap.md`, if the task came from it
 - [ ] Delivery Checklist completed (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
 - [ ] Lessons learned captured if any retries occurred

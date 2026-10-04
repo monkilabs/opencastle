@@ -13,7 +13,7 @@ import type { CliContext } from './types.js'
  * `--type session` with no fields, `--outcome banana`, a value-less `--model`
  * stored as `true`, `--task 007` stored as the number 7, `--agnet`, and a
  * caller-supplied `--timestamp yesterday`. Each record type is now checked
- * against the schema in `customizations/logs/README.md`, field by field, and a
+ * against the schema in `skills/observability-logging/LOG-SCHEMA.md`, field by field, and a
  * record that does not match is refused with every reason at once.
  */
 
@@ -34,7 +34,7 @@ const attempt: Field = { kind: 'count', required: true, min: 1 }
 
 const OUTCOMES = ['success', 'partial', 'failed'] as const
 
-/** The record schemas, as `customizations/logs/README.md` documents them. `log.test.ts` holds the two together. */
+/** The record schemas, as `skills/observability-logging/LOG-SCHEMA.md` documents them. `log.test.ts` holds the two together. */
 export const LOG_RECORDS: Record<string, Record<string, Field>> = {
   session: {
     agent: req('text'),

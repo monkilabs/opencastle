@@ -4,7 +4,7 @@
 
 Standard execution plan for crawling, processing, and importing data.
 
-> **Project config:** For project-specific paths, data schema, CLI commands, and processing rules, see `data-pipeline-config.md`. For data model docs, see `docs-structure.md`.
+> **Project config:** For project-specific paths, data schema, CLI commands, and processing rules, see `data-pipeline-config.md`. For data model docs, see Key Documentation in `.opencastle/project.instructions.md`.
 
 ## Phases
 
@@ -34,7 +34,7 @@ The Team Lead creates the branch before any delegation and delivers it as the De
 
 1. Analyze the target data source (website, API, file)
 2. Identify data fields available and their mapping to the place schema
-3. Check the data model documentation (see `docs-structure.md`) for required fields
+3. Check the data model documentation (Key Documentation in `.opencastle/project.instructions.md`) for required fields
 4. Estimate record count
 5. Check for existing scraper patterns (see **data-engineering** skill)
 6. Create tracker issue with data source details
