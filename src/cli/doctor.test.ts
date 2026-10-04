@@ -3,7 +3,8 @@ import { mkdtempSync, realpathSync } from 'node:fs'
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { runDoctorCheck, checkMcpFromPaths } from './doctor.js'
+import { runDoctorCheck, checkMcpFromPaths, checkProjectContext, checkSkillMatrix } from './doctor.js'
+import { LOCKFILE_VERSION } from './lock.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import type { DoctorCheck } from './types.js'
 
@@ -168,6 +169,105 @@ describe('checkMcpFromPaths', () => {
   it('returns ok with no warning when paths is empty', () => {
     const result = checkMcpFromPaths(tmpDir, [])
     expect(result.ok).toBe(true)
+    expect(result.warning).toBeFalsy()
+  })
+})
+
+// ── checkProjectContext ───────────────────────────────────────
+
+describe('checkProjectContext', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = makeTempDir()
+    mkdirSync(join(tmpDir, '.opencastle', 'stack'), { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  const facts = (text: string) => writeFileSync(join(tmpDir, '.opencastle', 'project.instructions.md'), text)
+
+  it('warns when the file is missing, and says how to write it', async () => {
+    const result = await checkProjectContext(tmpDir)
+    expect(result.warning).toBe(true)
+    expect(result.fix).toContain('bootstrap-customizations')
+  })
+
+  it('warns when the file is still the template', async () => {
+    facts('# Project Context\n\n| Layer | Technology |\n|---|---|\n| | |\n\n| Path | Purpose |\n|---|---|\n| | |\n\nTODO: verify the dev port\n')
+    const result = await checkProjectContext(tmpDir)
+    expect(result.ok).toBe(true)
+    expect(result.warning).toBe(true)
+    expect(result.detail).toContain('still the template')
+  })
+
+  it('counts what is left to describe across the facts and the stack files, without warning', async () => {
+    facts('# Project Context\n\n## Commands\n\n| Task | Command |\n|---|---|\n| Test | `npm test` |\n\n## Still to describe\n\n- Deploy target\n- Dev ports\n')
+    writeFileSync(join(tmpDir, '.opencastle', 'stack', 'testing.md'), '# Testing\n\n## Still to describe\n\n- E2E setup\n\n## Notes\n\n- not counted\n')
+    const result = await checkProjectContext(tmpDir)
+    expect(result.warning).toBeFalsy()
+    expect(result.detail).toContain('3 still to describe')
+  })
+
+  it('reports a fully written file as written', async () => {
+    facts('# Project Context\n\n## Commands\n\n| Task | Command |\n|---|---|\n| Test | `npm test` |\n')
+    const result = await checkProjectContext(tmpDir)
+    expect(result).toMatchObject({ ok: true, detail: 'written' })
+    expect(result.warning).toBeFalsy()
+  })
+})
+
+// ── checkSkillMatrix ──────────────────────────────────────────
+
+describe('checkSkillMatrix', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = makeTempDir()
+    mkdirSync(join(tmpDir, '.opencastle', 'agents'), { recursive: true })
+  })
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true })
+  })
+
+  const matrix = (bindings: Record<string, { entries: Array<{ skill: string }> }>) =>
+    writeFileSync(join(tmpDir, '.opencastle', 'agents', 'skill-matrix.json'), JSON.stringify({ bindings }))
+  const lock = (skills: string[]) =>
+    writeFileSync(join(tmpDir, '.opencastle', 'lock.json'), JSON.stringify({
+      lockfileVersion: LOCKFILE_VERSION,
+      opencastle: '0.0.0',
+      targets: [],
+      integrations: [],
+      layers: [],
+      content: Object.fromEntries(skills.map((s) => [`skills/${s}`, { sha: '000000000000' }])),
+      mcp: {},
+      context: { tokens: 0 },
+    }))
+
+  it('does not warn about slots this stack has nothing for', async () => {
+    matrix({ cms: { entries: [] }, payments: { entries: [] }, framework: { entries: [{ skill: 'nextjs-patterns' }] } })
+    lock(['nextjs-patterns'])
+    const result = await checkSkillMatrix(tmpDir)
+    expect(result.warning).toBeFalsy()
+    expect(result.detail).toContain('1 of 3 capability slots bound')
+  })
+
+  it('warns about a slot bound to a skill that is not compiled', async () => {
+    matrix({ framework: { entries: [{ skill: 'nextjs-patterns' }] }, cms: { entries: [{ skill: 'sanity-cms' }] } })
+    lock(['nextjs-patterns'])
+    const result = await checkSkillMatrix(tmpDir)
+    expect(result.ok).toBe(true)
+    expect(result.warning).toBe(true)
+    expect(result.detail).toContain('cms → sanity-cms')
+    expect(result.detail).not.toContain('nextjs-patterns')
+  })
+
+  it('says nothing about bindings when there is no lock to compare against', async () => {
+    matrix({ cms: { entries: [{ skill: 'sanity-cms' }] } })
+    const result = await checkSkillMatrix(tmpDir)
     expect(result.warning).toBeFalsy()
   })
 })

@@ -31,6 +31,7 @@ import { cliVersionOf, requiredEnvVars } from './layers.js';
 import type { CliContext, DoctorCheck, IdeChoice, Manifest } from './types.js';
 import { IDE_LABELS } from './types.js';
 import { c } from './prompt.js';
+import { readLock } from './lock.js';
 
 // ── Styled output helpers ─────────────────────────────────────
 
@@ -158,7 +159,51 @@ async function checkCustomizations(projectRoot: string): Promise<CheckResult> {
   return { ok: true, label: 'Customizations directory', detail: `${files.length} entries` };
 }
 
-async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
+/**
+ * Whether the project's facts say anything yet.
+ *
+ * Every skill that needs this project's commands, routes or models reads them
+ * from `.opencastle/`. A file that is still a template — empty table rows,
+ * `TODO: verify` markers, as installs before 1.5 left them — gives them
+ * nothing, and nothing said so. One written from the code may still list what
+ * it could not read under "Still to describe"; that is normal, and counted.
+ */
+export async function checkProjectContext(projectRoot: string): Promise<CheckResult> {
+  const dir = resolve(projectRoot, '.opencastle');
+  const facts = resolve(dir, 'project.instructions.md');
+  const bootstrap = 'have an agent fill it in from the code: /oc:bootstrap-customizations, or the bootstrap-customizations prompt';
+  if (!existsSync(facts)) {
+    return { ok: true, warning: true, label: 'Project context', detail: '.opencastle/project.instructions.md not found', fix: bootstrap };
+  }
+  const stack = resolve(dir, 'stack');
+  const stackFiles = existsSync(stack) ? (await readdir(stack).catch(() => [])).filter((f) => f.endsWith('.md')) : [];
+  const files = [facts, ...stackFiles.map((f) => resolve(stack, f))];
+  let placeholders = 0;
+  let toDescribe = 0;
+  for (const file of files) {
+    const text = await readFile(file, 'utf8').catch(() => '');
+    placeholders += (text.match(/^\|(?:\s*\|)+\s*$/gm) ?? []).length + (text.match(/TODO: verify/g) ?? []).length;
+    // `(?![\s\S])`, not `$`: under the `m` flag `$` ends the first line.
+    const list = /^## Still to describe\s*\n([\s\S]*?)(?=\n## |(?![\s\S]))/m.exec(text)?.[1] ?? '';
+    toDescribe += (list.match(/^- /gm) ?? []).length;
+  }
+  if (placeholders >= 3) {
+    return {
+      ok: true,
+      warning: true,
+      label: 'Project context',
+      detail: `still the template: ${placeholders} empty rows or "TODO: verify" markers in .opencastle/`,
+      fix: bootstrap,
+    };
+  }
+  return {
+    ok: true,
+    label: 'Project context',
+    detail: toDescribe > 0 ? `written; ${toDescribe} still to describe — ${bootstrap}` : 'written',
+  };
+}
+
+export async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
   const path = resolve(projectRoot, '.opencastle', 'agents', 'skill-matrix.json');
   if (!existsSync(path)) {
     // "Not found" only if the directory holding it can actually be looked in.
@@ -202,14 +247,34 @@ async function checkSkillMatrix(projectRoot: string): Promise<CheckResult> {
   }
   try {
     const data = JSON.parse(content);
-    const bindings = data.bindings ?? {};
-    const emptySlots = Object.entries(bindings).filter(
-      ([, slot]) => !Array.isArray((slot as { entries?: unknown[] }).entries) || ((slot as { entries: unknown[] }).entries).length === 0
+    const bindings = (data.bindings ?? {}) as Record<string, { entries?: Array<{ skill?: string }> }>;
+    const slots = Object.entries(bindings);
+    const bound = slots.filter(([, slot]) => Array.isArray(slot.entries) && slot.entries.length > 0);
+    // A slot with nothing bound is a domain this stack has nothing special in —
+    // no CMS, no payments. That is the normal state of most slots, and warning
+    // about it on every fresh install taught people to ignore the warnings. A
+    // slot bound to a skill that was not compiled is the real fault.
+    const compiled = new Set(
+      Object.keys(readLock(projectRoot)?.content ?? {})
+        .filter((ref) => ref.startsWith('skills/'))
+        .map((ref) => ref.slice('skills/'.length)),
     );
-    if (emptySlots.length > 0) {
-      return { ok: true, label: 'Skill matrix', detail: `${emptySlots.length} unresolved capability slot(s)`, warning: true };
+    // No lock, nothing to compare against: say nothing rather than call every
+    // binding missing.
+    const missing = compiled.size === 0 ? [] : bound.flatMap(([name, slot]) =>
+      (slot.entries ?? []).filter((e) => e.skill && !compiled.has(e.skill)).map((e) => `${name} → ${e.skill}`));
+    if (missing.length > 0) {
+      return {
+        ok: true,
+        warning: true,
+        label: 'Skill matrix',
+        detail: `bound to skills that are not compiled: ${missing.join(', ')}`,
+        // No command named here: the claims check runs the last one doctor
+        // prints, and a warning must not stand in for a failure's remedy.
+        fix: 'remove those entries from .opencastle/agents/skill-matrix.json, or put back the integration that provided them',
+      };
     }
-    return { ok: true, label: 'Skill matrix', detail: 'All capability slots populated' };
+    return { ok: true, label: 'Skill matrix', detail: `${bound.length} of ${slots.length} capability slots bound; the rest have nothing in this stack` };
   } catch {
     return {
       ok: false,
@@ -946,6 +1011,7 @@ export async function runSharedChecks(
   const results = [
     checkManifest(manifest),
     await checkCustomizations(projectRoot),
+    await checkProjectContext(projectRoot),
     await checkSkillMatrix(projectRoot),
     await checkLogs(projectRoot),
     await checkMcpEnvVars(projectRoot, manifest, state),

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
+  INDEX_BUDGET_TOKENS,
   INDEX_MARKER,
   checkLessons,
   citedPath,
@@ -250,5 +251,52 @@ describe('citations against the code', () => {
     expect(result.detail).toBe('a cites src/a.ts, which has changed since it was verified on 2026-10-01')
     expect(result.fix).toContain('opencastle lesson verify a')
     expect(readLessons(dir).lessons).toHaveLength(1)
+  })
+})
+
+describe('the size of the index', () => {
+  let project: string
+
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), 'oc-lessons-size-'))
+    mkdirSync(join(project, '.opencastle', 'lessons'), { recursive: true })
+  })
+
+  afterEach(() => rmSync(project, { recursive: true, force: true }))
+
+  function record(count: number, status: Lesson['status'] = 'active'): void {
+    const dir = join(project, '.opencastle')
+    for (let i = 0; i < count; i++) {
+      const id = `2026-10-02-${status}-lesson-${String(i).padStart(3, '0')}`
+      writeFileSync(
+        join(dir, 'lessons', `${id}.md`),
+        renderLesson(lesson({ id, title: `A lesson about one more quirk of the build, number ${i}`, status })),
+      )
+    }
+    syncLessons(dir)
+  }
+
+  it('says nothing about a few dozen lessons', () => {
+    record(20)
+    const result = checkLessons(project)
+    expect(result.warning).toBeUndefined()
+    expect(result.detail).toBe('20 lesson(s)')
+  })
+
+  it('suggests merging when the index outgrows its budget', () => {
+    record(80)
+    const result = checkLessons(project)
+    expect(result.warning).toBe(true)
+    expect(result.detail).toMatch(/^80 active lessons, ~\d+ tokens in the index agents read before every task$/)
+    expect(Number(/~(\d+)/.exec(result.detail ?? '')?.[1])).toBeGreaterThan(INDEX_BUDGET_TOKENS)
+    expect(result.fix).toContain('opencastle lesson archive')
+  })
+
+  it('does not count archived lessons against it — archiving cannot shrink them', () => {
+    record(80, 'archived')
+    record(1)
+    const result = checkLessons(project)
+    expect(result.warning).toBeUndefined()
+    expect(result.detail).toBe('1 lesson(s)')
   })
 })

@@ -132,7 +132,7 @@ const commands = [
     category: 'diagnostics',
     name: 'doctor',
     summary: 'Diagnose setup problems',
-    description: 'Checks the manifest, per-assistant generated files, the skill matrix, MCP configuration, and required environment variables, audits what each MCP config launches, and says how to fix what it can.',
+    description: 'Checks the manifest, per-assistant generated files, the skill matrix, MCP configuration, and required environment variables, audits what each MCP config launches, and says how to fix what it can. It also says when <code>.opencastle/project.instructions.md</code> is still a template, how much is left to describe, and when the lessons index agents read before every task has grown past about 2,000 tokens.',
     usage: 'npx opencastle doctor [options]',
     options: [
       { flag: '--help, -h', desc: 'Show help' },
