@@ -30,21 +30,23 @@ describe('fillTemplate', () => {
   })
 })
 
+// `pipeline`: only the CLI runs it. generate-convoy is the exception, as the
+// Team Lead also plans in the editor by its rules.
 const PLANNER = {
-  'generate-prd': { output: 'prd', context: false },
-  'validate-prd': { output: 'validation', context: false },
-  'fix-prd': { output: 'prd', context: true },
-  'assess-complexity': { output: 'json', context: true },
-  'generate-convoy': { output: 'json', context: true },
-  'validate-convoy': { output: 'validation', context: false },
-  'fix-convoy': { output: 'json', context: true },
+  'generate-prd': { output: 'prd', context: false, pipeline: true },
+  'validate-prd': { output: 'validation', context: false, pipeline: true },
+  'fix-prd': { output: 'prd', context: true, pipeline: true },
+  'assess-complexity': { output: 'json', context: true, pipeline: true },
+  'generate-convoy': { output: 'json', context: true, pipeline: false },
+  'validate-convoy': { output: 'validation', context: false, pipeline: true },
+  'fix-convoy': { output: 'json', context: true, pipeline: true },
 } as const
 
 describe('the planner templates', () => {
   it.each(Object.entries(PLANNER))('%s keeps its frontmatter and fills each input once', (name, expected) => {
     const text = readFileSync(templatePath(pkgRoot, name), 'utf8')
     const fm = parseFrontmatter(text)
-    expect(Object.keys(fm).sort()).toEqual(['agent', 'description', 'output'])
+    expect(Object.keys(fm).sort()).toEqual(['agent', 'description', 'output', ...(expected.pipeline ? ['pipeline'] : [])])
     expect(fm.output).toBe(expected.output)
 
     // Exactly one slot per input, and no other mention that a fill could reach.

@@ -140,6 +140,23 @@ describe('Claude Code: /oc:<name>', () => {
     )
   })
 
+  it('keeps the convoy pipeline steps out of what the model is told it can run', async () => {
+    const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot)
+    try {
+      await (await IDE_ADAPTERS['claude-code']()).install(pkgRoot, project, stack, undefined, src)
+    } finally {
+      src.dispose()
+    }
+    const hidden = readdirSync(join(project, '.claude/commands/oc'))
+      .filter((f) => readFileSync(join(project, '.claude/commands/oc', f), 'utf8').includes('\ndisable-model-invocation: true\n'))
+      .sort()
+    // The CLI runs these with their input filled in; nobody chooses them.
+    expect(hidden).toEqual(['assess-complexity.md', 'fix-convoy.md', 'fix-prd.md', 'generate-prd.md', 'validate-convoy.md', 'validate-prd.md'])
+    // generate-convoy stays listed: the Team Lead plans in the editor by its rules.
+    expect(readFileSync(join(project, '.claude/commands/oc/generate-convoy.md'), 'utf8')).not.toContain('disable-model-invocation')
+    expect(readFileSync(join(project, '.claude/commands/oc/fix-prd.md'), 'utf8')).toMatch(/^---\ndescription: ".+"\ndisable-model-invocation: true\n---\n/)
+  })
+
   it('writes each agent as a subagent Claude Code registers: a name and a description', async () => {
     const src = materialize(resolveSources({ pkgRoot, projectRoot: project, stack }), pkgRoot)
     try {
