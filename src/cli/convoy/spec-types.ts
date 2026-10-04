@@ -177,6 +177,21 @@ export interface ExecuteOptions {
   /** A model name the runtime understands; omitted means the runtime's own default. */
   model?: string;
   /**
+   * How much the model reasons before it answers, where the runtime lets a
+   * caller choose; omitted means the runtime's own default. Planning asks for
+   * less: measured on Claude Code, a PRD took 129s at the default and 36s at
+   * `low`, with the same sections, because most of the session was thinking.
+   */
+  effort?: 'low' | 'medium' | 'high';
+  /**
+   * A self-contained, read-only session: everything it needs is in its prompt
+   * or in the files it reads. It starts no MCP server, loads no skill or
+   * command, and has only the tools that read files — so it cannot spend its
+   * time on a web search or a sub-agent. Runtimes that cannot narrow a session
+   * this way run it as usual.
+   */
+  lean?: boolean;
+  /**
    * @deprecated Ignored. Agents read the project's own MCP config, which
    * `opencastle sync` compiles for every assistant; writing a second copy
    * deleted a committed `mcp.json` and dropped its `env`.

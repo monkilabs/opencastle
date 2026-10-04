@@ -302,12 +302,30 @@ checking steps on the economy tier's ([`plan.ts`](src/cli/plan.ts)). The prompts
 are the seven pipeline templates in
 [`src/orchestrator/prompts/`](src/orchestrator/prompts/).
 
-1. **Sizing.** `assess-complexity` sizes the request first, on the economy
-   model. A change sized `low`, with no split into groups, is planned straight
-   from the request: no PRD (two sessions, three with `--yes`).
+Planning was the slowest part of a run, and most of a planning session was the
+model thinking, not reading code. Three things keep it short:
+
+- **Effort.** The plan is written at `medium` reasoning effort and every other
+  step at `low`, where the runtime takes one (Claude Code and Copilot
+  `--effort`, Codex `model_reasoning_effort`). Measured on Claude Code, a PRD
+  took 129s at the default and 36s at `low`, with every section.
+- **Lean sessions.** On Claude Code a planning session starts no MCP server,
+  loads no skill or command, and has only `Read`, `Grep` and `Glob`. That
+  halved its cost, and it cannot spend time on a web search or a sub-agent.
+  Each flag is passed only when the installed version lists it in `--help`.
+- **Steps that do not wait for each other start together**, and the answer
+  that decides stops the one not needed. The steps are below.
+
+1. **Sizing.** `assess-complexity` sizes the request on the economy model. At
+   the same time a plan is written straight from the request, and a PRD is
+   written. A change sized `low`, with no split into groups, keeps that plan and
+   stops the PRD: no PRD (two sessions to wait for, three with `--yes`).
+   Otherwise the plan from the request is stopped and the PRD kept.
 2. **PRD, for larger work.** `generate-prd` writes `.opencastle/prds/<name>.prd.md`,
-   and `validate-prd` reviews it; a PRD that fails review gets up to two
-   `fix-prd` rounds. The request's sizing is reused, unless it recommended
+   and `validate-prd` reviews it. When how to plan it is already known, the
+   plan is written from the PRD while it is reviewed; a PRD that fails review
+   stops that plan, gets up to two `fix-prd` rounds, and is planned again from
+   the fixed text. The request's sizing is reused, unless it recommended
    groups: then the PRD is sized again, beside its review, so the groups can
    name its phases. `convoy plan --prd <file>` starts here, with a PRD you
    edited, and sizes it beside its review; that sizing is cached beside the PRD

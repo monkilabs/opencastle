@@ -37,6 +37,22 @@ export interface PromptStepOptions {
   verbose?: boolean
   /** How long one session may run before it is stopped. Defaults to 10 minutes. */
   timeoutMs?: number
+  /**
+   * Stops the session when aborted, and the step fails with a `StepCancelled`.
+   * The planner starts some steps before it knows it needs them, and stops the
+   * ones it turns out not to.
+   */
+  signal?: AbortSignal
+  /** Called once the session has started, before its answer. */
+  onStart?: () => void
+}
+
+/** A step stopped through its `signal`, not one that failed. */
+export class StepCancelled extends Error {
+  constructor(template: string) {
+    super(`${template} was stopped: its answer is no longer needed`)
+    this.name = 'StepCancelled'
+  }
 }
 
 export interface PromptStepResult {
@@ -266,6 +282,19 @@ function modelFor(adapter: AgentAdapter, template: string): string | undefined {
 }
 
 /**
+ * How much each step reasons before it answers.
+ *
+ * Planning sessions spent most of their time thinking, not reading: on a small
+ * project a PRD took 129s at Claude Code's default effort and 36s at `low`, with
+ * every section, and a plan 55s against 30s at `medium`. The plan gets
+ * `medium` because its task prompts are the only instructions the workers see;
+ * sizing, the PRD, the checks and the fixes get `low`.
+ */
+export function effortFor(template: string): 'low' | 'medium' {
+  return template === 'generate-convoy' ? 'medium' : 'low'
+}
+
+/**
  * Run one planning template through the caller's adapter.
  *
  * Planning sessions run with `permissionMode: 'plan'`: they read the repository
@@ -297,28 +326,44 @@ export async function runPromptStep(opts: PromptStepOptions): Promise<PromptStep
     console.log(c.dim(`    ${opts.template} · ${opts.adapter.name} · read-only · ${prompt.length} chars`))
   }
 
+  if (opts.signal?.aborted) throw new StepCancelled(opts.template)
   const timeoutMs = opts.timeoutMs ?? DEFAULT_STEP_TIMEOUT_MS
   const stop = opts.verbose ? null : startProgress(opts.template)
   let timer: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
   let execResult
   try {
+    const running = opts.adapter.execute(task, {
+      verbose: opts.verbose ?? false,
+      cwd: opts.cwd ?? process.cwd(),
+      permissionMode: 'plan',
+      // Everything a planning step needs is in its prompt or in the files it
+      // reads: no MCP servers, skills or web searches.
+      lean: true,
+      effort: effortFor(opts.template),
+      ...(modelFor(opts.adapter, opts.template) ? { model: modelFor(opts.adapter, opts.template) } : {}),
+    })
+    opts.onStart?.()
     execResult = await Promise.race([
-      opts.adapter.execute(task, {
-        verbose: opts.verbose ?? false,
-        cwd: opts.cwd ?? process.cwd(),
-        permissionMode: 'plan',
-        ...(modelFor(opts.adapter, opts.template) ? { model: modelFor(opts.adapter, opts.template) } : {}),
-      }),
+      running,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           // A hung session would otherwise hold the whole plan open forever.
           opts.adapter.kill?.(task)
           reject(new Error(`${opts.template} ran longer than ${Math.round(timeoutMs / 60_000)}m and was stopped`))
         }, timeoutMs)
+        // Stopped by id. The planner only cancels a step while it is the one
+        // session of its template, so no other session shares the id.
+        onAbort = () => {
+          opts.adapter.kill?.(task)
+          reject(new StepCancelled(opts.template))
+        }
+        opts.signal?.addEventListener('abort', onAbort, { once: true })
       }),
     ])
   } finally {
     if (timer) clearTimeout(timer)
+    if (onAbort) opts.signal?.removeEventListener('abort', onAbort)
     stop?.()
   }
 

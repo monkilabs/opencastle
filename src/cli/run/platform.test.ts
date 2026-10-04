@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync, existsSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, it, expect, afterEach } from 'vitest'
-import { resolveCommand, commandExists, quoteForCmd, runShell, spawnCommand, killTree } from './platform.js'
+import { resolveCommand, commandExists, quoteForCmd, runShell, spawnCommand, killTree, helpText, forgetHelpText } from './platform.js'
 
 const posix = process.platform !== 'win32'
 
@@ -23,6 +23,28 @@ describe('finding a command without `which`', () => {
     expect(await commandExists('fake-agent', env)).toBe(true)
     expect(await commandExists('not-executable', env)).toBe(false)
     expect(await commandExists('nowhere-to-be-found', env)).toBe(false)
+  })
+})
+
+describe('reading a CLI\'s --help', () => {
+  afterEach(() => forgetHelpText())
+
+  it('is empty for a command that is not there, and asks only once', async () => {
+    const missing = 'opencastle-no-such-cli-' + process.pid
+    expect(await helpText(missing)).toBe('')
+    expect(helpText(missing)).toBe(helpText(missing))
+  })
+
+  it.skipIf(!posix)('reads what the command prints', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'oc-help-'))
+    const cli = join(dir, 'fake-cli')
+    writeFileSync(cli, '#!/bin/sh\necho "  --effort <level>  Effort"\n')
+    chmodSync(cli, 0o755)
+    try {
+      expect(await helpText(cli)).toContain('--effort <level>')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 })
 

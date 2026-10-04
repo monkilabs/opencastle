@@ -1,9 +1,9 @@
-import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, rm, rmdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { resolve, relative, basename } from 'node:path'
+import { resolve, relative, basename, dirname } from 'node:path'
 import { c, confirm, closePrompts } from './prompt.js'
-import { runPromptStep, freePath } from './plan.js'
+import { runPromptStep, freePath, StepCancelled } from './plan.js'
 import type { PromptStepOptions, PromptStepResult } from './plan.js'
 import { resolveAdapter, cleanupAdapters, type ResolvedAdapter } from './run/adapters/index.js'
 import { findProjectRoot } from './convoy/read-model.js'
@@ -416,11 +416,19 @@ async function settleAll<T>(work: Array<Promise<T>>): Promise<T[]> {
 }
 
 /** generate-convoy, with the one retry an unreadable answer gets. */
-async function generatePlan(step: StepRunner, goal: string, context: string, label: string, convoyDir: string): Promise<TaskPlan> {
+async function generatePlan(
+  step: StepRunner,
+  goal: string,
+  context: string,
+  label: string,
+  convoyDir: string,
+  signal?: AbortSignal,
+  onStart?: () => void,
+): Promise<TaskPlan> {
   let raw = ''
   let reason = ''
   for (let attempt = 1; attempt <= 2; attempt++) {
-    raw = (await step('generate-convoy', { goalText: goal, contextText: context })).rawOutput
+    raw = (await step('generate-convoy', { goalText: goal, contextText: context, signal, onStart })).rawOutput
     const parsed = parseTaskPlanWithReason(raw)
     if (parsed.plan) return parsed.plan
     reason = parsed.reason ?? 'unreadable'
@@ -444,12 +452,54 @@ async function fixPlan(step: StepRunner, plan: TaskPlan, problems: string): Prom
 }
 
 /**
+ * A step started before the planner knows it will use it.
+ *
+ * Planning was a chain of sessions, each waiting for the one before, and every
+ * session costs its start-up and its answer however short the question. Where
+ * the next step does not depend on the answer it waits for, it starts at the
+ * same time, and is stopped if that answer says it is not needed.
+ */
+interface Speculation<T> {
+  value: Promise<T>
+  /**
+   * Settles once its session has started, or once the step has failed without
+   * one. The planner waits for it before starting the step that decides, so
+   * the same answers always lead to the same sessions.
+   */
+  started: Promise<void>
+  /** Stop the session and wait until it has stopped: its answer, if it finished first. */
+  drop(): Promise<T | undefined>
+}
+
+function speculate<T>(start: (signal: AbortSignal, onStart: () => void) => Promise<T>): Speculation<T> {
+  const control = new AbortController()
+  let began!: () => void
+  const sessionStarted = new Promise<void>((r) => (began = r))
+  const value = start(control.signal, began)
+  // Settled whether or not anyone awaits it, so a dropped step is not an
+  // unhandled rejection.
+  const settled = value.then((v) => v, () => undefined)
+  return {
+    value,
+    started: Promise.race([sessionStarted, settled.then(() => undefined)]),
+    drop: async () => {
+      control.abort()
+      return settled
+    },
+  }
+}
+
+/**
  * From a request (or an edited PRD) to a checked spec on disk.
  *
  * Sessions, all read-only, on the one adapter the caller resolved:
+ * - assess-complexity on the request, beside a plan written straight from it,
+ *   which is kept when the change is small and stopped when it is not;
  * - generate-prd, unless a PRD was given;
- * - validate-prd beside assess-complexity, which is skipped when this exact
- *   PRD was assessed before; up to two fix-prd + validate-prd rounds;
+ * - validate-prd beside the plan from the PRD when how to plan it is already
+ *   known, or beside assess-complexity on the PRD when it is not, which is
+ *   skipped when this exact PRD was assessed before; up to two fix-prd +
+ *   validate-prd rounds, and the plan is written again from the fixed PRD;
  * - generate-convoy, once, or once per group at the same time for a large
  *   feature; one retry when an answer cannot be read;
  * - fix-convoy only when the code's checks fail, at most twice;
@@ -459,6 +509,15 @@ async function fixPlan(step: StepRunner, plan: TaskPlan, problems: string): Prom
  * checks it was there for are done in code, and a person reads the plan
  * before it runs.
  */
+function tasksPlanned(plan: TaskPlan): string {
+  return `${plan.tasks.length} task${plan.tasks.length === 1 ? '' : 's'}`
+}
+
+/** Whether an assessment asks for the work to be planned as groups, side by side. */
+function inGroups(c: ComplexityAssessment): boolean {
+  return c.recommended_strategy === 'chain' && c.convoy_groups.length > 1
+}
+
 /** Where a PRD would go, for a change small enough to plan from the request alone. */
 const NO_PRD = 'There is no PRD: this is a small change, planned straight from the request. Read the code it touches before you plan.'
 
@@ -469,7 +528,18 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   const started = Date.now()
   const spend: PlanningSpend = { sessions: 0, ms: 0, tokens: 0, costUsd: 0, costComplete: true }
   const step: StepRunner = async (template, inputs) => {
-    const r = await runPromptStep({ template, adapter: req.adapter, pkgRoot: req.pkgRoot, cwd: root, verbose: req.verbose, ...inputs })
+    let r: PromptStepResult
+    try {
+      r = await runPromptStep({ template, adapter: req.adapter, pkgRoot: req.pkgRoot, cwd: root, verbose: req.verbose, ...inputs })
+    } catch (err) {
+      // A stopped session ran, and spent what it never got to report.
+      if (err instanceof StepCancelled) {
+        spend.sessions++
+        spend.costComplete = false
+        spend.ms = Date.now() - started
+      }
+      throw err
+    }
     spend.sessions++
     spend.tokens += r.tokens ?? 0
     if (r.costUsd === undefined) spend.costComplete = false
@@ -479,21 +549,37 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   }
 
   // ── A small change: no PRD ────────────────────────────────────────────────
-  // Sizing the request first is one short economy session. When it is small,
-  // the plan is written straight from it: a PRD, its review and its fixes were
-  // four or five sessions and most of the planning time — 7m 25s in a real
-  // run — for a change the request already described.
+  // When the request is small, the plan is written straight from it: a PRD,
+  // its review and its fixes were four or five sessions and most of the
+  // planning time — 7m 25s in a real run — for a change the request already
+  // described. Neither the plan from the request nor the PRD depends on the
+  // size, so all three start together, and the size decides which of the two
+  // is kept: the other is stopped. Waiting for the size first added its whole
+  // session, about 20s, to every plan.
   let prdPath: string | null = null
   let plan: TaskPlan | null = null
   let quick: ComplexityAssessment | null = null
+  let drafting: Speculation<PromptStepResult> | null = null
   if (!req.prdPath && req.task) {
-    quick = await step('assess-complexity', { goalText: req.task, contextText: req.task })
+    const task = req.task
+    const direct = speculate((signal, onStart) => generatePlan(step, task, NO_PRD, 'task', convoyDir, signal, onStart))
+    drafting = speculate((signal, onStart) => step('generate-prd', { goalText: task, signal, onStart }))
+    await Promise.all([direct.started, drafting.started])
+    quick = await step('assess-complexity', { goalText: task, contextText: task })
       .then((r) => parseComplexityAssessment(r.rawOutput))
       .catch(() => null)
     if (quick?.complexity === 'low' && quick.recommended_strategy !== 'chain') {
       done('Sized', 'low — planned straight from the request, without a PRD')
-      plan = await generatePlan(step, req.task, appendTaskComplexity(NO_PRD, quick.task_complexity), 'task', convoyDir)
-      done(`${plan.tasks.length} tasks planned`)
+      // A PRD that finished first is not left behind for a change that has none.
+      const unneeded = await drafting.drop()
+      if (unneeded?.outputPath) {
+        await rm(unneeded.outputPath, { force: true })
+        await rmdir(dirname(unneeded.outputPath)).catch(() => {})
+      }
+      plan = await direct.value
+      done(`${tasksPlanned(plan)} planned`)
+    } else {
+      await direct.drop()
     }
   }
 
@@ -503,7 +589,7 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
       prdPath = resolve(root, req.prdPath)
       done('PRD', relPath(prdPath))
     } else {
-      const written = await step('generate-prd', { goalText: req.task ?? '' })
+      const written = drafting ? await drafting.value : await step('generate-prd', { goalText: req.task ?? '' })
       prdPath = written.outputPath!
       done('PRD written', relPath(prdPath))
     }
@@ -514,25 +600,45 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
     // it is cached under this draft's text, which is the text it describes.
     const cached = await readCachedComplexity(prdPath, prd)
     const assessedFrom = prd
-    const [verdict, complexity] = await settleAll<PromptStepResult | ComplexityAssessment | null>([
-      step('validate-prd', { goalText: `<!-- validation-pass: 1 -->\n${prd}` }),
-      // The request was sized already. Only groups need sizing against the
-      // PRD, whose phases they name.
-      cached || (quick && quick.recommended_strategy !== 'chain')
-        ? Promise.resolve(cached ?? quick)
-        : step('assess-complexity', { goalText: prd, contextText: req.task ?? '' })
-            .then((r) => parseComplexityAssessment(r.rawOutput))
-            .catch((err: unknown) => {
-              warn(`Could not size the work (${message(err)}) — planning it as one`)
-              return null
-            }),
-    ]) as [PromptStepResult, ComplexityAssessment | null]
+    // The request was sized already. Only groups need sizing against the PRD,
+    // whose phases they name.
+    const known = cached ?? (quick && quick.recommended_strategy !== 'chain' ? quick : null)
+    const goalFor = (c: ComplexityAssessment | null): string => req.task ?? c?.original_prompt ?? 'Implement the PRD.'
+    // When how to plan it is known already, the plan starts beside the review:
+    // most PRDs pass, and a plan from one that does not is written again from
+    // the fixed text.
+    const draft = prd
+    let early = known && !inGroups(known)
+      ? speculate((signal, onStart) =>
+          generatePlan(step, goalFor(known), appendTaskComplexity(draft, known.task_complexity), 'task', convoyDir, signal, onStart))
+      : null
+    await early?.started
+    let verdict: PromptStepResult
+    let complexity: ComplexityAssessment | null
+    try {
+      ;[verdict, complexity] = await settleAll<PromptStepResult | ComplexityAssessment | null>([
+        step('validate-prd', { goalText: `<!-- validation-pass: 1 -->\n${prd}` }),
+        known
+          ? Promise.resolve(known)
+          : step('assess-complexity', { goalText: prd, contextText: req.task ?? '' })
+              .then((r) => parseComplexityAssessment(r.rawOutput))
+              .catch((err: unknown) => {
+                warn(`Could not size the work (${message(err)}) — planning it as one`)
+                return null
+              }),
+      ]) as [PromptStepResult, ComplexityAssessment | null]
+    } catch (err) {
+      await early?.drop()
+      throw err
+    }
 
     if (complexity && !cached && complexity !== quick) await writeCachedComplexity(prdPath, assessedFrom, complexity)
 
     if (verdict.isValid) {
       done('PRD checked')
     } else {
+      await early?.drop()
+      early = null
       let issues = verdict.errors || verdict.rawOutput
       let fixed = false
       for (let round = 1; round <= MAX_FIX_ROUNDS && !fixed; round++) {
@@ -554,7 +660,7 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
 
     // ── The tasks ─────────────────────────────────────────────────────────────
     let groups: ConvoyGroup[] | null = null
-    if (complexity?.recommended_strategy === 'chain' && complexity.convoy_groups.length > 1) {
+    if (complexity && inGroups(complexity)) {
       const check = validateComplexityGroups(complexity)
       if (check.valid) groups = topologicalSortGroups(complexity.convoy_groups)
       else warn(`Ignoring the suggested groups (${check.reason}) — planning it as one`)
@@ -592,11 +698,12 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
         featureName,
         all.map((g, i) => ({ name: g.name, depends_on: g.depends_on, plan: plans[i] })),
       )
-      done(`${plan.tasks.length} tasks planned`, `${all.length} groups, planned side by side`)
+      done(`${tasksPlanned(plan)} planned`, `${all.length} groups, planned side by side`)
     } else {
-      const goal = req.task ?? complexity?.original_prompt ?? 'Implement the PRD.'
-      plan = await generatePlan(step, goal, appendTaskComplexity(prd, complexity?.task_complexity), 'task', convoyDir)
-      done(`${plan.tasks.length} tasks planned`)
+      plan = early
+        ? await early.value
+        : await generatePlan(step, goalFor(complexity), appendTaskComplexity(prd, complexity?.task_complexity), 'task', convoyDir)
+      done(`${tasksPlanned(plan)} planned`)
     }
   }
 

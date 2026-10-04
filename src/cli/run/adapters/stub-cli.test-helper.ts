@@ -1,6 +1,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, rmSync, realpathSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, delimiter } from 'node:path'
+import { forgetHelpText } from '../platform.js'
 
 /**
  * A stand-in agent CLI for adapter tests: a POSIX shell script put on a
@@ -10,6 +11,9 @@ import { join, delimiter } from 'node:path'
  */
 
 const SCRIPT = `#!/bin/sh
+# The adapters read --help to learn which flags this version has. It is
+# answered here and not recorded, so argv is still the session's.
+if [ "$1" = "--help" ]; then printf '%s\\n' "$STUB_HELP"; exit 0; fi
 log="$STUB_LOG"
 pwd > "$log/cwd"
 : > "$log/argv"
@@ -37,6 +41,8 @@ export interface StubCli {
   work: string
   /** What the stub prints on stdout (and stderr) next time it runs. */
   respond(stdout: string, stderr?: string): void
+  /** What it prints for `--help`; nothing until set. */
+  help(text: string): void
   argv(): string[]
   cwd(): string
   stdin(): string
@@ -59,7 +65,9 @@ export function installStubCli(...names: string[]): StubCli {
     writeFileSync(join(bin, name), SCRIPT)
     chmodSync(join(bin, name), 0o755)
   }
-  const saved = { PATH: process.env.PATH, STUB_LOG: process.env.STUB_LOG }
+  const saved = { PATH: process.env.PATH, STUB_LOG: process.env.STUB_LOG, STUB_HELP: process.env.STUB_HELP }
+  delete process.env.STUB_HELP
+  forgetHelpText()
   process.env.PATH = [bin, '/usr/bin', '/bin'].join(delimiter)
   process.env.STUB_LOG = log
   const read = (f: string) => (existsSync(join(log, f)) ? readFileSync(join(log, f), 'utf8') : '')
@@ -67,6 +75,10 @@ export function installStubCli(...names: string[]): StubCli {
     bin,
     log,
     work,
+    help(text) {
+      process.env.STUB_HELP = text
+      forgetHelpText()
+    },
     respond(stdout, stderr) {
       writeFileSync(join(log, 'stdout.txt'), stdout)
       if (stderr !== undefined) writeFileSync(join(log, 'stderr.txt'), stderr)
@@ -78,6 +90,9 @@ export function installStubCli(...names: string[]): StubCli {
       process.env.PATH = saved.PATH
       if (saved.STUB_LOG === undefined) delete process.env.STUB_LOG
       else process.env.STUB_LOG = saved.STUB_LOG
+      if (saved.STUB_HELP === undefined) delete process.env.STUB_HELP
+      else process.env.STUB_HELP = saved.STUB_HELP
+      forgetHelpText()
       delete process.env.STUB_EXIT
       delete process.env.STUB_LAST_MESSAGE
       delete process.env.STUB_SLEEP

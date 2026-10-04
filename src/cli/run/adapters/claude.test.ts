@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Task } from '../../convoy/spec-types.js'
 import { installStubCli, type StubCli } from './stub-cli.test-helper.js'
-import { execute, isAvailable, kill, parseClaudeOutput } from './claude.js'
+import { claudeSessionArgs, execute, isAvailable, kill, parseClaudeOutput } from './claude.js'
 
 const posix = process.platform !== 'win32'
 
@@ -180,6 +180,44 @@ describe.skipIf(!posix)('claude adapter — against a stub `claude`', () => {
     expect(argv[argv.indexOf('--disallowedTools') + 1]).toBe('Edit,Write,NotebookEdit')
     expect(argv[argv.indexOf('--model') + 1]).toBe('haiku')
     expect(argv).not.toContain('plan')
+  })
+
+  /** What `claude --help` lists for these flags in a version that has them. */
+  const HELP = [
+    '  --effort <level>                      Effort level for the current session',
+    '  --strict-mcp-config                   Only use MCP servers from --mcp-config',
+    '  --disable-slash-commands              Disable all skills',
+    '  --tools <tools...>                    Specify the list of available tools',
+  ].join('\n')
+
+  it('asks for less effort and a lean session when this version has the flags', async () => {
+    stub.help(HELP)
+    await execute(makeTask(), { cwd: stub.work, permissionMode: 'plan', effort: 'low', lean: true, model: 'sonnet' })
+    const argv = stub.argv()
+    expect(argv[argv.indexOf('--effort') + 1]).toBe('low')
+    expect(argv).toContain('--strict-mcp-config')
+    expect(argv).toContain('--disable-slash-commands')
+    expect(argv[argv.indexOf('--tools') + 1]).toBe('Read,Grep,Glob')
+    expect(argv[argv.indexOf('--model') + 1]).toBe('sonnet')
+  })
+
+  it('leaves out a flag an older version does not list, rather than fail the session', async () => {
+    stub.help('  --model <model>   Model for the current session')
+    const result = await execute(makeTask(), { cwd: stub.work, effort: 'low', lean: true })
+    expect(result.success).toBe(true)
+    expect(stub.argv().filter((a) => /^--(effort|strict-mcp-config|disable-slash-commands|tools)$/.test(a))).toEqual([])
+  })
+
+  it('passes none of them to a worker that asks for neither', async () => {
+    stub.help(HELP)
+    await execute(makeTask(), { cwd: stub.work })
+    expect(stub.argv().filter((a) => /^--(effort|strict-mcp-config|disable-slash-commands|tools)$/.test(a))).toEqual([])
+  })
+
+  it('matches a flag by its whole name', () => {
+    expect(claudeSessionArgs({ effort: 'medium' }, '  --effort <level>  x')).toEqual(['--effort', 'medium'])
+    expect(claudeSessionArgs({ effort: 'medium' }, '  --effortless  x')).toEqual([])
+    expect(claudeSessionArgs({ lean: true }, '  --tools-extra  x')).toEqual([])
   })
 
   it('does not cap turns: the timeout bounds a session', async () => {

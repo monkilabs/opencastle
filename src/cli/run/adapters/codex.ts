@@ -119,6 +119,9 @@ export async function execute(task: Task, options: ExecuteOptions = {}): Promise
     '-o', lastMessagePath,
   ]
   if (options.model) args.push('-m', options.model)
+  // A config override, which every `codex exec` takes; the value is TOML, so
+  // the string is quoted. No shell is involved, so the quotes reach codex.
+  if (options.effort) args.push('-c', `model_reasoning_effort="${options.effort}"`)
   args.push('-') // the prompt, from stdin
 
   try {

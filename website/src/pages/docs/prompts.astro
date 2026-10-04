@@ -23,7 +23,7 @@ const categories = [
     label: 'Convoy pipeline',
     title: 'Convoy pipeline (experimental)',
     icon: categoryIcons.pipeline,
-    intro: `<p><code>npx opencastle convoy "&lt;task&gt;"</code> runs these steps and fills in their input itself. Step 1 sizes the request: a small change goes straight to step 5, with no PRD, and larger work gets one first. <code>npx opencastle convoy plan --prd &lt;path&gt;</code> starts from a PRD you already have, sizing and reviewing it side by side. Every step runs read-only. The fix steps run only when a check fails, and step 6 only with <code>--yes</code>, when nobody reads the plan before it runs. Each step returns something the CLI reads — a PRD, a VALID or INVALID verdict, or JSON — so you rarely run one yourself. Run by hand, a step returns that output and nothing else: no file is written. The convoy engine is experimental; its commands are on the <a href="/docs/cli#convoy">CLI page</a>.</p>`,
+    intro: `<p><code>npx opencastle convoy "&lt;task&gt;"</code> runs these steps and fills in their input itself. Step 1 sizes the request while step 5 plans it straight from the request and step 2 writes a PRD, all at the same time: a small change keeps that plan, with no PRD, and larger work keeps the PRD. <code>npx opencastle convoy plan --prd &lt;path&gt;</code> starts from a PRD you already have, sizing and reviewing it side by side. Every step runs read-only. The fix steps run only when a check fails, and step 6 only with <code>--yes</code>, when nobody reads the plan before it runs. Each step returns something the CLI reads — a PRD, a VALID or INVALID verdict, or JSON — so you rarely run one yourself. Run by hand, a step returns that output and nothing else: no file is written. The convoy engine is experimental; its commands are on the <a href="/docs/cli#convoy">CLI page</a>.</p>`,
   },
 ];
 
@@ -135,7 +135,7 @@ const prompts = [
     id: 'assess-complexity',
     category: 'pipeline',
     name: '1. Assess Complexity',
-    summary: 'Sizes the work, first on your request. A change sized low, and not split into groups, is planned straight from the request, with no PRD. Larger work gets a PRD and keeps this sizing, unless it splits the work into groups: then the PRD is sized again beside its review, so each group can name its phases, and the groups are planned at the same time and joined into one spec. A sizing of a PRD is saved beside it as <name>.complexity.json and reused while the PRD is unchanged.',
+    summary: 'Sizes the work, first on your request, while the plan from the request and the PRD are written at the same time. A change sized low, and not split into groups, keeps the plan from the request, and the PRD is stopped. Larger work keeps the PRD and this sizing, unless it splits the work into groups: then the PRD is sized again beside its review, so each group can name its phases, and the groups are planned at the same time and joined into one spec. A sizing of a PRD is saved beside it as <name>.complexity.json and reused while the PRD is unchanged.',
     agent: 'Reviewer',
     input: 'your request, or the PRD and your request',
     details: [],
@@ -153,7 +153,7 @@ const prompts = [
     id: 'validate-prd',
     category: 'pipeline',
     name: '3. Validate PRD',
-    summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Runs beside a second sizing when there is one. Answers VALID or INVALID with the issues.',
+    summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Runs beside the plan from the PRD, or beside a second sizing when the work is split into groups; a PRD that fails is fixed and planned again. Answers VALID or INVALID with the issues.',
     agent: 'Reviewer',
     input: 'the PRD',
     details: [],
