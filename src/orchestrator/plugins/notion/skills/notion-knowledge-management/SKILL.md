@@ -1,31 +1,23 @@
 ---
 name: notion-knowledge-management
-description: "Creates Notion pages and databases, applies templates for research docs, ADRs, and specs, and manages team knowledge bases. Use when creating Notion pages, structuring databases, documenting decisions, or capturing research findings."
+description: "Notion pages, databases and team knowledge bases through the hosted Notion MCP, with templates for research docs, ADRs, specs and meeting notes. Use when reading, creating or updating Notion pages or querying a Notion database."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Knowledge Management with Notion
 
-MCP endpoint `https://mcp.notion.com/mcp` (OAuth). Tools: `search`, `create_page`, `update_page`, `append_block_children`, `query_database`. Docs: https://developers.notion.com/docs/mcp
+Hosted Notion MCP at `https://mcp.notion.com/mcp` (OAuth, acting as the signed-in user). Tools: `notion-search`, `notion-fetch`, `notion-create-pages`, `notion-update-page`, `notion-query-data-sources`, `notion-create-comment`. Full list: https://developers.notion.com/docs/mcp-supported-tools
 
 ## Gotchas
 
-- **`search` only returns pages explicitly shared with the integration.** An empty result usually means missing access, not a missing page — ask the user to share the parent page rather than creating a duplicate.
-- Notion's index lags writes. A page you just created can be absent from `search` for ~30s; retry before concluding the create failed.
-- `create_page` needs a real `parent` (`{ "page_id": "..." }`) obtained from `search` first — always search for the parent before creating, then verify the new page by searching its exact title and confirming `parent` matches.
-- Page titles are a rich-text array, not a string:
-  `"properties": { "title": [{ "type": "text", "text": { "content": "[Spec] Price Range Filter" } }] }`
-- Databases take `query_database` (with `filter` / `sorts`); ordinary pages take `append_block_children`. Using the wrong one fails.
-
-```json
-// query_database
-{ "database_id": "db_id", "filter": { "property": "Status", "select": { "equals": "In Progress" } }, "sorts": [{ "timestamp": "last_edited_time", "direction": "descending" }] }
-```
+- Results are limited to what the connected account can open. An empty `notion-search` usually means missing access, not a missing page — ask the user to share the parent rather than creating a duplicate.
+- `notion-create-pages` needs a `parent` (page or database), so find it with `notion-search` first, then `notion-fetch` the new page to confirm it landed under that parent.
+- Content is Notion-flavored Markdown, not block JSON. `notion-fetch` a page before `notion-update-page` so an edit keeps mentions, links and inline dates.
+- A database holds one or more **data sources** (`collection://…` URLs). `notion-fetch` the database to get the data source and its schema, then read rows with `notion-query-data-sources`.
+- `notion-search` and `notion-query-data-sources` share a rate limit of about 20 calls per 10 seconds; batch reads instead of looping.
 
 ## Document conventions
 
-Place pages under the right parent (e.g. Engineering/Specs) and close the loop by appending implementation links back to the spec. Required sections per type:
+Place pages under the right parent (e.g. Engineering/Specs) and close the loop by adding implementation links back to the spec. Required sections per type:
 
 - **Research** — Summary, Sources (URL + why relevant), Key Findings, Implications, Open Questions.
 - **ADR** — `ADR-NNN: <title>`, Status (Proposed | Accepted | Deprecated | Superseded), Date, Context, Decision, Consequences, Alternatives Considered (with why rejected).

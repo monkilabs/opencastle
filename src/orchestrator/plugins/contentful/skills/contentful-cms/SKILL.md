@@ -1,6 +1,6 @@
 ---
 name: contentful-cms
-description: "Creates Contentful content types, queries entries via GraphQL/REST, runs CLI migrations, and manages assets and locales. Use when building or modifying Contentful content models, writing queries, or migrating content."
+description: "Contentful content types, GraphQL/REST queries, CLI migrations, assets and locales. Use when changing a Contentful content model, querying Contentful, or migrating its content."
 ---
 
 # Contentful CMS

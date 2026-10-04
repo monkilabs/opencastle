@@ -40,9 +40,9 @@ Load on-demand **only when the phase is reached**.
 |-------|---------|
 | **team-lead-reference** | Session start — model routing, registry, pre-delegation, cost, DLQ, deepen-plan |
 | **session-checkpoints** | Session resume or checkpoint save |
-| **agent-hooks** | Step 3 — delegation prompt templates |
+| **agent-hooks** | Session start/end, pre- and post-delegation checklists |
 | **task-management** | Step 2 — tracker conventions |
-| **decomposition** | Step 2–3 — dependency resolution, delegation specs |
+| **decomposition** | Step 2–3 — dependency resolution, delegation spec templates |
 | **orchestration-protocols** | Step 4+ — steering, background agents, health-checks, escalation |
 | **context-map** | Step 2, 5+ files affected |
 | **validation-gates** | Step 4 — deterministic checks, browser testing, regression |
@@ -63,7 +63,7 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 **⛔ Hard gates:**
 - Log delegation record immediately after each return/spawn — **observability-logging** (`--mechanism sub-agent` or `--mechanism background`).
 - `tier` from the agent registry only; `model` is the one the assistant actually ran, when it says.
-- Empty/off-topic: retry max 3 → DLQ. Log failures (`--outcome failed`).
+- Retries and escalation (FAIL, empty/off-topic output, DLQ): **fast-review**'s Handle Verdict table. Log failures (`--outcome failed`).
 
 **Partitioning:** Parallel agents never touch the same files. **Budget:** Target 5–7/session; 8 → warn; 9 → checkpoint; 10+ → STOP. **Pre-Delegation:** (1) Tracker issue, (2) clean partition, (3) dependencies Done, (4) file paths + criteria, (5) self-improvement reminder.
 
@@ -81,9 +81,9 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 
 **Step 2 — Decompose & Track:** No issue, no code. Break into single-responsibility units with Fibonacci scores (1–13). Map dependencies, file ownership, tracker issues with acceptance criteria. 5+ files → **context-map**. Consider deepen-plan (**team-lead-reference**).
 
-**Step 3 — Prompts:** Every delegation: issue ID, objective, file paths, acceptance criteria, patterns, self-improvement reminder. Score 5+ → load **decomposition**.
+**Step 3 — Prompts:** Every delegation: issue ID, objective, file paths, acceptance criteria, patterns, self-improvement reminder — the Compact Delegation Envelope in **team-lead-reference**. Score 5+ → full delegation spec from **decomposition**.
 
-**Step 4 — Execute:** Per task: move → In Progress → delegate → log delegation ⛔ → monitor → verify (partition, lint/test/build, fast review PASS, UI browser-verified, high-stakes → panel, issues tracked, lessons captured) → log review ⛔ → Done. FAIL → re-delegate (max 3 → DLQ). Auto-PASS: research/docs-only, or ≤10 lines/≤2 files with gates passing.
+**Step 4 — Execute:** Per task: move → In Progress → delegate → log delegation ⛔ → monitor → verify (partition, lint/test/build, fast review PASS, UI browser-verified, high-stakes → panel, issues tracked, lessons captured) → log review ⛔ → Done. FAIL → **fast-review**'s Handle Verdict table. Auto-PASS: research/docs-only, or ≤10 lines/≤2 files with gates passing.
 
 **Step 5 — Deliver:** Follow the workflow template's Delivery phase. Verify all Done → build/lint/test → commit feature branch → `GH_PAGER=cat gh pr create` — do NOT merge → link PR → clean checkpoint → call **Reviewer**.
 

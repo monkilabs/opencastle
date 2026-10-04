@@ -1,6 +1,6 @@
 ---
 name: fast-review
-description: "Mandatory post-delegation gate: checks output completeness, verifies acceptance criteria compliance, flags regressions, produces PASS/FAIL verdict. Use when checking delegated work against acceptance criteria, running post-delegation gate, validating agent output before acceptance, verifying sub-agent completed its assignment, or running post-delegation QA check."
+description: "Mandatory single-reviewer PASS/FAIL gate on delegated work, and the retry and escalation ladder every skill follows. Use after a delegation returns, before accepting its output."
 ---
 
 # Skill: Fast Review
@@ -12,8 +12,7 @@ description: "Mandatory post-delegation gate: checks output completeness, verifi
 | Trigger | After **every** delegation — no exceptions |
 | Reviewer | Single sub-agent; Economy tier (Standard for premium/security work) |
 | Verdict | PASS or FAIL with structured feedback |
-| Retry | ≤2 retries on FAIL; 3rd FAIL → panel review |
- 
+| Retry & escalation | The Handle Verdict table below, the one ladder every skill refers to |
 
 ## Procedure
 
@@ -58,9 +57,10 @@ CONFIDENCE: low | medium | high
 | Outcome | Action |
 |---------|--------|
 | PASS | Log review; continue |
-| FAIL 1–2 | Log; re-delegate same agent: "Retry N/2 — address listed issues" |
+| FAIL 1–2 | Log; re-delegate same agent with the reviewer's feedback: "Retry N/2 — address listed issues" |
 | FAIL 3 | Log `escalated: true`; load **panel-majority-vote** skill |
 | Panel BLOCK ×3 | Dispute in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol) |
+| Tool/runtime failure ×2 (crash, timeout, empty or off-topic output) | Entry in `.opencastle/AGENT-FAILURES.md` (see **team-lead-reference** § Dead Letter Queue Format) |
 
 ## Logging
 
@@ -74,7 +74,7 @@ npx opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
 
 ## Integration & Overnight Mode
 
-`on-post-delegate` Gate 5 (after deterministic Gates 1–4), ~5–15% token overhead. Overnight: upgrade one tier, escalate after 2 FAILs, checkpoint before panel.
+`on-post-delegate` Gate 5 (after deterministic Gates 1–4), ~5–15% token overhead. Overnight: upgrade one tier, checkpoint before panel.
 
 ## Anti-Patterns
 

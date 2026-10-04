@@ -1,24 +1,20 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 ## Agent Health Monitoring
 
 ### Health Signals
 
-| Signal | Threshold | Recovery |
+| Signal | Observable | Recovery |
 |--------|-----------|----------|
-| **Stuck** — no output/changes | Sub: 5 min / BG: 15 min | Nudge; if frozen, abort + re-delegate with simpler scope |
-| **Looping** — same error repeated | 3 consecutive failures | Abort; add context; re-delegate with explicit fix path |
+| **Stuck** — no progress | No new tool call, file change or output between two checks | Nudge; if frozen, abort + re-delegate with simpler scope |
+| **Looping** — same error repeated | The same failing command or error 3 times in a row | Abort; add context; re-delegate with explicit fix path |
 | **Scope creep** — files outside partition | Any | Redirect: "Only modify files in [partition]. Revert [file]." |
 | **Context exhaustion** — confused/repetitive | Visible instruction amnesia | Checkpoint, end session, resume in fresh context |
 | **Permission loop** — waiting for input | 2+ prompts without progress | Auto-approve if safe; abort + re-delegate |
 
-**Cadence:** Sub-agents — continuous (real-time). Background agents — check at 10 min, then every 10 min. Always review full diff before accepting.
+**Cadence:** Sub-agents — every tool result. Background agents — whenever the assistant reports progress or completion, and `opencastle convoy` for convoy runs. Always review full diff before accepting.
 
 ### Escalation Path
 
-1. **Failure 1:** Re-delegate with more specific prompt + error context
-2. **Failure 2:** Downscope (split into smaller pieces), re-delegate
-3. **Failure 3:** Log to `.opencastle/AGENT-FAILURES.md`; if 3× panel BLOCK or conflict, create dispute in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol)
+Review failures (fast-review FAIL, panel BLOCK) follow the **fast-review** Handle Verdict table. Tool or runtime failures (crash, timeout, MCP down, empty output): retry once with more context, downscoped if needed; after the 2nd failed attempt log to `.opencastle/AGENT-FAILURES.md`.
 
 ## Error Recovery Playbook
 

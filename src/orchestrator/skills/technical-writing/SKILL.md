@@ -1,17 +1,13 @@
 ---
 name: technical-writing
-description: "Four-layer standard for technical prose: Diataxis document modes, Google developer style sentences, Simplified Technical English instruction rules, Global English disambiguation. Use when writing or reviewing docs, RFCs, README files, PR descriptions, or commit messages."
+description: "Standard for technical prose in four layers: Diataxis document modes, Google developer style, Simplified Technical English and Global English. Use when writing or reviewing docs, RFCs, README files, PR descriptions or commit messages."
 ---
 
 # Technical Writing
 
 The goal is writing a tired engineer understands on the first read. Four layers get you there, one question each: what kind of document is this, how do sentences address the reader, how much does each sentence carry, and can any sentence be read two ways. Apply all four, then run the **unslop** skill over the result.
 
-Three rules sit above the layers:
-
-- **Cut every word that does no work.** "In order to" is "to". "It is important to note that" is nothing.
-- **Use the short, everyday word.** "Use", not "utilize". A long word has to buy its length with precision.
-- **When a rule makes a sentence worse, fix it another way or leave it alone.** A sentence that follows every rule and sounds machine written has failed.
+Word-level cuts (filler, fancy synonyms, passive voice, hedging, AI vocabulary) are **unslop**'s job. One rule sits above the layers: **when a rule makes a sentence worse, fix it another way or leave it alone.** A sentence that follows every rule and sounds machine written has failed.
 
 The codebase is the word list. Write the real symbol, file, flag, or command name, never a synonym or a description of it. Do not invent jargon; use the words a developer says out loud.
 
@@ -38,10 +34,10 @@ Do not mix modes. No reference tables inside a tutorial, no hand-holding inside 
 - Write instructions as commands: "Click Submit." Never "should be done".
 - Put the condition before the instruction: "To delete the document, click Delete." The reader skips what does not apply.
 - Put the common case first, exceptions after.
-- Sound like a knowledgeable friend. No buzzwords, no figurative language, no "please", and never "simply", "easy", or "quickly" in a procedure.
+- Sound like a knowledgeable friend. No "please", and never "simply", "easy", or "quickly" in a procedure.
 - Do not pre-announce features, and do not start consecutive sentences with the same phrase.
 - Link with words that say where the link goes. Never "click here".
-- Headings carry the point, not just the topic ("Pick the mode first", not "Modes"). Sentence case, one h1 per page, no skipped levels. Task headings are bare verb phrases, concept headings are noun phrases.
+- Headings carry the point, not just the topic ("Pick the mode first", not "Modes"). One h1 per page, no skipped levels. Task headings are bare verb phrases, concept headings are noun phrases.
 - Numbered lists for sequences, bullets for everything else. Introduce a list with a complete sentence and keep items parallel.
 - Code in code font, UI elements in bold, serial commas. Drop "etc." and say up front that a list is partial.
 
@@ -82,10 +78,9 @@ By layer: "configuration is performed" becomes "`budget.mjs` reads", so someone 
 1. Is each file one mode, with links where modes meet?
 2. Is every instruction a command, with its condition in front?
 3. Does any sentence carry two instructions or two thoughts? Split it.
-4. Can any word be cut without losing meaning? Cut it.
-5. Is "only" beside the word it changes? Does every "it" point at one thing? Does every clause keep its verb?
-6. Does each thing have exactly one name across the docs?
-7. Would a developer say these words out loud?
-8. Are all symbols, paths, and counts real at this commit, with the commands that regenerate the counts?
+4. Is "only" beside the word it changes? Does every "it" point at one thing? Does every clause keep its verb?
+5. Does each thing have exactly one name across the docs?
+6. Would a developer say these words out loud?
+7. Are all symbols, paths, and counts real at this commit, with the commands that regenerate the counts?
 
 Sources: diataxis.fr, developers.google.com/style, asd-ste100.org (Issue 9, 2025). Adapted from the `technical-writing` skill in [cursor/plugins](https://github.com/cursor/plugins/tree/main/pstack), MIT, copyright 2026 Lauren Tan.

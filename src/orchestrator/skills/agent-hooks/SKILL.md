@@ -1,6 +1,6 @@
 ---
 name: agent-hooks
-description: "Four lifecycle hooks every agent runs: on-session-start scans LESSONS-LEARNED.md, resumes checkpoints; on-pre-delegate verifies tracker issues, file partitions; on-post-delegate runs fast-review, CI checks; on-session-end runs the health checks, writes logs. Use when starting a new session, running pre-flight checks before delegation, coordinating between agents, reviewing a completed handoff, or wrapping up a session. Trigger terms: multi-agent setup, delegate tasks, agent coordination, session management, run pre-flight checks, start a new session, coordinate between agents, wrap up session"
+description: "Checklists every agent runs at session start and session end, plus the Team Lead's pre- and post-delegation checks. Use when starting, resuming or wrapping up a session."
 ---
 
 # Agent Lifecycle Hooks
@@ -12,6 +12,8 @@ on-session-start → [work loop] → on-session-end
                         ↓   ↑
                on-pre-delegate → on-post-delegate
 ```
+
+The tracker is the project's own: its skill (Linear, Jira, Trello) or `gh issue` for GitHub Issues.
 
 ---
 
@@ -40,7 +42,7 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for extended startup checks (approv
 | 1 | `opencastle doctor` |
 | 2 | `opencastle log --type session ...` |
 | 3 | Write `.opencastle/SESSION-CHECKPOINT.md` if work is incomplete |
-| 4 | Flag for memory merge if 5+ new lessons |
+| 4 | More than 50 lessons in `.opencastle/lessons/` → flag a **memory-merger** pass |
 
 ---
 
@@ -48,9 +50,9 @@ See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for extended startup checks (approv
 
 | # | Check |
 |---|-------|
-| 1 | Tracker issue exists (`gh issue view TAS-XX`) |
+| 1 | Tracker issue exists for the task |
 | 2 | File partition clean (`comm -12 <(sort agent1-files) <(sort agent2-files)` = empty) |
-| 3 | Upstream deps Done (`gh issue view TAS-XX --json state -q '.state'` = CLOSED) |
+| 3 | Upstream issues are Done in the tracker |
 | 4 | Prompt has exact file paths + acceptance criteria |
 | 5 | Prompt includes "Read LESSONS-LEARNED.md first" |
 | 6 | 5+ files → load **context-map** skill |
@@ -64,9 +66,9 @@ All 6 must pass before the sub-agent is dispatched. See [HOOKS-REFERENCE.md](HOO
 | 1 | **⛔** `opencastle log --type delegation …` (the record in **observability-logging**) |
 | 2 | Run **fast-review** skill |
 | 3 | Lint, typecheck, and test (commands via the **codebase-tool** slot) |
-| 4 | `gh issue view TAS-XX --json body -q '.body'` — verify each AC met |
+| 4 | Verify each acceptance criterion on the tracker issue is met |
 | 5 | If agent retried → verify lesson added via **self-improvement** |
-| 6 | Move to Done or re-delegate; 3rd failure → `.opencastle/AGENT-FAILURES.md` |
+| 6 | Move the issue to Done in the tracker, or follow **fast-review**'s Handle Verdict table |
 
 See [HOOKS-REFERENCE.md](HOOKS-REFERENCE.md) for detailed verification commands.
 

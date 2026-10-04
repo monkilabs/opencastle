@@ -1,6 +1,6 @@
 ---
 name: team-lead-reference
-description: "Provides model routing rules, validates delegation prerequisites, supplies cost tracking templates, defines dead-letter queue formats for Team Lead orchestration. Load when assigning tasks to agents, choosing model tiers, starting delegation session, running multi-agent workflow, delegating work, choosing which model to use, or assigning tasks."
+description: "Team Lead delegation reference: complexity scoring, model tier routing, pre-delegation checks, the delegation envelope, dead-letter queue and disputes. Use when planning delegations, choosing a model tier, or handling a failed delegation."
 ---
 
 # Team Lead Reference

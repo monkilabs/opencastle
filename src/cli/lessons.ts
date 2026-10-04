@@ -235,7 +235,9 @@ export function renderIndex(lessons: Lesson[]): string {
     'tool quirk, a convention written down nowhere else. **Read this before you',
     'start work**, then open the lessons that match your task.',
     '',
-    'Each lesson is a file in [`lessons/`](lessons/). Add one with',
+    // A path, not a link: the folder is created with the first lesson, and a
+    // link to it led nowhere until then.
+    'Each lesson is a file in `.opencastle/lessons/`. Add one with',
     '`opencastle lesson --title ... --category ... --severity ... --problem ...`',
     '(and `--cite <path>` for the code it is about). Do not edit this index:',
     'it is rewritten from those files by every `opencastle sync`.',

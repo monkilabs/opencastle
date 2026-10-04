@@ -1,6 +1,6 @@
 ---
 name: coolify-deployment
-description: "Deploys applications, databases, and services on self-hosted Coolify instances, manages environments and env vars, runs infrastructure diagnostics, and performs batch operations. Use when deploying apps to Coolify, managing Coolify servers, debugging deployment issues, setting up databases, or managing Coolify infrastructure."
+description: "Deploys and manages apps, databases and services on a self-hosted Coolify instance, with env vars, diagnostics and batch operations. Use when deploying to Coolify, debugging a Coolify deployment, or managing its servers."
 ---
 
 # Coolify Deployment

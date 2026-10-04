@@ -1,6 +1,6 @@
 ---
 name: typescript-best-practices
-description: "Type-level discipline for TypeScript: discriminated unions, branded types, constructive modeling, narrowing hierarchy, exhaustiveness checks, boundary validation. Use when reading or editing any .ts or .tsx file, modelling domain types, or refactoring an `as` cast out of existing code."
+description: "Type design in TypeScript: discriminated unions, branded types, narrowing, exhaustiveness and boundary validation. Use when modelling domain types, tightening strictness or generics, removing `as` casts, or migrating code to stricter types."
 ---
 
 # TypeScript Best Practices

@@ -1,5 +1,3 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 ## Panel — Weighted Consensus Variant (Reference)
 
 ### When to Use
@@ -49,5 +47,3 @@ Example: Security Expert + high = 4; Architect + med = 2.
 - BLOCK: X (reviewers: ...)
 - **Overall: PASS/BLOCK** (weighted)
 ```
-
-Last Updated: 2026-03-31

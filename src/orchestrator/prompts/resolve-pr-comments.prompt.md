@@ -64,8 +64,8 @@ All fixes must pass applicable gates before pushing:
 1. **Gate 1: Secret Scanning** — scan diff for API keys, tokens, passwords, connection strings — block immediately if found
 2. **Gate 2: Deterministic Checks** — run lint, test, and build for all affected projects (see the **codebase-tool** skill for commands) — all zero errors
 3. **Gate 3: Blast Radius Check** — verify changes are scoped to commented files only; flag any files modified outside the comment scope
-4. **Gate 4: Fast Review** (MANDATORY) — single reviewer sub-agent validates the combined PR comment fixes
-5. **Gate 5: Regression Testing** — run tests for all projects consuming modified files
+4. **Gate 5: Fast Review** (MANDATORY) — single reviewer sub-agent validates the combined PR comment fixes
+5. **Gate 8: Regression Testing** — run tests for all projects consuming modified files
 
 After all gates pass:
 

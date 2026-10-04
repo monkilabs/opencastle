@@ -1,9 +1,7 @@
 ---
 name: convex-database
-description: "Convex reactive database patterns, schema design, real-time queries, mutations, actions, authentication, migrations, performance optimization, and component creation. Use when designing Convex schemas, writing queries/mutations, managing the Convex backend, setting up auth, migrating data, optimizing performance, or building Convex components."
+description: "Convex schemas, queries, mutations, actions, auth, migrations and components. Use when designing a Convex schema, writing Convex functions, setting up Convex auth, or migrating Convex data."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Convex Database
 

@@ -1,6 +1,6 @@
 ---
 name: git-workflow
-description: "Defines branch naming conventions, PR template requirements, commit message format, discovered-issues escalation policy, task tracking conventions. Load when committing, pushing, or opening PRs."
+description: "Branch naming, commit messages, PR creation and the discovered-issues policy. Use when branching, committing, pushing or opening a PR."
 ---
 
 # Git Workflow & Delivery

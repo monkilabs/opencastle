@@ -1,9 +1,7 @@
 ---
 name: sanity-cms
-description: "Manages Sanity CMS schemas, GROQ queries, dataset exports/imports, and Studio configuration. Use when updating Sanity schemas, running GROQ or Vision queries, exporting datasets, modifying content models, or configuring a headless CMS with Sanity.io."
+description: "Sanity schemas, GROQ queries, Studio configuration and dataset imports and exports. Use when changing a Sanity content model, writing GROQ, or moving Sanity datasets."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Sanity CMS
 

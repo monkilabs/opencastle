@@ -1,6 +1,6 @@
 ---
 name: memory-merger
-description: "Reviews mature lessons in .opencastle/lessons/, rewrites them as permanent rules in skill/instruction files, archives graduated lessons with opencastle lesson archive. Use when graduating lessons into skills, promoting validated lessons, updating skills from past learnings, archiving mature lessons, codifying repeated patterns, or cleaning up a crowded lessons index."
+description: "Graduates mature lessons from .opencastle/lessons/ into permanent rules in skill or instruction files, then archives them. Use when the lessons index grows past 50, or a lesson has proven itself and belongs in a skill."
 ---
 
 # Memory Merger
@@ -8,20 +8,18 @@ description: "Reviews mature lessons in .opencastle/lessons/, rewrites them as p
 
 ## Run Criteria
 
-Combined signals to identify merge candidates.
+Run a pass when `.opencastle/lessons/` holds more than 50 lessons. A lesson is a merge candidate when it meets one or more of these, each checkable from its file:
 
-| Criterion | Signal / Threshold |
-|-----------|--------------------|
-| Volume | More than 50 lessons in `.opencastle/lessons/` |
-| Reference count | Referenced 3+ times across sessions |
-| Age | >60 days and still relevant |
-| Category cluster | 5+ lessons in same category |
-| Severity | Marked `high` or blocking |
-| Discretionary | Curator / maintainer judgement (stale file) |
+| Criterion | Check |
+|-----------|-------|
+| Age | `added:` more than 60 days ago, and the lesson still holds |
+| Valid citation | Its cited files still exist and `opencastle doctor` reports no changed citation (or `verified:` is recent) |
+| Recurrence | Two or more lessons describe the same problem, or 5+ share a category |
+| Severity | `severity: high`, or the lesson blocked work |
 
 ## Workflow (numbered)
 
-1. Scan `.opencastle/lessons/` for candidate lessons (frequency, severity, age — `added:` in each file).
+1. Scan `.opencastle/lessons/` for candidate lessons by the criteria above.
 2. Map each candidate to target file, section.
 3. Draft exact edit (concise rule or example).
 4. Apply edit with attribution comment.
@@ -57,11 +55,11 @@ The lesson keeps its file, is marked archived with where it went, and moves to t
 ### Automating the scan
 
 ```sh
-# Lessons referenced 3+ times across sessions (ids are LES-NNN or YYYY-MM-DD-title)
-rg -o '"lessons_added":\[[^]]*\]' .opencastle/logs/events.ndjson | rg -o '"[A-Za-z0-9-]+"' | sort | uniq -c | awk '$1 >= 3'
-
 # Oldest lessons first — candidates once past 60 days
 rg -H '^added:' .opencastle/lessons/ | sort -t'"' -k2 | head -20
+
+# Categories with 5+ lessons
+rg -o --no-filename '^category: *.*' .opencastle/lessons/ | sort | uniq -c | awk '$1 >= 5'
 ```
 
 ## Quality Gates (validation checkpoints)
@@ -73,7 +71,7 @@ rg -H '^added:' .opencastle/lessons/ | sort -t'"' -k2 | head -20
 
 ## Anti-Patterns
 
-- Merge too eagerly — must meet 3+ references or 60+ day threshold
+- Merge too eagerly — a lesson younger than 60 days needs recurrence or high severity to qualify
 - Copy verbatim — rewrite as rules/guidelines, not incident reports
 - Merge conflicting lessons — resolve conflict first
 - Create new files for merged content — merge INTO existing files only

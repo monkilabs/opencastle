@@ -1,6 +1,6 @@
 ---
 name: performance-optimization
-description: "Profiles, reduces frontend/backend costs: split bundles, optimize assets, apply caching, fix Core Web Vitals regressions. Use when profiling Lighthouse/CI regressions, reducing bundle size, or fixing high CLS/LCP/TTI metrics."
+description: "Profiles and fixes frontend and backend performance: bundle size, assets, caching and Core Web Vitals. Use when a Lighthouse or CI perf check regresses, a bundle grows, or LCP, INP, CLS or TBT is too high."
 ---
 
 # Performance Optimization
@@ -16,7 +16,7 @@ Measure before changing anything. Add `React.memo`/`useMemo`/`useCallback` only 
 
 ## Profiling Workflow
 
-1. Lighthouse (or the CI perf job) for a baseline; name the failing metric (LCP/CLS/INP/TTI). Lighthouse emulates mobile by default; pass `--preset=desktop` when the regression is desktop-only.
+1. Lighthouse (or the CI perf job) for a baseline; name the failing metric (LCP, CLS, TBT; INP needs field data or a Lighthouse timespan run with real interactions). Lighthouse emulates mobile by default; pass `--preset=desktop` when the regression is desktop-only.
 2. Profile to locate the hotspot call stacks / long tasks.
 3. Apply the minimal fix (code-split, memoize, shrink payloads, defer non-critical work); confirm in the profiler that the measured hotspot actually shrank.
 4. Re-run Lighthouse / the CI perf job. Ship only at ≥10% improvement or once inside budget.

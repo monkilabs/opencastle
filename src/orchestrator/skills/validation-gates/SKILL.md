@@ -1,9 +1,11 @@
 ---
 name: validation-gates
-description: "Defines 10 sequential validation gates: secret scanning, lint/test/build checks, blast radius analysis, dependency auditing, browser testing, cache management, regression checks, smoke tests. Use when running pre-deploy validation or CI checks, CI/CD pipelines, deployment pipeline validation, pre-merge checks, continuous integration, or pull request validation."
+description: "Defines the ten gates delegated work passes, from secret scanning and lint/test/build to blast radius, dependency audit, browser, regression and smoke tests. Use when deciding which checks a change needs, or whether work is ready to merge or deploy."
 ---
 
 # Validation Gates
+
+The project's commands live under Key Commands in `.opencastle/project.instructions.md`; with a task runner (Nx, Turborepo), its skill has them. Every gate below runs those, never a guessed `npm run …`.
 
 | Gate | Name | Runs When |
 |------|------|-----------|
@@ -12,7 +14,7 @@ description: "Defines 10 sequential validation gates: secret scanning, lint/test
 | 3 | Blast Radius Check | Every delegation |
 | 4 | Dependency Audit | When `package.json` or lockfiles change |
 | 5 | Fast Review | Every delegation (with auto-PASS exceptions) |
-| 6 | Cache Clearing | Before browser testing |
+| 6 | Cache Clearing | Only when a stale cache is suspected |
 | 7 | Browser Testing | UI changes |
 | 8 | Regression Testing | Every delegation |
 | 9 | Panel Review | High-stakes changes only |
@@ -35,15 +37,11 @@ Not a hit: obviously fake test fixtures (`sk-test-1234567890`), documentation
 placeholders (`YOUR_API_KEY_HERE`), and pattern matches inside explanatory
 comments.
 
-Scan every diff **before** any other gate: `gitleaks detect --source . --verbosity warn` (or CI equivalent) — fail on any findings.
+Scan every diff **before** any other gate: `gitleaks git --redact --log-opts="main..HEAD"` for the branch's commits, `gitleaks dir <path>` for uncommitted files (or the CI equivalent). Fail on any finding.
 
 ## Gate 2: Deterministic Checks
 
-Run for every affected project (resolve exact commands via **codebase-tool** skill): lint (with auto-fix), test, build. All must pass with zero errors.
-
-```bash
-npm run lint && npm test --silent && npm run build
-```
+Run the project's own lint (with auto-fix), test and build commands for every affected project. All must pass with zero errors.
 
 ## Gate 3: Blast Radius Check
 
@@ -70,40 +68,28 @@ Full checklist (license, duplicates, maintenance, peer deps, type coverage) with
 
 ## Gate 5: Fast Review
 
-Spawn reviewer sub-agent (load **fast-review** skill). PASS → proceed; FAIL → re-delegate (max 2); 3× FAIL → Gate 9. Auto-PASS rules: see **fast-review** skill.
+Spawn a reviewer sub-agent (load **fast-review**). Auto-PASS rules, retries and escalation: the **fast-review** Handle Verdict table.
 
 ## Gate 6: Cache Clearing
 
-```bash
-rm -rf node_modules/.cache .next/cache .astro/ dist/
-```
+Skip unless a stale cache is the suspect: the browser shows old output, or a build reports files that no longer exist. Then clear the framework cache (e.g. `.next/cache`, `node_modules/.cache`) and the project's own build output directory, named in its build config, and rebuild.
 
 ## Gate 7: Browser Testing
 
-UI changes are verified in Chrome. Start dev server → verify ACs → responsive breakpoints → screenshots as evidence, at most 3 per session. Load **browser-testing** skill.
-
-```json
-{ "tool": "browser-testing/take_screenshot", "url": "http://localhost:3000", "viewports": ["mobile", "desktop"] }
-```
-
-Additional options: see [REFERENCE.md](REFERENCE.md).
+UI changes are verified in Chrome with the **browser-testing** skill (Chrome DevTools MCP: `navigate_page`, `take_snapshot`, `evaluate_script` with a `function`). Start the dev server → verify ACs → every project breakpoint → at most 3 screenshots, as evidence.
 
 ## Gate 8: Regression Testing
 
-1. Full test suite for all affected projects (resolve the command via the **codebase-tool** slot)
+1. Full test suite for all affected projects.
 2. Browser-test adjacent pages (navigation, routing, back-button) — find them via `rg "href=\"/changed-path|import .*from '@/components/changed'"`.
 3. Find consuming apps/packages via `rg "from '@/components/PriceRange'|@my-org/ui-package"`; run their tests or smoke builds.
 
 ## Gate 9: Panel Review
 
-Load **panel-majority-vote** skill — spawns 3 isolated reviewers, majority (2/3) wins. Use for: security-sensitive changes, DB migrations, architecture decisions.
+Load **panel-majority-vote** — 3 isolated reviewers, majority (2/3) wins. Use for: the 3rd fast-review FAIL, security-sensitive changes, DB migrations.
 
 ## Gate 10: Final Smoke Test
 
 > Runs once after ALL tasks are Done.
 
-```bash
-npm run build && npm test && npx playwright test
-```
-
-Full build + test from clean state → E2E browser walkthrough → cross-task integration check → responsive sweep (if UI). On failure: re-delegate specific failing integration only.
+The project's full build and test commands, its E2E suite included, from a clean state → E2E browser walkthrough → cross-task integration check → responsive sweep (if UI). On failure: re-delegate specific failing integration only.

@@ -1,5 +1,3 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 # Lesson Categories & Severity
 
 The values `opencastle lesson` accepts. Anything else is refused.

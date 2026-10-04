@@ -1,9 +1,7 @@
 ---
 name: jira-management
-description: "Create and update Jira issues, epics, and sprints; manage backlog and sprint transitions. Use when you say: 'create a ticket', 'open a story', 'link an epic', 'start a sprint', or 'search the backlog'."
+description: "Jira issues, epics, sprints, backlog and workflow transitions. Use when creating or updating Jira issues, linking epics, moving work through a sprint, or searching the backlog."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Task Management with Jira
 

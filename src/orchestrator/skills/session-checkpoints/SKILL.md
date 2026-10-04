@@ -1,6 +1,6 @@
 ---
 name: session-checkpoints
-description: "Saves, restores session state including task progress, file changes, delegation history. Use when saving progress, resuming interrupted work, picking up where you left off, or checkpointing current work."
+description: "Saves and restores session state: task progress, file changes and delegation history. Use when saving progress before risky work or at session end, or resuming interrupted work."
 ---
 
 # Skill: Session Checkpoints

@@ -1,5 +1,3 @@
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
-
 # Panel Report
 
 ## Context

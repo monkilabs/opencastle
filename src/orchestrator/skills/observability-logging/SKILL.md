@@ -1,6 +1,6 @@
 ---
 name: observability-logging
-description: "Logs sessions, tracks activity, records delegation decisions, and stores review/dispute outcomes as NDJSON audit trails. Use when logging session activity, tracking work, recording decisions, building audit trails, capturing delegation history, or running pre-response verification checklists. Trigger terms: log, track activity, audit trail, session record, delegation log, NDJSON"
+description: "Records sessions, delegations, reviews, panels and disputes as NDJSON with opencastle log, plus the pre-response quality gate. Use at the end of every session and after every delegation, review, panel or dispute."
 ---
 
 # Observability Logging

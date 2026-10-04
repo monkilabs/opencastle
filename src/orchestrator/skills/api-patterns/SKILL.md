@@ -1,6 +1,6 @@
 ---
 name: api-patterns
-description: "Creates API route handlers, implements Server Actions with Zod schema validation, integrates external REST APIs with error handling. Use when adding endpoints, building request handlers, or wiring external services (endpoint, REST API, request handling, fetch, .ts route files)."
+description: "Patterns for Server Actions, route handlers with schema validation, and calls to external REST APIs. Use when adding an endpoint or Server Action, or wiring an external API."
 ---
 
 # API Patterns

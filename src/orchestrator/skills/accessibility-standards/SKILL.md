@@ -1,6 +1,6 @@
 ---
 name: accessibility-standards
-description: "WCAG 2.2 Level AA accessibility patterns for React/HTML/CSS. Use when creating or modifying UI components, forms, navigation, tables, images, or any user-facing elements. Covers keyboard navigation, screen reader semantics, low vision contrast, voice access, inclusive language."
+description: "WCAG 2.2 AA rules for HTML, CSS and React: contrast, keyboard, screen-reader semantics, voice access, forms and tables. Use when building or changing UI components, forms, navigation or any user-facing element."
 ---
 
 # Accessibility Standards

@@ -1,13 +1,13 @@
 ---
 name: netlify-deployment
-description: "Deploy sites, configure serverless and edge functions, and verify builds on Netlify. Use when the user mentions: 'deploy preview', 'configure netlify.toml', or 'debug a failed deploy'. Trigger terms: build error, Netlify Functions, deploy logs, deploy preview"
+description: "Netlify deploys, deploy previews, netlify.toml, serverless and edge functions. Use when deploying to Netlify, configuring netlify.toml or functions, or debugging a failed Netlify build."
 ---
 
 # Netlify Deployment
 
 Project deployment architecture, env vars, and key files: `.opencastle/stack/deployment-config.md`. Docs: https://docs.netlify.com
 
-`main` → production (auto). `feature/*`, `fix/*` → deploy preview at a unique URL (auto).
+`main` → production (auto). Every other branch (`feat/*`, `fix/*`, …) → deploy preview at a unique URL (auto).
 
 ## Hard limits
 

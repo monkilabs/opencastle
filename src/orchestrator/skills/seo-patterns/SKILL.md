@@ -1,6 +1,6 @@
 ---
 name: seo-patterns
-description: "Implements technical SEO: meta tags, JSON-LD structured data, sitemaps, crawlability fixes. Use when adding schema markup, JSON-LD, robots.txt updates, canonical URLs, Open Graph tags, or improving crawlability."
+description: "Technical SEO: meta tags, Open Graph, canonical URLs, JSON-LD structured data, sitemaps and robots.txt. Use when adding or fixing any of these, or when pages are not being crawled or indexed."
 ---
 
 # SEO Patterns
