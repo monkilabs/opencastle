@@ -2,7 +2,7 @@
 import '../../styles/global.css';
 
 const title = 'Prompt Templates — OpenCastle';
-const description = 'The 14 prompts OpenCastle compiles for every assistant: brainstorm, implement features, fix bugs, resolve PR comments, set up a project, and the seven steps of the convoy pipeline. Where each assistant keeps them and how to run one.';
+const description = 'The 7 prompts OpenCastle compiles for every assistant: brainstorm, implement a feature, fix a bug, resolve PR comments, plan a convoy and set up a project — and the steps the convoy planner runs. Where each assistant keeps them and how to run one.';
 
 /* ---------- Sidebar category icons ---------- */
 const categoryIcons: Record<string, string> = {
@@ -20,10 +20,10 @@ const categories = [
   { id: 'setup', label: 'Setup', icon: categoryIcons.setup },
   {
     id: 'pipeline',
-    label: 'Convoy pipeline',
-    title: 'Convoy pipeline (experimental)',
+    label: 'Convoy',
+    title: 'Convoy (experimental)',
     icon: categoryIcons.pipeline,
-    intro: `<p><code>npx opencastle convoy "&lt;task&gt;"</code> runs these steps and fills in their input itself. Step 1 sizes the request while step 5 plans it straight from the request and step 2 writes a PRD, all at the same time: a small change keeps that plan, with no PRD, and larger work keeps the PRD. <code>npx opencastle convoy plan --prd &lt;path&gt;</code> starts from a PRD you already have, sizing and reviewing it side by side. Every step runs read-only. The fix steps run only when a check fails, and step 6 only with <code>--yes</code>, when nobody reads the plan before it runs. Each step returns something the CLI reads — a PRD, a VALID or INVALID verdict, or JSON — so you rarely run one yourself. Run by hand, a step returns that output and nothing else: no file is written. The convoy engine is experimental; its commands are on the <a href="/docs/cli#convoy">CLI page</a>.</p>`,
+    intro: `<p><code>/oc:convoy</code> hands work to the convoy planner and leaves the run to you. The planner's steps below run inside the CLI, which fills in their input — <code>npx opencastle convoy "&lt;task&gt;"</code> runs them, and so does the prompt. Step 1 sizes the request while step 5 plans it straight from the request and step 2 writes a PRD, all at the same time: a small change keeps that plan, with no PRD, and larger work keeps the PRD. <code>npx opencastle convoy plan --prd &lt;path&gt;</code> starts from a PRD you already have. Every step runs read-only. The fix steps run only when a check fails, and step 6 only with <code>--yes</code>, when nobody reads the plan before it runs. The convoy engine is experimental; its commands are on the <a href="/docs/cli#convoy">CLI page</a>.</p>`,
   },
 ];
 
@@ -45,17 +45,17 @@ const prompts = [
     id: 'implement-feature',
     category: 'implementation',
     name: 'Implement Feature',
-    summary: 'Instruct the Team Lead to implement a specific task from your roadmap with full orchestration, validation, and traceability.',
+    summary: 'Implement a change in this session — a feature, a roadmap item or a small follow-up — planned to its size, built with tests, verified, reviewed, and delivered as a pull request.',
     agent: 'Team Lead (OpenCastle)',
-    input: 'the roadmap task',
+    input: 'the change',
     details: [
-      { heading: 'When to use', content: `<p>When implementing a task, as you describe it or from <code>.opencastle/project/roadmap.md</code> when the project keeps one. Provides full orchestration with issue tracking, validation gates, and multi-agent delegation.</p>` },
+      { heading: 'When to use', content: `<p>For any change you want made now. A change in one area the Team Lead makes itself; one across the API, the UI and the data it splits into tasks for the specialist agents, each with the files it may change. Work you want planned into parallel tasks and run unattended is <a href="#convoy">Convoy</a>.</p>` },
       { heading: 'What it does', content: `<ol>
-        <li><strong>Research &amp; context gathering</strong> — reads the roadmap, known issues, lessons learned and related code</li>
-        <li><strong>Task board setup</strong> — creates one tracker issue per subtask before any code is written</li>
-        <li><strong>Convoy spec</strong> — writes a convoy spec for the work, whatever its size, checks it with <code>--dry-run</code>, and asks you to run <code>npx opencastle convoy run .opencastle/convoys/&lt;name&gt;.convoy.yml</code> (the convoy engine is experimental)</li>
-        <li><strong>Validation &amp; testing</strong> — after the run: secret scan, lint, tests, build, fast review, browser checks</li>
-        <li><strong>Delivery via PR</strong> — opens a pull request from the convoy's branch, linked to the tracker issues</li>
+        <li><strong>Understands it</strong> — the goal and what done means, from your request, a tracker issue it names, the Project Context, lessons, known issues and the code</li>
+        <li><strong>Plans it to its size</strong> — does a small change itself; splits a larger one by area and dependency</li>
+        <li><strong>Builds it</strong> — with the tests, following the project's conventions and the skill for each domain</li>
+        <li><strong>Verifies it</strong> — the project's tests, lint and build; a UI change in a browser; a review by an agent that did not write it, and a panel of three for auth, payments, migrations or deleting data</li>
+        <li><strong>Delivers it</strong> — a branch and a pull request, never <code>main</code>, with what changed and how it was checked</li>
       </ol>` },
     ],
   },
@@ -63,30 +63,17 @@ const prompts = [
     id: 'bug-fix',
     category: 'implementation',
     name: 'Bug Fix',
-    summary: 'Investigate and fix a reported bug with proper triage, root cause analysis, issue tracking, and verification.',
+    summary: 'Reproduce a bug, find its root cause, fix it with a regression test, verify it and open a pull request — in this session.',
     agent: 'Team Lead (OpenCastle)',
     input: 'the bug report',
     details: [
-      { heading: 'When to use', content: `<p>When a bug is reported. Provides structured triage, root cause analysis, and fix verification — rather than jumping straight to editing code.</p>` },
+      { heading: 'When to use', content: `<p>When something is broken. It reproduces the bug before changing anything, rather than jumping straight to editing code.</p>` },
       { heading: 'What it does', content: `<ol>
-        <li><strong>Triage &amp; reproduce</strong> — confirms the bug, gathers context</li>
-        <li><strong>Create tracker issue</strong> — opens a bug ticket with reproduction steps</li>
-        <li><strong>Root cause analysis</strong> — traces the defect to its origin</li>
-        <li><strong>Fix via convoy</strong> — writes a convoy spec for the fix, even a single task, and asks you to run it with <code>npx opencastle convoy run …</code> (experimental)</li>
-        <li><strong>Validate</strong> — verifies with tests and browser checks before delivering the PR</li>
+        <li><strong>Reproduces it</strong> — a failing test when it can write one, otherwise the exact steps; a UI bug in a browser. It asks for what is missing rather than fix by guessing</li>
+        <li><strong>Finds the root cause</strong> — and names it; hiding the symptom does not count</li>
+        <li><strong>Fixes it</strong> — the smallest change, with a regression test that fails without it</li>
+        <li><strong>Verifies and delivers</strong> — the project's checks, a review, a pull request; a lesson when the cause will come up again</li>
       </ol>` },
-    ],
-  },
-  {
-    id: 'quick-refinement',
-    category: 'implementation',
-    name: 'Quick Refinement',
-    summary: 'Handle follow-up refinements after a roadmap task — bug fixes, UI tweaks, polish, and adjustments that are too small for issue tracking.',
-    agent: 'Team Lead (OpenCastle)',
-    input: 'the change you want',
-    details: [
-      { heading: 'When to use', content: `<p>For post-task adjustments like UI tweaks, polish, or minor bug fixes that are too small for full issue tracking. Ideal for iterating after an <code>implement-feature</code> run.</p>` },
-      { heading: 'What it does', content: `<p>Triages the request to determine the appropriate tracking level, then delegates focused fixes via sub-agents with the same code quality and verification standards as full feature work. No convoy: if the change grows past 5 files, a migration, or auth, it switches to <code>implement-feature</code>.</p>` },
     ],
   },
   {
@@ -132,64 +119,88 @@ const prompts = [
     ],
   },
   {
-    id: 'assess-complexity',
+    id: 'convoy',
     category: 'pipeline',
-    name: '1. Assess Complexity',
-    summary: 'Sizes the work, first on your request, while the plan from the request and the PRD are written at the same time. A change sized low, and not split into groups, keeps the plan from the request, and the PRD is stopped. Larger work keeps the PRD and this sizing, unless it splits the work into groups: then the PRD is sized again beside its review, so each group can name its phases, and the groups are planned at the same time and joined into one spec. A sizing of a PRD is saved beside it as <name>.complexity.json and reused while the PRD is unchanged.',
+    name: 'Convoy',
+    summary: 'Plan work as tasks that agents run in parallel, each in its own git worktree, for the experimental convoy engine. Your assistant runs the planner and shows you the plan; you start the run.',
+    agent: 'Team Lead (OpenCastle)',
+    input: 'the work to plan',
+    details: [
+      { heading: 'When to use', content: `<p>For work that splits into several tasks with separate files: a feature across the API, the UI and the tests, or one change repeated across modules. A change in a few files is faster with <a href="#implement-feature">Implement Feature</a>, and the prompt says so.</p>` },
+      { heading: 'What it does', content: `<ol>
+        <li><strong>Checks it fits</strong> — that the work splits into tasks, and is committed: every task starts from the last commit</li>
+        <li><strong>Runs the planner</strong> — <code>npx opencastle convoy "&lt;task&gt;" --dry-run</code>, which reads the repository, changes nothing, and writes the spec to <code>.opencastle/convoys/</code></li>
+        <li><strong>Shows you the plan</strong> — each task, its agent, what it waits for and its files, and anything that looks wrong</li>
+        <li><strong>Hands it over</strong> — you run <code>npx opencastle convoy run &lt;spec&gt;</code>; the work lands on a branch of its own</li>
+      </ol>` },
+    ],
+  },
+  {
+    id: 'convoy-assess',
+    category: 'pipeline',
+    step: true,
+    name: '1. Size the work',
+    summary: 'Sizes the work, first on your request, while the plan from the request and the PRD are written at the same time. A change sized low, and not split into groups, keeps the plan from the request, and the PRD is stopped. Larger work keeps the PRD and this sizing, unless it splits the work into groups: then the PRD is sized again beside its review, so each group can name its phases.',
     agent: 'Reviewer',
     input: 'your request, or the PRD and your request',
     details: [],
   },
   {
-    id: 'generate-prd',
+    id: 'convoy-prd',
     category: 'pipeline',
-    name: '2. Generate PRD',
-    summary: 'Turns a request that is not small into a product requirements document. The CLI writes it to .opencastle/prds/<name>.prd.md, named after the PRD\'s title.',
+    step: true,
+    name: '2. Write the PRD',
+    summary: 'Turns a request that is not small into a product requirements document, written to .opencastle/prds/<name>.prd.md and named after its title.',
     agent: 'Team Lead (OpenCastle)',
     input: 'the task you gave opencastle convoy',
     details: [],
   },
   {
-    id: 'validate-prd',
+    id: 'convoy-prd-review',
     category: 'pipeline',
-    name: '3. Validate PRD',
+    step: true,
+    name: '3. Review the PRD',
     summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Runs beside the plan from the PRD, or beside a second sizing when the work is split into groups; a PRD that fails is fixed and planned again. Answers VALID or INVALID with the issues.',
     agent: 'Reviewer',
     input: 'the PRD',
     details: [],
   },
   {
-    id: 'fix-prd',
+    id: 'convoy-prd-fix',
     category: 'pipeline',
-    name: '4. Fix PRD',
-    summary: 'Rewrites the PRD to fix the issues validate-prd found. Runs only when validation fails, up to two rounds.',
+    step: true,
+    name: '4. Fix the PRD',
+    summary: 'Rewrites the PRD to fix what its review found. Runs only when the review fails, up to two rounds.',
     agent: 'Team Lead (OpenCastle)',
     input: 'the PRD and the issues',
     details: [],
   },
   {
-    id: 'generate-convoy',
+    id: 'convoy-plan',
     category: 'pipeline',
-    name: '5. Generate Convoy',
-    summary: 'Turns the request, or the PRD, into a JSON task plan. The CLI folds a task that only writes tests into the task it tests, checks the plan in code — ids, dependencies, cycles, file paths, and tasks that could run at once on the same files — and writes .opencastle/convoys/<name>.convoy.yml; run by hand, it returns the JSON only.',
+    step: true,
+    name: '5. Plan the tasks',
+    summary: 'Turns the request, or the PRD, into a JSON task plan. The CLI folds a task that only writes tests into the task it tests, checks the plan in code — ids, dependencies, cycles, file paths, and tasks that could run at once on the same files — and writes .opencastle/convoys/<name>.convoy.yml.',
     agent: 'Team Lead (OpenCastle)',
-    input: 'your task, the PRD when there is one, and the complexity scores',
+    input: 'your task, the PRD when there is one, and the sizing',
     details: [],
   },
   {
-    id: 'validate-convoy',
+    id: 'convoy-plan-review',
     category: 'pipeline',
-    name: '6. Validate Convoy',
+    step: true,
+    name: '6. Review the plan',
     summary: 'Reviews a plan that will run without a person reading it first (--yes): tasks that run in parallel on the same files, missing dependencies, and missing or redundant tasks. Answers VALID or INVALID.',
     agent: 'Reviewer',
     input: 'the convoy spec',
     details: [],
   },
   {
-    id: 'fix-convoy',
+    id: 'convoy-plan-fix',
     category: 'pipeline',
-    name: '7. Fix Convoy',
-    summary: 'Returns JSON patches for the problems the code checks or validate-convoy found; the CLI applies them. Up to two rounds after the checks, one after a review.',
+    step: true,
+    name: '7. Fix the plan',
+    summary: 'Returns JSON patches for the problems the code checks or the review found; the CLI applies them. Up to two rounds after the checks, one after a review.',
     agent: 'Team Lead (OpenCastle)',
     input: 'the task plan and the issues',
     details: [],
@@ -276,12 +287,12 @@ const assistants = [
 
       <main class="docs-main">
         <p class="docs-subtitle">
-          OpenCastle compiles 14 prompts for every assistant in your project: seven you run yourself,
-          and the seven steps of the convoy pipeline. In Claude Code and VS Code Copilot Chat each one is a
-          slash command under one namespace — <code>/oc:bug-fix</code> — so it never collides with a command
-          of your own. Each tells your assistant to act as the Team Lead (three pipeline steps, as the
-          Reviewer); in Copilot Chat it also selects that agent. Claude Code is not told about six of the
-          pipeline steps, which only the CLI runs, so they take no room in a session; you can still type them.
+          OpenCastle compiles 7 prompts for every assistant in your project. In Claude Code and VS Code
+          Copilot Chat each one is a slash command under one namespace — <code>/oc:bug-fix</code> — so it
+          never collides with a command of your own. Each tells your assistant to act as the Team Lead; in
+          Copilot Chat it also selects that agent. All of them work in your session, except
+          <a href="#convoy">Convoy</a>, which hands the work to the experimental convoy engine. The planner's
+          own steps are listed at the end: the CLI runs them, and they are not commands.
         </p>
 
         <!-- How to use -->
@@ -304,9 +315,8 @@ const assistants = [
             </table>
           </div>
           <p class="usage-note">
-            What you type after the command, or after the prompt's name, is the input. The
-            <code>{'{{…}}'}</code> placeholders in a prompt file only mark where it goes; no assistant
-            substitutes them. <code>npx opencastle explain</code> lists the prompts compiled in your project
+            What you type after the command, or after the prompt's name, is the input.
+            <code>npx opencastle explain</code> lists the prompts compiled in your project
             and where each assistant reads them. The workflow templates sit beside the prompts:
             <code>/oc:workflow-&lt;name&gt;</code> in Claude Code, and an <code>agent-workflows/</code> or
             <code>workflows/</code> directory for the other assistants.
@@ -340,7 +350,7 @@ const assistants = [
               ))}
               <div class="prompt-filename">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <code>/oc:{prompt.id}</code>
+                {prompt.step ? <span>run by <code>npx opencastle convoy</code>, not a command</span> : <code>/oc:{prompt.id}</code>}
               </div>
             </div>
             ))}

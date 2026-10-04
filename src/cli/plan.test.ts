@@ -30,23 +30,21 @@ describe('fillTemplate', () => {
   })
 })
 
-// `pipeline`: only the CLI runs it. generate-convoy is the exception, as the
-// Team Lead also plans in the editor by its rules.
 const PLANNER = {
-  'generate-prd': { output: 'prd', context: false, pipeline: true },
-  'validate-prd': { output: 'validation', context: false, pipeline: true },
-  'fix-prd': { output: 'prd', context: true, pipeline: true },
-  'assess-complexity': { output: 'json', context: true, pipeline: true },
-  'generate-convoy': { output: 'json', context: true, pipeline: false },
-  'validate-convoy': { output: 'validation', context: false, pipeline: true },
-  'fix-convoy': { output: 'json', context: true, pipeline: true },
+  'convoy-prd': { output: 'prd', context: false },
+  'convoy-prd-review': { output: 'validation', context: false },
+  'convoy-prd-fix': { output: 'prd', context: true },
+  'convoy-assess': { output: 'json', context: true },
+  'convoy-plan': { output: 'json', context: true },
+  'convoy-plan-review': { output: 'validation', context: false },
+  'convoy-plan-fix': { output: 'json', context: true },
 } as const
 
 describe('the planner templates', () => {
   it.each(Object.entries(PLANNER))('%s keeps its frontmatter and fills each input once', (name, expected) => {
     const text = readFileSync(templatePath(pkgRoot, name), 'utf8')
     const fm = parseFrontmatter(text)
-    expect(Object.keys(fm).sort()).toEqual(['agent', 'description', 'output', ...(expected.pipeline ? ['pipeline'] : [])])
+    expect(Object.keys(fm).sort()).toEqual(['agent', 'description', 'output'])
     expect(fm.output).toBe(expected.output)
 
     // Exactly one slot per input, and no other mention that a fill could reach.
@@ -140,7 +138,7 @@ describe('runPromptStep', () => {
 
   it('runs read-only, in the project, as the template agent', async () => {
     const { adapter, seen } = adapterAnswering('```json\n{"valid": true}\n```')
-    const result = await runPromptStep({ template: 'validate-prd', goalText: '# PRD', adapter, pkgRoot, cwd })
+    const result = await runPromptStep({ template: 'convoy-prd-review', goalText: '# PRD', adapter, pkgRoot, cwd })
     expect(result.isValid).toBe(true)
     expect(seen[0].options).toMatchObject({ permissionMode: 'plan', cwd })
     expect(seen[0].task.agent).toBe('reviewer')
@@ -150,45 +148,45 @@ describe('runPromptStep', () => {
   it('writes the plan on the standard tier and checks it on economy, when the runtime has tier models', async () => {
     const { adapter, seen } = adapterAnswering('```json\n{"valid": true}\n```')
     adapter.tierModels = { premium: 'opus', standard: 'sonnet', economy: 'haiku' }
-    await runPromptStep({ template: 'validate-prd', goalText: '# PRD', adapter, pkgRoot, cwd })
-    await runPromptStep({ template: 'generate-prd', goalText: 'add tags', adapter, pkgRoot, cwd })
+    await runPromptStep({ template: 'convoy-prd-review', goalText: '# PRD', adapter, pkgRoot, cwd })
+    await runPromptStep({ template: 'convoy-prd', goalText: 'add tags', adapter, pkgRoot, cwd })
     expect(seen[0].options?.model).toBe('haiku')
     expect(seen[1].options?.model).toBe('sonnet')
   })
 
   it('passes no model when the runtime has none for its tiers', async () => {
     const { adapter, seen } = adapterAnswering('```json\n{"valid": true}\n```')
-    await runPromptStep({ template: 'validate-prd', goalText: '# PRD', adapter, pkgRoot, cwd })
+    await runPromptStep({ template: 'convoy-prd-review', goalText: '# PRD', adapter, pkgRoot, cwd })
     expect(seen[0].options).not.toHaveProperty('model')
   })
 
   it('names a Team Lead step by its slug', async () => {
     const { adapter, seen } = adapterAnswering('```json\n[]\n```')
-    await runPromptStep({ template: 'fix-convoy', goalText: '{}', contextText: '- x', adapter, pkgRoot, cwd })
+    await runPromptStep({ template: 'convoy-plan-fix', goalText: '{}', contextText: '- x', adapter, pkgRoot, cwd })
     expect(seen[0].task.agent).toBe('team-lead')
   })
 
   it('writes a PRD to a new file under .opencastle/prds', async () => {
     const { adapter } = adapterAnswering('Sure!\n# Dark Mode — PRD\n\n## Overview\n\nText.')
-    const first = await runPromptStep({ template: 'generate-prd', goalText: 'dark mode', adapter, pkgRoot, cwd })
+    const first = await runPromptStep({ template: 'convoy-prd', goalText: 'dark mode', adapter, pkgRoot, cwd })
     expect(first.outputPath).toBe(join(cwd, '.opencastle', 'prds', 'dark-mode.prd.md'))
     expect(readFileSync(first.outputPath!, 'utf8')).toBe('# Dark Mode — PRD\n\n## Overview\n\nText.\n')
-    const second = await runPromptStep({ template: 'generate-prd', goalText: 'dark mode', adapter, pkgRoot, cwd })
+    const second = await runPromptStep({ template: 'convoy-prd', goalText: 'dark mode', adapter, pkgRoot, cwd })
     expect(second.outputPath).toBe(join(cwd, '.opencastle', 'prds', 'dark-mode-2.prd.md'))
     expect(existsSync(first.outputPath!)).toBe(true)
   })
 
   it('reports an adapter failure with its output', async () => {
     const { adapter } = adapterAnswering('auth expired', false)
-    await expect(runPromptStep({ template: 'validate-prd', goalText: 'x', adapter, pkgRoot, cwd })).rejects.toThrow(
-      /stub failed on validate-prd \(exit code 2\)[\s\S]*auth expired/,
+    await expect(runPromptStep({ template: 'convoy-prd-review', goalText: 'x', adapter, pkgRoot, cwd })).rejects.toThrow(
+      /stub failed on convoy-prd-review \(exit code 2\)[\s\S]*auth expired/,
     )
   })
 
   it('stops a session that runs too long', async () => {
     const { adapter, kill } = adapterAnswering(() => new Promise<never>(() => {}))
     await expect(
-      runPromptStep({ template: 'validate-prd', goalText: 'x', adapter, pkgRoot, cwd, timeoutMs: 20 }),
+      runPromptStep({ template: 'convoy-prd-review', goalText: 'x', adapter, pkgRoot, cwd, timeoutMs: 20 }),
     ).rejects.toThrow(/ran longer than/)
     expect(kill).toHaveBeenCalledTimes(1)
   })

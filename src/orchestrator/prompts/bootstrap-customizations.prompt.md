@@ -9,9 +9,7 @@ agent: 'Team Lead (OpenCastle)'
 
 `opencastle init` has already written `.opencastle/` from the repository: the stack with versions, the project structure, commands, routes and API endpoints, models and migrations, environment variable names, test setup, and which skill covers which part. What it could not read from the code, each file lists at its end under **Still to describe**. Your job is that list, and checking the rest.
 
-## Additional Context (optional)
-
-{{context}}
+Anything the user gave with this command is context for it: what to focus on, or facts only they know.
 
 ---
 
@@ -73,4 +71,4 @@ Run `npx opencastle sync`. `project.instructions.md` is part of what every assis
 
 For each file you changed: its path and what you added or corrected. Then what is still open and needs a person.
 
-Then suggest next steps: `/oc:implement-feature` (or ask for the implement-feature prompt) for a feature, `/oc:bug-fix` for a bug, `/oc:brainstorm` to explore first, and `npx opencastle convoy "<task>"` (experimental) to plan larger work as tasks that run in parallel.
+Then suggest next steps: `/oc:implement-feature` (or ask for the implement-feature prompt) for a feature, `/oc:bug-fix` for a bug, `/oc:brainstorm` to explore first, and `/oc:convoy` (experimental) to plan larger work as tasks that run in parallel.

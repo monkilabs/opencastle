@@ -165,7 +165,11 @@ describe('shipped content instructs only commands that exist', () => {
   // "every opencastle command" is English, not a command called `command`. Keeping
   // the fuzzy check on the fuzzy-safe corpus is the honest split; widening it would
   // have meant a whitelist of English words, which is a worse test.
-  const instructionFiles = load(contentFilesFor(orchestratorRoot, ['.md']))
+  const instructionFiles = load([
+    ...contentFilesFor(orchestratorRoot, ['.md']),
+    // The planner's templates: not compiled, but agents read them all the same.
+    ...contentFilesFor(join(repoRoot, 'src', 'cli', 'convoy', 'prompts'), ['.md']),
+  ])
 
   it('has content to check', () => {
     expect(files.length).toBeGreaterThan(0)

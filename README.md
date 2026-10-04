@@ -217,9 +217,9 @@ repository actually uses.
 pipelines, security audits, migrations, and more), plus a shared delivery
 phase that ends each of them.
 
-**Prompts** — 7 for people (brainstorm, implement-feature, bug-fix,
-quick-refinement, resolve-pr-comments, bootstrap-customizations, create-skill)
-and 7 steps the convoy planner runs.
+**Prompts** — 7: brainstorm, implement-feature, bug-fix, resolve-pr-comments,
+bootstrap-customizations and create-skill work in your session; convoy hands the
+work to the convoy planner.
 
 **Quality gates** — a review pass after each step, panel review for high-stakes
 changes, plus your own lint, test, and build commands.

@@ -4,8 +4,6 @@ agent: 'Team Lead (OpenCastle)'
 output: json
 ---
 
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
-
 # Generate Task Plan
 
 You are the Team Lead. Break the work described at the end of this prompt into tasks that agents carry out on their own, several at a time, under OpenCastle's convoy engine (experimental). Answer with a JSON task plan.

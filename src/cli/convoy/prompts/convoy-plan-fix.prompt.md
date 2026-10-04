@@ -2,10 +2,7 @@
 description: 'Fix the problems found in a convoy task plan with targeted JSON patches. Goal is the plan as JSON, context is the list of problems.'
 agent: 'Team Lead (OpenCastle)'
 output: json
-pipeline: true
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Fix Task Plan
 

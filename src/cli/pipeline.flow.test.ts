@@ -108,13 +108,13 @@ function stubAdapter(answers: Record<string, Answer> = {}): { adapter: AgentAdap
   const stoppers = new Map<string, Array<() => void>>()
   const seen = new Map<string, number>()
   const defaults: Record<string, Answer> = {
-    'generate-prd': PRD,
-    'fix-prd': PRD,
-    'validate-prd': fence({ valid: true }),
-    'assess-complexity': fence(SINGLE),
-    'generate-convoy': fence(PLAN),
-    'validate-convoy': fence({ valid: true }),
-    'fix-convoy': fence([]),
+    'convoy-prd': PRD,
+    'convoy-prd-fix': PRD,
+    'convoy-prd-review': fence({ valid: true }),
+    'convoy-assess': fence(SINGLE),
+    'convoy-plan': fence(PLAN),
+    'convoy-plan-review': fence({ valid: true }),
+    'convoy-plan-fix': fence([]),
   }
   const adapter: AgentAdapter = {
     name: 'stub',
@@ -185,13 +185,13 @@ describe('planConvoy: sessions', () => {
     // The plan from the request is dropped once the size says a PRD is needed;
     // the plan from the PRD is the one kept.
     expect([...templates(calls)].sort()).toEqual([
-      'assess-complexity', 'generate-convoy', 'generate-convoy', 'generate-prd', 'validate-prd',
+      'convoy-assess', 'convoy-plan', 'convoy-plan', 'convoy-prd', 'convoy-prd-review',
     ])
     expect(outcome.problems).toEqual([])
   })
 
   it('runs every planning session read-only, in the project', async () => {
-    const { adapter, calls } = stubAdapter({ 'validate-prd': (_p, n) => fence(n === 1 ? { valid: false, issues: ['x'] } : { valid: true }) })
+    const { adapter, calls } = stubAdapter({ 'convoy-prd-review': (_p, n) => fence(n === 1 ? { valid: false, issues: ['x'] } : { valid: true }) })
     await plan(adapter, { critic: true })
     expect(calls.length).toBeGreaterThan(4)
     for (const call of calls) {
@@ -200,23 +200,23 @@ describe('planConvoy: sessions', () => {
     }
   })
 
-  it('sends the PRD to generate-convoy once', async () => {
+  it('sends the PRD to convoy-plan once', async () => {
     const { adapter, calls } = stubAdapter()
     await plan(adapter)
-    const fromPrd = calls.filter((c) => c.template === 'generate-convoy' && c.prompt.includes('PRD-MARKER'))
+    const fromPrd = calls.filter((c) => c.template === 'convoy-plan' && c.prompt.includes('PRD-MARKER'))
     expect(fromPrd).toHaveLength(1)
     expect(fromPrd[0].prompt.match(/PRD-MARKER/g)).toHaveLength(1)
     expect(fromPrd[0].prompt).not.toMatch(/\{\{(goal|context)\}\}/)
   })
 
   it('plans a small change straight from the request, with no PRD', async () => {
-    const { adapter, calls } = stubAdapter({ 'assess-complexity': fence({ ...SINGLE, complexity: 'low' }) })
+    const { adapter, calls } = stubAdapter({ 'convoy-assess': fence({ ...SINGLE, complexity: 'low' }) })
     const outcome = await plan(adapter)
     // The PRD starts beside the size too; here it finished first, and is not kept.
-    expect([...templates(calls)].sort()).toEqual(['assess-complexity', 'generate-convoy', 'generate-prd'])
+    expect([...templates(calls)].sort()).toEqual(['convoy-assess', 'convoy-plan', 'convoy-prd'])
     expect(outcome.prdPath).toBeNull()
     expect(existsSync(join(root, '.opencastle', 'prds'))).toBe(false)
-    expect(calls.find((c) => c.template === 'generate-convoy')!.prompt).toContain('There is no PRD: this is a small change')
+    expect(calls.find((c) => c.template === 'convoy-plan')!.prompt).toContain('There is no PRD: this is a small change')
     expect(outcome.problems).toEqual([])
   })
 
@@ -231,8 +231,8 @@ describe('planConvoy: sessions', () => {
       return answer
     }
     const { adapter } = stubAdapter({
-      'assess-complexity': overlap(fence({ ...SINGLE, complexity: 'low' })),
-      'generate-convoy': overlap(fence(PLAN)),
+      'convoy-assess': overlap(fence({ ...SINGLE, complexity: 'low' })),
+      'convoy-plan': overlap(fence(PLAN)),
     })
     await plan(adapter)
     expect(most).toBe(2)
@@ -240,21 +240,21 @@ describe('planConvoy: sessions', () => {
 
   it('stops the PRD as soon as the size says the change is small', async () => {
     const { adapter, killed } = stubAdapter({
-      'assess-complexity': fence({ ...SINGLE, complexity: 'low' }),
-      'generate-prd': never,
+      'convoy-assess': fence({ ...SINGLE, complexity: 'low' }),
+      'convoy-prd': never,
     })
     const outcome = await plan(adapter)
-    expect(killed).toEqual(['generate-prd'])
+    expect(killed).toEqual(['convoy-prd'])
     expect(outcome.prdPath).toBeNull()
     expect(outcome.plan.name).toBe('Dark mode')
   })
 
   it('stops the plan from the request as soon as the size says a PRD is needed', async () => {
     const { adapter, calls, killed } = stubAdapter({
-      'generate-convoy': (prompt) => (prompt.includes('PRD-MARKER') ? fence(PLAN) : never()),
+      'convoy-plan': (prompt) => (prompt.includes('PRD-MARKER') ? fence(PLAN) : never()),
     })
     const outcome = await plan(adapter)
-    expect(killed).toEqual(['generate-convoy'])
+    expect(killed).toEqual(['convoy-plan'])
     expect(outcome.prdPath).not.toBeNull()
     expect(outcome.plan.name).toBe('Dark mode')
     // A stopped session counts, and makes the cost a lower bound.
@@ -265,25 +265,25 @@ describe('planConvoy: sessions', () => {
   it('plans from the PRD beside its review, and again from the fixed PRD when the review fails', async () => {
     const fixedPrd = PRD.replace('PRD-MARKER', 'FIXED-MARKER')
     const { adapter, calls, killed } = stubAdapter({
-      'validate-prd': (_p, n) => fence({ valid: n > 1, issues: ['US-1: unclear'] }),
-      'fix-prd': fixedPrd,
+      'convoy-prd-review': (_p, n) => fence({ valid: n > 1, issues: ['US-1: unclear'] }),
+      'convoy-prd-fix': fixedPrd,
       // The plan from the request ends at once; the one from the draft PRD
       // runs until it is stopped.
-      'generate-convoy': (prompt) => (prompt.includes('PRD-MARKER') ? never() : fence(PLAN)),
+      'convoy-plan': (prompt) => (prompt.includes('PRD-MARKER') ? never() : fence(PLAN)),
     })
     const outcome = await plan(adapter)
-    expect(killed).toEqual(['generate-convoy'])
-    const last = calls.filter((c) => c.template === 'generate-convoy').at(-1)!
+    expect(killed).toEqual(['convoy-plan'])
+    const last = calls.filter((c) => c.template === 'convoy-plan').at(-1)!
     expect(last.prompt).toContain('FIXED-MARKER')
     expect(outcome.problems).toEqual([])
   })
 
   it('asks for medium effort for the plan and low for every other step, all lean', async () => {
-    const { adapter, calls } = stubAdapter({ 'validate-prd': (_p, n) => fence({ valid: n > 1, issues: ['x'] }) })
+    const { adapter, calls } = stubAdapter({ 'convoy-prd-review': (_p, n) => fence({ valid: n > 1, issues: ['x'] }) })
     await plan(adapter, { critic: true })
     expect(new Set(calls.map((c) => c.template)).size).toBeGreaterThanOrEqual(6)
     for (const call of calls) {
-      expect(call.effort, call.template).toBe(call.template === 'generate-convoy' ? 'medium' : 'low')
+      expect(call.effort, call.template).toBe(call.template === 'convoy-plan' ? 'medium' : 'low')
       expect(call.lean, call.template).toBe(true)
     }
   })
@@ -291,38 +291,38 @@ describe('planConvoy: sessions', () => {
   it('sizes a larger request once, and does not size its PRD again', async () => {
     const { adapter, calls } = stubAdapter()
     await plan(adapter)
-    expect(count(calls, 'assess-complexity')).toBe(1)
-    expect(templates(calls).slice(0, 3).sort()).toEqual(['assess-complexity', 'generate-convoy', 'generate-prd'])
+    expect(count(calls, 'convoy-assess')).toBe(1)
+    expect(templates(calls).slice(0, 3).sort()).toEqual(['convoy-assess', 'convoy-plan', 'convoy-prd'])
   })
 
   it('fixes an invalid PRD at most twice, then plans from it anyway', async () => {
-    const { adapter, calls } = stubAdapter({ 'validate-prd': fence({ valid: false, issues: ['Overview: thin'] }) })
+    const { adapter, calls } = stubAdapter({ 'convoy-prd-review': fence({ valid: false, issues: ['Overview: thin'] }) })
     const outcome = await plan(adapter)
-    expect(count(calls, 'fix-prd')).toBe(2)
-    expect(count(calls, 'validate-prd')).toBe(3)
+    expect(count(calls, 'convoy-prd-fix')).toBe(2)
+    expect(count(calls, 'convoy-prd-review')).toBe(3)
     // Planned from the request, from the draft beside its review, and from the PRD as fixed.
-    expect(count(calls, 'generate-convoy')).toBe(3)
+    expect(count(calls, 'convoy-plan')).toBe(3)
     expect(calls).toHaveLength(10)
-    expect(templates(calls).at(-1)).toBe('generate-convoy')
+    expect(templates(calls).at(-1)).toBe('convoy-plan')
     expect(outcome.problems).toEqual([])
   })
 
   it('stops fixing the PRD as soon as it passes', async () => {
-    const { adapter, calls } = stubAdapter({ 'validate-prd': (_p, n) => fence({ valid: n > 1, issues: ['x'] }) })
+    const { adapter, calls } = stubAdapter({ 'convoy-prd-review': (_p, n) => fence({ valid: n > 1, issues: ['x'] }) })
     await plan(adapter)
-    expect(count(calls, 'fix-prd')).toBe(1)
+    expect(count(calls, 'convoy-prd-fix')).toBe(1)
     expect(calls).toHaveLength(8)
   })
 
-  it('asks fix-convoy only when the checks fail, and never validate-convoy', async () => {
+  it('asks convoy-plan-fix only when the checks fail, and never convoy-plan-review', async () => {
     const bad = { ...PLAN, tasks: [PLAN.tasks[0], { ...PLAN.tasks[1], timeout: 'soon' }] }
     const { adapter, calls } = stubAdapter({
-      'generate-convoy': fence(bad),
-      'fix-convoy': fence([{ task_id: 'toggle', field: 'timeout', value: '10m' }]),
+      'convoy-plan': fence(bad),
+      'convoy-plan-fix': fence([{ task_id: 'toggle', field: 'timeout', value: '10m' }]),
     })
     const outcome = await plan(adapter)
-    expect(count(calls, 'fix-convoy')).toBe(1)
-    expect(count(calls, 'validate-convoy')).toBe(0)
+    expect(count(calls, 'convoy-plan-fix')).toBe(1)
+    expect(count(calls, 'convoy-plan-review')).toBe(0)
     expect(calls).toHaveLength(6)
     expect(outcome.problems).toEqual([])
   })
@@ -332,16 +332,16 @@ describe('planConvoy: sessions', () => {
     // as soon as the size is known, whether or not it got to its own retry.
     let fromPrd = 0
     const { adapter, calls } = stubAdapter({
-      'generate-convoy': (prompt) =>
+      'convoy-plan': (prompt) =>
         prompt.includes('PRD-MARKER') && fromPrd++ === 0 ? 'Sorry, here you go: {' : fence(PLAN),
     })
     const outcome = await plan(adapter)
-    expect(calls.filter((c) => c.template === 'generate-convoy' && c.prompt.includes('PRD-MARKER'))).toHaveLength(2)
+    expect(calls.filter((c) => c.template === 'convoy-plan' && c.prompt.includes('PRD-MARKER'))).toHaveLength(2)
     expect(outcome.plan.name).toBe('Dark mode')
   })
 
   it('keeps the unreadable answer for inspection when the retry fails too', async () => {
-    const { adapter } = stubAdapter({ 'generate-convoy': 'not a plan' })
+    const { adapter } = stubAdapter({ 'convoy-plan': 'not a plan' })
     await expect(plan(adapter)).rejects.toThrow(/could not be read after a retry/)
     expect(readdirSync(join(root, '.opencastle', 'convoys')).some((f) => f.endsWith('.task-plan.json'))).toBe(true)
   })
@@ -350,20 +350,20 @@ describe('planConvoy: sessions', () => {
     const bad = { ...PLAN, tasks: [PLAN.tasks[0], { ...PLAN.tasks[1], timeout: 'soon' }] }
     let fromFixed = 0
     const { adapter, calls } = stubAdapter({
-      'validate-prd': fence({ valid: false, issues: ['x'] }),
+      'convoy-prd-review': fence({ valid: false, issues: ['x'] }),
       // Only the plan that is kept, from the PRD as fixed, is unreadable once.
-      'generate-convoy': (prompt) =>
-        prompt.includes('PRD-MARKER') && calls.some((c) => c.template === 'fix-prd') && fromFixed++ === 0
+      'convoy-plan': (prompt) =>
+        prompt.includes('PRD-MARKER') && calls.some((c) => c.template === 'convoy-prd-fix') && fromFixed++ === 0
           ? '```json\n{ "name": "x", "tasks": [\n```'
           : fence(bad),
-      'fix-convoy': fence([{ task_id: 'toggle', field: 'timeout', value: 'later' }]),
+      'convoy-plan-fix': fence([{ task_id: 'toggle', field: 'timeout', value: 'later' }]),
     })
     const outcome = await plan(adapter, { critic: true })
-    // assess ‖ the plan from the request, generate-prd, validate-prd ‖ the plan
-    // from the draft, 2 × (fix-prd + validate-prd), 2 × generate-convoy (one
-    // unreadable), 2 × fix-convoy.
+    // assess ‖ the plan from the request, convoy-prd, convoy-prd-review ‖ the plan
+    // from the draft, 2 × (convoy-prd-fix + convoy-prd-review), 2 × convoy-plan (one
+    // unreadable), 2 × convoy-plan-fix.
     expect(calls).toHaveLength(13)
-    expect(count(calls, 'validate-convoy')).toBe(0) // no review of a plan that cannot run
+    expect(count(calls, 'convoy-plan-review')).toBe(0) // no review of a plan that cannot run
     expect(outcome.problems.join('\n')).toContain('timeout')
   })
 
@@ -375,26 +375,26 @@ describe('planConvoy: sessions', () => {
         { id: 'b', prompt: 'b', files: ['src/components/Hero.tsx'] },
       ],
     }
-    const { adapter, calls } = stubAdapter({ 'generate-convoy': fence(clash) })
+    const { adapter, calls } = stubAdapter({ 'convoy-plan': fence(clash) })
     const outcome = await plan(adapter)
-    expect(count(calls, 'fix-convoy')).toBe(2)
+    expect(count(calls, 'convoy-plan-fix')).toBe(2)
     expect(outcome.problems).toEqual([])
     expect(outcome.plan.tasks[1].depends_on).toEqual(['a'])
   })
 
   it('reviews the plan only for --yes, and keeps a revision only if it still passes', async () => {
     const { adapter, calls } = stubAdapter({
-      'validate-convoy': fence({ valid: false, issues: ['toggle: needs the theme docs'] }),
-      'fix-convoy': fence([{ task_id: 'toggle', field: 'prompt', value: 'Add the toggle; read docs first.' }]),
+      'convoy-plan-review': fence({ valid: false, issues: ['toggle: needs the theme docs'] }),
+      'convoy-plan-fix': fence([{ task_id: 'toggle', field: 'prompt', value: 'Add the toggle; read docs first.' }]),
     })
     const outcome = await plan(adapter, { critic: true })
-    expect(templates(calls).slice(-2)).toEqual(['validate-convoy', 'fix-convoy'])
+    expect(templates(calls).slice(-2)).toEqual(['convoy-plan-review', 'convoy-plan-fix'])
     expect(calls).toHaveLength(7)
     expect(outcome.plan.tasks[1].prompt).toBe('Add the toggle; read docs first.')
 
     const broken = stubAdapter({
-      'validate-convoy': fence({ valid: false, issues: ['x'] }),
-      'fix-convoy': fence([{ task_id: 'toggle', field: 'depends_on', value: ['ghost'] }]),
+      'convoy-plan-review': fence({ valid: false, issues: ['x'] }),
+      'convoy-plan-fix': fence([{ task_id: 'toggle', field: 'depends_on', value: ['ghost'] }]),
     })
     const kept = await plan(broken.adapter, { critic: true })
     expect(kept.plan.tasks[1].depends_on).toEqual(['theme'])
@@ -405,7 +405,7 @@ describe('planConvoy: sessions', () => {
 // ── Chain groups ────────────────────────────────────────────────────────────
 
 describe('planConvoy: groups', () => {
-  /** generate-convoy for a group waits until every group's session has started. */
+  /** convoy-plan for a group waits until every group's session has started. */
   function groupAnswers() {
     let started = 0
     let most = 0
@@ -442,9 +442,9 @@ describe('planConvoy: groups', () => {
     }
     const groups = groupAnswers()
     const { adapter } = stubAdapter({
-      'validate-prd': slow(fence({ valid: true })),
-      'assess-complexity': slow(fence(CHAIN)),
-      'generate-convoy': groups.answer,
+      'convoy-prd-review': slow(fence({ valid: true })),
+      'convoy-assess': slow(fence(CHAIN)),
+      'convoy-plan': groups.answer,
     })
     await plan(adapter)
     expect(most).toBe(2)
@@ -452,20 +452,20 @@ describe('planConvoy: groups', () => {
 
   it('plans every group at the same time, from its own part of the PRD', async () => {
     const groups = groupAnswers()
-    const { adapter, calls } = stubAdapter({ 'assess-complexity': fence(CHAIN), 'generate-convoy': groups.answer })
+    const { adapter, calls } = stubAdapter({ 'convoy-assess': fence(CHAIN), 'convoy-plan': groups.answer })
     await plan(adapter)
     expect(groups.most()).toBe(3)
-    expect(calls.filter((c) => c.template === 'generate-convoy' && c.prompt.includes('**Group name:**'))).toHaveLength(3)
+    expect(calls.filter((c) => c.template === 'convoy-plan' && c.prompt.includes('**Group name:**'))).toHaveLength(3)
     // The request is sized (beside its dropped plan), then the PRD again:
     // groups name the PRD's phases.
     expect(calls).toHaveLength(8)
-    const docs = calls.find((c) => c.template === 'generate-convoy' && c.prompt.includes('**Group name:** docs'))!
+    const docs = calls.find((c) => c.template === 'convoy-plan' && c.prompt.includes('**Group name:** docs'))!
     expect(docs.prompt).not.toContain('Phase 1 — Theme')
   })
 
   it('joins the groups into one spec that keeps their dependencies', async () => {
     const groups = groupAnswers()
-    const { adapter } = stubAdapter({ 'assess-complexity': fence(CHAIN), 'generate-convoy': groups.answer })
+    const { adapter } = stubAdapter({ 'convoy-assess': fence(CHAIN), 'convoy-plan': groups.answer })
     const outcome = await plan(adapter)
     expect(readdirSync(join(root, '.opencastle', 'convoys')).filter((f) => f.endsWith('.convoy.yml'))).toHaveLength(1)
     const spec = yamlParse(readFileSync(outcome.specPath, 'utf8'))
@@ -497,7 +497,7 @@ describe('planConvoy: the spec', () => {
 
   it('reduces a glob the planner wrote to a directory', async () => {
     const globbed = { ...PLAN, tasks: [{ ...PLAN.tasks[0], files: ['src/theme/**/*.ts'] }, PLAN.tasks[1]] }
-    const { adapter } = stubAdapter({ 'generate-convoy': fence(globbed) })
+    const { adapter } = stubAdapter({ 'convoy-plan': fence(globbed) })
     const outcome = await plan(adapter)
     expect(outcome.plan.tasks[0].files).toEqual(['src/theme/'])
   })
@@ -526,17 +526,17 @@ describe('planConvoy: the complexity cache', () => {
     const prdPath = writePrd(PRD)
     const first = stubAdapter()
     await plan(first.adapter, { task: undefined, prdPath })
-    expect(count(first.calls, 'assess-complexity')).toBe(1)
-    expect(count(first.calls, 'generate-prd')).toBe(0)
+    expect(count(first.calls, 'convoy-assess')).toBe(1)
+    expect(count(first.calls, 'convoy-prd')).toBe(0)
 
     const second = stubAdapter()
     await plan(second.adapter, { task: undefined, prdPath })
-    expect(count(second.calls, 'assess-complexity')).toBe(0)
+    expect(count(second.calls, 'convoy-assess')).toBe(0)
 
     writePrd(PRD + '\nOne more line.\n')
     const third = stubAdapter()
     await plan(third.adapter, { task: undefined, prdPath })
-    expect(count(third.calls, 'assess-complexity')).toBe(1)
+    expect(count(third.calls, 'convoy-assess')).toBe(1)
   })
 
   it('ignores an assessment of different text at the same path', async () => {
@@ -545,7 +545,7 @@ describe('planConvoy: the complexity cache', () => {
     writeFileSync(deriveComplexityPath(prdPath), JSON.stringify(stale))
     const { adapter, calls } = stubAdapter()
     await plan(adapter, { task: undefined, prdPath })
-    expect(count(calls, 'assess-complexity')).toBe(1)
+    expect(count(calls, 'convoy-assess')).toBe(1)
     const cached = JSON.parse(readFileSync(deriveComplexityPath(prdPath), 'utf8'))
     expect(cached.prd_sha256).toBe(hashPrd(PRD))
     expect(cached.recommended_strategy).toBe('single')
@@ -605,7 +605,7 @@ describe('convoy "<task>": show the plan, ask once', () => {
     await planTask({ args: ['--yes'], pkgRoot }, 'add dark mode')
     expect(promptModule.confirm).not.toHaveBeenCalled()
     expect(runModule.runSpec).toHaveBeenCalledWith(runArgs(), { runtime: resolved(stub.adapter) })
-    expect(count(stub.calls, 'validate-convoy')).toBe(1)
+    expect(count(stub.calls, 'convoy-plan-review')).toBe(1)
   })
 
   it('carries --concurrency through to the run', async () => {
@@ -633,7 +633,7 @@ describe('convoy "<task>": show the plan, ask once', () => {
     expect(text()).toMatch(/TASK\s+AGENT/)
     expect(promptModule.confirm).not.toHaveBeenCalled()
     expect(runModule.runSpec).not.toHaveBeenCalled()
-    expect(count(stub.calls, 'validate-convoy')).toBe(0)
+    expect(count(stub.calls, 'convoy-plan-review')).toBe(0)
     expect(text()).toContain('opencastle convoy run .opencastle/convoys/dark-mode.convoy.yml')
   })
 
@@ -660,13 +660,13 @@ describe('convoy "<task>": show the plan, ask once', () => {
     writeFileSync(prd, PRD)
     vi.mocked(promptModule.confirm).mockResolvedValue(false)
     await pipeline({ args: ['--prd', 'my.prd.md'], pkgRoot })
-    expect(count(stub.calls, 'generate-prd')).toBe(0)
+    expect(count(stub.calls, 'convoy-prd')).toBe(0)
     expect(existsSync(specFile())).toBe(true)
   })
 
   it('does not offer to run a plan that fails its checks', async () => {
     const bad = { ...PLAN, tasks: [PLAN.tasks[0], { ...PLAN.tasks[1], timeout: 'soon' }] }
-    stub = stubAdapter({ 'generate-convoy': fence(bad) })
+    stub = stubAdapter({ 'convoy-plan': fence(bad) })
     vi.mocked(adapters.resolveAdapter).mockResolvedValue(resolved(stub.adapter))
     const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
       throw new Error(`exit ${code}`)

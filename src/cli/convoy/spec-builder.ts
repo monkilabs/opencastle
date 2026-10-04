@@ -35,7 +35,7 @@ export interface TaskPlan {
   tasks: TaskPlanTask[]
 }
 
-/** A patch to apply to a task plan — output of the fix-convoy prompt */
+/** A patch to apply to a task plan — output of the convoy-plan-fix prompt */
 export interface TaskPatch {
   task_id: string   // task ID to patch, or "_plan" for top-level fields
   field: string     // field name (e.g., "prompt", "files", "depends_on")
@@ -431,7 +431,7 @@ export function checkPlan(plan: TaskPlan, settings: SpecSettings): string[] {
 /**
  * Make the later of each conflicting pair wait for the earlier.
  *
- * The last resort, after fix-convoy has had its rounds: it costs parallelism,
+ * The last resort, after convoy-plan-fix has had its rounds: it costs parallelism,
  * never correctness, and it cannot create a cycle — an edge is only added
  * between two tasks that do not yet wait for each other in either direction.
  */

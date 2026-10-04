@@ -98,15 +98,21 @@ export function parseFrontmatter(text: string): Record<string, string> {
   return result
 }
 
+/**
+ * A planning step's template. They live with the engine, not among the
+ * prompts every assistant is given: only the planner runs them, with their
+ * input filled in, and as `/oc:` commands they were seven menu entries nobody
+ * should pick.
+ */
 export function templatePath(pkgRoot: string, name: string): string {
-  return join(pkgRoot, 'src', 'orchestrator', 'prompts', `${name}.prompt.md`)
+  return join(pkgRoot, 'src', 'cli', 'convoy', 'prompts', `${name}.prompt.md`)
 }
 
 /**
  * Put the inputs into a template.
  *
  * A placeholder is filled only where it stands on a line of its own. The
- * instructions in generate-convoy mentioned `{{goal}}` and `{{context}}` in
+ * instructions in convoy-plan mentioned `{{goal}}` and `{{context}}` in
  * passing, and a global replace pasted the whole PRD into those sentences as
  * well, so every plan carried its PRD twice.
  *
@@ -154,7 +160,7 @@ function extractMarkdownBody(output: string): string {
 /**
  * The JSON in an answer: the last ```json fence if there is one, else the whole
  * answer. A missing fence used to abort the plan outright, before the one
- * retry generate-convoy is allowed; now the parser downstream sees the text and
+ * retry convoy-plan is allowed; now the parser downstream sees the text and
  * reports why it is not a plan.
  */
 export function extractJson(output: string): string {
@@ -223,13 +229,13 @@ function prdStem(content: string): string {
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 const TEMPLATE_MESSAGES: Record<string, string> = {
-  'generate-prd': 'Writing the PRD',
-  'validate-prd': 'Checking the PRD',
-  'fix-prd': 'Fixing the PRD',
-  'assess-complexity': 'Sizing the work',
-  'generate-convoy': 'Breaking it into tasks',
-  'validate-convoy': 'Reviewing the plan',
-  'fix-convoy': 'Fixing the plan',
+  'convoy-prd': 'Writing the PRD',
+  'convoy-prd-review': 'Checking the PRD',
+  'convoy-prd-fix': 'Fixing the PRD',
+  'convoy-assess': 'Sizing the work',
+  'convoy-plan': 'Breaking it into tasks',
+  'convoy-plan-review': 'Reviewing the plan',
+  'convoy-plan-fix': 'Fixing the plan',
 }
 
 /**
@@ -277,7 +283,7 @@ function startProgress(templateName: string): () => void {
  * standard tier; checking and sizing them is a short read, so it gets economy.
  */
 function modelFor(adapter: AgentAdapter, template: string): string | undefined {
-  const tier = /^(validate-|assess-)/.test(template) ? 'economy' : 'standard'
+  const tier = /-review$|^convoy-assess$/.test(template) ? 'economy' : 'standard'
   return adapter.tierModels?.[tier]
 }
 
@@ -291,7 +297,7 @@ function modelFor(adapter: AgentAdapter, template: string): string | undefined {
  * sizing, the PRD, the checks and the fixes get `low`.
  */
 export function effortFor(template: string): 'low' | 'medium' {
-  return template === 'generate-convoy' ? 'medium' : 'low'
+  return template === 'convoy-plan' ? 'medium' : 'low'
 }
 
 /**

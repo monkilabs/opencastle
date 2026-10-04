@@ -2,10 +2,7 @@
 description: 'Fix the issues a PRD review found. Goal is the PRD, context is the list of issues; answers with the whole corrected PRD.'
 agent: 'Team Lead (OpenCastle)'
 output: prd
-pipeline: true
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Fix PRD
 
