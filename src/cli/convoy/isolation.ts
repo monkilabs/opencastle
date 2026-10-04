@@ -1,6 +1,7 @@
 import { normalizePath, pathsOverlap } from './partition.js'
 import type { ConvoyStore } from './store.js'
 import { listArtifacts, type ArtifactRef } from './artifacts.js'
+import { LESSON_CATEGORIES } from '../lessons.js'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -72,7 +73,7 @@ export function buildSharedContext(opts: {
     '## Rules',
     '- Do your task and nothing else. Change only the files your task lists; if it needs a change elsewhere, say so in your answer instead of making it.',
     '- Leave committing to the convoy. It commits your work when you finish.',
-    "- Follow the project's own conventions and instruction files, with one exception: do not edit anything under `.opencastle/` (KNOWN-ISSUES.md, LESSONS-LEARNED.md, logs) even where those instructions ask you to. Several agents run at once, and each such edit is a change outside your task that review sends back. Put an issue or a lesson you found in your answer instead.",
+    `- Follow the project's own conventions and instruction files, with one exception: do not edit anything under \`.opencastle/\` (KNOWN-ISSUES.md, LESSONS-LEARNED.md, logs) even where those instructions ask you to. Several agents run at once, and each such edit is a change outside your task that review sends back. Report what you found in your answer instead, each on a line of its own: \`[LESSON <category>] <what to do> — <why>\` for what the next agent on this project should know before starting (a command that failed and the one that worked, a tool quirk, a convention written down nowhere else), with <category> one of ${LESSON_CATEGORIES.join(', ')}; and \`[ISSUE] <file or area>: <what is wrong>\` for a bug outside your task. The convoy records them.`,
     `- For long output (a report, a data dump), write it to a file under ${opts.artifactsDir}<your task id>/ and mention it in your answer as \`[ARTIFACT: <file name>] <one-line summary>\`.`,
   ].join('\n')
 }
