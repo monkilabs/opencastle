@@ -8,6 +8,7 @@ import { scaffoldMcpConfigInto } from '../mcp.js'
 import { withSource, type CompileSource } from '../layers.js'
 import type { CopyResults, DoctorCheck, IdeAdapter, IdeChoice, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { stripFrontmatter, parseFrontmatterMeta } from './frontmatter.js'
+import { inlineSharedPhase, isWorkflowTemplate, pointAtWorkflows, readSharedPhase } from './workflows.js'
 
 /**
  * Configuration for adapters that produce a single root instructions file
@@ -389,15 +390,17 @@ export function createSingleFileAdapter(
 
     const dotDirPath = resolve(projectRoot, config.dotDir)
 
-    // 2. Agent definitions → dotDir/agents/
+    // 2. Agent definitions → dotDir/agents/, pointed at the templates where
+    //    this target writes them (step 5)
     const agentsDir = resolve(srcRoot, 'agents')
     if (existsSync(agentsDir)) {
       const destAgents = resolve(dotDirPath, 'agents')
       await mkdir(destAgents, { recursive: true })
+      const workflowsAt = `${config.dotDir}/${config.workflowsDir}/${config.workflowPrefix ? `${config.workflowPrefix}*.md` : ''}`
       for (const file of await readdir(agentsDir)) {
         if (!file.endsWith('.md')) continue
         const destPath = resolve(destAgents, file)
-        const content = await readFile(resolve(agentsDir, file), 'utf8')
+        const content = pointAtWorkflows(await readFile(resolve(agentsDir, file), 'utf8'), workflowsAt)
         await emit(projectRoot, destPath, agentFile(file, content, config.agentFrontmatter === true), overwrite, results)
       }
     }
@@ -446,17 +449,18 @@ export function createSingleFileAdapter(
       }
     }
 
-    // 5. Agent Workflows → dotDir/<workflowsDir>/<prefix><name>.md
+    // 5. Agent Workflows → dotDir/<workflowsDir>/<prefix><name>.md, each with
+    //    the shared delivery phase in it
     const wfDir = resolve(srcRoot, 'agent-workflows')
     if (existsSync(wfDir)) {
       const destWf = resolve(dotDirPath, config.workflowsDir)
       await mkdir(destWf, { recursive: true })
+      const shared = readSharedPhase(srcRoot)
       for (const file of await readdir(wfDir)) {
-        if (!file.endsWith('.md')) continue
-        if (file === 'README.md') continue
+        if (!isWorkflowTemplate(file)) continue
         const name = basename(file, '.md')
         const destPath = resolve(destWf, `${config.workflowPrefix}${name}.md`)
-        const content = await readFile(resolve(wfDir, file), 'utf8')
+        const content = inlineSharedPhase(await readFile(resolve(wfDir, file), 'utf8'), shared)
         await emit(projectRoot, destPath, commandFile(content, config.commandDescriptions === true), overwrite, results)
       }
     }

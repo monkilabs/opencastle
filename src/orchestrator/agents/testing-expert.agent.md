@@ -12,7 +12,7 @@ Browser validation of UI changes; E2E and integration suites.
 
 ## Skills
 
-Resolve skills via [skill-matrix.json](.opencastle/agents/skill-matrix.json).
+Resolve skills via `.opencastle/agents/skill-matrix.json`.
 
 ## Rules
 

@@ -128,7 +128,7 @@ If there are no open questions, explicitly state: "No open questions — plan is
 
 ### Typical Partitions
 
-> For project-specific paths, see `project.instructions.md` and the relevant `stack/` customization files.
+> For project-specific paths, see `.opencastle/project.instructions.md` and the relevant `.opencastle/stack/` files.
 
 | Track | Agent | Files | Purpose |
 |-------|-------|-------|----------|
@@ -221,7 +221,7 @@ If there are no open questions, explicitly state: "No open questions — plan is
 - [ ] Full build passes
 - [ ] **Final smoke test passed** — complete user flow verified end-to-end
 - [ ] Roadmap updated
-- [ ] Delivery Outcome completed (see `general.instructions.md`) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery phase completed — branch pushed, PR opened (not merged), tracker linked
 
 ---
 

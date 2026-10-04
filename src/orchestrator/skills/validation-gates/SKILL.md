@@ -80,7 +80,7 @@ rm -rf node_modules/.cache .next/cache .astro/ dist/
 
 ## Gate 7: Browser Testing
 
-UI changes require Chrome screenshots. Start dev server → verify ACs → responsive breakpoints → capture screenshots. Load **browser-testing** skill.
+UI changes are verified in Chrome. Start dev server → verify ACs → responsive breakpoints → screenshots as evidence, at most 3 per session. Load **browser-testing** skill.
 
 ```json
 { "tool": "browser-testing/take_screenshot", "url": "http://localhost:3000", "viewports": ["mobile", "desktop"] }

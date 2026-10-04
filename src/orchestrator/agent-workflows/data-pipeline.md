@@ -21,7 +21,7 @@ Phase 6: Delivery           (direct, Team Lead)
 
 ## Branch & Delivery Strategy
 
-Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ownership** rules in `team-lead.agent.md`. Branch naming: `feat/<ticket-id>-<short-description>`. Only code changes are committed — NDJSON data files in `tmp/` are NOT committed to Git.
+The Team Lead creates the branch before any delegation and delivers it as the Delivery phase below describes. Branch naming: `feat/<ticket-id>-<short-description>`. Only code changes are committed — NDJSON data files in `tmp/` are NOT committed to Git.
 
 ---
 
@@ -137,7 +137,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 - [ ] Import statistics logged
 - [ ] <0.1% failure rate
 - [ ] Output contract returned
-- [ ] Delivery Outcome completed (see `general.instructions.md`) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery phase completed — branch pushed, PR opened (not merged), tracker linked
 
 ---
 

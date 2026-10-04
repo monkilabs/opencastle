@@ -43,9 +43,9 @@ const actual = {
   skills: countDirEntries(join(orchestrator, 'skills'), () => true),
   plugins: countDirEntries(join(orchestrator, 'plugins'), (n) => !n.endsWith('.ts')),
   // README.md documents the directory for contributors; it is not a template,
-  // and no adapter installs it. shared-delivery-phase.md is installed, but it is
-  // the phase every template ends with, not a template of its own — counting it
-  // made the README say 9 while the template tables everywhere else list 8.
+  // and no adapter installs it. shared-delivery-phase.md is the phase every
+  // template ends with, compiled into each, not a template of its own — counting
+  // it made the README say 9 while the template tables everywhere else list 8.
   workflows: countDirEntries(
     join(orchestrator, 'agent-workflows'),
     (n) => n.endsWith('.md') && n !== 'README.md' && n !== 'shared-delivery-phase.md',

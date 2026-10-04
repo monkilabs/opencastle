@@ -87,7 +87,7 @@ Every follow-up, no matter how small, must pass these gates:
 
 ### 6. Delivery
 
-If tracked: follow **Delivery Outcome** in **git-workflow** skill — commit, push, open PR (not merged), tracker linked.
+If tracked: follow the **Delivery Checklist** in the **git-workflow** skill — commit, push, open PR (not merged), tracker linked.
 
 If untracked: commit to current branch; Team Lead includes in parent task's existing PR.
 
@@ -106,5 +106,5 @@ If untracked: commit to current branch; Team Lead includes in parent task's exis
 - [ ] Tracker issue created, moved to Done (if triage determined tracking was needed)
 - [ ] **Visual changes verified in Chrome with screenshot as proof**
 - [ ] Shared component changes tested across all consuming apps
-- [ ] Delivery Outcome completed if tracked (see **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery Checklist completed if tracked (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
 - [ ] Lessons learned captured, known issues updated if applicable

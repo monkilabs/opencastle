@@ -247,7 +247,9 @@ cycle is an error.
 
 Each template ends with the shared delivery phase
 ([`shared-delivery-phase.md`](src/orchestrator/agent-workflows/shared-delivery-phase.md)):
-commit, push, open a pull request, never merge.
+commit, push, open a pull request, never merge. It is written once and compiled
+into every template (`src/cli/adapters/workflows.ts`), so a template is whole
+wherever an assistant reads it; the phase is never installed on its own.
 
 ---
 

@@ -8,6 +8,7 @@ import { getAgentTransform } from '../stack-config.js'
 import { withSource, type CompileSource } from '../layers.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
 import { isOurVscodePrompt, legacyVscodePrompts, vscodePromptFile, withCommandName } from '../command-namespace.js'
+import { inlineSharedPhase, isWorkflowTemplate, readSharedPhase } from './workflows.js'
 
 /**
  * VS Code / GitHub Copilot adapter.
@@ -45,6 +46,7 @@ const FRAMEWORK_DIRS = [
  */
 function copyRulesFor(
   dir: string,
+  srcRoot: string,
   stack?: StackConfig,
 ): Pick<CopyDirOptions, 'filter' | 'transform' | 'rename'> {
   if (dir === 'agents') {
@@ -65,8 +67,13 @@ function copyRulesFor(
   }
   if (dir === 'agent-workflows') {
     // The directory's own README documents the templates for contributors; it is
-    // not one of them, and no other adapter installs it.
-    return { filter: (name) => name !== 'README.md' }
+    // not one of them, and no other adapter installs it. The shared delivery
+    // phase goes into each template, as it does for every other target.
+    const shared = readSharedPhase(srcRoot)
+    return {
+      filter: isWorkflowTemplate,
+      transform: (content) => inlineSharedPhase(content, shared),
+    }
   }
   return {}
 }
@@ -141,7 +148,7 @@ async function installFrom(
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    const sub = await copyDir(srcDir, destDir, copyRulesFor(dir, stack))
+    const sub = await copyDir(srcDir, destDir, copyRulesFor(dir, srcRoot, stack))
     mergeCopyResults(results, sub)
   }
 
@@ -214,7 +221,7 @@ async function updateFrom(src: CompileSource, projectRoot: string, stack: StackC
     if (!existsSync(srcDir)) continue
     const destDir = resolve(destRoot, dir)
 
-    const sub = await copyDir(srcDir, destDir, { overwrite: true, ...copyRulesFor(dir, stack) })
+    const sub = await copyDir(srcDir, destDir, { overwrite: true, ...copyRulesFor(dir, srcRoot, stack) })
     mergeCopyResults(results, sub)
     for (const abs of sub.visited ?? []) visited.add(abs)
   }

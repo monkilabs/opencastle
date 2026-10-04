@@ -18,7 +18,7 @@ Phase 5: Delivery                (direct, Team Lead)
 
 ## Branch & Delivery Strategy
 
-Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ownership** rules in `team-lead.agent.md`. Branch naming: `perf/<ticket-id>-<short-description>` or `feat/<ticket-id>-<short-description>`.
+The Team Lead creates the branch before any delegation and delivers it as the Delivery phase below describes. Branch naming: `perf/<ticket-id>-<short-description>` or `feat/<ticket-id>-<short-description>`.
 
 ---
 
@@ -38,7 +38,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 
 ### Key Pages to Measure
 
-> See `project.instructions.md` for the app inventory and key routes. Prioritize pages with the most traffic and the most complex rendering.
+> See `.opencastle/project.instructions.md` for the app inventory and key routes. Prioritize pages with the most traffic and the most complex rendering.
 
 ### Exit Criteria
 
@@ -116,7 +116,7 @@ Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ow
 - [ ] No functional regressions
 - [ ] Results documented in tracker issue
 - [ ] Roadmap updated
-- [ ] Delivery Outcome completed (see `general.instructions.md`) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery phase completed — branch pushed, PR opened (not merged), tracker linked
 
 ---
 

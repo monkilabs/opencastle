@@ -19,7 +19,7 @@ Phase 6: Delivery                (direct, Team Lead)
 
 ## Branch & Delivery Strategy
 
-Follow the **Delivery Outcome** in `general.instructions.md` and the **Branch Ownership** rules in `team-lead.agent.md`. Branch naming: `refactor/<ticket-id>-<short-description>`.
+The Team Lead creates the branch before any delegation and delivers it as the Delivery phase below describes. Branch naming: `refactor/<ticket-id>-<short-description>`.
 
 ---
 
@@ -133,7 +133,7 @@ The refactoring agent owns only the scoped files. No changes outside the partiti
 ### Exit Criteria
 
 - [ ] Panel PASS (2/3 majority)
-- [ ] Delivery Outcome completed (see `general.instructions.md`) — branch pushed, PR opened (not merged), tracker linked
+- [ ] Delivery phase completed — branch pushed, PR opened (not merged), tracker linked
 
 ---
 

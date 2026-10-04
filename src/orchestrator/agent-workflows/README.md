@@ -22,3 +22,5 @@ Declarative workflow templates for common orchestration patterns. Inspired by Sa
 | [Schema Changes](schema-changes.md) | CMS schema modifications, query updates, content model changes |
 | [Database Migration](database-migration.md) | Database migrations, RLS policies, type generation, rollback |
 | [Refactoring](refactoring.md) | Safe code refactoring with baseline metrics and behavior preservation |
+
+Every template ends by pointing at [the shared delivery phase](shared-delivery-phase.md). The compiler replaces that pointer with the phase itself, so each installed template is complete and the phase is not installed on its own.
