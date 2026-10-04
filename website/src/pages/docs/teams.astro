@@ -150,11 +150,12 @@ const explainOutput = `$ npx opencastle explain
   Layers  OpenCastle 1.0.0 → @acme/opencastle-baseline 1.5.0 → this project  (later layers add to and override earlier ones)
   Targets Claude Code, Cursor, VS Code, OpenCode
 
-  Always loaded — ~5580 tokens before every task: instructions ~1868, the skill and agent index ~3712
-    • ai-optimization ~450 tokens (OpenCastle)
-    • api-style ~15 tokens (@acme/opencastle-baseline)
-    • general ~1387 tokens (OpenCastle)
-    • security ~18 tokens (@acme/opencastle-baseline, required)
+  Always loaded — ~4259 tokens before every task: instructions ~1241, the skill and agent index ~3018
+    • ai-optimization ~217 tokens (OpenCastle)
+    • api-style ~14 tokens (@acme/opencastle-baseline)
+    • general ~802 tokens (OpenCastle)
+    • project-context ~189 tokens (this project)
+    • security ~21 tokens (@acme/opencastle-baseline, required)
     budget: 12000 tokens
 
   Skills — loaded when a task matches the description (37)
@@ -211,15 +212,15 @@ const explainOutput = `$ npx opencastle explain
 
 const doctorOutput = `$ npx opencastle doctor
   …
-  ✓ Team sources  extends @acme/opencastle-baseline@1.5.0; team content: 2 skills, 2 instructions; 3 team MCP server(s); MCP allowlist in force
-  ✓ Always-loaded context  ~5.6k tokens (instructions ~1.9k, skill and agent index ~3.7k); budget 12.0k (@acme/opencastle-baseline)
+  ✓ Team sources  extends @acme/opencastle-baseline@1.5.0; team content: 2 skills, 3 instructions; 3 team MCP server(s); MCP allowlist in force
+  ✓ Always-loaded context  ~4.3k tokens (instructions ~1.2k, skill and agent index ~3.0k); budget 12.0k (@acme/opencastle-baseline)
   ! Team instructions match this repository  skills/deploy-runbook runs "npm run deploy:prod", which package.json does not define; skills/deploy-runbook names \`src/deploy/config.ts\`, which does not exist
   ✓ OpenCastle version  1.0.0, the version that compiled this project
   …
 
 $ npx opencastle sync --check
 
-  ✓ 361 generated files match their sources across 4 targets.`;
+  ✓ 350 generated files match their sources across 4 targets.`;
 
 const refusedOutput = `  ✗ The team's sources have 2 problem(s); nothing was compiled.
 
@@ -249,7 +250,7 @@ Compared with \`origin/main\`. **3 change(s) marked ⚠️ deserve a careful loo
 
 **What every assistant reads**
 
-- ⚠️ New always-loaded instruction **api-style** from @acme/opencastle-baseline (~15 tokens, loaded on every request)
+- ⚠️ New always-loaded instruction **api-style** from @acme/opencastle-baseline (~14 tokens, loaded on every request)
 - skill **secure-coding** changed — @acme/opencastle-baseline
 
 **MCP servers**
@@ -263,14 +264,14 @@ Compared with \`origin/main\`. **3 change(s) marked ⚠️ deserve a careful loo
 
 **Context**
 
-- Every assistant loads ~5580 tokens before the task (was ~5565, +0%)`;
+- Every assistant loads ~4259 tokens before the task (was ~4245, +0%)`;
 
 const fleetOutput = `$ npx opencastle fleet shop admin
 
   🏰 Fleet — 2 repositories
 
-  • shop        opencastle 1.0.0  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~5580 tokens up front
-  • admin       opencastle 1.0.0  @acme/opencastle-baseline@1.4.0  4 target(s), 5 MCP server(s), ~5565 tokens up front
+  • shop        opencastle 1.0.0  @acme/opencastle-baseline@1.5.0  4 target(s), 6 MCP server(s), ~4259 tokens up front
+  • admin       opencastle 1.0.0  @acme/opencastle-baseline@1.4.0  4 target(s), 5 MCP server(s), ~4245 tokens up front
 
   opencastle: 1.0.0 (2) — all on one version
   @acme/opencastle-baseline: 1.4.0 (1), 1.5.0 (1) — 1 behind 1.5.0: admin
@@ -324,9 +325,9 @@ const lockExcerpt = `{
   ],
   "content": {
     …
-    "instructions/security": { "from": "@acme/opencastle-baseline", "sha": "eec78ee21df9", "tokens": 18 },
+    "instructions/security": { "from": "@acme/opencastle-baseline", "sha": "f0c859346f1e", "tokens": 21 },
     …
-    "skills/deploy-runbook": { "from": "project", "sha": "a30198f1e2ef",
+    "skills/deploy-runbook": { "from": "project", "sha": "396e1d08dd6a",
       "description": "How this shop deploys. Use when releasing, rolling back, or touching the deploy pipeline." },
     …
   },
@@ -349,7 +350,7 @@ const lockExcerpt = `{
     "require": ["instructions/security", "skills/secure-coding"],
     "contextBudget": 12000
   },
-  "context": { "tokens": 5580, "instructions": 1868, "index": 3712 }
+  "context": { "tokens": 4259, "instructions": 1241, "index": 3018 }
 }`;
 
 const codeowners = `# What every AI assistant is given (opencastle ci). A change to its instructions,
@@ -401,7 +402,7 @@ $ npx opencastle baseline check opencastle-baseline
   🏰 Baseline @acme/opencastle-baseline 0.1.0
 
   Contributes: 1 skills, 1 instructions
-  A repository extending it loads ~5293 tokens up front, with OpenCastle's own content
+  A repository extending it loads ~3844 tokens up front, with OpenCastle's own content
 
   ✓ Ready to publish.`;
 ---

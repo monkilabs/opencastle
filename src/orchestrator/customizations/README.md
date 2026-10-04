@@ -12,7 +12,7 @@ To change what the assistants are told, edit here — not the generated files.
 
 | Path | What it is |
 |------|------------|
-| `project.instructions.md` | The project: stack, structure, commands, routes, environment, and which skill covers which part. `init` wrote it from the code; correct it and add what the code cannot say |
+| `project.instructions.md` | The project: stack, structure, commands, routes, environment, and which skill covers which part. `init` wrote it from the code; correct it and add what the code cannot say. Every assistant always loads it, compiled by `sync` |
 | `stack/*.md` | Details the stack's skills read: the API's endpoints, the database's models and migrations, how tests and browser checks run, how it deploys |
 | `KNOWN-ISSUES.md` | Problems and accepted risks found while working, checked before starting a task |
 | `LESSONS-LEARNED.md` | Index of `lessons/`, one file per lesson, written by `opencastle lesson`. Rewritten by `sync`; never edit it by hand |
@@ -44,7 +44,10 @@ replaces it; `exclude` in `config.json` drops one.
 ## Keeping it current
 
 Update these files when the project changes — a new table, route, app or
-environment. A file's "Still to describe" list is what `init` could not read
+environment. `project.instructions.md` is compiled into what every assistant
+always loads, so run `npx opencastle sync` after editing it; until then the
+assistants have the old version and `sync --check` fails. The other files are
+read when a skill needs them, as they are. A file's "Still to describe" list is what `init` could not read
 from the code; `/oc:bootstrap-customizations` (in Claude Code or Copilot Chat;
 elsewhere, ask for the bootstrap-customizations prompt by name) has an agent fill
 it in.

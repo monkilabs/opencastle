@@ -19,7 +19,7 @@ agent: 'Team Lead (OpenCastle)'
 
 | File | Holds | Read by |
 |------|-------|---------|
-| `.opencastle/project.instructions.md` | Stack, structure, commands, routes, environment, domain → skill map | Every agent, before planning |
+| `.opencastle/project.instructions.md` | Stack, structure, commands, routes, environment, domain → skill map | Every session: compiled into what each assistant always loads |
 | `.opencastle/stack/api-config.md` | Endpoints, server actions, middleware, external APIs | `api-patterns` |
 | `.opencastle/stack/<database>-config.md` | Models, migrations, access rules | The database's skill |
 | `.opencastle/stack/<cms>-config.md` | IDs, document types, queries | The CMS's skill |
@@ -58,12 +58,16 @@ Where only a person can know the answer — a production URL, a team ID behind a
 - An ETL, scraping or import pipeline: create `stack/data-pipeline-config.md` — sources, commands, output format, key files.
 - In `agents/agent-registry.md`, keep the Deepen-Plan scopes to directories that exist.
 
+### 5. Compile
+
+Run `npx opencastle sync`. `project.instructions.md` is part of what every assistant always loads, and they get your changes only once it is compiled. The `stack/` and `project/` files are read when a skill needs them and need no sync.
+
 ## Rules
 
 - **Discover, don't assume.** Read the files; a Next.js app does not imply Supabase.
 - **Names, never values.** Environment variable names only; never read `.env`.
 - **Specific.** Real table names, endpoint paths and file paths — no placeholders, no empty tables.
-- **Short.** These files are read before planning; write what an agent needs to act, not a tour of the code.
+- **Short.** Every session loads `project.instructions.md` whole; write what an agent needs to act, not a tour of the code, and put detail in the `stack/` files.
 
 ## Output
 
