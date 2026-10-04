@@ -490,6 +490,17 @@ export function staleCitations(projectRoot: string, lessons: Lesson[]): StaleCit
 }
 
 /** The check `doctor` runs on a project's lessons. */
+/**
+ * What the index may cost before doctor suggests pruning it, in tokens.
+ *
+ * Agents read the index before every task, so each active lesson is paid for
+ * on every task, by every agent, whatever the task is. Around forty one-line
+ * entries reach this. Past it, the lessons that recur belong in the skill or
+ * instruction file they are about — read only by the agents that need them —
+ * which is what `archive --into` records.
+ */
+export const INDEX_BUDGET_TOKENS = 2000
+
 export function checkLessons(projectRoot: string): {
   ok: boolean
   label: string
@@ -531,6 +542,19 @@ export function checkLessons(projectRoot: string): {
       fix:
         `check that each still holds, then opencastle lesson verify ${ids[0]}${ids.length > 1 ? ' (and the others)' : ''} — ` +
         'with --cite <path> for a file that moved — or retire it with opencastle lesson archive <id> --into <file>',
+    }
+  }
+  // Active lessons only: archiving is the remedy, and it does not shrink the
+  // archived list. The lock's chars/4 estimate, inline, so this module stays
+  // free of the compiler.
+  const indexTokens = Math.ceil(renderIndex(active).length / 4)
+  if (indexTokens > INDEX_BUDGET_TOKENS) {
+    return {
+      ok: true,
+      warning: true,
+      label,
+      detail: `${active.length} active lessons, ~${indexTokens} tokens in the index agents read before every task`,
+      fix: 'merge the lessons that recur into the skill or instruction file they are about, then opencastle lesson archive <id> --into <file>',
     }
   }
   const cited = active.filter((l) => l.citations.length > 0).length
