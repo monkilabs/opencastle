@@ -33,7 +33,7 @@ The Team Lead creates the branch before any delegation and delivers it as the De
 ### Steps
 
 1. Read current CMS schema to understand existing types
-2. Check the data model documentation (see `docs-structure.md`) for field documentation
+2. Check the data model documentation (Key Documentation in `.opencastle/project.instructions.md`) for field documentation
 3. Check the query library (see CMS customization) for queries that will be affected
 4. Verify schema changes don't conflict with existing content in the CMS
 5. Document field mapping (new vs existing fields)

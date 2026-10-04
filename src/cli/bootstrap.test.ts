@@ -57,17 +57,19 @@ describe('bootstrapCustomizations', () => {
     }
     await bootstrapCustomizations(tempDir, info, STACK_EMPTY)
     const content = await readFile(join(tempDir, '.opencastle', 'project.instructions.md'), 'utf8')
-    expect(content).toContain('| Language | typescript |')
-    expect(content).toContain('| Framework | next |')
-    expect(content).toContain('| Testing | vitest |')
-    expect(content).toContain('| Deployment | vercel |')
-    // Empty placeholder row should be replaced
-    expect(content).not.toContain('| | | | |')
+    expect(content).toContain('TypeScript')
+    expect(content).toContain('| Framework | Next.js |')
+    expect(content).toContain('| Testing | Vitest |')
+    expect(content).toContain('| Deployment | Vercel |')
+    // Written from what was found: no empty rows, no TODO markers
+    expect(content).not.toMatch(/\|\s*\|\s*\|/)
+    expect(content).not.toContain('TODO')
   })
 
   // ── 2. Testing config ────────────────────────────────────────
 
   it('populates testing-config.md with test framework and config file', async () => {
+    await writeFile(join(tempDir, 'vitest.config.ts'), 'export default {}\n', 'utf8')
     const info: RepoInfo = {
       testing: ['vitest'],
       configFiles: ['vitest.config.ts'],
@@ -77,13 +79,14 @@ describe('bootstrapCustomizations', () => {
       join(tempDir, '.opencastle', 'stack', 'testing-config.md'),
       'utf8',
     )
-    expect(content).toContain('vitest')
+    expect(content).toContain('Vitest')
     expect(content).toContain('`vitest.config.ts`')
   })
 
   // ── 3. Deployment config ─────────────────────────────────────
 
   it('populates deployment-config.md with deployment platform and config file', async () => {
+    await writeFile(join(tempDir, 'vercel.json'), '{}\n', 'utf8')
     const info: RepoInfo = {
       deployment: ['vercel'],
       configFiles: ['vercel.json'],
@@ -93,7 +96,7 @@ describe('bootstrapCustomizations', () => {
       join(tempDir, '.opencastle', 'stack', 'deployment-config.md'),
       'utf8',
     )
-    expect(content).toContain('vercel')
+    expect(content).toContain('Vercel')
     expect(content).toContain('`vercel.json`')
   })
 
@@ -151,8 +154,7 @@ describe('bootstrapCustomizations', () => {
       join(tempDir, '.opencastle', 'project.instructions.md'),
       'utf8',
     )
-    expect(content).toContain('**Project:** my-cool-project')
-    expect(content).toContain('**Description:** A really cool project')
+    expect(content).toContain('**my-cool-project** — A really cool project')
   })
 
   // ── 8. Key commands from scripts ─────────────────────────────
@@ -171,9 +173,10 @@ describe('bootstrapCustomizations', () => {
       join(tempDir, '.opencastle', 'project.instructions.md'),
       'utf8',
     )
-    expect(content).toContain('pnpm run dev')
-    expect(content).toContain('pnpm run build')
-    expect(content).toContain('pnpm run test')
+    // pnpm runs any script by name
+    expect(content).toMatch(/^pnpm dev\s+# next dev$/m)
+    expect(content).toMatch(/^pnpm build\s+# next build$/m)
+    expect(content).toMatch(/^pnpm test\s+# vitest$/m)
   })
 
   // ── 9. Empty repoInfo ────────────────────────────────────────
@@ -184,12 +187,15 @@ describe('bootstrapCustomizations', () => {
     expect(result.populated).toBeInstanceOf(Array)
     expect(result.removed).toBeInstanceOf(Array)
     expect(result.renamed).toBeInstanceOf(Array)
-    // project.instructions.md should still exist and keep the empty row (no stack rows added)
+    // Nothing found means no section to fill, not an empty one: only what is
+    // left to describe.
     const content = await readFile(
       join(tempDir, '.opencastle', 'project.instructions.md'),
       'utf8',
     )
-    expect(content).toContain('| | | | |')
+    expect(content).not.toContain('## Tech Stack')
+    expect(content).not.toMatch(/\|\s*\|\s*\|/)
+    expect(content).toContain('## Still to describe')
   })
 
   // ── 10. Monorepo workspace listing ────────────────────────────
@@ -235,7 +241,7 @@ describe('bootstrapCustomizations', () => {
       join(tempDir, '.opencastle', 'stack', 'api-config.md'),
       'utf8',
     )
-    expect(content).toContain('Framework: next')
+    expect(content).toContain('Framework: Next.js')
     expect(result.populated).toContain('stack/api-config.md')
   })
 

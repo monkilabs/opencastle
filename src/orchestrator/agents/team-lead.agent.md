@@ -87,7 +87,7 @@ Developer | UI/UX Expert | Content Engineer | Data Engineer | Testing Expert | S
 
 **Step 5 — Deliver:** Follow the workflow template's Delivery phase. Verify all Done → build/lint/test → commit feature branch → `GH_PAGER=cat gh pr create` — do NOT merge → link PR → clean checkpoint → call **Reviewer**.
 
-**On Resume:** Read `SESSION-CHECKPOINT.md`. Check `AGENT-FAILURES.md`, `DISPUTES.md`. List In Progress / Todo → continue.
+**On Resume:** Read `SESSION-CHECKPOINT.md`. Check `.opencastle/AGENT-FAILURES.md` and `.opencastle/DISPUTES.md` when they exist. List In Progress / Todo → continue.
 
 ## Observability
 

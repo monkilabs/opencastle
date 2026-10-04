@@ -67,16 +67,16 @@ describe.skipIf(!cliBuilt)('init scans the project it initialises', () => {
   it('records the detected package manager and its commands', () => {
     run(projectRoot, 'init', '--yes')
     const text = instructions()
-    expect(text).toContain('**Package manager:** `pnpm`')
-    expect(text).toContain('pnpm run test')
+    expect(text).toContain('package manager `pnpm`')
+    expect(text).toMatch(/^pnpm test\s+#/m)
   })
 
   it('records what the repo is, not just what the template says', () => {
     run(projectRoot, 'init', '--yes')
     const text = instructions()
-    expect(text).toContain('**Project:** demo-app')
-    expect(text).toContain('**Description:** a demo app')
-    expect(text).toMatch(/\|\s*Package Manager\s*\|\s*pnpm\s*\|/)
+    expect(text).toContain('**demo-app** — a demo app')
+    expect(text).toContain('package manager `pnpm`')
+    expect(text).not.toContain('TODO')
   })
 
   it('leaves the user’s own notes alone when init is re-run', () => {

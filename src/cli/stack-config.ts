@@ -393,7 +393,7 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
       .filter((e): e is SkillMatrixEntry => e !== null);
 
     if (data.bindings[slotName]) {
-      // Merge, not replace. `skill-matrix.md` tells users "to switch tech, update
+      // Merge, not replace. `skill-matrix.md` told users "to switch tech, update
       // only the binding entries", and this ran on every sync, so the edit the
       // documentation asks for was erased by the next recompile — in the
       // directory the drift checker calls theirs.

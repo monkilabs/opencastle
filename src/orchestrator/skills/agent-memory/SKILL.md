@@ -7,9 +7,9 @@ description: "Creates, queries agent expertise profiles in AGENT-EXPERTISE.md; i
 
 ## Expertise File
 
-**Location:** `.opencastle/AGENT-EXPERTISE.md` — one section per agent with Strong Areas, Weak Areas, File Familiarity tables.
+**Location:** `.opencastle/AGENT-EXPERTISE.md`, created on the first update. One `## <Agent>` section per agent that has worked here, each with `### Strong Areas`, `### Weak Areas` and `### File Familiarity`; add the file, then the section, when they are missing.
 
-Entry format: `Area | Evidence | Last Updated` — e.g. `Server Components | Built TAS-42 | 2026-03-15`. File familiarity: `- src/lib/search/ — 3 tasks`.
+Entry format: `| Area | Evidence | Last Updated |` — e.g. `| Server Components | Built TAS-42 | 2026-03-15 |`. File familiarity: `- src/lib/search/ — 3 tasks`.
 
 ## Update Triggers
 
@@ -23,32 +23,23 @@ Entry format: `Area | Evidence | Last Updated` — e.g. `Server Components | Bui
 
 ## Retrieval & Delegation
 
-Query before delegating; include concise context block in prompt:
+Query before delegating — there is nothing to read until the file exists — and include a concise context block in the prompt:
 
 ```sh
-grep -A5 "## Developer" .opencastle/AGENT-EXPERTISE.md
+grep -A12 "^## Developer" .opencastle/AGENT-EXPERTISE.md 2>/dev/null
 ```
 
 Example prompt block: `Agent Context: Strong — Server Components (3 tasks); Weak — Component styling (2 retries); Familiar — src/lib/search/ (2 tasks)`
 
-**Update after task completion:**
+**After task completion,** edit the agent's section with your file-editing tool: add the row under the right table, or raise the task count on the familiarity line. Appending with `>>` puts the row at the end of the file, under whichever agent's section happens to be last.
 
-```bash
-# Append a Strong Area entry
-printf '| %s | %s | %s |\n' "Server Components" "Built TAS-42" "$(date +%Y-%m-%d)" >> .opencastle/AGENT-EXPERTISE.md
-
-# Increment file familiarity
-awk '/src\/lib\/search\// { if (match($0, /[0-9]+/)) { n = substr($0, RSTART, RLENGTH) + 1; sub(/[0-9]+[[:space:]]*tasks?/, n " tasks") } found=1 } {print} END { if(!found) print "- `src/lib/search/` — 1 task" }' \
-  .opencastle/AGENT-EXPERTISE.md > tmp && mv tmp .opencastle/AGENT-EXPERTISE.md
-```
-
-After each task also append file relationships to `.opencastle/KNOWLEDGE-GRAPH.md`. On DLQ failure, the Weak Area entry must carry the failure ID and a link to its logs.
+After each task also add file relationships to `.opencastle/KNOWLEDGE-GRAPH.md`, created the same way. On DLQ failure, the Weak Area entry must carry the failure ID and a link to its logs.
 
 ## Validation Checkpoints
 
 - Before delegating: chosen agent has a Strong area matching the task and no conflicting Weak entry.
 - After completion: expertise file has the new entry, timestamped today.
-- After pruning: `rg "— [0-9]+ tasks" .opencastle/AGENT-EXPERTISE.md` shows no stale paths.
+- After pruning: every path on a familiarity line still exists.
 
 ## Pruning
 

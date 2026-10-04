@@ -226,13 +226,13 @@ async function checkLogs(projectRoot: string): Promise<CheckResult> {
   const dir = resolve(projectRoot, '.opencastle', 'logs');
   if (!existsSync(dir)) {
     // A local run artefact, not part of the project, so a fresh clone has none —
-    // and calling that a failure made `doctor` exit 1 on every clone. `sync`
-    // creates it; until then "no runs yet" is the honest reading, not a fault.
+    // and calling that a failure made `doctor` exit 1 on every clone. The first
+    // `opencastle log` creates it; until then "none yet" is the honest reading,
+    // and not something to warn about on every new install.
     return {
       ok: true,
-      warning: true,
       label: 'Observability logs',
-      detail: 'no logs yet — created on the next sync',
+      detail: 'none yet — created when an agent first logs a session',
     };
   }
   // A diagnostic does not write. This used to create five empty `.ndjson` files

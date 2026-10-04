@@ -103,7 +103,7 @@ Prefix each agent's output summary `### [Agent Name] TAS-XX Description`. Never 
 
 ## Dead Letter Queue Format
 
-Log to `.opencastle/AGENT-FAILURES.md` when agent fails 2+ attempts, background output fails all gates, or unrecoverable error occurs. Panel 3x BLOCK → create dispute instead.
+Log to `.opencastle/AGENT-FAILURES.md` — create it on the first entry — when agent fails 2+ attempts, background output fails all gates, or unrecoverable error occurs. Panel 3x BLOCK → create dispute instead.
 
 Entry (`DLQ-XXX: Short description`): **Date**, **Agent**, **Tracker Issue**, **Failure Type** (`verification-fail` / `tool-error` / `panel-block` / `timeout` / `scope-creep`), **Attempts**, **Task**, **Failure Details**, **Resolution**. Scan DLQ for pending retries at session start.
 
@@ -115,7 +115,7 @@ For common failure modes, recovery procedures, load **orchestration-protocols** 
 
 Triggers: Panel 3× BLOCK, agent-reviewer disagreement, criteria contradictions, no convergence, needs human input.
 
-Create in `.opencastle/DISPUTES.md`:
+Create in `.opencastle/DISPUTES.md` (create the file on the first dispute). Entry (`DSP-XXX: Short description`): **Date**, **Priority** (`critical`/`high`/`medium`/`low`), **Tracker Issue**, **Trigger** (`panel-3x-block` / `approach-conflict` / `criteria-conflict` / `architectural-ambiguity` / `external-dependency`), **Implementing Agent**, **Reviewing Agent(s)**, **Attempts**, **Status** (`pending`/`resolved`/`deferred`); then Context, Agent's Position, Reviewer's Position, Attempt History (# · type · verdict · key feedback), 2–3 Resolution Options with rationale and risk, Recommended Action, Artifacts.
 1. Number (`DSP-XXX`), set priority, document both perspectives with file references
 2. Build attempt history; present ≥2 options with rationale/risk
 3. Link panel reports, DLQ entries, changed files
