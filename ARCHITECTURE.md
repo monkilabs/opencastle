@@ -115,9 +115,9 @@ src/orchestrator/
 └── customizations/  # Templates scaffolded into a project's .opencastle/
 ```
 
-**Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `react-development`, `security-hardening`, `testing-workflow`, `observability-logging`.
+**Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `security-hardening`, `testing-workflow`, `api-patterns`, `self-improvement`.
 
-**Always loaded** are the instructions: OpenCastle's two (`general`, `ai-optimization`),
+**Always loaded** are the instructions: OpenCastle's one (`general`),
 the team's own (`.opencastle/instructions/`), and the project's facts —
 `.opencastle/project.instructions.md`, which `init` writes from the code — compiled as
 the `project-context` instruction ([`layers.ts`](src/cli/layers.ts)), without its
@@ -258,14 +258,14 @@ cycle is an error.
 
 | Template | Flow |
 |----------|------|
-| `feature-implementation` | DB → Query → UI → Tests |
-| `bug-fix` | Triage → RCA → Fix → Verify |
-| `data-pipeline` | Scrape → Convert → Enrich → Import |
-| `security-audit` | Scope → Automate → Review → Remediate |
-| `performance-optimization` | Measure → Analyze → Optimize → Verify |
-| `schema-changes` | CMS model modifications and queries |
-| `database-migration` | Migrations, access policies, rollback |
-| `refactoring` | Safe refactoring with behavior preservation |
+| `database-migration` | Plan → migrate → types → integrate → verify policies |
+| `schema-changes` | CMS model changes, then the queries and pages that use them |
+| `data-pipeline` | Crawl → process → validate → import |
+| `performance-optimization` | Measure → find the bottleneck → optimize → measure again |
+| `refactoring` | Baseline → close coverage gaps → refactor → verify |
+| `security-audit` | Scope → automated checks → review → panel → fix |
+
+Feature work and bug fixes have prompts of their own (`implement-feature`, `bug-fix`), not templates.
 
 Each template ends with the shared delivery phase
 ([`shared-delivery-phase.md`](src/orchestrator/agent-workflows/shared-delivery-phase.md)):

@@ -124,7 +124,7 @@ describe('every compiled reference resolves', () => {
         expect(existsSync(folder), `${ide}: the Team Lead searches ${where}`).toBe(true)
 
         const templates = files.filter((f) => /workflow|agent-workflows/.test(relative(dir, f)) && /Workflow:/.test(readFileSync(f, 'utf8')))
-        expect(templates.length, `${ide} compiled no templates`).toBe(8)
+        expect(templates.length, `${ide} compiled no templates`).toBe(6)
         for (const t of templates) {
           expect(readFileSync(t, 'utf8'), `${relative(dir, t)} lacks the delivery phase`).toContain('**Do NOT merge**')
         }

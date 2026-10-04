@@ -18,13 +18,16 @@ Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 ## Rules — schema and migrations
 
 1. **Always write a migration.** Never modify a schema directly.
-2. **Every table gets a security policy.** No exceptions. Derive identity from
-   `auth.uid()`, never from a client-supplied user id.
+2. **Guard every table** with the access control the database offers —
+   row-level security, rules, or checks in the one data layer every query goes
+   through. Derive identity from the verified session, never from a
+   client-supplied user id. The database's own syntax is in its skill.
 3. **Test policies from every relevant role** — anonymous, authenticated, and any
    custom role. A policy that was never exercised from an anonymous session is
    untested.
-4. **Migrations must be re-runnable** — guard with `IF NOT EXISTS` and `IF EXISTS`.
-5. **Document the rollback** as reverse SQL, in the same change.
+4. **Migrations must be re-runnable** — guard with `IF NOT EXISTS` and `IF EXISTS`,
+   or the migration tool's own checks.
+5. **Document the rollback** — the reverse migration — in the same change.
 6. **Index what you query.** `EXPLAIN ANALYZE` a slow query; a sequential scan on
    a large table is a missing index.
 
@@ -57,6 +60,6 @@ production deployment
 
 1. **Migrations** — files and what each changes
 2. **Policies** — the access intent, and which roles were tested
-3. **Rollback** — the reverse SQL
+3. **Rollback** — the reverse migration
 4. **Data impact** — rows affected, records skipped and why
 5. **Verification** — apply results, test queries, pipeline counts

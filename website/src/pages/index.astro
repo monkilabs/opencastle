@@ -151,14 +151,12 @@ const workflowSources = import.meta.glob('../../../src/orchestrator/agent-workfl
   eager: true,
 }) as Record<string, string>;
 const workflowOrder = [
-  'feature-implementation',
-  'bug-fix',
-  'data-pipeline',
-  'security-audit',
-  'performance-optimization',
-  'schema-changes',
   'database-migration',
+  'schema-changes',
+  'data-pipeline',
+  'performance-optimization',
   'refactoring',
+  'security-audit',
 ];
 const workflows = Object.entries(workflowSources)
   .map(([path, text]) => ({
@@ -281,7 +279,7 @@ const integrations = Object.keys(integrationBlurbs).map((id) => ({
 const integrationCount = Object.keys(PLUGINS).length;
 // The skills in src/orchestrator/skills/ (website-plugins.test.ts counts them),
 // plus the one every integration ships.
-const coreSkillCount = 29;
+const coreSkillCount = 17;
 const skillCount = coreSkillCount + Object.values(PLUGINS).filter((p) => p.skillName).length;
 // Counted the way docs-accuracy.test.ts counts it: every Markdown file the
 // compiler ships, split on whitespace.
@@ -891,9 +889,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span style="opacity: 0.5">02</span> Deterministic Checks
             </h3>
             <p class="quality-card__description">
-              Lint, tests and build must pass with zero errors after every
-              delegation. A convoy runs your typecheck, lint, test and build
-              scripts on the merged result.
+              Your own lint, tests and build pass with zero errors before a
+              change is done. A convoy runs your typecheck, lint, test and
+              build scripts on the merged result.
             </p>
           </div>
           <div class="quality-card">
@@ -901,9 +899,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span style="opacity: 0.5">03</span> Blast Radius &amp; Dependencies
             </h3>
             <p class="quality-card__description">
-              Scope analysis flags unexpectedly large diffs and sensitive file
-              changes. New npm packages are audited for vulnerabilities,
-              licenses, and bundle size.
+              A change that grew past its task is caught and split. New
+              dependencies are audited for vulnerabilities, licences and
+              maintenance.
             </p>
           </div>
           <div class="quality-card">
@@ -932,9 +930,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span style="opacity: 0.5">06</span> Panel Majority Vote
             </h3>
             <p class="quality-card__description">
-              Three isolated reviewer sub-agents evaluate high-stakes changes.
-              2/3 majority wins. BLOCK items become fix requests, not stop
-              signals.
+              Three isolated reviewers check changes to auth, payments,
+              migrations and data deletion. The majority decides, and every
+              must-fix any one of them raises gets fixed.
             </p>
           </div>
           <div class="quality-card">
@@ -949,12 +947,12 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
           <div class="quality-card">
             <h3 class="quality-card__title">
-              <span style="opacity: 0.5">08</span> Structured Disputes
+              <span style="opacity: 0.5">08</span> A Person Decides
             </h3>
             <p class="quality-card__description">
-              When agents exhaust all automated resolution, formal dispute
-              records package both perspectives and resolution options —
-              giving humans clear action items.
+              A review that stays blocked stops the work: you get what blocks
+              it, with each side's evidence, instead of a third retry. A convoy
+              records it in <code>.opencastle/DISPUTES.md</code>.
             </p>
           </div>
         </div>

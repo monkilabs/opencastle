@@ -37,6 +37,6 @@ Load **security-hardening** skill for full CSP inventory and header configuratio
 
 ## Release & Rollback
 
-Gate a release on lint + test + build all exiting 0 and no draft PRs, then semver-tag with a changelog in the **documentation-standards** format. Verify with `curl -sI https://example.com | grep -E 'HTTP|Strict'` — homepage 200, headers correct.
+Gate a release on lint + test + build all exiting 0 and no draft PRs, then semver-tag with a changelog in the **technical-writing** format. Verify with `curl -sI https://example.com | grep -E 'HTTP|Strict'` — homepage 200, headers correct.
 
 A failed release gets rolled back immediately, not patched forward: the platform's instant rollback (e.g. Vercel or Netlify, promote the last good deploy) first, then a revert PR (`git revert`, on a branch) so `main` matches what runs. Re-run the `curl -sI` check before calling it resolved.

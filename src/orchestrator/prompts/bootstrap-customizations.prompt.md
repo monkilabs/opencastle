@@ -24,7 +24,7 @@ Anything the user gave with this command is context for it: what to focus on, or
 | `.opencastle/stack/testing-config.md` | Test frameworks, files, browser checks, breakpoints | `testing-workflow`, `browser-testing` |
 | `.opencastle/stack/deployment-config.md` | Platform, config, CI, environments | `deployment-infrastructure` and the platform's skill |
 | `.opencastle/project/<tracker>-config.md` | Team and project IDs, workflow states, labels | The tracker's skill |
-| `.opencastle/agents/agent-registry.md` | Which agent is for what; Deepen-Plan scopes | `team-lead-reference` |
+| `.opencastle/agents/agent-registry.md` | Which agent is for what; research scopes | The Team Lead |
 
 `.opencastle/manifest.json` records what init detected (`repoInfo`) and the integrations installed (`stack`); `npx opencastle explain` lists the skills compiled for this project.
 
@@ -54,7 +54,7 @@ Where only a person can know the answer — a production URL, a team ID behind a
 
 - A tracker in use with no `project/<tracker>-config.md`: create it.
 - An ETL, scraping or import pipeline: create `stack/data-pipeline-config.md` — sources, commands, output format, key files.
-- In `agents/agent-registry.md`, keep the Deepen-Plan scopes to directories that exist.
+- In `agents/agent-registry.md`, keep the research scopes to directories that exist.
 
 ### 5. Compile
 

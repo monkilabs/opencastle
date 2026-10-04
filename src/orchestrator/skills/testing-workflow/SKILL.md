@@ -1,37 +1,35 @@
 ---
 name: testing-workflow
-description: "Plans tests, writes unit, integration and E2E tests, finds coverage gaps and flags testing anti-patterns. Use when writing or planning tests, mocking dependencies, or checking coverage."
+description: "How to test a change: test first, what to cover, what to mock, and the anti-patterns that let tests pass without proving anything. Use when writing or planning tests, mocking a dependency, fixing a flaky test, or checking coverage."
 ---
 
 # Testing Workflow
 
-**Mandatory:** test in a real browser via the **e2e-testing** capability slot before marking any feature complete, including every project-defined responsive breakpoint (**validation-gates** Gate 7, **browser-testing** skill).
+The project's test runner, its config and its commands are in the Project Context (Key Commands) and the skill bound to the **testing** slot; browser and E2E tests, in the skill bound to **e2e-testing**, and **browser-testing**.
 
-## E2E Context Limits
+## Test first
 
-| Rule | Detail |
-|------|--------|
-| One suite per session | never run all suites in one conversation |
-| Max 3 screenshots | per session |
-| `evaluate_script()` over `take_snapshot()` | returns less data |
-| Reload between flows | clears state |
-| Report results | in the session output: suite, pass/fail counts, failures with their evidence |
+1. Write the test for the behaviour you are about to add or fix, and watch it fail, for the reason you expect. A test that has never failed proves nothing.
+2. Write the least code that makes it pass.
+3. Clean up with the test green.
 
-Suite files and project test config: `.opencastle/project.instructions.md`.
+A bug fix starts with a test that reproduces the bug.
 
-## Coverage
+## What to cover
 
-| Layer | Minimum |
-|-------|---------|
-| Unit (functions, components, hooks) | the threshold in the project's test config |
-| Integration (boundaries, URL sync) | all boundaries |
-| E2E (journeys, interactions, errors) | all critical paths |
+- **Behaviour, not implementation:** inputs and outputs, what the user sees, what is stored. A refactor that keeps the behaviour keeps the tests green.
+- **Past the happy path:** empty results, the boundaries, invalid input, a failing network or dependency, the same action twice.
+- **That interactions change something:** assert that a control changes the result — not only that it renders — and assert the values, not a screenshot.
+- **Coverage** at the threshold in the project's test config; integration tests at each boundary (API, database, URL state); E2E tests on the critical journeys.
 
-Verify with the project's own test and coverage commands (Key Commands in `.opencastle/project.instructions.md`).
+## Mocks
 
-## Anti-Patterns
+Mock what you do not own — external APIs, the clock, randomness — at the boundary. Never mock the module under test, and never assert on a mock's own behaviour: that tests the mock.
 
-- Testing only initial page load — exercise state/filter changes and confirm results actually differ.
-- Assuming a control works because it renders — verify each option changes results and triggers a server request.
-- Single scenario — cover empty results, min/max boundaries, invalid input, network errors.
-- Visual inspection only — assert data values and URL parameters programmatically.
+## Flaky tests
+
+No `sleep`: wait for the condition (`waitFor`, an assertion that polls). Reset state between tests. A test that fails one run in ten is a bug — fix it or delete it; never retry it into green.
+
+## E2E in an agent session
+
+One suite per session, at most three screenshots, a reload between flows, and the results in your answer: the suite, the counts, and each failure with its evidence.

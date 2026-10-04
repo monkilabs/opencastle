@@ -26,7 +26,7 @@ Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 
 ## Multi-Page Convoy Consistency
 
-**Foundation task** creates the design tokens, shared layout, and UI component library — those choices are the project contract. **Page tasks** import from the foundation and add no new tokens, layouts, or design values. Load **project-consistency**.
+**Foundation task** creates the design tokens, shared layout, and UI component library — those choices are the project contract. **Page tasks** import from the foundation and add no new tokens, layouts, or design values (**frontend-design**).
 
 ## Verification
 

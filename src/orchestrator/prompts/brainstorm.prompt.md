@@ -83,7 +83,7 @@ Include this in the Brainstorm Report, so the plan starts from it.
 
 ### 6. Output
 
-Summarize the brainstorm as **Brainstorm Report** — becomes input for planning/decomposition phase:
+Summarize the brainstorm as a **Brainstorm Report**, the input for planning:
 
 ```markdown
 ## Brainstorm Report: [Title]

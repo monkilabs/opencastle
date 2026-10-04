@@ -16,14 +16,15 @@ Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 
 ## Rules
 
-1. **Run `get_schema` before writing any query.** Trust local schema files over the remote schema.
-2. **Check whether a field is an array** before projecting it.
+The CMS's own syntax, tools and gotchas are in the skill bound to the **cms** slot.
+
+1. **Read the schema before writing a query** — the schema files in the repository, or the CMS's schema tool; trust the local files over the remote.
+2. **Check whether a field is a list** before projecting it.
 3. **Queries live in the shared query library**, never inline in components. Document non-obvious filters inline.
-4. **Exclude drafts** with `!(_id in path("drafts.**"))`. A query returning `null` for content you know exists is almost always this filter missing. Drafts carry a `drafts.` ID prefix — never mix draft and published content in one result.
-5. **Validate queries in the Vision tool before deploying**, and run `sanity schema validate` for schema changes — a failed deploy is usually a circular reference or a missing `type` field.
-6. **Renaming or removing a field breaks backward compat** unless a migration ships with it. During a rename, project the old field: `| { "newName": oldName }`.
-7. **New API endpoints belong to Developer** — hand off rather than adding routes.
-8. `defineType` / `defineField` for schema; `references()` for relational fields.
+4. **Never mix draft and published content** in one result. A query that returns nothing for content you know exists is usually missing the draft filter.
+5. **Validate a query against real content, and a schema change with the CMS's own check, before deploying.**
+6. **Renaming or removing a field breaks backward compatibility** unless a migration ships with it. During a rename, serve the old field under the new name.
+7. **New API endpoints belong to the Developer** — hand off rather than adding routes.
 
 ## Verification
 

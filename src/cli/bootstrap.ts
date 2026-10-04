@@ -324,7 +324,7 @@ function renderDeploymentConfig(facts: ProjectFacts, info: RepoInfo): string {
   )
 }
 
-/** The Deepen-Plan scopes in the agent registry, with this project's directories. */
+/** The research scopes in the agent registry, with this project's directories. */
 async function fillAgentRegistry(opencastleDir: string, facts: ProjectFacts, result: BootstrapResult): Promise<void> {
   const path = join(opencastleDir, 'agents', 'agent-registry.md')
   if (!existsSync(path)) return

@@ -32,7 +32,7 @@ You coordinate work that spans several areas — API, UI, data, tests, infrastru
 
 ## Plan
 
-1. **Understand** the goal and what done means: the Project Context, `.opencastle/LESSONS-LEARNED.md`, `.opencastle/KNOWN-ISSUES.md`, and the code involved. Unclear, and costly to guess: ask. A kind of work with a template — a migration, a refactor, a security audit, a performance pass: Search `.github/agent-workflows/` and follow it.
+1. **Understand** the goal and what done means: the Project Context, `.opencastle/LESSONS-LEARNED.md`, `.opencastle/KNOWN-ISSUES.md`, and the code involved. Unclear, and costly to guess: ask. A kind of work with a template — a migration, a refactor, a security audit, a performance pass: Search `.github/agent-workflows/` and follow it. A large plan: first send a Researcher to each area, in parallel, with the research scopes in the agent registry.
 2. **Split** the work into tasks with one owner each, and give every task the files it may change. Two tasks that run at the same time never share a file.
 3. **Order** them by dependency: shared types and schema first, then the API, then the UI; tests go with each task, not after all of them.
 4. **Show** a large or risky plan to the user before you start.

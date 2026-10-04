@@ -1,72 +1,47 @@
 ---
 name: self-improvement
-description: "Records, searches and re-verifies lessons in .opencastle/lessons/ with the opencastle lesson CLI. Use when a retry succeeds or a task fails, before work past lessons may cover, or when doctor reports a lesson's cited code changed."
+description: "Records, searches, re-verifies and graduates lessons in .opencastle/lessons/ with npx opencastle lesson. Use when a retry succeeds or a task fails, before work past lessons may cover, when doctor reports a lesson's cited code changed, or when the lessons index grows long."
 ---
 
-# Self-Improvement Protocol
+# Self-Improvement
 
-## Core Rule
+When a retry with a different approach works, record what you learned before you move on. A lesson is a file in `.opencastle/lessons/`; `.opencastle/LESSONS-LEARNED.md` is the index every agent reads first, rewritten from those files by every sync — never edit it by hand.
 
-**Retry with different approach and it works → record a lesson immediately.** Lessons live in `.opencastle/lessons/`, one Markdown file each; `.opencastle/LESSONS-LEARNED.md` is the index of them every agent reads first.
-
-## Writing a Lesson
-
-> **⛔ HARD GATE — Use the CLI. Never write in `LESSONS-LEARNED.md`: it is rewritten from `lessons/` by every sync.**
+## Record a lesson
 
 ```sh
-opencastle lesson --title "Short descriptive title" --category general --severity high \
+npx opencastle lesson --title "Short descriptive title" --category terminal --severity high \
   --problem "What was observed" --wrong "Failing approach" --correct "Working solution" \
   --why "Root cause" --cite src/lib/payments.ts:42
 ```
 
-Required: `--title`, `--category`, `--severity`, `--problem` · Optional: `--wrong`, `--correct`, `--why`, `--cite` (repeatable)
+- Required: `--title`, `--category`, `--severity`, `--problem`. Fill `--wrong` and `--correct` too: the contrast is what makes a lesson usable. The categories, and when each applies: [LESSON-CATEGORIES.md](LESSON-CATEGORIES.md).
+- `--cite` the code the lesson is about. When that code changes, `doctor` says the lesson may no longer hold.
+- Exact error messages and commands, in code blocks. Never a token, key or password: describe it instead ("the Stripe test key in `.env`").
+- One lesson per command. It prints the new id, and refuses a lesson holding a credential or citing a file that does not exist.
+- A lesson that shows a gap in a skill or an instruction file: fix that file too.
 
-`--cite` names the code the lesson is about, relative to the project root. When that code changes, `doctor` says the lesson may no longer hold — cite whenever the lesson is about a specific file.
-
-The command prints the new lesson's id (`2026-10-02-short-descriptive-title`). It refuses a lesson that would commit a credential, and a citation that does not exist.
-
-After writing: if the lesson reveals a gap in a skill or instruction file, update that file too (prevents the pitfall at source).
-
-## Workflow
-
-1. Search past lessons for matching entries or similar errors (below).
-2. Attempt task with conservative flags/options informed by lessons.
-3. On failure: retry with modified approach (up to threshold); capture error details, context.
-4. On success: run `opencastle lesson` to record the working approach.
-5. Verify: the command printed an id, and `.opencastle/lessons/<id>.md` holds the title, category and severity you gave. If malformed → fix the flags and run it again, then delete the bad file.
-6. If the lesson indicates a needed skill/instruction update: draft the change; propose a PR.
-
-Search the lessons themselves, not the index — the index has titles only:
+Search the lessons themselves first — the index has titles only — so you do not record one twice:
 
 ```bash
 rg -i "CRON_SECRET" .opencastle/lessons/ || true
 ```
 
-## When code a lesson cites has changed
+## When cited code has changed
 
-`doctor` names it: `<id> cites <file>, which has changed since it was verified`. Read the lesson against the code now:
+`doctor` names it: `<id> cites <file>, which has changed since it was verified`. Read the lesson against the code:
 
 | Still true? | Run |
 |-------------|-----|
-| Yes, file unchanged in substance | `opencastle lesson verify <id>` |
-| Yes, but the code moved | `opencastle lesson verify <id> --cite <new/path.ts>` |
-| No longer applies | `opencastle lesson archive <id> --into <file that now covers it>` |
+| Yes | `npx opencastle lesson verify <id>` |
+| Yes, but the code moved | `npx opencastle lesson verify <id> --cite <new/path.ts>` |
+| No longer | `npx opencastle lesson archive <id> --into <file that now covers it>` |
 
-## Categories & Severity
+## Graduate lessons
 
-Valid `--category` and `--severity` values: [LESSON-CATEGORIES.md](LESSON-CATEGORIES.md).
+Every agent reads every active lesson before every task, so a lesson that has proven itself belongs in the skill or instruction file it is about, where only the agents that need it read it. `doctor` warns when the index passes about 2,000 tokens. Candidates: older than 60 days and still true, a problem two lessons describe, or `severity: high`.
 
-## Quality Rules
+1. Rewrite it as a rule or an example in that file, beside the rules it belongs with — a rule, not an incident report, and no new file.
+2. `npx opencastle lesson archive <id> --into <that file>`. The lesson keeps its file and moves to the index's Archived section; never delete one.
 
-- Include exact error messages, commands, tool parameters
-- Always fill both `--wrong` and `--correct` — the contrast is what makes the lesson usable
-- One lesson per command; code blocks mandatory for commands
-- Never paste a token, key or password — describe it ("the Stripe test key in `.env`")
-
-## Anti-Patterns
-
-Never duplicate an existing lesson · Never defer recording to end of session · Never edit `LESSONS-LEARNED.md` by hand
-
-## Agent Memory
-
-For expertise tracking, cross-session knowledge graphs, load **agent-memory** skill.
+Resolve two lessons that contradict each other before you merge either.

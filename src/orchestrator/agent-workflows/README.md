@@ -2,25 +2,17 @@
 
 # Workflow Templates
 
-Declarative workflow templates for common orchestration patterns. Inspired by Sandcastle's YAML workflow engine, these templates provide reproducible execution plans that the Team Lead and prompts can reference.
+Templates for recurring kinds of work that need more than the prompts give them: the steps, who does each, and what to check. The Team Lead follows one when a task matches it; in Claude Code each is also a `/oc:workflow-<name>` command.
 
-## How to Use
+| Template | For |
+|----------|-----|
+| [Database Migration](database-migration.md) | Schema, access-policy and data migrations |
+| [CMS Schema Changes](schema-changes.md) | Content-model changes, and the queries and pages that use them |
+| [Data Pipeline](data-pipeline.md) | Crawl → process → validate → import |
+| [Performance Optimization](performance-optimization.md) | Measure → find the bottleneck → optimize → measure again |
+| [Refactoring](refactoring.md) | Changing code without changing behaviour |
+| [Security Audit](security-audit.md) | A security review, and fixing what it finds |
 
-1. **Reference in prompts** — When delegating, cite the relevant template and phase
-2. **Customize per task** — Templates define the structure; fill in specific files, agents, and criteria
-3. **Track progress** — Use the phase structure to update session checkpoints
-
-## Available Templates
-
-| Template | Use Case |
-|----------|----------|
-| [Feature Implementation](feature-implementation.md) | Multi-layer features spanning DB → Query → UI → Tests |
-| [Bug Fix](bug-fix.md) | Triage → RCA → Fix → Verify workflow |
-| [Data Pipeline](data-pipeline.md) | Scrape → Convert → Enrich → Validate → Import |
-| [Security Audit](security-audit.md) | Comprehensive security review workflow |
-| [Performance Optimization](performance-optimization.md) | Measure → Analyze → Optimize → Verify |
-| [Schema Changes](schema-changes.md) | CMS schema modifications, query updates, content model changes |
-| [Database Migration](database-migration.md) | Database migrations, RLS policies, type generation, rollback |
-| [Refactoring](refactoring.md) | Safe code refactoring with baseline metrics and behavior preservation |
+Feature work and bug fixes have prompts of their own: `implement-feature` and `bug-fix`.
 
 Every template ends by pointing at [the shared delivery phase](shared-delivery-phase.md). The compiler replaces that pointer with the phase itself, so each installed template is complete and the phase is not installed on its own.

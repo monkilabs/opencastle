@@ -1,6 +1,6 @@
 ---
 name: technical-writing
-description: "Standard for technical prose in four layers: Diataxis document modes, Google developer style, Simplified Technical English and Global English. Use when writing or reviewing docs, RFCs, README files, PR descriptions or commit messages."
+description: "Standard for technical prose in four layers: Diataxis document modes, Google developer style, Simplified Technical English and Global English, with templates for ADRs, changelogs and known issues. Use when writing or reviewing docs, RFCs, README files, ADRs, changelog entries, PR descriptions or commit messages."
 ---
 
 # Technical Writing
@@ -8,6 +8,8 @@ description: "Standard for technical prose in four layers: Diataxis document mod
 The goal is writing a tired engineer understands on the first read. Four layers get you there, one question each: what kind of document is this, how do sentences address the reader, how much does each sentence carry, and can any sentence be read two ways. Apply all four, then run the **unslop** skill over the result.
 
 Word-level cuts (filler, fancy synonyms, passive voice, hedging, AI vocabulary) are **unslop**'s job. One rule sits above the layers: **when a rule makes a sentence worse, fix it another way or leave it alone.** A sentence that follows every rule and sounds machine written has failed.
+
+Templates for an ADR, a changelog entry, a known issue and a Mermaid diagram: [TEMPLATES.md](TEMPLATES.md).
 
 The codebase is the word list. Write the real symbol, file, flag, or command name, never a synonym or a description of it. Do not invent jargon; use the words a developer says out loud.
 

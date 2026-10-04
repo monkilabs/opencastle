@@ -117,7 +117,7 @@ describe('Claude Code: /oc:<name>', () => {
     }
     expect(readFileSync(join(project, '.claude/commands/oc/release.md'), 'utf8')).toContain('RELEASE-PROMPT')
     expect(existsSync(join(project, '.claude/commands/oc/bug-fix.md'))).toBe(true)
-    expect(existsSync(join(project, '.claude/commands/oc/workflow-bug-fix.md'))).toBe(true)
+    expect(existsSync(join(project, '.claude/commands/oc/workflow-refactoring.md'))).toBe(true)
   })
 
   it('gives each command the one line Claude Code lists beside it, and nothing else', async () => {
@@ -135,8 +135,8 @@ describe('Claude Code: /oc:<name>', () => {
     expect(release.startsWith('---\ndescription: "Cut a release"\n---\n')).toBe(true)
     expect(release).not.toContain('agent:')
     // A workflow has no frontmatter; its heading is the description.
-    expect(readFileSync(join(project, '.claude/commands/oc/workflow-bug-fix.md'), 'utf8')).toMatch(
-      /^---\ndescription: "Workflow: Bug Fix"\n---\n/,
+    expect(readFileSync(join(project, '.claude/commands/oc/workflow-refactoring.md'), 'utf8')).toMatch(
+      /^---\ndescription: "Workflow: Refactoring"\n---\n/,
     )
   })
 
