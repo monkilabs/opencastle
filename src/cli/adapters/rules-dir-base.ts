@@ -63,6 +63,15 @@ export interface RulesDirConfig {
   skillsDir: string
   /** The project MCP config, when it is not `<configDir>/mcp.json`. */
   mcpConfigPath?: string
+  /**
+   * Root files this assistant also applies to every conversation, and the
+   * targets that write them. With one of those selected the instructions are
+   * already in context through that file, so they are not written as rules as
+   * well: Cursor always applies `CLAUDE.md` and reads `AGENTS.md`, and with
+   * Claude Code, Codex or OpenCode also selected it loaded every instruction
+   * twice.
+   */
+  alsoReads?: Array<{ rootFile: string; writtenBy: IdeChoice[] }>
 }
 
 export interface RulesDirAdapter {
@@ -71,7 +80,7 @@ export interface RulesDirAdapter {
   install(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo, source?: CompileSource): Promise<CopyResults>
   update(pkgRoot: string, projectRoot: string, stack?: StackConfig, repoInfo?: RepoInfo, source?: CompileSource): Promise<CopyResults>
   getManagedPaths(): ManagedPaths
-  getDoctorChecks(): DoctorCheck[]
+  getDoctorChecks(_ides?: readonly IdeChoice[]): DoctorCheck[]
 }
 
 /**
@@ -111,13 +120,23 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
   const rulesPrefix = `${configDir}/rules`
   const mcpPath = config.mcpConfigPath ?? `${configDir}/mcp.json`
 
-  const rootIntro = [
-    '# Project Instructions',
-    '',
-    `All conventions, architecture, and project context live in \`${rulesPrefix}/\`. Read those files before making changes. ` +
-      `Skills are in \`${config.skillsDir}/\` — load one when a task matches its description.`,
-    '',
-  ].join('\n')
+  /** The root file that already carries the instructions, when a target that writes it is selected. */
+  function sharedRootFile(ides: readonly IdeChoice[] | undefined): string | null {
+    return config.alsoReads?.find((r) => ides?.some((i) => r.writtenBy.includes(i)))?.rootFile ?? null
+  }
+
+  function rootIntro(shared: string | null): string {
+    const instructions = shared
+      ? `This project's instructions are in \`${shared}\`, which ${ideLabel} also applies to every conversation — ` +
+        `they are not repeated here, so they load once. Agents, workflows and prompts are in \`${rulesPrefix}/\`. `
+      : `All conventions, architecture, and project context live in \`${rulesPrefix}/\`. Read those files before making changes. `
+    return [
+      '# Project Instructions',
+      '',
+      instructions + `Skills are in \`${config.skillsDir}/\` — load one when a task matches its description.`,
+      '',
+    ].join('\n')
+  }
 
   /** Strip the source file's compound extension and apply the IDE's own. */
   function ruleName(name: string): string {
@@ -288,16 +307,17 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
 
     // Merged, not skipped: a project that already has a rules file keeps it and
     // gains the generated pointer in a managed block below.
+    const shared = sharedRootFile(stack?.ides)
     const rootFile = resolve(projectRoot, rootRulesFile)
     {
-      const merge = await writeManagedBlock(rootFile, rootIntro)
+      const merge = await writeManagedBlock(rootFile, rootIntro(shared))
       recordMerge(results, rootFile, merge)
     }
 
     const rulesRoot = resolve(projectRoot, configDir, 'rules')
     await mkdir(rulesRoot, { recursive: true })
 
-    await convertDir(srcRoot, 'instructions', rulesRoot, results, { alwaysApply: true })
+    if (!shared) await convertDir(srcRoot, 'instructions', rulesRoot, results, { alwaysApply: true })
     await convertDir(srcRoot, 'agents', resolve(rulesRoot, 'agents'), results, agentOptions)
     await copySkills(srcRoot, projectRoot, results, false)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, workflowOptions(srcRoot))
@@ -318,15 +338,16 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     _repoInfo?: RepoInfo,
     source?: CompileSource,
   ): Promise<CopyResults> {
-    return withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot))
+    return withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot, stack))
   }
 
-  async function updateFrom(src: CompileSource, projectRoot: string): Promise<CopyResults> {
+  async function updateFrom(src: CompileSource, projectRoot: string, stack: StackConfig | undefined): Promise<CopyResults> {
     const srcRoot = src.root
     const results: CopyResults = { copied: [], skipped: [], created: [] }
 
+    const shared = sharedRootFile(stack?.ides)
     const rootPath = resolve(projectRoot, rootRulesFile)
-    const rootMerge = await writeManagedBlock(rootPath, rootIntro)
+    const rootMerge = await writeManagedBlock(rootPath, rootIntro(shared))
     // `unchanged` is not an update; counting it inflated the total by one on
     // every sync, on the same counter the recompilation bug had already made
     // meaningless.
@@ -348,10 +369,14 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
       for (const rel of filesUnderDir(root)) beforeSweep.set(resolve(root, rel), `${label}/${rel}`)
     }
 
-    await convertDir(srcRoot, 'instructions', rulesRoot, results, {
-      alwaysApply: true,
-      overwrite: true,
-    })
+    // Not written where a shared root file carries them: the sweep below then
+    // removes the copies an earlier sync wrote.
+    if (!shared) {
+      await convertDir(srcRoot, 'instructions', rulesRoot, results, {
+        alwaysApply: true,
+        overwrite: true,
+      })
+    }
     await convertDir(srcRoot, 'agents', resolve(rulesRoot, 'agents'), results, { ...agentOptions, overwrite: true })
     await copySkills(srcRoot, projectRoot, results, true)
     await convertDir(srcRoot, 'agent-workflows', resolve(rulesRoot, 'agent-workflows'), results, {
@@ -415,10 +440,13 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     }
   }
 
-  function getDoctorChecks(): DoctorCheck[] {
+  function getDoctorChecks(ides?: readonly IdeChoice[]): DoctorCheck[] {
+    const shared = sharedRootFile(ides)
     return [
       { label: `${ideLabel} rules file`, path: rootRulesFile, type: 'file' },
-      { label: 'Instruction rules', path: `${rulesPrefix}/`, type: 'dir', countContents: true, countFilter: ruleExt },
+      shared
+        ? { label: `Instructions (in ${shared})`, path: shared, type: 'file' }
+        : { label: 'Instruction rules', path: `${rulesPrefix}/`, type: 'dir', countContents: true, countFilter: ruleExt },
       { label: 'Agent rules', path: `${rulesPrefix}/agents/`, type: 'dir', countContents: true, countFilter: ruleExt },
       { label: 'Skills directory', path: `${config.skillsDir}/`, type: 'dir', countContents: true },
       { label: 'Workflow rules', path: `${rulesPrefix}/agent-workflows/`, type: 'dir', countContents: true },
