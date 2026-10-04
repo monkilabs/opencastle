@@ -400,6 +400,15 @@ project's instructions ask for an edit there — and ends with the task's own pa
 before it produced, and any note from a failed attempt. Runtimes with a prompt
 cache can reuse the shared part ([`isolation.ts`](src/cli/convoy/isolation.ts)).
 
+A worker reports a lesson or a bug outside its task on a line of its own,
+`[LESSON <category>] <what to do> — <why>` or `[ISSUE] <where>: <what>`. When
+the run ends, the engine reads them back from each finished task's stored
+answer, so a resumed run has them all. Each lesson becomes a file in
+`.opencastle/lessons/`, committed on the run's branch with the index, and is
+reviewed and merged with the work; one the project already has is skipped, and
+one that looks like it holds a credential is dropped. Issues are printed in the
+run's summary ([`findings.ts`](src/cli/convoy/findings.ts)).
+
 ### Worktrees and merging
 
 Every worktree lives directly under `.opencastle/worktrees/`, with a short name,

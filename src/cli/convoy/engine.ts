@@ -16,11 +16,13 @@ import {
   worktreesDirFor,
   workerBranchName,
   commitAllIn,
+  commitPathsIn,
   git,
   BranchInUseError,
   type WorktreeManager,
 } from './worktree.js'
 import { createMergeQueue, MergeConflictError, type MergeQueue } from './merge.js'
+import { collectFindings, recordLessons, LESSON_PATHS, type ReportedIssue, type ReportedLesson } from './findings.js'
 import type {
   TaskRecord, ConvoyStatus, ConvoyTaskStatus, GuardConfig, CircuitBreakerConfig, TaskStep, Hook,
   TaskOutput, TaskInput, TDDGateConfig,
@@ -121,6 +123,14 @@ export interface ConvoyResult {
   logPath?: string
   /** Worker branches kept because their work could not be merged. */
   keptBranches?: Array<{ taskId: string; branch: string }>
+  /** What finished tasks reported outside their work. */
+  findings?: {
+    /** Lessons written to the branch, as `.opencastle/lessons/<id>.md`. */
+    recorded: Array<{ id: string; title: string }>
+    /** Lessons there was no `.opencastle/` or no git checkout to write to. */
+    unrecorded: ReportedLesson[]
+    issues: ReportedIssue[]
+  }
 }
 
 export interface ConvoyEngine {
@@ -2008,6 +2018,24 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     }
   }
 
+  // ── What workers found outside their tasks ───────────────────────────────
+  // Read back from each finished task's stored answer, so a resumed run has
+  // them all; lessons go on the branch, reviewed and merged with the work.
+  const found = collectFindings(store.getTasksByConvoy(convoyId).filter(t => t.status === 'done'))
+  let recorded: Array<{ id: string; title: string }> = []
+  let unrecorded = found.lessons
+  if (found.lessons.length > 0 && wtManager.commitAll && existsSync(join(workRoot, '.opencastle'))) {
+    try {
+      recorded = recordLessons(join(workRoot, '.opencastle'), found.lessons, convoyId)
+      if (recorded.length > 0) {
+        await commitPathsIn(workRoot, LESSON_PATHS, `convoy: ${recorded.length} lesson(s) workers reported`)
+      }
+      unrecorded = []
+    } catch (err) {
+      progress.line(`  ${c.yellow('!')} could not record the lessons workers reported: ${firstLine((err as Error).message)}`)
+    }
+  }
+
   // ── Final status ──────────────────────────────────────────────────────────
   const allTasksFinal = store.getTasksByConvoy(convoyId)
   const summary = summarize(allTasksFinal)
@@ -2044,6 +2072,9 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     baseRef: ctx.baseRef,
     logPath: ndjsonPath,
     keptBranches: allTasksFinal.filter(t => t.branch).map(t => ({ taskId: t.id, branch: t.branch! })),
+    ...(recorded.length + unrecorded.length + found.issues.length > 0 && {
+      findings: { recorded, unrecorded, issues: found.issues },
+    }),
   }
 
   function summarize(tasks: TaskRecord[]): ConvoyResult['summary'] {
@@ -2140,6 +2171,19 @@ function printSummary(progress: Progress, result: ConvoyResult, store: ConvoySto
   if (result.cost) {
     const cost = formatCost(result.cost.total_cost_usd, Boolean(result.cost.estimated))
     lines.push(`  Spent: ${formatTokens(result.cost.total_tokens)} tokens${result.cost.estimated && !cost ? ' (est.)' : ''}${cost ? ` · ${cost}` : ''}`)
+  }
+  const f = result.findings
+  if (f && f.recorded.length > 0) {
+    lines.push(`  Lessons workers reported, added to the branch (${f.recorded.length}):`)
+    for (const l of f.recorded) lines.push(`    ${c.dim('•')} ${l.title} ${c.dim(`(.opencastle/lessons/${l.id}.md)`)}`)
+  }
+  if (f && f.unrecorded.length > 0) {
+    lines.push(`  Lessons workers reported (${f.unrecorded.length}):`)
+    for (const l of f.unrecorded) lines.push(`    ${c.dim('•')} ${l.detail} ${c.dim(`(${l.taskId})`)}`)
+  }
+  if (f && f.issues.length > 0) {
+    lines.push(`  Issues workers found outside their tasks (${f.issues.length}):`)
+    for (const i of f.issues) lines.push(`    ${c.dim('•')} ${i.text} ${c.dim(`(${i.taskId})`)}`)
   }
   lines.push(`  Convoy: ${result.convoyId}`)
   if (result.branch) {

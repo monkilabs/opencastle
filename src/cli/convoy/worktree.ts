@@ -160,6 +160,18 @@ export async function commitAllIn(cwd: string, message: string): Promise<boolean
   return true
 }
 
+/**
+ * `commitAllIn`, for the named paths only: what the convoy wrote itself, not
+ * whatever a gate left in the checkout.
+ */
+export async function commitPathsIn(cwd: string, paths: string[], message: string): Promise<boolean> {
+  await git(['add', '--', ...paths], cwd)
+  const staged = await git(['diff', '--cached', '--name-only', '--', ...paths], cwd)
+  if (!staged.trim()) return false
+  await gitWithIdentity(['commit', '-q', '--no-verify', '-m', message, '--', ...paths], cwd)
+  return true
+}
+
 /** `git merge` with the convoy's fallback identity. */
 export async function mergeIn(cwd: string, args: string[]): Promise<string> {
   return gitWithIdentity(['merge', ...args], cwd)

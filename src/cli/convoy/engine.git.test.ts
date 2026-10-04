@@ -460,3 +460,62 @@ describe('kept branches', () => {
     expect(task.output).toContain(kept!.branch)
   })
 })
+
+describe('what workers report outside their task', () => {
+  const answer = (id: string) => [
+    `Done ${id}.`,
+    '',
+    '- [LESSON terminal] Run prisma generate before tsc — the client types are generated, not committed',
+    `[ISSUE] src/api.ts: the handler swallows a 404 (seen by ${id})`,
+  ].join('\n')
+  const reports: Behaviour = (task, options) => {
+    writeFileSync(join(options.cwd!, `${task.id}.txt`), 'x\n')
+    return { success: true, output: answer(task.id), exitCode: 0 }
+  }
+
+  it('adds the lessons to the branch once, as lesson files, and prints the issues', async () => {
+    // A project that commits its .opencastle/, as installs do.
+    writeFileSync(join(repo, '.gitignore'), '.opencastle/logs\n.opencastle/worktrees\n.opencastle/artifacts\n.opencastle/*.db\n.opencastle/*.db-*\n')
+    mkdirSync(join(repo, '.opencastle'), { recursive: true })
+    writeFileSync(join(repo, '.opencastle', 'project.instructions.md'), '# Project\n')
+    git('add', '-A')
+    git('commit', '-qm', 'opencastle')
+    let printed = ''
+    const result = await engine({
+      spec: spec([{ id: 'a', files: ['a.txt'] }, { id: 'b', files: ['b.txt'] }]),
+      adapter: stubAdapter(reports),
+      output: { write: (s: string) => { printed += s; return true }, isTTY: false },
+    }).run()
+
+    expect(result.status, whyNotDone(result.convoyId)).toBe('done')
+    const lessons = filesOn(result.branch!).filter((f) => f.startsWith('.opencastle/lessons/'))
+    expect(lessons).toHaveLength(1)
+    const file = git('show', `${result.branch}:${lessons[0]}`)
+    expect(file).toContain('title: "Run prisma generate before tsc"')
+    expect(file).toContain('category: "terminal"')
+    expect(file).toMatch(/source: "convoy .+, task a"/)
+    expect(git('show', `${result.branch}:.opencastle/LESSONS-LEARNED.md`)).toContain('Run prisma generate before tsc')
+    expect(git('log', '-1', '--format=%s', result.branch!)).toBe('convoy: 1 lesson(s) workers reported')
+    // Issues are printed, one per task that reported one.
+    expect(result.findings?.issues.map((i) => i.taskId).sort()).toEqual(['a', 'b'])
+    expect(printed).toContain('Lessons workers reported, added to the branch (1)')
+    expect(printed).toContain('the handler swallows a 404 (seen by a)')
+    // The user's checkout is untouched.
+    expect(git('status', '--porcelain')).toBe('')
+    expect(existsSync(join(repo, '.opencastle', 'lessons'))).toBe(false)
+  }, 30_000)
+
+  it('prints the lessons when the branch has no .opencastle/ to add them to', async () => {
+    let printed = ''
+    const result = await engine({
+      spec: spec([{ id: 'a', files: ['a.txt'] }]),
+      adapter: stubAdapter(reports),
+      output: { write: (s: string) => { printed += s; return true }, isTTY: false },
+    }).run()
+    expect(result.status, whyNotDone(result.convoyId)).toBe('done')
+    expect(filesOn(result.branch!).some((f) => f.startsWith('.opencastle/'))).toBe(false)
+    expect(result.findings?.recorded).toEqual([])
+    expect(result.findings?.unrecorded.map((l) => l.title)).toEqual(['Run prisma generate before tsc'])
+    expect(printed).toContain('Lessons workers reported (1)')
+  }, 30_000)
+})
