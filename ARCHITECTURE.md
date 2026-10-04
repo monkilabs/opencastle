@@ -118,6 +118,14 @@ src/orchestrator/
 
 **Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `react-development`, `security-hardening`, `testing-workflow`, `observability-logging`.
 
+**Always loaded** are the instructions: OpenCastle's two (`general`, `ai-optimization`),
+the team's own (`.opencastle/instructions/`), and the project's facts —
+`.opencastle/project.instructions.md`, which `init` writes from the code — compiled as
+the `project-context` instruction ([`layers.ts`](src/cli/layers.ts)), without its
+comments, empty rows and sections, or its "Still to describe" list. An agent told in
+words to read a file reads it when it decides to; the commands, stack and structure
+are what every assistant's guidance says belongs in the always-loaded file.
+
 
 ---
 
@@ -137,6 +145,13 @@ format. Which paths each one writes is in the README's
 | `windsurf` | Windsurf (Devin Desktop) |
 | `codex` | Codex CLI |
 | `antigravity` | Antigravity |
+
+Assistants that read one root file — `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` — get the
+instructions in a managed block there, followed by an index of the agents and skills.
+Claude Code is the exception: it lists its subagents and skills itself, from
+`.claude/agents/` and `.claude/skills/`, so `CLAUDE.md` says where they are instead of
+repeating them — about 3k tokens a session would otherwise load twice, and again in every
+subagent.
 
 ---
 

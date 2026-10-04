@@ -11,7 +11,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { resolveSources, materialize, usesTeamSources, requiredEnvVars, hasErrors } from './layers.js'
+import { resolveSources, materialize, usesTeamSources, requiredEnvVars, hasErrors, projectContextText, PROJECT_CONTEXT } from './layers.js'
 import { parseTeamConfig, stripJsonc, TeamConfigSchema } from './team-config.js'
 import { satisfies } from './version-range.js'
 import { findInlineSecret } from './policy.js'
@@ -521,5 +521,76 @@ describe('credential detection, tuned', () => {
     expect(findInlineSecret({ env: { DATABASE_URL: 'postgres://app:hunter2@db.internal/app' } })).toBe('env.DATABASE_URL')
     expect(findInlineSecret({ headers: { Authorization: 'Basic dXNlcjpwYXNz' } })).toBe('headers.Authorization')
     expect(findInlineSecret({ env: { DB_PASSWORD: 'x9$Kq2mZ7vLp4wN8' } })).toBe('env.DB_PASSWORD')
+  })
+})
+
+describe("the project's facts, always loaded", () => {
+  let project: string
+  beforeEach(() => {
+    project = mkdtempSync(join(tmpdir(), 'layers-facts-'))
+    mkdirSync(join(project, '.opencastle'), { recursive: true })
+  })
+  afterEach(() => {
+    rmSync(project, { recursive: true, force: true })
+  })
+
+  const write = (text: string) => writeFileSync(join(project, '.opencastle', 'project.instructions.md'), text)
+  const resolveHere = () => resolveSources({ pkgRoot, projectRoot: project, stack: noTools })
+
+  it('compiles .opencastle/project.instructions.md as an instruction every assistant loads', () => {
+    write('# Project Context\n\n**demo** — a demo app\n\n## Key Commands\n\n```bash\npnpm test\n```\n')
+    const r = resolveHere()
+    expect(r.items.get(`instructions/${PROJECT_CONTEXT}`)?.layer).toBe('project')
+    const src = materialize(r, pkgRoot)
+    try {
+      const compiled = readFileSync(join(src.root, 'instructions', `${PROJECT_CONTEXT}.instructions.md`), 'utf8')
+      expect(compiled).toContain('**demo** — a demo app')
+      expect(compiled).toContain("applyTo: '**'")
+    } finally {
+      src.dispose()
+    }
+  })
+
+  it('leaves out a file that is still the template: there is nothing to load', () => {
+    write('```instructions\n# Project Context\n\n<!-- populated by init -->\n\n## Tech Stack\n\n| Layer | Technology |\n|---|---|\n| | |\n\n## Routes\n\n<!-- routes -->\n```\n')
+    expect(resolveHere().items.has(`instructions/${PROJECT_CONTEXT}`)).toBe(false)
+  })
+
+  it('keeps what is filled in and drops comments, empty rows and sections, and the to-do list', () => {
+    const text = projectContextText([
+      '# Project Context',
+      '',
+      '<!-- Written by init. -->',
+      '',
+      '## Tech Stack',
+      '',
+      '| Layer | Technology |',
+      '|---|---|',
+      '| Framework | Next.js |',
+      '| | |',
+      '',
+      '## Apps',
+      '',
+      '| App | URL |',
+      '|---|---|',
+      '| | |',
+      '',
+      '## Routes',
+      '',
+      '<!-- none yet -->',
+      '',
+      '## Still to describe',
+      '',
+      '- Architecture',
+    ].join('\n'))
+    expect(text).toBe('# Project Context\n\n## Tech Stack\n\n| Layer | Technology |\n|---|---|\n| Framework | Next.js |\n')
+  })
+
+  it('takes the team\'s own instruction of that name over the file', () => {
+    write('# Project Context\n\nFROM THE FILE\n')
+    mkdirSync(join(project, '.opencastle', 'instructions'), { recursive: true })
+    writeFileSync(join(project, '.opencastle', 'instructions', `${PROJECT_CONTEXT}.md`), 'FROM THE TEAM\n')
+    const item = resolveHere().items.get(`instructions/${PROJECT_CONTEXT}`)!
+    expect(item.path.endsWith(join('instructions', `${PROJECT_CONTEXT}.md`))).toBe(true)
   })
 })

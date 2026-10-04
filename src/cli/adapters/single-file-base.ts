@@ -68,6 +68,14 @@ export interface SingleFileAdapterConfig {
    * agent inherits the session's tools and model.
    */
   agentFrontmatter?: boolean
+  /**
+   * The assistant lists the skills and agents it was given by itself, so the
+   * root file does not. Claude Code puts every skill's description and every
+   * subagent's description in context on its own; the "Available Skills" and
+   * "Agent Definitions" sections repeated them — about 3k tokens in a typical
+   * project, loaded twice in every session and again in every subagent.
+   */
+  listsSkillsAndAgents?: boolean
 }
 
 /** An agent's name as a subagent: its file name, lower-case and hyphenated. */
@@ -281,8 +289,10 @@ export function createSingleFileAdapter(
       sections.push(
         '# Project Instructions\n\n' +
         'All conventions, architecture, and project context are embedded below. ' +
-        `Skills are in \`${refSkills}/\` — read them when a task matches. ` +
-        `Agent definitions are in \`${refDir}/agents/\` — read the relevant file when adopting a persona.` +
+        (config.listsSkillsAndAgents
+          ? `The skills in \`${refSkills}/\` and the agents in \`${refDir}/agents/\` are listed by the assistant itself: load a skill when a task matches its description, and delegate to an agent by its description.`
+          : `Skills are in \`${refSkills}/\` — read them when a task matches. ` +
+            `Agent definitions are in \`${refDir}/agents/\` — read the relevant file when adopting a persona.`) +
         (sharedWith.length > 0
           ? `\n\nThis file is shared by more than one assistant. The same content is also installed under ${sharedWith
               .map((d) => `\`${d}/\``)
@@ -302,45 +312,58 @@ export function createSingleFileAdapter(
         }
       }
 
-      // Agent reference
+      // Agent reference. An assistant that lists its subagents itself gets only
+      // what its listing lacks: which tier each agent's work wants.
       const agentsDir = resolve(srcRoot, 'agents')
       if (existsSync(agentsDir)) {
-        const agentLines: string[] = ['\n---\n\n## Agent Definitions\n']
-        agentLines.push(
-          'The following agent personas are available. Adopt the appropriate persona when asked.\n'
-        )
-        agentLines.push(
-          'Each names a capability tier — what kind of model the work wants. Pick a ' +
-            'concrete model yourself; you know which ones this account can reach.\n'
-        )
-        const usedTiers = new Set<Tier>()
+        const agents: Array<{ name: string; desc: string; tier: Tier }> = []
         for (const file of (await readdir(agentsDir)).sort()) {
           if (!file.endsWith('.md')) continue
-          const meta = parseFrontmatterMeta(
-            await readFile(resolve(agentsDir, file), 'utf8')
-          )
-          const name = meta['name'] ?? basename(file, '.agent.md')
-          const desc = meta['description'] ?? ''
+          const meta = parseFrontmatterMeta(await readFile(resolve(agentsDir, file), 'utf8'))
           const declared = meta['tier'] ?? ''
-          const tier = isTier(declared) ? declared : tierForAgent(basename(file, '.agent.md'))
-          usedTiers.add(tier)
-          agentLines.push(`- **${name}** *(${TIERS[tier].label})*: ${desc}`)
+          agents.push({
+            name: meta['name'] ?? basename(file, '.agent.md'),
+            desc: meta['description'] ?? '',
+            tier: isTier(declared) ? declared : tierForAgent(basename(file, '.agent.md')),
+          })
         }
-        if (usedTiers.size > 0) {
-          agentLines.push('')
-          for (const id of TIER_IDS.filter((id) => usedTiers.has(id))) {
-            agentLines.push(`- **${TIERS[id].label}** — ${TIERS[id].purpose}`)
+        const usedTiers = TIER_IDS.filter((id) => agents.some((a) => a.tier === id))
+        if (config.listsSkillsAndAgents) {
+          if (usedTiers.length > 0) {
+            sections.push(
+              [
+                '\n---\n\n## Agent Tiers\n',
+                'Each agent names the kind of model its work wants; pick a concrete model you can reach.\n',
+                ...usedTiers.map((id) =>
+                  `- *(${TIERS[id].label})* ${agents.filter((a) => a.tier === id).map((a) => a.name).join(', ')} — ${TIERS[id].purpose}`,
+                ),
+              ].join('\n'),
+            )
           }
+        } else {
+          const agentLines: string[] = ['\n---\n\n## Agent Definitions\n']
+          agentLines.push(
+            'The following agent personas are available. Adopt the appropriate persona when asked.\n'
+          )
+          agentLines.push(
+            'Each names a capability tier — what kind of model the work wants. Pick a ' +
+              'concrete model yourself; you know which ones this account can reach.\n'
+          )
+          for (const a of agents) agentLines.push(`- **${a.name}** *(${TIERS[a.tier].label})*: ${a.desc}`)
+          if (usedTiers.length > 0) {
+            agentLines.push('')
+            for (const id of usedTiers) agentLines.push(`- **${TIERS[id].label}** — ${TIERS[id].purpose}`)
+          }
+          agentLines.push(
+            `\nFull agent definitions are in \`${refDir}/agents/\`. Read the relevant file when adopting a persona.`
+          )
+          sections.push(agentLines.join('\n'))
         }
-        agentLines.push(
-          `\nFull agent definitions are in \`${refDir}/agents/\`. Read the relevant file when adopting a persona.`
-        )
-        sections.push(agentLines.join('\n'))
       }
 
       // Skill index
       const skillsDir = resolve(srcRoot, 'skills')
-      if (existsSync(skillsDir)) {
+      if (existsSync(skillsDir) && !config.listsSkillsAndAgents) {
         const skillLines: string[] = ['\n---\n\n## Available Skills\n']
         skillLines.push(
           'Skills are on-demand knowledge files. Read the file when the task matches.\n'

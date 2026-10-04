@@ -119,6 +119,48 @@ const LAYER_DIR: Record<ContentKind, string> = {
 }
 const CORE_DIR: Record<ContentKind, string> = { ...LAYER_DIR, workflows: 'agent-workflows' }
 
+/**
+ * The project's facts — what `init` read from the code into
+ * `.opencastle/project.instructions.md` — compiled as an always-loaded
+ * instruction of this name.
+ *
+ * The general instructions used to say "read `.opencastle/project.instructions.md`
+ * before planning", and an agent read it when it decided to: Claude Code's own
+ * docs say a file named in words is seen only if the model opens it, and
+ * OpenSpec dropped its `project.md` for the same reason. The commands, the
+ * stack and the structure are the first thing every assistant's guidance says
+ * belongs in the always-loaded file.
+ */
+export const PROJECT_CONTEXT = 'project-context'
+const PROJECT_FACTS_FILE = 'project.instructions.md'
+
+/**
+ * What of the project's facts is worth loading every session: no HTML
+ * comments, no empty table rows or sections — what an install from before
+ * 1.5 left as a template — and not the "Still to describe" list, which is a
+ * note for people. Empty when nothing is left.
+ */
+export function projectContextText(raw: string): string {
+  let text = raw.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n')
+  // Templates before 1.5 wrapped the whole file in a code fence.
+  const fenced = /^\s*(`{3,})(?:instructions|markdown|md)?\n([\s\S]*?)\n\1\s*$/.exec(text)
+  if (fenced) text = fenced[2]
+  text = text.replace(/<!--[\s\S]*?-->/g, '')
+  // Rows whose every cell is empty, then tables with no rows left.
+  text = text.replace(/^\|(?:\s*\|)+\s*$\n?/gm, '')
+  text = text.replace(/^\|[^\n]*\|\n\|(?:[ \t]*:?-{3,}:?[ \t]*\|)+[ \t]*(?:\n(?!\|)|(?![\s\S]))/gm, '')
+  const sections = text.split(/\n(?=#{2,3} )/)
+  const kept = sections.filter((section, i) => {
+    if (i === 0) return true
+    const [heading, ...body] = section.split('\n')
+    if (/^#{2,3} Still to describe\s*$/.test(heading)) return false
+    return body.join('\n').trim().length > 0
+  })
+  text = kept.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+  // A title and nothing under it is not worth a line of context.
+  return /^#[^\n]*$/.test(text) || text === '' ? '' : text + '\n'
+}
+
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 const PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
 
@@ -297,6 +339,13 @@ function scanLayer(layer: Layer, projectRoot: string | null): { items: ContentIt
       }
       if (kind === 'skills' && within) filesUnder(join(dir, entry.name), within, skipped)
       items.push({ kind, name, layer: layer.id, path: join(dir, entry.name), ...(within && { within }) })
+    }
+  }
+  if (layer.kind === 'project') {
+    const facts = join(layer.root, PROJECT_FACTS_FILE)
+    const taken = items.some((i) => i.kind === 'instructions' && i.name === PROJECT_CONTEXT)
+    if (!taken && existsSync(facts) && projectContextText(readFileSync(facts, 'utf8')) !== '') {
+      items.push({ kind: 'instructions', name: PROJECT_CONTEXT, layer: layer.id, path: facts })
     }
   }
   return { items, issues }
@@ -1113,7 +1162,9 @@ export function materialize(
         continue
       }
       const buf = readFileSync(item.path)
-      writeFileSync(dest, team ? normaliseTeamText(item.kind, item.name, buf.toString('utf8')) : buf)
+      const facts = item.layer === 'project' && item.kind === 'instructions' && item.name === PROJECT_CONTEXT
+      const text = facts ? projectContextText(buf.toString('utf8')) : buf.toString('utf8')
+      writeFileSync(dest, team ? normaliseTeamText(item.kind, item.name, text) : buf)
     }
   } catch (err) {
     rmSync(root, { recursive: true, force: true })
