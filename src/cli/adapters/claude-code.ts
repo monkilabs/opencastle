@@ -36,6 +36,7 @@ const { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs } = 
   legacyOutputs: (projectRoot) => legacyClaudeCommands(projectRoot),
   commandDescriptions: true,
   agentFrontmatter: true,
+  listsSkillsAndAgents: true,
 })
 
 export { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs }

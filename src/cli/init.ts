@@ -468,7 +468,68 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const unreadable: string[] = []
   const failedTargets: Array<{ ide: string; message: string }> = []
 
-  const source = materialize(resolved, pkgRoot, ...priorTeam(projectRoot))
+  // ── Scaffold customizations to .opencastle/ ──────────────────────────────
+  // Sampled before the copy below, which creates `.opencastle/agents` itself.
+  // Read after it, this was true on every run including the first, so the
+  // bootstrap guard downstream never let the project scan execute at all: no
+  // tech-stack table, no key commands, not even the project name. Every skill
+  // that wanted the package manager hardcoded one instead, because the file
+  // that was supposed to record it was never filled in.
+  const alreadyScaffolded = existsSync(resolve(projectRoot, '.opencastle', 'agents'))
+
+  const custSrcDir = resolve(getOrchestratorRoot(pkgRoot), 'customizations')
+  if (existsSync(custSrcDir)) {
+    const custDestDir = resolve(projectRoot, '.opencastle')
+    const custTransform = getCustomizationsTransform(stack)
+    // Over an existing `.opencastle/`, the templates bootstrap prunes or renames
+    // on the first run — `stack/`, the tracker config — stay as that run left
+    // them. Copying them again put back every one it had removed: a project
+    // with no CMS got `cms-config.md` and `sanity-config.md` on its second init.
+    const prunedOnce = (rel: string) => rel === 'stack' || rel.startsWith('stack/') || rel === 'project/tracker-config.md'
+    const sub = await copyDir(custSrcDir, custDestDir, {
+      transform: custTransform,
+      filter: (_name, srcPath) => !(alreadyScaffolded && prunedOnce(relative(custSrcDir, srcPath).split('\\').join('/'))),
+    })
+    totalCreated += sub.created.length
+    totalSkipped += sub.skipped.length
+  }
+
+  // ── Project scan ────────────────────────────────────────────────
+  // Bootstrap only on a first install. Its rename steps write over the target
+  // unconditionally, so on a re-run they replaced the user's own
+  // `stack/<provider>-config.md` with a blank template — the same hazard removed
+  // from `sync` in an earlier round and left standing here, and newly reachable
+  // without a prompt because `--yes` is new on this branch.
+  console.log(`\n  ${c.dim('Configuring project...')}`)
+  // Keyed off the directory, not the manifest. `isReinit` alone missed two
+  // routes onto the destructive path — `remove --keep-files` (which drops only
+  // the manifest, by design) and a manifest with merge-conflict markers, which
+  // `readManifest` reports as "no install". Both then ran bootstrap's
+  // unconditional renames over a populated `.opencastle/` and replaced the
+  // user's own stack notes with a blank template. `alreadyScaffolded` is
+  // sampled above, before the scaffold step supplies its own answer.
+  const bootstrapResult = isReinit || alreadyScaffolded
+    ? { populated: [], removed: [], renamed: [] }
+    : await bootstrapCustomizations(projectRoot, combinedRepoInfo, stack)
+
+  if (bootstrapResult.populated.length > 0) {
+    console.log(`  ${c.green('✓')} Populated ${c.bold(String(bootstrapResult.populated.length))} config files`)
+  }
+  if (bootstrapResult.renamed.length > 0) {
+    for (const r of bootstrapResult.renamed) {
+      console.log(`  ${c.dim('→')} Renamed ${r}`)
+    }
+  }
+  if (bootstrapResult.removed.length > 0) {
+    console.log(`  ${c.dim('→')} Removed ${bootstrapResult.removed.length} unused template(s)`)
+  }
+
+  // Compiled after `.opencastle/` is written, not before: on a first install the
+  // project's facts — `project.instructions.md`, which every assistant loads —
+  // did not exist yet when the assistants' files were compiled, so the first
+  // `sync --check` reported every root file as drifted.
+  const scaffolded = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: combinedRepoInfo })
+  const source = materialize(hasErrors(scaffolded) ? resolved : scaffolded, pkgRoot, ...priorTeam(projectRoot))
   try {
     for (const ide of ides) {
       const adapter = await IDE_ADAPTERS[ide]()
@@ -610,62 +671,6 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     await writeLock(projectRoot, buildLock(source, { ides: ides as string[], stack, repoInfo: combinedRepoInfo }))
   } finally {
     source.dispose()
-  }
-
-  // ── Scaffold customizations to .opencastle/ ──────────────────────────────
-  // Sampled before the copy below, which creates `.opencastle/agents` itself.
-  // Read after it, this was true on every run including the first, so the
-  // bootstrap guard downstream never let the project scan execute at all: no
-  // tech-stack table, no key commands, not even the project name. Every skill
-  // that wanted the package manager hardcoded one instead, because the file
-  // that was supposed to record it was never filled in.
-  const alreadyScaffolded = existsSync(resolve(projectRoot, '.opencastle', 'agents'))
-
-  const custSrcDir = resolve(getOrchestratorRoot(pkgRoot), 'customizations')
-  if (existsSync(custSrcDir)) {
-    const custDestDir = resolve(projectRoot, '.opencastle')
-    const custTransform = getCustomizationsTransform(stack)
-    // Over an existing `.opencastle/`, the templates bootstrap prunes or renames
-    // on the first run — `stack/`, the tracker config — stay as that run left
-    // them. Copying them again put back every one it had removed: a project
-    // with no CMS got `cms-config.md` and `sanity-config.md` on its second init.
-    const prunedOnce = (rel: string) => rel === 'stack' || rel.startsWith('stack/') || rel === 'project/tracker-config.md'
-    const sub = await copyDir(custSrcDir, custDestDir, {
-      transform: custTransform,
-      filter: (_name, srcPath) => !(alreadyScaffolded && prunedOnce(relative(custSrcDir, srcPath).split('\\').join('/'))),
-    })
-    totalCreated += sub.created.length
-    totalSkipped += sub.skipped.length
-  }
-
-  // ── Project scan ────────────────────────────────────────────────
-  // Bootstrap only on a first install. Its rename steps write over the target
-  // unconditionally, so on a re-run they replaced the user's own
-  // `stack/<provider>-config.md` with a blank template — the same hazard removed
-  // from `sync` in an earlier round and left standing here, and newly reachable
-  // without a prompt because `--yes` is new on this branch.
-  console.log(`\n  ${c.dim('Configuring project...')}`)
-  // Keyed off the directory, not the manifest. `isReinit` alone missed two
-  // routes onto the destructive path — `remove --keep-files` (which drops only
-  // the manifest, by design) and a manifest with merge-conflict markers, which
-  // `readManifest` reports as "no install". Both then ran bootstrap's
-  // unconditional renames over a populated `.opencastle/` and replaced the
-  // user's own stack notes with a blank template. `alreadyScaffolded` is
-  // sampled above, before the scaffold step supplies its own answer.
-  const bootstrapResult = isReinit || alreadyScaffolded
-    ? { populated: [], removed: [], renamed: [] }
-    : await bootstrapCustomizations(projectRoot, combinedRepoInfo, stack)
-
-  if (bootstrapResult.populated.length > 0) {
-    console.log(`  ${c.green('✓')} Populated ${c.bold(String(bootstrapResult.populated.length))} config files`)
-  }
-  if (bootstrapResult.renamed.length > 0) {
-    for (const r of bootstrapResult.renamed) {
-      console.log(`  ${c.dim('→')} Renamed ${r}`)
-    }
-  }
-  if (bootstrapResult.removed.length > 0) {
-    console.log(`  ${c.dim('→')} Removed ${bootstrapResult.removed.length} unused template(s)`)
   }
 
   // ── Write manifest ──────────────────────────────────────────────

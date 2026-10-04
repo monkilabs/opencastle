@@ -766,39 +766,44 @@ describe('Claude Code adapter install', () => {
     expect(content).toContain('.claude/agents/')
   })
 
-  it('CLAUDE.md lists all non-excluded agents', async () => {
+  // Claude Code lists its subagents and skills itself, from `.claude/agents/`
+  // and `.claude/skills/`. CLAUDE.md repeated both — about 3k tokens loaded
+  // twice in every session — so what is compiled is checked where it is read.
+  it('compiles the agents the stack keeps as subagents, and does not list them again in CLAUDE.md', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_EMPTY, EMPTY_REPO_INFO)
 
+    const agents = await readdir(join(tempDir, '.claude', 'agents'))
+    expect(agents).toContain('developer.agent.md')
+    expect(agents).toContain('team-lead.agent.md')
+    expect(agents).not.toContain('content-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
     const content = await readFile(join(tempDir, 'CLAUDE.md'), 'utf8')
-    expect(content).toContain('## Agent Definitions')
-    expect(content).toContain('**Developer**')
-    expect(content).toContain('**Team Lead (OpenCastle)**')
-    // Should NOT list excluded agents
-    expect(content).not.toContain('**Content Engineer**')
-    expect(content).not.toContain('**Data Engineer**')
+    expect(content).not.toContain('## Agent Definitions')
+    expect(content).not.toContain('**Developer**')
   })
 
-  it('CLAUDE.md includes content engineer when CMS selected', async () => {
+  it('compiles the content engineer when a CMS is selected', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
 
-    const content = await readFile(join(tempDir, 'CLAUDE.md'), 'utf8')
-    expect(content).toContain('**Content Engineer**')
-    expect(content).not.toContain('**Data Engineer**')
+    const agents = await readdir(join(tempDir, '.claude', 'agents'))
+    expect(agents).toContain('content-engineer.agent.md')
+    expect(agents).not.toContain('data-engineer.agent.md')
   })
 
-  it('CLAUDE.md lists available skills (including selected plugins)', async () => {
+  it('compiles the selected skills, and does not list them again in CLAUDE.md', async () => {
     const adapter = await IDE_ADAPTERS['claude-code']()
     await adapter.install(PKG_ROOT, tempDir, STACK_SANITY_LINEAR, EMPTY_REPO_INFO)
 
+    const skills = await readdir(join(tempDir, '.claude', 'skills'))
+    expect(skills).toContain('self-improvement')
+    expect(skills).toContain('sanity-cms')
+    expect(skills).toContain('linear-task-management')
+    expect(skills).not.toContain('supabase-database')
     const content = await readFile(join(tempDir, 'CLAUDE.md'), 'utf8')
-    expect(content).toContain('## Available Skills')
-    expect(content).toContain('**self-improvement**')
-    expect(content).toContain('**sanity-cms**')
-    expect(content).toContain('**linear-task-management**')
-    // Unselected plugin skills should NOT appear in skill index
-    expect(content).not.toContain('**supabase-database**')
+    expect(content).not.toContain('## Available Skills')
+    expect(content).toContain('listed by the assistant itself')
   })
 
   it('writes agent files in .claude/agents/ with only the frontmatter Claude Code reads', async () => {

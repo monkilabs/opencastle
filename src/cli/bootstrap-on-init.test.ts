@@ -79,6 +79,18 @@ describe.skipIf(!cliBuilt)('init scans the project it initialises', () => {
     expect(text).toMatch(/\|\s*Package Manager\s*\|\s*pnpm\s*\|/)
   })
 
+  it('loads the facts it wrote in every session, and the first check passes', () => {
+    run(projectRoot, 'init', '--yes')
+    const claude = readFileSync(join(projectRoot, 'CLAUDE.md'), 'utf8')
+    // Compiled into the always-loaded block, not left behind a "read this" line.
+    expect(claude).toContain('<!-- Source: instructions/project-context.instructions.md -->')
+    expect(claude).toContain('pnpm')
+    expect(claude).not.toContain('Still to describe')
+    // The facts were written before the assistants' files were compiled, so
+    // they agree from the start.
+    expect(() => execFileSync('node', [cli, 'sync', '--check'], { cwd: projectRoot, stdio: 'pipe' })).not.toThrow()
+  })
+
   it('leaves the user’s own notes alone when init is re-run', () => {
     run(projectRoot, 'init', '--yes')
     const stackFile = join(projectRoot, '.opencastle', 'stack', 'testing-config.md')

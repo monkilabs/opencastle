@@ -123,10 +123,24 @@ describe('drift detection', () => {
     // change behavior, so it must never count as drift.
     const custom = join(projectRoot, '.opencastle')
     mkdirSync(custom, { recursive: true })
-    writeFileSync(join(custom, 'project.instructions.md'), 'my own rules\n')
+    writeFileSync(join(custom, 'KNOWN-ISSUES.md'), 'my own notes\n')
 
     const report = await buildCheckReport(pkgRoot, projectRoot)
-    expect(report.drift.filter((d) => d.path.startsWith('.opencastle'))).toEqual([])
+    expect(report.drift).toEqual([])
+  })
+
+  it('asks for a sync when the project facts every assistant loads change, never blaming the facts', async () => {
+    await install()
+    // project.instructions.md is the user's, and it is compiled into the
+    // always-loaded instructions: an edit is not drift of the file, but the
+    // compiled files no longer carry it until `sync` runs.
+    const custom = join(projectRoot, '.opencastle')
+    mkdirSync(custom, { recursive: true })
+    writeFileSync(join(custom, 'project.instructions.md'), '# Project Context\n\nDeploys with `make ship`.\n')
+
+    const report = await buildCheckReport(pkgRoot, projectRoot)
+    expect(report.drift.length).toBeGreaterThan(0)
+    expect(report.drift.map((d) => d.path)).not.toContain('.opencastle/project.instructions.md')
   })
 
   it('ignores unrelated files in the project', async () => {
