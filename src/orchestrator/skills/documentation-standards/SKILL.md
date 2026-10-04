@@ -5,7 +5,7 @@ description: "Templates for issue docs, ADRs, roadmap entries, changelogs and Me
 
 # Documentation Standards
 
-The project's own documents: Key Documentation in `.opencastle/project.instructions.md`. Writing guidelines, formatting rules, anti-patterns: `WRITING-GUIDE.md`, beside this file.
+The project's own documents are listed under Key Documentation in `.opencastle/project.instructions.md`.
 
 ## Templates
 
