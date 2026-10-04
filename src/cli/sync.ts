@@ -11,7 +11,7 @@ import type { CliContext } from './types.js'
  */
 
 const SYNC_HELP = `
-  opencastle sync [options]
+  npx opencastle sync [options]
 
   Compile the framework sources into every configured assistant target,
   preserving your customizations in .opencastle/.

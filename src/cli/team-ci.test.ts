@@ -58,7 +58,7 @@ describe.skipIf(!built)('a stale MCP default is fixed by the command doctor name
 
     const before = run(dir, ['doctor'])
     expect(before.code).toBe(1)
-    expect(before.out).toContain('opencastle sync fixes Supabase')
+    expect(before.out).toContain('npx opencastle sync fixes Supabase')
     // The check a team runs in CI must not be green over what doctor fails.
     const check = run(dir, ['sync', '--check'])
     expect(check.code).toBe(1)
@@ -83,7 +83,7 @@ describe.skipIf(!built)('a stale MCP default is fixed by the command doctor name
     )
     const doctor = run(dir, ['doctor'])
     expect(doctor.code).toBe(1)
-    expect(doctor.out).toContain('delete the entry and run opencastle sync --force')
+    expect(doctor.out).toContain('delete the entry and run npx opencastle sync --force')
     expect(run(dir, ['sync', '--check']).code).toBe(1)
 
     // Follow it literally.
@@ -108,7 +108,7 @@ describe.skipIf(!built)('a stale MCP default is fixed by the command doctor name
 
     const doctor = run(dir, ['doctor'])
     expect(doctor.code).toBe(1)
-    expect(doctor.out).toContain('opencastle sync removes Figma')
+    expect(doctor.out).toContain('npx opencastle sync removes Figma')
     const check = run(dir, ['sync', '--check'])
     expect(check.code).toBe(1)
     expect(check.out).toContain('so sync removes: Figma')

@@ -521,21 +521,21 @@ export function remedyFor(list: McpFinding[], rel: string): string {
   const edited = names((f) => f.sync === 'keeps' && Boolean(f.plugin) && !f.team)
   const teamSource = list.filter((f) => f.sync === 'keeps' && Boolean(f.team))
   const own = names((f) => f.sync === 'keeps' && !f.plugin && !f.team)
-  if (replaced) parts.push(`opencastle sync fixes ${replaced} (still as OpenCastle wrote them)`)
-  if (rewritten) parts.push(`opencastle sync rewrites ${rewritten} as the team config defines them`)
+  if (replaced) parts.push(`npx opencastle sync fixes ${replaced} (still as OpenCastle wrote them)`)
+  if (rewritten) parts.push(`npx opencastle sync rewrites ${rewritten} as the team config defines them`)
   if (removed.length > 0) {
     const servers = [...new Set(removed.map((f) => f.server))].join(', ')
     const packs = [...new Set(removed.map((f) => f.plugin))].join(' ')
-    parts.push(`opencastle sync removes ${servers}, which this project's stack does not include — opencastle add ${packs} keeps it`)
+    parts.push(`npx opencastle sync removes ${servers}, which this project's stack does not include — npx opencastle add ${packs} keeps it`)
   }
-  if (blocked) parts.push(`opencastle sync removes ${blocked}, which the team's config excludes or its MCP policy does not allow`)
-  if (retired) parts.push(`opencastle sync removes ${retired}, which no team layer defines any more`)
+  if (blocked) parts.push(`npx opencastle sync removes ${blocked}, which the team's config excludes or its MCP policy does not allow`)
+  if (retired) parts.push(`npx opencastle sync removes ${retired}, which no team layer defines any more`)
   for (const where of new Set(teamSource.map((f) => f.team as string))) {
     parts.push(`fix ${names((f) => f.team === where && f.sync === 'keeps')} in ${where}, where it is defined`)
   }
   if (edited) {
     parts.push(
-      `${edited} changed since OpenCastle wrote them — fix by hand, or delete the entry and run opencastle sync --force for the current default`,
+      `${edited} changed since OpenCastle wrote them — fix by hand, or delete the entry and run npx opencastle sync --force for the current default`,
     )
   }
   if (own) parts.push(`fix ${own} by hand in ${rel}`)

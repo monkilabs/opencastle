@@ -99,8 +99,8 @@ describe('removed commands', () => {
   })
 
   it('maps the destructive commands to their replacement flags', () => {
-    expect(source).toContain("eject: 'opencastle remove --keep-files'")
-    expect(source).toContain("destroy: 'opencastle remove --all'")
+    expect(source).toContain("eject: 'npx opencastle remove --keep-files'")
+    expect(source).toContain("destroy: 'npx opencastle remove --all'")
   })
 
   it('routes convoy execution commands into the namespace', () => {

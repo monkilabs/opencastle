@@ -135,12 +135,12 @@ const RETIRED_DEFAULTS: Record<string, string> = {
   snippets: 'snippets were folded into skills',
   detect_drift: 'drift detection was removed; reviews and gates check the work instead',
   review_stages: 'the two-stage review was removed; `review` picks one fast review or a panel',
-  mcp_approve_all: 'agents use the MCP servers and approvals in the project\'s own config, which `opencastle sync` writes',
+  mcp_approve_all: 'agents use the MCP servers and approvals in the project\'s own config, which `npx opencastle sync` writes',
 }
 
 /** Top-level and per-task keys retired the same way. */
 const RETIRED_SPEC_KEYS: Record<string, string> = {
-  watch: 'watch mode was removed; run the spec again, or `opencastle convoy resume` to continue one',
+  watch: 'watch mode was removed; run the spec again, or `npx opencastle convoy resume` to continue one',
 }
 const RETIRED_TASK_KEYS: Record<string, string> = {
   detect_drift: 'drift detection was removed; reviews and gates check the work instead',
@@ -149,7 +149,7 @@ const RETIRED_TASK_KEYS: Record<string, string> = {
 /** What a version 2 (chained) spec is told to do instead. */
 const CHAIN_REPLACEMENT =
   'put every task in one version 1 spec and let `depends_on` order them — tasks that do not ' +
-  'depend on each other run in parallel. `opencastle convoy "<task>"` plans large work that way.'
+  'depend on each other run in parallel. `npx opencastle convoy "<task>"` plans large work that way.'
 
 /**
  * Every key under `defaults` that something reads.

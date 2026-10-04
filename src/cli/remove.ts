@@ -25,7 +25,7 @@ import { parseMcpConfigText } from './mcp-file.js'
  */
 
 const REMOVE_HELP = `
-  opencastle remove [options]
+  npx opencastle remove [options]
 
   Remove OpenCastle from this project. Asks whether to keep the generated
   files (so they become standalone) or delete everything.

@@ -2208,7 +2208,7 @@ function printSummary(progress: Progress, result: ConvoyResult, store: ConvoySto
     lines.push(`  Log: ${rel.startsWith('..') ? result.logPath : rel}`)
   }
   if (result.status !== 'done') {
-    lines.push(`  Resume with: ${c.cyan('opencastle convoy resume')}`)
+    lines.push(`  Resume with: ${c.cyan('npx opencastle convoy resume')}`)
   }
   for (const l of lines) progress.line(l)
 }

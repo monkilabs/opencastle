@@ -22,9 +22,9 @@ import {
 } from './lessons.js'
 
 const HELP = `
-  opencastle lesson [add] --title <text> --category <cat> --severity <level> --problem <text> [options]
-  opencastle lesson verify <id> [--cite <path[:line]>]...
-  opencastle lesson archive <id> --into <file>
+  npx opencastle lesson [add] --title <text> --category <cat> --severity <level> --problem <text> [options]
+  npx opencastle lesson verify <id> [--cite <path[:line]>]...
+  npx opencastle lesson archive <id> --into <file>
 
   Record what an agent learned the hard way, as a file in .opencastle/lessons/,
   and rewrite the index agents read before they start (.opencastle/${LESSONS_INDEX}).
@@ -55,7 +55,7 @@ const HELP = `
     --help, -h               Show this help
 
   Examples:
-    opencastle lesson \\
+    npx opencastle lesson \\
       --title "Always quote shell variables" \\
       --category terminal \\
       --severity medium \\
@@ -64,8 +64,8 @@ const HELP = `
       --correct 'rm -rf "$DIR/old"' \\
       --cite scripts/clean.sh:12
 
-    opencastle lesson verify 2026-10-02-always-quote-shell-variables
-    opencastle lesson archive 2026-10-02-always-quote-shell-variables \\
+    npx opencastle lesson verify 2026-10-02-always-quote-shell-variables
+    npx opencastle lesson archive 2026-10-02-always-quote-shell-variables \\
       --into .opencastle/skills/git-workflow/SKILL.md
 `
 
@@ -124,7 +124,7 @@ function parse(args: string[]): Parsed {
       if (a === '--cite') out.cites.push(value.trim())
       else out.values.set(a, value)
     } else if (a.startsWith('-')) {
-      fail(`unknown option ${a} — run "opencastle lesson --help"`)
+      fail(`unknown option ${a} — run "npx opencastle lesson --help"`)
     } else {
       out.positional.push(a)
     }
@@ -185,7 +185,7 @@ async function add(dir: string, projectRoot: string, p: Parsed): Promise<void> {
     !severity && '--severity',
     !problem && '--problem',
   ].filter(Boolean)
-  if (missing.length > 0) fail(`Missing required flags: ${missing.join(', ')}\n  Run "opencastle lesson --help" for usage.`)
+  if (missing.length > 0) fail(`Missing required flags: ${missing.join(', ')}\n  Run "npx opencastle lesson --help" for usage.`)
   if (!isLessonCategory(category!)) fail(`Invalid --category "${category}". Must be one of: ${LESSON_CATEGORIES.join(', ')}`)
   if (!isLessonSeverity(severity!)) fail(`Invalid --severity "${severity}". Must be one of: ${LESSON_SEVERITIES.join(', ')}`)
   checkCitations(projectRoot, p.cites)
@@ -220,7 +220,7 @@ async function add(dir: string, projectRoot: string, p: Parsed): Promise<void> {
 
 async function verify(dir: string, projectRoot: string, p: Parsed): Promise<void> {
   const [ref] = p.positional
-  if (!ref) fail('verify needs the id of a lesson, e.g. opencastle lesson verify 2026-10-02-always-quote-shell-variables')
+  if (!ref) fail('verify needs the id of a lesson, e.g. npx opencastle lesson verify 2026-10-02-always-quote-shell-variables')
   checkCitations(projectRoot, p.cites)
   if (!p.dryRun) reindex(dir)
   const { lessons } = readLessons(dir)
@@ -241,7 +241,7 @@ async function verify(dir: string, projectRoot: string, p: Parsed): Promise<void
 async function archive(dir: string, projectRoot: string, p: Parsed): Promise<void> {
   const [ref] = p.positional
   const into = p.values.get('--into')
-  if (!ref) fail('archive needs the id of a lesson, e.g. opencastle lesson archive 2026-10-02-always-quote-shell-variables --into <file>')
+  if (!ref) fail('archive needs the id of a lesson, e.g. npx opencastle lesson archive 2026-10-02-always-quote-shell-variables --into <file>')
   if (!into) fail('archive needs --into <file>: the skill or instruction file the lesson was merged into')
   const problem = citationProblem(projectRoot, into)
   if (problem) fail(`--into: ${problem}`)
@@ -267,10 +267,10 @@ export default async function lesson({ args }: CliContext): Promise<void> {
   try {
     await stat(dir)
   } catch {
-    fail(`no .opencastle/ directory at ${dir} — run opencastle init first`)
+    fail(`no .opencastle/ directory at ${dir} — run npx opencastle init first`)
   }
   if (sub === 'add' && p.positional.length > 0) {
-    fail(`unexpected argument "${p.positional[0]}" — did you mean opencastle lesson verify or archive?`)
+    fail(`unexpected argument "${p.positional[0]}" — did you mean npx opencastle lesson verify or archive?`)
   }
   if (sub === 'add') return add(dir, projectRoot, p)
   if (sub === 'verify') return verify(dir, projectRoot, p)

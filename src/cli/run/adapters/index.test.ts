@@ -70,7 +70,7 @@ describe.skipIf(process.platform === 'win32')('resolveAdapter', () => {
     const projectRoot = setup(['claude', 'copilot'], { ides: ['vscode', 'claude-code'] })
     const r = await resolveAdapter({ projectRoot })
     expect(r).toMatchObject({ name: 'copilot', source: 'configured' })
-    expect(r.detail).toBe('GitHub Copilot CLI — configured by opencastle init')
+    expect(r.detail).toBe('GitHub Copilot CLI — configured by npx opencastle init')
   })
 
   it('walks the configured assistants in order, saying which came first but is missing', async () => {
@@ -96,7 +96,7 @@ describe.skipIf(process.platform === 'win32')('resolveAdapter', () => {
     const projectRoot = setup(['codex'], { ides: ['claude-code'] })
     const r = await resolveAdapter({ projectRoot })
     expect(r).toMatchObject({ name: 'codex', source: 'detected' })
-    expect(r.detail).toContain('opencastle init configured Claude Code, but `claude` is not on PATH')
+    expect(r.detail).toContain('npx opencastle init configured Claude Code, but `claude` is not on PATH')
   })
 
   it('detects in the order claude, codex, cursor, opencode, copilot', async () => {
@@ -115,7 +115,7 @@ describe.skipIf(process.platform === 'win32')('resolveAdapter', () => {
   it('does not count Copilot unless its CLI is on PATH, though its SDK is installed here', async () => {
     const projectRoot = setup([], { ides: ['vscode'] })
     const err = await resolveAdapter({ projectRoot }).catch((e: Error) => e)
-    expect((err as Error).message).toContain('opencastle init configured GitHub Copilot CLI, but no agent CLI is on PATH')
+    expect((err as Error).message).toContain('npx opencastle init configured GitHub Copilot CLI, but no agent CLI is on PATH')
     expect((err as Error).message).toContain('npm install -g @github/copilot')
   })
 

@@ -25,23 +25,23 @@ import type { TaskSpec } from './convoy/spec-types.js'
 import type { CliContext } from './types.js'
 
 const RUN_HELP = `
-  opencastle convoy run <spec.yml> [options]
+  npx opencastle convoy run <spec.yml> [options]
 
-  Run a convoy spec: one you wrote, or one opencastle convoy "<task>" wrote to
+  Run a convoy spec: one you wrote, or one npx opencastle convoy "<task>" wrote to
   .opencastle/convoys/. The work lands on a branch of its own (the spec's
   branch, or convoy/<name>-<id>); your checkout is never touched.
 
   Options:
     --dry-run                Check the spec and show what would run; start nothing
     --adapter, -a <name>     Agent runtime: claude, codex, cursor, opencode or copilot
-                             (default: the spec's, else the one opencastle init set up)
+                             (default: the spec's, else the one npx opencastle init set up)
     --concurrency, -c <n>    Tasks at once (default: the spec's, else 4)
     --verbose                Stream agent output
     --help, -h               Show this help
 `
 
 const RESUME_HELP = `
-  opencastle convoy resume [options]
+  npx opencastle convoy resume [options]
 
   Continue the newest run that is not done. Failed, timed-out and interrupted
   tasks run again, and so do the tasks a failure skipped; finished tasks are
@@ -74,18 +74,18 @@ const KNOWN_FLAGS = ['--dry-run', '--adapter', '-a', '--concurrency', '-c', '--v
  * because "unknown option" is the wrong answer to a flag our own docs taught.
  */
 export const REMOVED_FLAGS: Record<string, string> = {
-  '--resume': 'Use: opencastle convoy resume',
-  '--retry-failed': 'Use: opencastle convoy resume — it re-runs failed tasks too',
-  '--status': 'Use: opencastle convoy — it shows the last run and what to do next',
-  '--dlq-list': 'Failed tasks are listed by opencastle convoy, and re-run by opencastle convoy resume',
-  '--dlq-resolve': 'Failed tasks are listed by opencastle convoy, and re-run by opencastle convoy resume',
-  '--dlq-retry': 'Use: opencastle convoy resume',
-  '--formula': 'Formulas are gone: write the spec out, or plan it with opencastle convoy "<task>"',
-  '--set': 'Formulas are gone: write the spec out, or plan it with opencastle convoy "<task>"',
+  '--resume': 'Use: npx opencastle convoy resume',
+  '--retry-failed': 'Use: npx opencastle convoy resume — it re-runs failed tasks too',
+  '--status': 'Use: npx opencastle convoy — it shows the last run and what to do next',
+  '--dlq-list': 'Failed tasks are listed by npx opencastle convoy, and re-run by npx opencastle convoy resume',
+  '--dlq-resolve': 'Failed tasks are listed by npx opencastle convoy, and re-run by npx opencastle convoy resume',
+  '--dlq-retry': 'Use: npx opencastle convoy resume',
+  '--formula': 'Formulas are gone: write the spec out, or plan it with npx opencastle convoy "<task>"',
+  '--set': 'Formulas are gone: write the spec out, or plan it with npx opencastle convoy "<task>"',
   '--watch': 'Watch mode is gone: run the spec again when you want it run',
   '--watch-config': 'Watch mode is gone: run the spec again when you want it run',
   '--clear-scratchpad': 'Watch mode is gone: run the spec again when you want it run',
-  '--report-dir': 'Runs are recorded in .opencastle/convoy.db. See them with opencastle convoy dashboard',
+  '--report-dir': 'Runs are recorded in .opencastle/convoy.db. See them with npx opencastle convoy dashboard',
   '--permission-mode': 'Set defaults.permission_mode in the spec instead',
 }
 
@@ -133,7 +133,7 @@ export function parseRunArgs(args: string[], command: 'run' | 'resume'): RunArgs
       }
       case '--file':
       case '-f': {
-        if (command !== 'run') return { error: `${arg} belongs to opencastle convoy run` }
+        if (command !== 'run') return { error: `${arg} belongs to npx opencastle convoy run` }
         const v = value(i++, arg)
         if (typeof v !== 'string') return v
         if (out.spec !== null) return { error: `Two specs given: ${out.spec} and ${v}. Run one at a time.` }
@@ -227,7 +227,7 @@ async function drive(work: () => Promise<ConvoyResult>, projectRoot: string): Pr
     return result.exitCode ?? (result.status === 'done' ? 0 : 1)
   } catch (err) {
     if (err instanceof EngineAlreadyRunningError) {
-      return fail(`${err.message}\n    Watch it with: opencastle convoy dashboard`)
+      return fail(`${err.message}\n    Watch it with: npx opencastle convoy dashboard`)
     }
     return fail((err as Error).message)
   } finally {
@@ -278,7 +278,7 @@ function describePlan(spec: TaskSpec, runtime: string): string[] {
  */
 export async function runSpec(args: RunArgs, opts: { runtime?: ResolvedAdapter } = {}): Promise<number> {
   if (!args.spec) {
-    console.error(`  ${c.red('✗')} Name the spec to run: opencastle convoy run <spec.yml>`)
+    console.error(`  ${c.red('✗')} Name the spec to run: npx opencastle convoy run <spec.yml>`)
     console.error(`  ${c.dim('Specs the planner wrote are in .opencastle/convoys/.')}`)
     return 1
   }
@@ -324,7 +324,7 @@ export async function runSpec(args: RunArgs, opts: { runtime?: ResolvedAdapter }
     if (runtimeProblem) return fail(runtimeProblem)
     const problem = spec.defaults?.permission_mode ? permissionModeError(runtime!.name, spec.defaults.permission_mode) : null
     if (problem) return fail(problem)
-    console.log(`  ${c.dim('Dry run — nothing started, nothing recorded. To run it:')} opencastle convoy run ${args.spec}`)
+    console.log(`  ${c.dim('Dry run — nothing started, nothing recorded. To run it:')} npx opencastle convoy run ${args.spec}`)
     console.log('')
     return 0
   }
@@ -368,19 +368,19 @@ export async function resumeLast(args: RunArgs): Promise<number> {
   const runs = readRuns(projectRoot, 200)
   if (runs.length === 0) {
     console.error(`  ${c.red('✗')} No convoy runs in this project yet.`)
-    console.error(`  ${c.dim('Start one:')} opencastle convoy "<task>"`)
+    console.error(`  ${c.dim('Start one:')} npx opencastle convoy "<task>"`)
     return 1
   }
   const target = runs.find(unfinished)
   if (!target) {
     const last = runs[0]
     console.log(`  Nothing to resume: the last run, ${c.bold(last.name)}, finished with all ${last.tasks_total} tasks done.`)
-    console.log(`  ${c.dim('Start another:')} opencastle convoy "<task>"`)
+    console.log(`  ${c.dim('Start another:')} npx opencastle convoy "<task>"`)
     return 0
   }
   if (isRunAlive(projectRoot, target.id)) {
     console.error(`  ${c.red('✗')} ${target.name} (${target.id}) is still running in another process.`)
-    console.error(`  ${c.dim('Watch it:')} opencastle convoy dashboard`)
+    console.error(`  ${c.dim('Watch it:')} npx opencastle convoy dashboard`)
     return 1
   }
 
@@ -451,7 +451,7 @@ async function main(args: string[], command: 'run' | 'resume'): Promise<void> {
   const parsed = parseRunArgs(args, command)
   if ('error' in parsed) {
     console.error(`  ${c.red('✗')} ${parsed.error}`)
-    console.error(`  Run "opencastle convoy ${command} --help" for usage.`)
+    console.error(`  Run "npx opencastle convoy ${command} --help" for usage.`)
     exitWith(1)
     return
   }

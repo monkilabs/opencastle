@@ -238,9 +238,13 @@ export function renderIndex(lessons: Lesson[]): string {
     // A path, not a link: the folder is created with the first lesson, and a
     // link to it led nowhere until then.
     'Each lesson is a file in `.opencastle/lessons/`. Add one with',
-    '`opencastle lesson --title ... --category ... --severity ... --problem ...`',
-    '(and `--cite <path>` for the code it is about). Do not edit this index:',
-    'it is rewritten from those files by every `opencastle sync`.',
+    '`npx opencastle lesson --title ... --category ... --severity ... --problem ...`',
+    '(and `--cite <path>` for the code it is about). The category is one of',
+    // Spelled out: "--category ..." alone had agents guess, and a guess like
+    // `tooling` is refused.
+    `${LESSON_CATEGORIES.map((x) => `\`${x}\``).join(', ')};`,
+    `the severity ${LESSON_SEVERITIES.map((x) => `\`${x}\``).join(', ').replace(/, ([^,]+)$/, ' or $1')}. Do not edit this index:`,
+    'it is rewritten from those files by every `npx opencastle sync`.',
   ]
   if (active.length === 0) out.push('', 'No lessons yet.')
   const categories = [...new Set(active.map((l) => l.category))].sort()
@@ -512,7 +516,7 @@ export function checkLessons(projectRoot: string): {
   const dir = join(projectRoot, '.opencastle')
   const drift = lessonsIndexDrift(dir)
   if (drift) {
-    return { ok: true, warning: true, label, detail: `.opencastle/${LESSONS_INDEX} ${drift}`, fix: 'opencastle sync' }
+    return { ok: true, warning: true, label, detail: `.opencastle/${LESSONS_INDEX} ${drift}`, fix: 'npx opencastle sync' }
   }
   const { lessons, problems } = readLessons(dir)
   if (problems.length > 0) {
@@ -540,8 +544,8 @@ export function checkLessons(projectRoot: string): {
       label,
       detail: said.join('; '),
       fix:
-        `check that each still holds, then opencastle lesson verify ${ids[0]}${ids.length > 1 ? ' (and the others)' : ''} — ` +
-        'with --cite <path> for a file that moved — or retire it with opencastle lesson archive <id> --into <file>',
+        `check that each still holds, then npx opencastle lesson verify ${ids[0]}${ids.length > 1 ? ' (and the others)' : ''} — ` +
+        'with --cite <path> for a file that moved — or retire it with npx opencastle lesson archive <id> --into <file>',
     }
   }
   // Active lessons only: archiving is the remedy, and it does not shrink the
@@ -554,7 +558,7 @@ export function checkLessons(projectRoot: string): {
       warning: true,
       label,
       detail: `${active.length} active lessons, ~${indexTokens} tokens in the index agents read before every task`,
-      fix: 'merge the lessons that recur into the skill or instruction file they are about, then opencastle lesson archive <id> --into <file>',
+      fix: 'merge the lessons that recur into the skill or instruction file they are about, then npx opencastle lesson archive <id> --into <file>',
     }
   }
   const cited = active.filter((l) => l.citations.length > 0).length

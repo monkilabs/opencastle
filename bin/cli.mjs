@@ -9,7 +9,12 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 const pkgRoot = resolve(__dirname, '..')
 
-const [, , command, ...rawArgs] = process.argv
+const [, , first, ...given] = process.argv
+// `opencastle help sync` is `opencastle sync --help`; it printed the top-level
+// help instead, which does not have the command's options.
+const helpFor = first === 'help' && given[0] && !given[0].startsWith('-') ? given[0] : null
+const command = helpFor ?? first
+const rawArgs = helpFor ? ['--help'] : given
 
 // A reader that stops early — `opencastle explain | head` — closes the pipe, and
 // the next write raised EPIPE as an unhandled error: a stack trace after the
@@ -182,13 +187,13 @@ const HIDDEN = {
  * anyone with the old command in a script gets a pointer instead of "unknown".
  */
 const REPLACED = {
-  eject: 'opencastle remove --keep-files',
-  destroy: 'opencastle remove --all',
-  run: 'opencastle convoy run',
-  plan: 'opencastle convoy "<task>"',
-  start: 'opencastle convoy "<task>"',
-  validate: 'opencastle convoy run  (validation is automatic)',
-  dashboard: 'opencastle convoy dashboard',
+  eject: 'npx opencastle remove --keep-files',
+  destroy: 'npx opencastle remove --all',
+  run: 'npx opencastle convoy run',
+  plan: 'npx opencastle convoy "<task>"',
+  start: 'npx opencastle convoy "<task>"',
+  validate: 'npx opencastle convoy run  (validation is automatic)',
+  dashboard: 'npx opencastle convoy dashboard',
   insights: null,
   artifacts: null,
   agents: null,

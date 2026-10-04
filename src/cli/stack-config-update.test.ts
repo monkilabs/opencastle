@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { updateSkillMatrixContent } from './stack-config.js';
+import { updateSkillMatrixContent, isEnvVarSatisfied } from './stack-config.js';
 import type { StackConfig } from './types.js';
 import type { SkillMatrixData } from './stack-config.js';
 
@@ -48,6 +48,27 @@ function templateJson(): string {
 function parse(result: string): SkillMatrixData {
   return JSON.parse(result);
 }
+
+describe('isEnvVarSatisfied', () => {
+  const set = (env: string) => isEnvVarSatisfied('OC_TEST_TOKEN', env);
+
+  it('reads a value, exported or not, quoted or not', () => {
+    expect(set('OC_TEST_TOKEN=abc')).toBe(true);
+    expect(set('export OC_TEST_TOKEN = "abc"')).toBe(true);
+    expect(set('OC_TEST_TOKEN=#not-a-comment')).toBe(true);
+  });
+
+  it('does not take the next line for the value of an empty one', () => {
+    // The shape init writes: a placeholder, then the next variable's comment.
+    expect(set('OC_TEST_TOKEN=\n# Another token\nOTHER=x')).toBe(false);
+  });
+
+  it('counts empty quotes and a comment as no value', () => {
+    expect(set('OC_TEST_TOKEN=""')).toBe(false);
+    expect(set("OC_TEST_TOKEN=''  # fill me")).toBe(false);
+    expect(set('OC_TEST_TOKEN=   # fill me')).toBe(false);
+  });
+});
 
 describe('updateSkillMatrixContent', () => {
   it('fills database slot when a database tool is selected', () => {

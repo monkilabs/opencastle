@@ -210,8 +210,8 @@ export function buildConvoyYaml(plan: TaskPlan, settings: SpecSettings): string 
   spec.tasks = tasks
 
   const header =
-    '# Written by `opencastle convoy`. Edit it if you like, then run it with:\n' +
-    '#   opencastle convoy run <this file>\n'
+    '# Written by `npx opencastle convoy`. Edit it if you like, then run it with:\n' +
+    '#   npx opencastle convoy run <this file>\n'
   return header + stringify(spec, { lineWidth: 120, defaultKeyType: 'PLAIN', defaultStringType: 'PLAIN' })
 }
 

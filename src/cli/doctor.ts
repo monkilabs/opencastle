@@ -85,7 +85,7 @@ async function checkGitignoreBlock(projectRoot: string): Promise<CheckResult> {
       label,
       ok: false,
       detail: '.gitignore is missing — .env and the run artefacts are not ignored',
-      fix: 'opencastle sync',
+      fix: 'npx opencastle sync',
     };
   }
 
@@ -103,7 +103,7 @@ async function checkGitignoreBlock(projectRoot: string): Promise<CheckResult> {
 
   const { gitignoreNeedsRebuild } = await import('./gitignore.js');
   const why = gitignoreNeedsRebuild(content);
-  if (why) return { label, ok: false, detail: why, fix: 'opencastle sync' };
+  if (why) return { label, ok: false, detail: why, fix: 'npx opencastle sync' };
   return { label, ok: true, warning: false };
 }
 
@@ -117,7 +117,7 @@ function checkManifest(manifest: Manifest | null): CheckResult {
       ok: false,
       label: 'OpenCastle manifest (.opencastle/manifest.json)',
       detail: 'Not found. Run "npx opencastle init" first.',
-      fix: 'opencastle init',
+      fix: 'npx opencastle init',
     };
   }
   // A manifest that parses but names no recognised target is not a healthy
@@ -130,7 +130,7 @@ function checkManifest(manifest: Manifest | null): CheckResult {
       ok: false,
       label: 'OpenCastle manifest (.opencastle/manifest.json)',
       detail: `names no target this release recognises (valid: ${VALID_IDES.join(', ')})`,
-      fix: 'fix the "ides" field, or re-run opencastle init; this one needs a person',
+      fix: 'fix the "ides" field, or re-run npx opencastle init; this one needs a person',
     };
   }
   return { ok: true, label: 'OpenCastle manifest (.opencastle/manifest.json)', detail: `v${manifest.version}, IDE: ${known.join(', ')}` };
@@ -153,7 +153,7 @@ async function checkCustomizations(projectRoot: string): Promise<CheckResult> {
       ok: false,
       label: 'Customizations directory',
       detail: `.opencastle/ cannot be read — ${(err as Error).message}`,
-      fix: 'fix the permissions on .opencastle/, then run opencastle sync; this one needs a person',
+      fix: 'fix the permissions on .opencastle/, then run npx opencastle sync; this one needs a person',
     };
   }
   return { ok: true, label: 'Customizations directory', detail: `${files.length} entries` };
@@ -222,7 +222,7 @@ export async function checkSkillMatrix(projectRoot: string): Promise<CheckResult
           ok: false,
           label: 'Skill matrix',
           detail: `.opencastle/agents/ cannot be read — ${(err as Error).message}`,
-          fix: 'fix the permissions on .opencastle/agents/, then run opencastle sync; this one needs a person',
+          fix: 'fix the permissions on .opencastle/agents/, then run npx opencastle sync; this one needs a person',
         };
       }
     }
@@ -242,7 +242,7 @@ export async function checkSkillMatrix(projectRoot: string): Promise<CheckResult
       ok: false,
       label: 'Skill matrix',
       detail: `Cannot read .opencastle/agents/skill-matrix.json — ${(err as Error).message}`,
-      fix: 'fix or delete the file, then run opencastle sync; this one needs a person',
+      fix: 'fix or delete the file, then run npx opencastle sync; this one needs a person',
     };
   }
   try {
@@ -410,7 +410,7 @@ function verifySubtree(
     ok: false,
     label: check.label,
     detail: `${check.path}${shown} cannot be read — ${(err as Error).message}`,
-    fix: `fix the permissions or replace ${check.path}${shown}, then run opencastle sync; this one needs a person`,
+    fix: `fix the permissions or replace ${check.path}${shown}, then run npx opencastle sync; this one needs a person`,
   });
 
   for (const entry of entries) {
@@ -441,7 +441,7 @@ function verifySubtree(
         ok: false,
         label: check.label,
         detail: `${check.path}${shown} is a file, not a directory of generated files`,
-        fix: `remove ${check.path}${shown}, then run opencastle sync; this one needs a person`,
+        fix: `remove ${check.path}${shown}, then run npx opencastle sync; this one needs a person`,
       };
     }
     if (isDir) {
@@ -450,7 +450,7 @@ function verifySubtree(
           ok: false,
           label: check.label,
           detail: `${check.path}${shown} is a directory, not a generated file`,
-          fix: `remove ${check.path}${shown}, then run opencastle sync; this one needs a person`,
+          fix: `remove ${check.path}${shown}, then run npx opencastle sync; this one needs a person`,
         };
       }
       let kids: string[];
@@ -501,7 +501,7 @@ export async function runDoctorCheck(projectRoot: string, check: DoctorCheck): P
       ok: false,
       label: check.label,
       detail: `${check.path} cannot be read — ${(err as Error).message}`,
-      fix: `remove or fix ${check.path}, then run opencastle sync; this one needs a person`,
+      fix: `remove or fix ${check.path}, then run npx opencastle sync; this one needs a person`,
     };
   }
 
@@ -540,7 +540,7 @@ export function checkMcpFromPaths(projectRoot: string, mcpPaths: string[]): Chec
         ok: false,
         label: 'MCP configuration',
         detail: `${p} cannot be read — ${(err as Error).message}`,
-        fix: `fix or delete ${p}, then run opencastle sync; this one needs a person`,
+        fix: `fix or delete ${p}, then run npx opencastle sync; this one needs a person`,
       };
     }
   }
@@ -593,7 +593,7 @@ function teamStateOrFailure(
 // ── Main doctor command ───────────────────────────────────────
 
 const DOCTOR_HELP = `
-  opencastle doctor [options]
+  npx opencastle doctor [options]
 
   Validate your OpenCastle setup — checks manifest, customizations, skills,
   logs, MCP configuration, and IDE-specific rules. MCP servers are audited too:
@@ -656,7 +656,7 @@ async function checkGitignoredOutput(
     // and doctor fails again with the same advice. Asking about the offending
     // lines is the whole difference.
     fix: (await syncWouldClearThis(projectRoot, hidden))
-      ? 'opencastle sync — those entries are in a block this tool maintains'
+      ? 'npx opencastle sync — those entries are in a block this tool maintains'
       : `remove those entries from ${await whereIgnored(projectRoot, hidden)}; OpenCastle only ignores .env and run artefacts`,
   };
 }
@@ -901,7 +901,7 @@ async function checkTornBlocks(
 
   const needsAPerson = found.filter(({ diagnosis }) => !diagnosis.fixable)
   if (needsAPerson.length === 0) {
-    return { label, ok: false, warning: false, detail, fix: 'opencastle sync' }
+    return { label, ok: false, warning: false, detail, fix: 'npx opencastle sync' }
   }
   return {
     label,
@@ -933,7 +933,7 @@ function checkRootFileClassification(manifest: Manifest | null): CheckResult {
     label,
     ok: true,
     warning: true,
-    detail: `${misfiled.join(', ')} recorded as generated — run "opencastle sync" to repair`,
+    detail: `${misfiled.join(', ')} recorded as generated — run "npx opencastle sync" to repair`,
   };
 }
 
@@ -1038,7 +1038,7 @@ export async function runSharedChecks(
   if (!manifest) {
     for (const r of results) {
       if (!r.ok && (r.fix === undefined || /opencastle sync/.test(r.fix))) {
-        r.fix = 'opencastle init — nothing is installed, so there is nothing to sync';
+        r.fix = 'npx opencastle init — nothing is installed, so there is nothing to sync';
       }
     }
   }

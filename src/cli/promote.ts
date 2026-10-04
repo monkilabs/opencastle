@@ -30,7 +30,7 @@ import type { CliContext } from './types.js'
  */
 
 const HELP = `
-  opencastle promote <skill|memory> [name|path] [options]
+  npx opencastle promote <skill|memory> [name|path] [options]
 
   Make what one person's assistant learned the team's: copy it into the
   team's sources, where the next sync compiles it into every assistant.
@@ -172,7 +172,7 @@ function promoteSkill(pkgRoot: string, args: string[], dryRun: boolean): void {
   const to = flag(args, '--to')
   const projectRoot = projectRootFrom(cwd)
   const destSkills = to ? skillsDirOf(resolve(cwd, to)) : join(projectRoot, '.opencastle', 'skills')
-  if (!to && !existsSync(join(projectRoot, '.opencastle'))) fail('no .opencastle/ here — run opencastle init first, or promote it into a baseline with --to <dir>')
+  if (!to && !existsSync(join(projectRoot, '.opencastle'))) fail('no .opencastle/ here — run npx opencastle init first, or promote it into a baseline with --to <dir>')
   const dest = join(destSkills, name)
   const shown = relative(cwd, dest) || '.'
   if (existsSync(dest) && !args.includes('--force')) {
@@ -190,8 +190,8 @@ function promoteSkill(pkgRoot: string, args: string[], dryRun: boolean): void {
   if (core) console.log(`  ${c.yellow('!')} OpenCastle ships a skill of that name; this one replaces it for everyone it reaches`)
   console.log(
     to
-      ? `  ${c.dim('Next:')} ${c.cyan(`opencastle baseline check ${relative(cwd, resolve(cwd, to)) || '.'}`)}${c.dim(', then publish a new version.')}\n`
-      : `  ${c.dim('Next:')} ${c.cyan('opencastle sync')} ${c.dim('compiles it into every assistant; commit it, and the pull request is where the team agrees.')}\n`,
+      ? `  ${c.dim('Next:')} ${c.cyan(`npx opencastle baseline check ${relative(cwd, resolve(cwd, to)) || '.'}`)}${c.dim(', then publish a new version.')}\n`
+      : `  ${c.dim('Next:')} ${c.cyan('npx opencastle sync')} ${c.dim('compiles it into every assistant; commit it, and the pull request is where the team agrees.')}\n`,
   )
 }
 
@@ -284,7 +284,7 @@ function titleOf(memory: Memory): string {
 function promoteMemory(args: string[], dryRun: boolean): void {
   const projectRoot = projectRootFrom(process.cwd())
   const customizations = join(projectRoot, '.opencastle')
-  if (!existsSync(customizations)) fail('no .opencastle/ here — run opencastle init first')
+  if (!existsSync(customizations)) fail('no .opencastle/ here — run npx opencastle init first')
   const from = flag(args, '--from')
   const dir = from ? resolve(process.cwd(), from.replace(/^~(?=\/|$)/, home())) : claudeMemoryDir(projectRoot)
   if (!existsSync(dir)) {

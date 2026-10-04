@@ -148,7 +148,7 @@ export async function resolveAdapter(opts: {
       const also = notInstalled.length
         ? ` (${notInstalled.map((n) => RUNTIMES[n].label).join(', ')} came first but ${notInstalled.length === 1 ? 'is' : 'are'} not installed)`
         : ''
-      return { name, adapter, source: 'configured', detail: `${RUNTIMES[name].label} — configured by opencastle init${also}` }
+      return { name, adapter, source: 'configured', detail: `${RUNTIMES[name].label} — configured by npx opencastle init${also}` }
     }
     notInstalled.push(name)
   }
@@ -158,7 +158,7 @@ export async function resolveAdapter(opts: {
     if (await adapter.isAvailable()) {
       const notes: string[] = []
       if (notInstalled.length) {
-        notes.push(`opencastle init configured ${notInstalled.map((n) => RUNTIMES[n].label).join(' and ')}, but \`${notInstalled.map((n) => RUNTIMES[n].command).join('`, `')}\` is not on PATH`)
+        notes.push(`npx opencastle init configured ${notInstalled.map((n) => RUNTIMES[n].label).join(' and ')}, but \`${notInstalled.map((n) => RUNTIMES[n].command).join('`, `')}\` is not on PATH`)
       }
       if (noRuntime.length) notes.push(`${noRuntime.join(' and ')} has no command-line agent`)
       return {
@@ -172,7 +172,7 @@ export async function resolveAdapter(opts: {
 
   if (notInstalled.length) {
     throw new Error(
-      `opencastle init configured ${notInstalled.map((n) => RUNTIMES[n].label).join(' and ')}, but no agent CLI is on PATH.\n` +
+      `npx opencastle init configured ${notInstalled.map((n) => RUNTIMES[n].label).join(' and ')}, but no agent CLI is on PATH.\n` +
       notInstalled.map((n) => `  ${RUNTIMES[n].label}: ${RUNTIMES[n].install}`).join('\n') +
       `\n  Or install another runtime and pick it with --adapter <${NAMES.replace(/, /g, '|')}>.`,
     )

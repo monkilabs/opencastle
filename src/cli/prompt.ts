@@ -16,9 +16,21 @@ function moveUp(n: number): string {
 
 // ── Color helpers ─────────────────────────────────────────────────
 
-/** One SGR style, unless `NO_COLOR` is set (https://no-color.org). Read per call, so a test can set it. */
+/**
+ * Whether to colour output: on a terminal, unless `NO_COLOR` is set
+ * (https://no-color.org) or `TERM=dumb`; `FORCE_COLOR` turns it on anywhere.
+ * Piped or redirected output was coloured too, so a log file or `| grep` got
+ * escape codes. Read per call, so a test can set it.
+ */
+function colourOn(): boolean {
+  if (process.env.NO_COLOR) return false;
+  if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== '0') return true;
+  return Boolean(process.stdout.isTTY) && process.env.TERM !== 'dumb';
+}
+
+/** One SGR style, when output is coloured at all. */
 const sgr = (code: string) => (s: string) =>
-  process.env.NO_COLOR ? s : `\x1B[${code}m${s}\x1B[0m`;
+  colourOn() ? `\x1B[${code}m${s}\x1B[0m` : s;
 
 /** ANSI color helpers for CLI output. */
 export const c = {

@@ -26,7 +26,7 @@ import { isWorkflowTemplate } from './adapters/workflows.js'
  */
 
 const HELP = `
-  opencastle explain [options]
+  npx opencastle explain [options]
 
   Show what every assistant in this repository is given, where each piece comes
   from (OpenCastle, a baseline, or this project), and what you still need to
@@ -53,7 +53,7 @@ function by(from: string): string {
 
 async function build(pkgRoot: string, projectRoot: string): Promise<ExplainReport> {
   const manifest = await readManifest(projectRoot)
-  if (!manifest) throw new Error('OpenCastle is not set up here — run opencastle init')
+  if (!manifest) throw new Error('OpenCastle is not set up here — run npx opencastle init')
   refuseOlderCli(pkgRoot, manifest.version)
   const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter((i): i is string => Boolean(i) && i in IDE_ADAPTERS)
   const stack = resolveStack({ ...manifest, ides })

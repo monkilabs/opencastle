@@ -316,7 +316,7 @@ export async function buildCheckReport(pkgRoot: string, projectRoot: string): Pr
           path: i.where,
           kind: 'unreducible' as const,
           detail: i.message,
-          fix: i.fix ?? 'fix it, then run opencastle sync',
+          fix: i.fix ?? 'fix it, then run npx opencastle sync',
           origin: 'team' as const,
         })),
     }
@@ -391,7 +391,7 @@ async function compareProject(
           path: LOCK_REL,
           kind: 'unreducible',
           detail: `cannot be read — ${(err as Error).message}`,
-          fix: 'fix the permissions or delete the file, then run opencastle sync; this one needs a person',
+          fix: 'fix the permissions or delete the file, then run npx opencastle sync; this one needs a person',
         })
       }
       if (actual !== null && actual !== expected) {
@@ -538,7 +538,7 @@ async function compareProject(
               path: rel,
               kind: 'unreducible',
               detail: `cannot be read — ${(err as Error).message}`,
-              fix: `fix the permissions on ${rel}, then run opencastle sync; this one needs a person`,
+              fix: `fix the permissions on ${rel}, then run npx opencastle sync; this one needs a person`,
             })
             continue
           }
@@ -547,7 +547,7 @@ async function compareProject(
         // should have: then the file is output `sync` owes.
         const owed = Object.keys(team.expected)
         if (owed.length > 0) {
-          drift.push({ ide, path: rel, kind: 'outdated', detail: `the team's servers sync writes: ${owed.join(', ')}`, fix: 'opencastle sync', origin: 'mcp' })
+          drift.push({ ide, path: rel, kind: 'outdated', detail: `the team's servers sync writes: ${owed.join(', ')}`, fix: 'npx opencastle sync', origin: 'mcp' })
         }
         continue
       }
@@ -560,7 +560,7 @@ async function compareProject(
           path: rel,
           kind: 'unreducible',
           detail: `cannot be read — ${(err as Error).message}`,
-          fix: `fix or delete ${rel}, then run opencastle sync; this one needs a person`,
+          fix: `fix or delete ${rel}, then run npx opencastle sync; this one needs a person`,
         })
         continue
       }
@@ -585,7 +585,7 @@ async function compareProject(
         teamDiffers.length > 0 ? `not as the team config defines them, so sync writes: ${teamDiffers.join(', ')}` : '',
         audit.removed.length > 0
           ? `not in this project's stack, so sync removes: ${audit.removed.join(', ')} ` +
-            `(opencastle add ${pluginIds(audit.removed).join(' ')} keeps them)`
+            `(npx opencastle add ${pluginIds(audit.removed).join(' ')} keeps them)`
           : '',
         audit.blockedByPolicy.length > 0
           ? `sync removes ${audit.blockedByPolicy.map((k) => `${k} (${resolved.blocked.get(k) ?? "refused by the team's MCP policy"})`).join(', ')}`
@@ -593,7 +593,7 @@ async function compareProject(
         audit.retired.length > 0 ? `no longer defined by any team layer, so sync removes: ${audit.retired.join(', ')}` : '',
       ].filter(Boolean)
       if (changes.length > 0) {
-        drift.push({ ide, path: rel, kind: 'outdated', detail: changes.join('; '), fix: 'opencastle sync', origin: 'mcp' })
+        drift.push({ ide, path: rel, kind: 'outdated', detail: changes.join('; '), fix: 'npx opencastle sync', origin: 'mcp' })
       }
       // Failures `sync` will not clear — an entry someone edited, or their own.
       // Unpinned ones are warnings in `doctor` and are not drift here either.
@@ -636,7 +636,7 @@ async function compareProject(
         path: '.opencastle/agents/',
         kind: 'unreducible',
         detail: `cannot be read — ${unreadableHolder.message}`,
-        fix: 'fix the permissions on .opencastle/agents/, then run opencastle sync; this one needs a person',
+        fix: 'fix the permissions on .opencastle/agents/, then run npx opencastle sync; this one needs a person',
       })
     } else if (existsSync(matrix)) {
       try {
@@ -647,7 +647,7 @@ async function compareProject(
           path: '.opencastle/agents/skill-matrix.json',
           kind: 'unreducible',
           detail: `cannot be read — ${(err as Error).message}`,
-          fix: 'fix or delete the file, then run opencastle sync; this one needs a person',
+          fix: 'fix or delete the file, then run npx opencastle sync; this one needs a person',
         })
       }
     }
@@ -658,7 +658,7 @@ async function compareProject(
   // is what this catches, and `sync` rebuilds it.
   {
     const why = lessonsIndexDrift(resolve(projectRoot, '.opencastle'))
-    if (why) drift.push({ ide: 'all', path: `.opencastle/${LESSONS_INDEX}`, kind: 'outdated', detail: why, fix: 'opencastle sync' })
+    if (why) drift.push({ ide: 'all', path: `.opencastle/${LESSONS_INDEX}`, kind: 'outdated', detail: why, fix: 'npx opencastle sync' })
   }
 
   // A manifest that parses but names no target this release knows is not a
@@ -672,7 +672,7 @@ async function compareProject(
       path: '.opencastle/manifest.json',
       kind: 'unreducible',
       detail: 'names no target this release recognises, so nothing could be compared',
-      fix: 'fix the "ides" field, or re-run opencastle init; this one needs a person',
+      fix: 'fix the "ides" field, or re-run npx opencastle init; this one needs a person',
     })
   }
 
@@ -682,7 +682,7 @@ async function compareProject(
 function render(report: CheckReport): void {
   if (!report.installed) {
     console.error(`\n  ${c.red('✗')} No OpenCastle installation found here.`)
-    console.error(`  ${c.dim('Run')} ${c.cyan('opencastle init')} ${c.dim('first.')}\n`)
+    console.error(`  ${c.dim('Run')} ${c.cyan('npx opencastle init')} ${c.dim('first.')}\n`)
     return
   }
 
@@ -785,13 +785,13 @@ function render(report: CheckReport): void {
   if (report.drift.length > unreducible.length && unreducible.length > 0) {
     // Both kinds: `sync` alone may not clear the rest — the lock, for one, is
     // held back while an MCP config cannot be read.
-    console.log(`  ${c.bold('Fix:')} ${c.dim('the ones that need a person first, then')} ${c.cyan('opencastle sync')}`)
+    console.log(`  ${c.bold('Fix:')} ${c.dim('the ones that need a person first, then')} ${c.cyan('npx opencastle sync')}`)
     console.log(`  ${c.dim('To keep an edit, move it into .opencastle/ instead — that directory is yours.')}\n`)
   } else if (report.drift.length > unreducible.length) {
-    console.log(`  ${c.bold('Fix:')} ${c.cyan('opencastle sync')}`)
+    console.log(`  ${c.bold('Fix:')} ${c.cyan('npx opencastle sync')}`)
     console.log(`  ${c.dim('To keep an edit, move it into .opencastle/ instead — that directory is yours.')}\n`)
   } else {
-    console.log(`  ${c.bold('Fix:')} ${c.dim('by hand — see above, then run')} ${c.cyan('opencastle doctor')}\n`)
+    console.log(`  ${c.bold('Fix:')} ${c.dim('by hand — see above, then run')} ${c.cyan('npx opencastle doctor')}\n`)
   }
 }
 
@@ -816,7 +816,7 @@ export async function runCheck({ pkgRoot, args }: CliContext): Promise<void> {
           path: (err as Error).message,
           kind: 'unreducible',
           detail: COMPARISON_FAILED,
-          fix: 'fix the path named above, then run opencastle sync; this one needs a person',
+          fix: 'fix the path named above, then run npx opencastle sync; this one needs a person',
         },
       ],
     }

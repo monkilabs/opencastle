@@ -70,23 +70,23 @@ describe('readLastRun', () => {
 
   it('counts every failed status as failed', () => {
     seed([{ id: 'a', status: 'failed', created: '2026-10-01T00:00:00Z', tasks: ['done', 'failed', 'gate-failed', 'timed-out', 'review-blocked', 'disputed', 'hook-failed'] }])
-    expect(readLastRun(root)).toMatchObject({ total: 7, done: 1, failed: 6, next: 'opencastle convoy resume' })
+    expect(readLastRun(root)).toMatchObject({ total: 7, done: 1, failed: 6, next: 'npx opencastle convoy resume' })
   })
 
   it('does not call a run finished while a task was skipped, even when it says "done"', () => {
     seed([{ id: 'a', status: 'done', created: '2026-10-01T00:00:00Z', tasks: ['done', 'skipped'] }])
-    expect(readLastRun(root)).toMatchObject({ done: 1, skipped: 1, failed: 0, next: 'opencastle convoy resume' })
+    expect(readLastRun(root)).toMatchObject({ done: 1, skipped: 1, failed: 0, next: 'npx opencastle convoy resume' })
   })
 
   it('treats a running task in a dead run as not done', () => {
     seed([{ id: 'a', status: 'running', created: '2026-10-01T00:00:00Z', tasks: ['done', 'running'] }])
-    expect(readLastRun(root)).toMatchObject({ running: 1, alive: false, next: 'opencastle convoy resume' })
+    expect(readLastRun(root)).toMatchObject({ running: 1, alive: false, next: 'npx opencastle convoy resume' })
   })
 
   it('points at the live view while a process is working on the run', () => {
     seed([{ id: 'a', status: 'running', created: new Date().toISOString(), tasks: ['running', 'pending'] }])
     holdLock()
-    expect(readLastRun(root)).toMatchObject({ alive: true, next: 'opencastle convoy dashboard' })
+    expect(readLastRun(root)).toMatchObject({ alive: true, next: 'npx opencastle convoy dashboard' })
   })
 
   it('offers a new run when every task is done, and names an older run with work left', () => {
@@ -95,7 +95,7 @@ describe('readLastRun', () => {
       { id: 'new', status: 'done', created: '2026-10-02T00:00:00Z', tasks: ['done', 'done'] },
     ])
     expect(readLastRun(root)).toMatchObject({
-      id: 'new', done: 2, total: 2, next: 'opencastle convoy "<task>"', older_unfinished: { id: 'old', name: 'Run old' },
+      id: 'new', done: 2, total: 2, next: 'npx opencastle convoy "<task>"', older_unfinished: { id: 'old', name: 'Run old' },
     })
   })
 
@@ -112,14 +112,14 @@ describe('opencastle convoy (status)', () => {
     seed([{ id: 'a', status: 'done', created: '2026-10-01T00:00:00Z', tasks: ['done', 'skipped'] }])
     await convoy({ args: [], pkgRoot: root })
     expect(text()).toMatch(/1\/2 done, 1 skipped/)
-    expect(text()).toContain('Next: opencastle convoy resume')
+    expect(text()).toContain('Next: npx opencastle convoy resume')
     expect(text()).not.toMatch(/every task is done|Nothing outstanding/)
   })
 
   it('prints JSON with --json', async () => {
     seed([{ id: 'a', status: 'done', created: '2026-10-01T00:00:00Z', tasks: ['done'] }])
     await convoy({ args: ['--json'], pkgRoot: root })
-    expect(JSON.parse(text())).toMatchObject({ id: 'a', done: 1, total: 1, next: 'opencastle convoy "<task>"' })
+    expect(JSON.parse(text())).toMatchObject({ id: 'a', done: 1, total: 1, next: 'npx opencastle convoy "<task>"' })
   })
 
   it('says how to start when there are no runs', async () => {
@@ -135,17 +135,17 @@ describe('opencastle convoy (what it refuses before planning anything)', () => {
   }
 
   it('reads a mistyped subcommand as a typo, not a task', async () => {
-    expect(await refused(['resum'])).toContain('Did you mean opencastle convoy resume?')
+    expect(await refused(['resum'])).toContain('Did you mean npx opencastle convoy resume?')
   })
 
   it('does not plan a one-word task such as "status"', async () => {
     const said = await refused(['status'])
     expect(said).toContain('"status" is one word')
-    expect(said).toContain('For the last run: opencastle convoy')
+    expect(said).toContain('For the last run: npx opencastle convoy')
   })
 
   it('names what replaced a removed flag', async () => {
-    expect(await refused(['--retry-failed'])).toContain('--retry-failed was removed. Use: opencastle convoy resume')
+    expect(await refused(['--retry-failed'])).toContain('--retry-failed was removed. Use: npx opencastle convoy resume')
     expect(await refused(['add', 'rate', 'limiting', '--status'])).toContain('--status was removed')
   })
 
@@ -158,6 +158,6 @@ describe('opencastle convoy (what it refuses before planning anything)', () => {
   })
 
   it('sends a subcommand flag to its subcommand', async () => {
-    expect(await refused(['-f', 'spec.yml'])).toContain('-f belongs to `opencastle convoy run`')
+    expect(await refused(['-f', 'spec.yml'])).toContain('-f belongs to `npx opencastle convoy run`')
   })
 })

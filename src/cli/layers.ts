@@ -545,7 +545,7 @@ function loadExtends(
     if (!declared && !isAgentPlugin(pkgDir)) {
       fail(
         `extends "${spec}", which is neither an OpenCastle baseline nor an Agent Plugin`,
-        `a baseline declares itself in its package.json: "opencastle": { "baseline": "." } (opencastle baseline init creates one); an Agent Plugin has a plugin.json at its root`,
+        `a baseline declares itself in its package.json: "opencastle": { "baseline": "." } (npx opencastle baseline init creates one); an Agent Plugin has a plugin.json at its root`,
       )
       return
     }
@@ -617,7 +617,7 @@ function loadPluginLayer(
       level: 'error',
       where: declaredIn,
       message: `extends ${id}, which is not a valid Agent Plugin: ${report.errors[0] ?? 'its plugin.json cannot be read'}`,
-      fix: `run opencastle plugin check on it`,
+      fix: `run npx opencastle plugin check on it`,
     })
     return null
   }
@@ -784,7 +784,7 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
           level: 'warning',
           where,
           message: `excludes ${ref}, which no layer below provides`,
-          fix: 'check the spelling — opencastle explain lists everything that is compiled',
+          fix: 'check the spelling — npx opencastle explain lists everything that is compiled',
         })
       }
     }
@@ -914,7 +914,7 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
           level: 'warning',
           where,
           message: `excludes ${ref}, which no layer below defines and no integration brings`,
-          fix: 'check the spelling — opencastle explain lists every MCP server',
+          fix: 'check the spelling — npx opencastle explain lists every MCP server',
         })
       }
       if (servers.has(k)) servers.delete(k)

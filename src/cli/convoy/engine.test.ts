@@ -1922,7 +1922,7 @@ describe('progress reporting', () => {
     const text = out.text()
     expect(text).toContain('• task-a (failed): compile error in a.ts')
     expect(text).toContain('• task-b (skipped): dependency "task-a" failed')
-    expect(text).toContain('Resume with: opencastle convoy resume')
+    expect(text).toContain('Resume with: npx opencastle convoy resume')
   })
 
   it('prints gate results with pass/fail indicators', async () => {

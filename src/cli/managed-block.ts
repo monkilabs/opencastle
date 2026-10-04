@@ -565,7 +565,7 @@ export function diagnoseManagedFile(
       state: 'doubled',
       fixable: true,
       detail: `holds ${blocks} OpenCastle blocks`,
-      fix: 'opencastle sync',
+      fix: 'npx opencastle sync',
     }
   }
   // A stray marker with no block is not the same as a stray marker beside one.

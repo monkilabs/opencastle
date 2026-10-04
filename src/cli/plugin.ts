@@ -25,7 +25,7 @@ import type { CliContext } from './types.js'
  */
 
 const HELP = `
-  opencastle plugin <check|build|index> [dir] [options]
+  npx opencastle plugin <check|build|index> [dir] [options]
 
   Agent Plugins 1.0 is the open package format for skills and MCP servers
   (agent-plugins.org): plugin.json, skills/<name>/SKILL.md and mcp.json.
@@ -170,7 +170,7 @@ function listPlugins(root: string): { plugins: Listed[]; problems: string[] } {
     const at = join(dir, entry)
     if (!existsSync(join(at, 'plugin.json'))) continue
     if (!isAgentPlugin(at)) {
-      problems.push(`plugins/${entry}: plugin.json does not declare an Agent Plugins version — run opencastle plugin check plugins/${entry}`)
+      problems.push(`plugins/${entry}: plugin.json does not declare an Agent Plugins version — run npx opencastle plugin check plugins/${entry}`)
       continue
     }
     const report = readAgentPlugin(at)
@@ -214,15 +214,15 @@ function printReport(dir: string, report: PluginReport, claudeStale: string[]): 
     console.log(`  Skills: ${report.skills.length > 0 ? report.skills.join(', ') : c.dim('none')}`)
     console.log(`  MCP servers: ${Object.keys(report.servers).length > 0 ? Object.keys(report.servers).join(', ') : c.dim('none')}`)
     if (existsSync(join(report.root, EXTENSION_NAMESPACE))) {
-      console.log(`  ${EXTENSION_NAMESPACE}/: ${c.dim('OpenCastle content — check it with opencastle baseline check')}`)
+      console.log(`  ${EXTENSION_NAMESPACE}/: ${c.dim('OpenCastle content — check it with npx opencastle baseline check')}`)
     }
   }
   for (const e of report.errors) console.log(`  ${c.red('✗')} ${e}`)
-  for (const s of claudeStale) console.log(`  ${c.red('✗')} ${s} does not match plugin.json and mcp.json ${c.dim('— run opencastle plugin build')}`)
+  for (const s of claudeStale) console.log(`  ${c.red('✗')} ${s} does not match plugin.json and mcp.json ${c.dim('— run npx opencastle plugin build')}`)
   for (const w of report.warnings) console.log(`  ${c.yellow('!')} ${c.dim(w)}`)
   if (report.errors.length === 0 && claudeStale.length === 0) {
     console.log(`\n  ${c.green('✓')} Loads in GitHub Copilot, VS Code, Cursor, Codex and Kiro as it is` +
-      (existsSync(join(report.root, '.claude-plugin', 'plugin.json')) ? ', and in Claude Code.\n' : `.\n  ${c.dim('Run opencastle plugin build to add the files Claude Code reads.')}\n`))
+      (existsSync(join(report.root, '.claude-plugin', 'plugin.json')) ? ', and in Claude Code.\n' : `.\n  ${c.dim('Run npx opencastle plugin build to add the files Claude Code reads.')}\n`))
   } else {
     console.log(`\n  ${c.red(`${report.errors.length + claudeStale.length} problem(s) to fix.`)}\n`)
   }
@@ -268,7 +268,7 @@ export default async function plugin({ args }: CliContext): Promise<void> {
     const changed = apply(root, claudeFiles(root, report), check)
     if (check) {
       if (changed.length > 0) {
-        for (const f of changed) console.error(`  ${c.red('✗')} ${f} does not match plugin.json and mcp.json — run opencastle plugin build`)
+        for (const f of changed) console.error(`  ${c.red('✗')} ${f} does not match plugin.json and mcp.json — run npx opencastle plugin build`)
         process.exit(1)
       }
       console.log(`  ${c.green('✓')} Claude Code's files match plugin.json and mcp.json`)
@@ -291,7 +291,7 @@ export default async function plugin({ args }: CliContext): Promise<void> {
   const noClaude = plugins.filter((p) => !p.claude)
   if (check) {
     if (changed.length > 0) {
-      for (const f of changed) console.error(`  ${c.red('✗')} ${f} does not list the plugins under plugins/ — run opencastle plugin index`)
+      for (const f of changed) console.error(`  ${c.red('✗')} ${f} does not list the plugins under plugins/ — run npx opencastle plugin index`)
       process.exit(1)
     }
     console.log(`  ${c.green('✓')} The marketplace files list all ${plugins.length} plugin(s)`)
@@ -303,7 +303,7 @@ export default async function plugin({ args }: CliContext): Promise<void> {
       : `  ${c.green('✓')} The marketplace files already list all ${plugins.length} plugin(s)`,
   )
   if (noClaude.length > 0) {
-    console.log(`  ${c.yellow('!')} ${noClaude.map((p) => `plugins/${p.dir}`).join(', ')} ${c.dim('— Claude Code needs .claude-plugin/plugin.json; run opencastle plugin build in each')}`)
+    console.log(`  ${c.yellow('!')} ${noClaude.map((p) => `plugins/${p.dir}`).join(', ')} ${c.dim('— Claude Code needs .claude-plugin/plugin.json; run npx opencastle plugin build in each')}`)
   }
   console.log(`  ${c.dim(`Add it: claude plugin marketplace add <owner>/<repo>, copilot plugin marketplace add <owner>/<repo>, codex plugin marketplace add <owner>/<repo>; in Cursor, Dashboard → Plugins → Team Marketplaces → Import.`)}`)
 }
