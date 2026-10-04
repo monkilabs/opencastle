@@ -28,13 +28,13 @@ const features = [
     icon: 'orchestrator',
     title: 'Team Lead Orchestrator',
     description:
-      'A single coordinator that analyzes, decomposes, delegates, and verifies work across specialist agents — never writes code itself.',
+      'A single coordinator that analyzes, decomposes, delegates, and verifies work across specialist agents — its instructions leave every code change to them.',
   },
   {
     icon: 'agents',
     title: 'Specialist Agents',
     description:
-      'From developer and UI/UX expert to security expert, each with curated tools, a capability tier, and domain-specific skills.',
+      'From developer and UI/UX expert to security expert, each with a capability tier, domain-specific skills and, in Copilot, a curated tool list.',
   },
   {
     icon: 'skills',
@@ -58,7 +58,7 @@ const features = [
     icon: 'brain',
     title: 'Self-Improvement',
     description:
-      'Agents record what they learn from retries and failures — one file per lesson, citing the code it is about — and doctor flags a lesson when that code changes. Mature lessons graduate into permanent instructions.',
+      'Agents record what they learn from retries and failures — one file per lesson, citing the code it is about when there is some — and doctor flags a lesson when a file it cites changes. Mature lessons are merged into skills and instructions, then archived.',
   },
 ];
 
@@ -85,7 +85,7 @@ const teamPoints = [
     icon: 'review',
     title: 'Review the meaning, not the diff',
     description:
-      'opencastle review turns dozens of regenerated files into sentences on the pull request, and marks with ⚠️ what deserves a careful look: a new MCP server, a widened allowlist, a new always-loaded instruction.',
+      'opencastle review turns dozens of regenerated files into sentences in the summary of the pull request’s check, and marks with ⚠️ what deserves a careful look: a new MCP server, a widened allowlist, a new always-loaded instruction.',
   },
   {
     icon: 'pr',
@@ -124,7 +124,7 @@ const standards = [
     icon: 'orchestrator',
     title: 'MCP',
     description:
-      'Every server written where each assistant reads it, in its own syntax — JSON for six, [mcp_servers] tables in .codex/config.toml for Codex — with variables spelled the way each one expands them.',
+      'Every server written to each assistant’s own project config, in its own syntax — JSON for six, [mcp_servers] tables in .codex/config.toml for Codex — with each secret passed the way that assistant takes it, and doctor flagging one it would send as literal text.',
   },
   {
     icon: 'review',
@@ -140,19 +140,37 @@ const standards = [
   },
 ];
 
-const workflows = [
-  { name: 'feature-implementation', description: 'Brainstorm → Research → Foundation → Integration → Validation → QA Gate' },
-  { name: 'bug-fix', description: 'Triage & Reproduce → Root Cause Analysis → Fix → Verification' },
-  { name: 'data-pipeline', description: 'Source Analysis → Crawling → Processing → Validation → Import' },
-  { name: 'security-audit', description: 'Scope → Automated Checks → Manual Review → Panel Review → Remediation' },
-  {
-    name: 'performance-optimization',
-    description: 'Baseline Measurement → Analysis → Optimization → Verification',
-  },
-  { name: 'schema-changes', description: 'Schema Analysis → Implementation → Query Updates → Page Integration → Verification' },
-  { name: 'database-migration', description: 'Planning → Migration → Type Generation → Code Integration → Rollback Test' },
-  { name: 'refactoring', description: 'Scope & Baseline → Test Coverage → Refactor → Verification → Panel Review' },
+/**
+ * The workflow templates, read from the files the compiler ships, so a renamed
+ * phase or a new template reaches this table without anyone remembering it.
+ * shared-delivery-phase.md is the last phase of every template, not one itself.
+ */
+const workflowSources = import.meta.glob('../../../src/orchestrator/agent-workflows/*.md', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+const workflowOrder = [
+  'feature-implementation',
+  'bug-fix',
+  'data-pipeline',
+  'security-audit',
+  'performance-optimization',
+  'schema-changes',
+  'database-migration',
+  'refactoring',
 ];
+const workflows = Object.entries(workflowSources)
+  .map(([path, text]) => ({
+    name: path.split('/').pop()!.replace(/\.md$/, ''),
+    // "## Phase 2: Foundation (Parallel)" → "Foundation"
+    phases: [...text.matchAll(/^#{2,3} Phase \d+: (.+)$/gm)].map((m) => m[1].replace(/\s*\(.*?\)/g, '').trim()),
+  }))
+  .filter((w) => w.phases.length > 0)
+  .sort((a, b) => {
+    const rank = (n: string) => (workflowOrder.includes(n) ? workflowOrder.indexOf(n) : workflowOrder.length);
+    return rank(a.name) - rank(b.name) || a.name.localeCompare(b.name);
+  });
 
 const featureIcons: Record<string, string> = {
   plugin: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
@@ -265,6 +283,16 @@ const integrationCount = Object.keys(PLUGINS).length;
 // plus the one every integration ships.
 const coreSkillCount = 31;
 const skillCount = coreSkillCount + Object.values(PLUGINS).filter((p) => p.skillName).length;
+// Counted the way docs-accuracy.test.ts counts it: every Markdown file the
+// compiler ships, split on whitespace.
+const shippedMarkdown = import.meta.glob('../../../src/orchestrator/**/*.md', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+const wordsK = Math.round(
+  Object.values(shippedMarkdown).reduce((n, text) => n + text.split(/\s+/).filter(Boolean).length, 0) / 1000,
+);
 
 const arrowIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.33 8h9.33M8.67 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 
@@ -508,7 +536,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         <p class="section__subtitle">
           One source compiles into instructions, specialist agents, on-demand
           skills, workflow templates, and quality gates — in each assistant's
-          native format, battle-tested on a production codebase.
+          native format.
         </p>
         <div class="features-grid">
           {features.map((f) => (
@@ -530,9 +558,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           Specialized agents, intelligent routing.
         </h2>
         <p class="section__subtitle">
-          Precisely developed specialist agents, each with its own capability tier, tool access, and
-          file partition. The Team Lead orchestrator routes tasks based on
-          complexity scoring.
+          Specialist agents, each with its own capability tier and skills, working in the files
+          its task is assigned. The Team Lead scores each task's complexity to decide how it
+          runs: one agent for a small change, a convoy for more.
         </p>
         <div class="agents-grid">
           {agents.map((a) => (
@@ -612,11 +640,11 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
 <span class="code-folder">$ npx opencastle init --customize</span>
 
 <span class="code-comment"># Key commands</span>
-<span class="code-folder">$ npx opencastle sync     </span><span class="code-comment"># Update framework, preserve customizations</span>
+<span class="code-folder">$ npx opencastle sync     </span><span class="code-comment"># Recompile every assistant, keep your customizations</span>
 <span class="code-folder">$ npx opencastle sync --check  </span><span class="code-comment"># In CI: fail on drift, annotate the PR</span>
 <span class="code-folder">$ npx opencastle add stripe  </span><span class="code-comment"># Adopt a tool and recompile</span>
 <span class="code-folder">$ npx opencastle explain  </span><span class="code-comment"># What every assistant here is given, and what to set up</span>
-<span class="code-folder">$ npx opencastle doctor     </span><span class="code-comment"># Check system health and configuration</span>
+<span class="code-folder">$ npx opencastle doctor     </span><span class="code-comment"># Check the setup, MCP servers and team sources</span>
 
 <span class="code-comment"># See all commands: <a href="/docs/cli">docs/cli</a></span></pre>
           </div>
@@ -635,7 +663,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           <code>npx opencastle convoy "&lt;task&gt;"</code> plans multi-step work, shows you the plan and
           asks once. Agents then work in parallel, each in a git worktree of its own, on the agent CLI
           <code>opencastle init</code> set up. Each finished task is merged onto one branch, your checks run
-          once at the end, and your checkout is never touched. Inspired by Steve Yegge's
+          on the merged result at the end, and your checkout is never touched. Inspired by Steve Yegge's
           <a href="https://github.com/gastownhall/gastown" target="_blank" rel="noopener noreferrer">Gas Town</a>.
         </p>
         <p class="section__subtitle">
@@ -695,16 +723,17 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
             <div class="autonomous-feature">
               <h3 class="autonomous-feature__title">No waiting on the slowest</h3>
               <p class="autonomous-feature__desc">
-                A task starts as soon as the tasks it depends on are done. Tasks that touch the same
+                A task starts as soon as the tasks it depends on are done. Tasks that claim the same
                 files never run side by side.
               </p>
             </div>
             <div class="autonomous-feature">
               <h3 class="autonomous-feature__title">Reviewed, then checked</h3>
               <p class="autonomous-feature__desc">
-                Changes get a read-only review before they merge; small ones can pass on size. Your <code>typecheck</code>,
-                <code>lint</code>, <code>test</code> and <code>build</code> scripts run once on the
-                merged result.
+                Each change gets a read-only review before it merges; the smallest can pass on size, and
+                one the reviewer cannot finish is recorded as unreviewed. Your <code>typecheck</code>,
+                <code>lint</code>, <code>test</code> and <code>build</code> scripts run on the merged
+                result, and a failure gets one fix attempt.
               </p>
             </div>
             <div class="autonomous-feature">
@@ -718,8 +747,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <h3 class="autonomous-feature__title">Five runtimes, by tier</h3>
               <p class="autonomous-feature__desc">
                 <strong>Claude Code</strong>, <strong>Copilot</strong>, <strong>Cursor</strong>,
-                <strong>OpenCode</strong> or <strong>Codex</strong>, on macOS, Linux and Windows. On
-                Claude Code each agent runs on the model its tier needs, and reviews on the cheapest.
+                <strong>OpenCode</strong> or <strong>Codex</strong>, on macOS and Linux; Windows is
+                supported, not yet tested. On Claude Code each agent runs on the model its tier needs,
+                and reviews on the cheapest.
               </p>
             </div>
           </div>
@@ -737,9 +767,10 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         <p class="section__subtitle">
           <code>npx opencastle convoy dashboard</code> (experimental) is a read-only page over a project's
           convoy runs. Across every run: success rate, duration, tokens and cost, and tasks by agent, model
-          and tier. For each run: every task with what it waits for and why it failed, each review and check
-          with the attempt it read, retries, and the event timeline, live while a run works. Every figure is
-          read from the runs' own records; one a runtime did not report says so. A run started in a terminal
+          and tier. For each run: every task with what it waits for and why it failed, each review with the
+          attempt it read, each round of checks, retries, and the event timeline, live while a run works.
+          Every figure is read from the runs' own records; one a runtime did not report is marked as
+          estimated, or as not reported. A run started in a terminal
           starts it for you.
         </p>
         <a
@@ -760,7 +791,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
           <img
             src={dashboardSnapshot.src}
-            alt="The Observability dashboard showing a real five-task run, Note tags: done in 4m 52s for $3.21, with each task's agent, status, what it waits for, duration, tokens and cost"
+            alt="The Observability dashboard's overview of seven real convoy runs: 7 runs and 22 tasks, all done, 6m 16s on average, 21.28M tokens and $19.44, part of it estimated, with runs per day below"
           />
           <div class="dashboard-preview__overlay">
             View live demo →
@@ -777,8 +808,8 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           Integrations for your stack.
         </h2>
         <p class="section__subtitle">
-          OpenCastle ships with {integrationCount} integrations — each bundling a skill, an MCP
-          server config where the tool has one, and agent tool mappings. <code>init</code> adds
+          OpenCastle ships with {integrationCount} integrations — each bundling a skill and, where
+          the tool has an MCP server, its config and which agents may use it. <code>init</code> adds
           the ones it detects in your repository; <code>opencastle add</code> adopts another.
           Setup for each: <a href="/docs/plugins">Integrations</a>.
         </p>
@@ -804,23 +835,26 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           Reproducible execution plans for every task type.
         </h2>
         <p class="section__subtitle">
-          Advanced workflow templates define phases, agent assignments, exit criteria,
-          and file partitions. Handy prompt templates cover common tasks from
-          brainstorming to PR reviews, as commands under one namespace —
-          <code>/oc:brainstorm</code>, <code>/oc:bug-fix</code> — that never collide with your own.
+          Advanced workflow templates define phases, agent assignments, exit criteria and,
+          where work runs in parallel, file partitions. In Claude Code each one is a command, as below; Cursor and
+          Windsurf get them as rules their agent loads when a task fits, and the other
+          assistants as files beside their agents. Handy prompt templates cover common tasks
+          from brainstorming to resolving PR comments; in Claude Code and Copilot they are
+          commands under one namespace — <code>/oc:brainstorm</code>, <code>/oc:bug-fix</code> —
+          that never collide with your own.
         </p>
         <table class="workflow-table">
           <thead>
             <tr>
-              <th>Template</th>
-              <th>Pipeline</th>
+              <th>Command in Claude Code</th>
+              <th>Phases</th>
             </tr>
           </thead>
           <tbody>
             {workflows.map((w) => (
               <tr>
-                <td>{w.name}</td>
-                <td>{w.description}</td>
+                <td>/oc:workflow-{w.name}</td>
+                <td>{w.phases.join(' → ')}</td>
               </tr>
             ))}
           </tbody>
@@ -847,9 +881,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span style="opacity: 0.5">01</span> Secret Scanning
             </h3>
             <p class="quality-card__description">
-              Every diff is scanned for API keys, tokens, passwords, and
-              connection strings before any other gate runs. Leaked secrets
-              block immediately.
+              Each delegation's diff is scanned for API keys, tokens,
+              passwords, and connection strings before the other gates. A
+              leaked secret blocks it.
             </p>
           </div>
           <div class="quality-card">
@@ -857,8 +891,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span style="opacity: 0.5">02</span> Deterministic Checks
             </h3>
             <p class="quality-card__description">
-              Lint, type-check, unit tests, and build verification run
-              automatically after every agent output. No false positives.
+              Lint, tests and build must pass with zero errors after every
+              delegation. A convoy runs your typecheck, lint, test and build
+              scripts on the merged result.
             </p>
           </div>
           <div class="quality-card">
@@ -876,9 +911,10 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span style="opacity: 0.5">04</span> Fast Review
             </h3>
             <p class="quality-card__description">
-              A single reviewer sub-agent validates every delegation.
-              Sensitive files (auth, migrations, security headers) always
-              get reviewed — even for 1-line changes.
+              A single reviewer sub-agent checks each delegation; only
+              research, docs-only and tiny changes skip it. Sensitive files
+              (auth, migrations, security headers) always get reviewed — even
+              for 1-line changes.
             </p>
           </div>
           <div class="quality-card">
@@ -886,9 +922,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
               <span style="opacity: 0.5">05</span> Browser Testing
             </h3>
             <p class="quality-card__description">
-              Chrome DevTools MCP validates UI changes at your
-              project-defined responsive breakpoints. Screenshot evidence
-              is mandatory.
+              Chrome DevTools MCP, which init adds by default, checks UI
+              changes in a real browser at your project-defined responsive
+              breakpoints.
             </p>
           </div>
           <div class="quality-card">
@@ -933,14 +969,14 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           A complete orchestration framework, out of the box.
         </h2>
         <p class="section__subtitle">
-          62K words of curated knowledge, and everything
+          {wordsK}K words of curated knowledge, and everything
           you need to run a coordinated AI development team — from agent
           definitions to quality gates.
         </p>
         <div class="stats-row" style="margin-top: 32px">
           <div class="stat">
             <div class="stat__value">13</div>
-            <div class="stat__label">Specialist Agents</div>
+            <div class="stat__label">Agents</div>
           </div>
           <div class="stat">
             <div class="stat__value">7</div>
