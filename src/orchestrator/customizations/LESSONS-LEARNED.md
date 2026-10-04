@@ -6,7 +6,7 @@ What agents on this project learned the hard way: a command that failed, a
 tool quirk, a convention written down nowhere else. **Read this before you
 start work**, then open the lessons that match your task.
 
-Each lesson is a file in [`lessons/`](lessons/). Add one with
+Each lesson is a file in `.opencastle/lessons/`. Add one with
 `opencastle lesson --title ... --category ... --severity ... --problem ...`
 (and `--cite <path>` for the code it is about). Do not edit this index:
 it is rewritten from those files by every `opencastle sync`.

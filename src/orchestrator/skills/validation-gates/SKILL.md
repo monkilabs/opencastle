@@ -5,7 +5,7 @@ description: "Defines the ten gates delegated work passes, from secret scanning 
 
 # Validation Gates
 
-The project's commands live under Key Commands in `.opencastle/project.instructions.md` (resolve them via the **codebase-tool** slot). Every gate below runs those, never a guessed `npm run …`.
+The project's commands live under Key Commands in `.opencastle/project.instructions.md`; with a task runner (Nx, Turborepo), its skill has them. Every gate below runs those, never a guessed `npm run …`.
 
 | Gate | Name | Runs When |
 |------|------|-----------|

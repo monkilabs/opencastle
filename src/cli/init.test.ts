@@ -267,13 +267,13 @@ describe('stack-config: getAgentToolInjections', () => {
 
     const teamLeadTools = injections.get('team-lead')
     expect(teamLeadTools).toBeDefined()
-    expect(teamLeadTools).toContain('Notion/search')
-    expect(teamLeadTools).toContain('Notion/query_database')
+    expect(teamLeadTools).toContain('Notion/notion-search')
+    expect(teamLeadTools).toContain('Notion/notion-query-data-sources')
 
     const architectTools = injections.get('architect')
     expect(architectTools).toBeDefined()
-    expect(architectTools).toContain('Notion/create_page')
-    expect(architectTools).toContain('Notion/update_page')
+    expect(architectTools).toContain('Notion/notion-create-pages')
+    expect(architectTools).toContain('Notion/notion-update-page')
   })
 })
 
