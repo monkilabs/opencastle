@@ -1,5 +1,3 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 ## Prompt Templates — Foundation & Page Tasks
 
 ### Foundation Setup — Prompt (copy-paste)
@@ -35,5 +33,3 @@ Create `[path]/ui/`: Button, Card, Heading, Text, Link, Section, Container, Grid
 - Copy the appropriate template into the foundation or page task tracker issue.
 - Replace bracketed placeholders (`[path]`, `[Aesthetic]`) with exact values from the foundation task outputs.
 - Attach paths to tokens, Layout, and UI component library explicitly in the prompt.
-
-Last Updated: 2026-03-31

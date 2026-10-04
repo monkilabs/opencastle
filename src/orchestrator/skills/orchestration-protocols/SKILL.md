@@ -1,6 +1,6 @@
 ---
 name: orchestration-protocols
-description: "Coordinate multiple agents: parallel spawning, health monitoring, circuit breakers, escalation. Use for parallel agents, agent timeouts, fan-out tasks, multi-agent delegation."
+description: "Runtime patterns for running agents in parallel: steering, background agents, parallel research, health signals, circuit breakers and convoy runs. Use when agents run in parallel, stall, loop or fail repeatedly."
 ---
 
 # Orchestration Protocols
@@ -23,14 +23,14 @@ When redirecting, state *why* + *how*:
 
 > "Don't modify `libs/data/src/lib/product.ts` — shared across features. Add the new query in `libs/data/src/lib/reviews.ts`."
 
-**Sub-agents:** steer live, within the first 5 min. **Background agents:** no live steering — front-load prompt specificity, partition constraints, acceptance criteria checklists.
+**Sub-agents:** steer live, at the first off-course tool call or file edit. **Background agents:** no live steering — front-load prompt specificity, partition constraints, acceptance criteria checklists.
 
 ## Background Agents
 
-Run autonomously in isolated Git worktrees. Reserve for well-scoped tasks >5 min with clear acceptance criteria.
+Run autonomously in isolated Git worktrees. Reserve for well-scoped tasks with clear acceptance criteria that need no decisions from you mid-run.
 
-- **Spawn:** Delegate Session → Background → Select agent → Enter prompt
-- **Interrupted:** `opencastle convoy resume` picks up where the run stopped
+- **Spawn:** start a background agent with whatever the assistant offers (a background or cloud agent, a worktree session)
+- **Interrupted convoy:** `opencastle convoy resume` picks up where the run stopped
 
 ## Parallel Research Protocol
 
@@ -115,6 +115,6 @@ tail -n 50 .opencastle/logs/events.ndjson | jq -c 'select(.outcome != "success")
 | During-run | Watch for failures | `opencastle convoy dashboard` |
 | Pre-merge | No task left failed or gate-failed | `opencastle convoy --json \| jq -e '.failed == 0'` |
 | Unfinished | Nothing failed, skipped or left running | `opencastle convoy --json \| jq -e '.done == .total'` |
-| Post-merge | Lint + smoke tests pass | `npm run lint && npm test -- -t "smoke"` |
+| Post-merge | Lint + smoke tests pass | The project's lint and smoke-test commands (Key Commands in `.opencastle/project.instructions.md`) |
 | Blocker | Any failure | Block merge; reopen to original researcher(s) |
 

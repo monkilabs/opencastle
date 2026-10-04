@@ -1,6 +1,6 @@
 ---
 name: expo-development
-description: "Scaffolds Expo/React Native apps, configures EAS Build profiles, manages native modules via CNG, sets up Expo Router navigation, and uses EAS Update for OTA deployments. Use when creating React Native apps with Expo, configuring EAS builds, setting up Expo Router, managing native modules, or deploying OTA updates."
+description: "Expo and React Native apps: Continuous Native Generation, EAS Build and Update, Expo Router. Use when creating or configuring an Expo app, its EAS builds, native modules, routes or OTA updates."
 ---
 
 # Expo Development
@@ -16,7 +16,7 @@ description: "Scaffolds Expo/React Native apps, configures EAS Build profiles, m
 - `eas.json` profiles: development = `developmentClient: true` + `distribution: internal`; preview = `distribution: internal` + `channel`; production = `channel` + `autoIncrement: true`.
 - Set `runtimeVersion: { policy: "fingerprint" }` in app.json. `eas update --channel production` ships JS only — a runtimeVersion mismatch forces a new binary build, and native changes can never go OTA.
 - Rollback: `eas update:republish --group <previous-group-id>`. Diagnose failures via `eas build:list` then `eas build:view <id>`.
-- Secrets belong in EAS Secrets (`eas secret:create`), never `app.json`; device-side storage via `expo-secure-store`.
+- Secrets belong in EAS environment variables with secret visibility (`eas env:create --visibility secret`; `eas secret:create` is deprecated), never `app.json`; device-side storage via `expo-secure-store`.
 - iOS signing failures: `eas credentials`. CI/CD lives in `.eas/workflows/`.
 
 ## Expo Router

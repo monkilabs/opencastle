@@ -1,9 +1,7 @@
 ---
 name: astro-framework
-description: "Creates pages/layouts, defines content collections, configures hydration directives, and wires integrations. Use when adding or modifying Astro pages, layouts, components, or content collections. Trigger terms: Astro, content collection, client:load, client:visible, astro:content"
+description: "Astro pages, layouts, content collections, hydration directives and integrations. Use when adding or changing Astro pages, components or content collections, or choosing a client: directive."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Astro Framework
 

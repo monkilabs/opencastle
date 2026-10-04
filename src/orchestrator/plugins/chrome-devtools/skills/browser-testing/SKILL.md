@@ -1,9 +1,7 @@
 ---
 name: browser-testing
-description: "Drive real browsers via Chrome DevTools MCP: navigate pages, capture snapshots, run responsive checks, and collect console/perf traces. Use when the user mentions: 'validate UI change in Chrome', 'capture a screenshot', 'run responsive checks', or 'collect console logs'. Trigger terms: browser testing, DevTools, console logs, screenshot, responsive testing"
+description: "Browser testing through the Chrome DevTools MCP: navigation, DOM snapshots, scripted assertions, responsive checks, console and performance traces. Use when verifying a UI change in Chrome, checking breakpoints, or reading console errors."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Browser Testing with Chrome DevTools MCP
 
@@ -16,7 +14,7 @@ Screenshots are expensive. **MAX 3 per session**, reserved for evidence: a failu
 ## Tools
 
 - `navigate_page` — `{ type: 'url', url }` or `{ type: 'reload' }`
-- `click` / `type` / `wait_for` — `click` and `type` take a `uid` from a prior snapshot, not a CSS selector
+- `click` / `fill` / `wait_for` — `click` and `fill` take a `uid` from a prior snapshot, not a CSS selector
 - `evaluate_script` — `{ function: '() => ...' }` (an arrow function *string*, not a raw expression)
 - `resize_page` — `{ width, height }`
 - `list_console_messages`
@@ -30,4 +28,4 @@ Navigate → `wait_for` anchor text → assert via `evaluate_script` → exercis
 
 ## Regression re-test
 
-Read the prior `result.json`, build + lint, then re-run the **entire** previous suite — a fix routinely regresses a different test. Every test must pass before writing the updated `result.json`. Do not stop on partial green.
+Build + lint, then re-run the **entire** previous suite — a fix routinely regresses a different test. Every test must pass before reporting the result in the session output. Do not stop on partial green.

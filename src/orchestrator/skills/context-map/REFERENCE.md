@@ -1,5 +1,3 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 Full context-map template, partition derivation, and Team Lead integration.
 
 ## Context Map Template

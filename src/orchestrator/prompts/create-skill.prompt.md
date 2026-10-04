@@ -50,53 +50,28 @@ Agents load a skill when a task matches its `description`, so the description is
 
 ### Step 3: Create the Skill File
 
-Create `.opencastle/skills/<skill-name>/SKILL.md`.
-
-Use this template:
+Create `.opencastle/skills/<skill-name>/SKILL.md`. Load the **writing-for-agents** skill first; it holds the levers this step applies.
 
 ```markdown
 ---
 name: <skill-name>
-description: "<Verb1> X, <verb2> Y, and <verb3> Z. Use when <scenario1>, <scenario2>, or <scenario3>."
+description: "<What the skill is for, in third person>. Use when <situation>, <situation> or <situation>."
 ---
 
 # <Display Name>
 
-## Workflow
-
-1. **<Step>** — <Action>
-   - Checkpoint: <what to verify before proceeding>
-   - Recovery: <what to do on failure>
-2. **<Step>** — <Action>
-   - Checkpoint: <validation>
-3. **<Step>** — <Action>
-   - Fail → fix → re-run from step N.
-
-## <Domain Section>
-
-<Content organized by topic. Use tables, code blocks, and checklists.>
-
-## <Executable Example>
-
-```<lang>
-// Concrete, copy-paste-ready code (5-15 lines)
+<What an agent gets wrong without this skill: rules, gotchas, exact commands. Numbered steps where order matters, each ending on a check it can verify.>
 ```
 
-## Anti-Patterns
+**Description** — the pointer that decides when the skill loads:
 
-| Anti-pattern | Fix |
-|-------------|-----|
-| <Bad pattern> | <What to do instead> |
+- What the skill is for, then when to use it, in third person ("Checks…", "Use when…").
+- One trigger per branch: each situation that should load it, named once, not a list of synonyms.
+- No workflow summary: an agent that reads the steps in the description may follow them instead of the body.
+- No "Trigger terms:" tail; fold the real triggers into the "Use when" sentence.
+- One line, aim for 250 characters or fewer.
 
-## References
-
-| Resource | Purpose |
-|----------|--------|
-| [REFERENCE.md](./REFERENCE.md) | <Extended examples, schemas, large tables> |
-| **<related-skill>** skill | <What it contributes> |
-```
-
-If skill has large code examples (>30 lines), schema tables, or verbose reference material, create companion `REFERENCE.md` in same directory; link to it from SKILL.md. Keep SKILL.md as lean operational overview. Companion files must start with backlink: `> Parent: [SKILL.md](./SKILL.md)`.
+**Body** — as short as the knowledge allows, and under 500 lines. Material only some tasks need goes in a companion file beside `SKILL.md` (e.g. `REFERENCE.md`), linked from `SKILL.md` with the condition for reading it.
 
 ### Step 4: Compile the Skill
 
@@ -109,46 +84,17 @@ If skill has large code examples (>30 lines), schema tables, or verbose referenc
 - [ ] File created at `.opencastle/skills/<skill-name>/SKILL.md`
 - [ ] Frontmatter has `name` and `description` fields; `name` equals the directory name
 - [ ] Description is single line (no line breaks)
-- [ ] Content follows template structure
 - [ ] No overlap with existing skills
 - [ ] `npx opencastle sync --check` passes — the compiled copies match the source
 - [ ] `npx opencastle doctor` passes — it checks that every script and path a team skill names exists
-- [ ] Run `npx tessl skill review <path>` — target 100 score (see Scoring Criteria below)
-
-## Scoring Criteria
-
-Skills evaluated by `npx tessl skill review` across 8 criteria (3 pts each = 24 total). Target 100.
-
-### Description (frontmatter `description` field)
-
-| Criterion | 3/3 Pattern | Common Pitfall |
-|-----------|------------|----------------|
-| **Specificity** | List 3+ concrete actions as verbs: "Creates X, validates Y, and manages Z" | Vague "covers" or "handles" without listing what |
-| **Trigger terms** | Natural phrases a user would say — broad synonyms and variations | Too specialized; missing common phrasings |
-| **Completeness** | Explicit `Use when...` clause with 3+ trigger scenarios | Missing when-to-use guidance |
-| **Distinctiveness** | Unique niche; terms unlikely to collide with other skills | Generic terms that overlap with adjacent skills |
-
-**Formula:** `"<Verb1> X, <verb2> Y, and <verb3> Z. Use when <scenario1>, <scenario2>, or <scenario3>."`
-
-### Content (SKILL.md body)
-
-| Criterion | 3/3 Pattern | Common Pitfall |
-|-----------|------------|----------------|
-| **Conciseness** | Every line earns its place. No info Claude already knows. Tables over prose. | Explaining obvious concepts, redundant sections, verbose anti-patterns with "Why" columns |
-| **Actionability** | ≥1 executable code example (copy-paste ready), concrete CLI commands, specific thresholds | Deferring to other skills without fallback, abstract guidance without examples |
-| **Workflow clarity** | Numbered steps with validation checkpoints, explicit error recovery, feedback loops (fail → fix → re-run) | Implied sequence without numbers, no checkpoints between steps, missing recovery path |
-| **Progressive disclosure** | SKILL.md = lean overview. Bulky content (>30-line examples, large tables, schemas) in REFERENCE.md. External refs organized in a References section. | Everything inline making the file too heavy, or too much deferred leaving SKILL.md hollow |
+- [ ] Description follows the rules in Step 3
 
 ## Quality Guidelines
 
 - **Be prescriptive** — "Use `fetchPlaces()` from `libs/queries`" beats "use the query library"
-- **Include executable examples** — At least one copy-paste-ready code block (5-15 lines). CLI commands with real flags, not placeholders
+- **Exact commands** — CLI commands with real flags, not placeholders
 - **Keep it scannable** — Tables over prose. Headings, bullets, code blocks. Agents parse structure, not paragraphs
-- **Number your workflows** — Every multi-step process needs numbered steps, checkpoints ("Gate: X passes"), and recovery ("Fail → fix → re-run step N")
+- **Number your workflows** — Where order matters: numbered steps, each ending on a check, with the recovery on failure
 - **Don't explain what Claude knows** — Skip "what is X" explanations, obvious anti-pattern justifications, concept definitions. Jump straight to the rules
 - **Avoid duplication** — If rule exists in another skill or instruction file, reference it: "Load **security-hardening** skill for CSP configuration"
-- **Use REFERENCE.md for bulk** — Large code examples, schema tables, worked examples, template libraries go in companion `REFERENCE.md`. Link once from SKILL.md
 - **Stay stack-agnostic in process skills** — Use capability slot references ("the **database** skill" not "Supabase")
-- **Size target** — 80-200 lines in SKILL.md. Under 80 too thin; over 200 split content to REFERENCE.md. Over 300 split into multiple skills
-- **No standalone trigger-term sections** — Weave trigger terms naturally into description's `Use when...` clause
-- **Third-person voice in descriptions** — "Creates X" not "Create X" or "This skill creates X"

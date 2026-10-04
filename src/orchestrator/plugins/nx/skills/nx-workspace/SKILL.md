@@ -1,9 +1,7 @@
 ---
 name: nx-workspace
-description: "Run and generate NX targets, configure project.json, and visualize dependency graphs. Use when you say: 'run affected tests', 'nx generate a library', 'configure project.json', or 'show dependency graph'."
+description: "Nx workspace rules: running targets, affected commands, generators, project.json and the Nx MCP tools. Use when running or generating anything in an Nx monorepo, editing project.json, or reading its dependency graph."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # NX Workspace
 
@@ -21,7 +19,7 @@ Always `npx nx run <project>:<target>` for one project, `npx nx affected -t <tar
 
 ## Requirements
 
-- Minimum coverage **95%** for new components/functions. Reports land in `reports/coverage/jest/`.
+- Coverage must meet the threshold in the project's test config; reports land in the path that config sets.
 - Lint always with `--fix`. CSS/SCSS uses a separate target: `npx nx run <project>:lint-styles --fix`.
 - `npx nx run <project>:test -u` updates snapshots. `npx nx format --fix` after any generation.
 

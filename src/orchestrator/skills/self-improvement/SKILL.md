@@ -1,6 +1,6 @@
 ---
 name: self-improvement
-description: "Records lessons with the opencastle lesson CLI, one file each in .opencastle/lessons/; searches past lessons for matching errors; re-verifies lessons whose cited code changed; proposes skill updates when retry patterns exceed thresholds. Use when consulting or updating lessons, after task failures, when capturing retrospective insights, when a retry succeeds, or when doctor reports a lesson's citation changed."
+description: "Records, searches and re-verifies lessons in .opencastle/lessons/ with the opencastle lesson CLI. Use when a retry succeeds or a task fails, before work past lessons may cover, or when doctor reports a lesson's cited code changed."
 ---
 
 # Self-Improvement Protocol

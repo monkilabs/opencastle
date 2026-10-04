@@ -1,6 +1,6 @@
 ---
 name: panel-majority-vote
-description: "Runs 3 isolated reviewer sub-agents; consolidates PASS/BLOCK verdict by majority. Use when user requests independent review of code changes, pull requests, design documents, or release notes."
+description: "Three isolated reviewers vote PASS or BLOCK; the majority decides. Use on the 3rd fast-review FAIL, for security-sensitive changes or database migrations, or when someone asks for an independent multi-reviewer panel."
 ---
 
 # Skill: Panel majority vote

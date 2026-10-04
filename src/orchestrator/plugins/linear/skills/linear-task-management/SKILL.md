@@ -1,9 +1,7 @@
 ---
 name: linear-task-management
-description: "Creates and names Linear issues, assigns labels and priorities, manages status transitions, and links issues to PRs. Use when decomposing features into tasks or resuming interrupted sessions. Trigger terms: tickets, backlog, task breakdown, project board, sprint planning"
+description: "Linear issue conventions: naming, labels, priorities, status transitions and PR links. Use when creating or updating Linear issues, breaking a feature into Linear tasks, or resuming work tracked in Linear."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Task Management with Linear
 

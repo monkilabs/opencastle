@@ -1,6 +1,6 @@
 ---
 name: drizzle-orm
-description: "Drizzle ORM schema definition, type-safe queries, relational queries, CRUD operations, transactions, migrations with drizzle-kit, and database setup for PostgreSQL, MySQL, and SQLite. Use when defining database schemas, writing queries or joins, managing migrations, setting up a new Drizzle project, or working with drizzle-kit."
+description: "Drizzle ORM schemas, type-safe and relational queries, transactions and drizzle-kit migrations for PostgreSQL, MySQL and SQLite. Use when defining a Drizzle schema, writing Drizzle queries, or running drizzle-kit."
 ---
 
 # Drizzle ORM

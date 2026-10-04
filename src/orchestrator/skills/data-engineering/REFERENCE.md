@@ -1,8 +1,6 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 ## Data Engineering Reference
 
-This file contains detailed code examples and schemas migrated from the skill doc.
+Starters to adapt when `.opencastle/stack/data-pipeline-config.md` names no script of its own. Replace the URL, selectors and schema with the project's.
 
 ### Minimal Scraper: `scrape-to-ndjson.js` (Playwright)
 
@@ -26,6 +24,8 @@ const out = process.argv[2] || 'data.ndjson';
 })();
 ```
 
+Usage: `node scrape-to-ndjson.js data.ndjson`.
+
 ### NDJSON Validator: `validate-ndjson.js` (Node)
 
 ```js
@@ -47,9 +47,3 @@ let line = 0; let errors = 0;
   console.log('OK');
 })();
 ```
-
-### NDJSON Schema
-
-For project-specific schemas, add JSON Schema files here.
-
-Last Updated: 2026-03-31

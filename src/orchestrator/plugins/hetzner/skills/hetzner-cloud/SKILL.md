@@ -1,6 +1,6 @@
 ---
 name: hetzner-cloud
-description: "Provisions Hetzner Cloud servers, volumes, private networks, and firewalls via the hcloud CLI and the Pulumi/Terraform hcloud provider; plans CAX/arm64 sizing; configures backups, snapshots, and DR rebuilds. Use when creating or resizing Hetzner servers, attaching volumes, configuring private networks or firewalls, choosing server types, scripting hcloud commands, or authoring hcloud IaC resources."
+description: "Hetzner Cloud servers, volumes, private networks, firewalls, backups and snapshots, through the hcloud CLI or Pulumi/Terraform. Use when provisioning, resizing or scripting Hetzner resources, or choosing a server type."
 ---
 
 # Hetzner Cloud

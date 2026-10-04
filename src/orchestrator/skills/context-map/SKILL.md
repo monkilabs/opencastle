@@ -1,6 +1,6 @@
 ---
 name: context-map
-description: "Maps file dependencies, flags shared imports, groups files for safe parallel editing before code changes. Use when planning a refactoring, analyzing change impact, or understanding which files a modification will affect."
+description: "Maps which files a change touches, their importers and shared dependencies, and groups them for safe parallel editing. Use when planning a refactor or a change across 5+ files, or partitioning files between agents."
 ---
 
 # Skill: Context Map
@@ -25,7 +25,7 @@ Identify files that MUST change from task description.
 Find consumers of entry-point exports:
 ```bash
 rg -n "import .*from .*libs/auth"          # find importers
-rg -n "\bAuthCard\b" --type ts --type tsx  # find component consumers
+rg -n "\bAuthCard\b" --type ts             # find component consumers (ts covers .tsx)
 rg -n "auth.*route|/auth"                  # find route references
 ```
 If the assistant exposes a code-usage lookup (find-references), prefer it for

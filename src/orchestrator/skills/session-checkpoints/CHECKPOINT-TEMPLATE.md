@@ -1,5 +1,3 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 # Session Checkpoint Template
 
 **Last Updated:** YYYY-MM-DD HH:MM

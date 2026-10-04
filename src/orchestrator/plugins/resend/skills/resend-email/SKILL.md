@@ -1,6 +1,6 @@
 ---
 name: resend-email
-description: "Resend transactional email patterns, React Email templates, domain configuration, and webhook handling. Use when sending emails, building email templates, or configuring email delivery."
+description: "Resend transactional email, React Email templates, domain setup and webhooks. Use when sending email with Resend, building an email template, or configuring email delivery."
 ---
 
 # Resend Email

@@ -1,6 +1,6 @@
 ---
 name: trello-task-management
-description: "Create and manage Trello cards, checklists, and boards for kanban workflows. Use when the user says: 'create a kanban board', 'add a task card', 'move card to sprint', or 'track project board'."
+description: "Trello cards, checklists and boards for kanban tracking. Use when creating or moving Trello cards, adding checklists, or tracking work on a Trello board."
 ---
 
 # Task Management with Trello

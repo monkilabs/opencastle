@@ -1,11 +1,11 @@
 ---
 name: testing-workflow
-description: "Generates test plans, writes unit/integration/E2E test files, identifies coverage gaps, flags common testing anti-patterns. Use when writing tests, creating test suites, planning test strategies, mocking dependencies, measuring code coverage, or test planning."
+description: "Plans tests, writes unit, integration and E2E tests, finds coverage gaps and flags testing anti-patterns. Use when writing or planning tests, mocking dependencies, or checking coverage."
 ---
 
 # Testing Workflow
 
-**Mandatory:** test in a real browser via the **e2e-testing** capability slot before marking any feature complete, including every project-defined responsive breakpoint (**validation-gates** Gate 3, **browser-testing** skill).
+**Mandatory:** test in a real browser via the **e2e-testing** capability slot before marking any feature complete, including every project-defined responsive breakpoint (**validation-gates** Gate 7, **browser-testing** skill).
 
 ## E2E Context Limits
 
@@ -15,19 +15,19 @@ description: "Generates test plans, writes unit/integration/E2E test files, iden
 | Max 3 screenshots | per session |
 | `evaluate_script()` over `take_snapshot()` | returns less data |
 | Reload between flows | clears state |
-| Log results | append to `.opencastle/logs/e2e-results.md` |
+| Report results | in the session output: suite, pass/fail counts, failures with their evidence |
 
 Suite files and project test config: `.opencastle/project.instructions.md`.
 
-## Coverage Minimums
+## Coverage
 
 | Layer | Minimum |
 |-------|---------|
-| Unit (functions, components, hooks) | 95% |
+| Unit (functions, components, hooks) | the threshold in the project's test config |
 | Integration (boundaries, URL sync) | all boundaries |
 | E2E (journeys, interactions, errors) | all critical paths |
 
-Verify with `npx vitest run --coverage`; E2E via `npx playwright test`.
+Verify with the project's own test and coverage commands (Key Commands in `.opencastle/project.instructions.md`).
 
 ## Anti-Patterns
 

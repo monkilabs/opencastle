@@ -1,6 +1,6 @@
 ---
 name: vercel-deployment
-description: "Vercel deployment workflows, environment management, domain configuration, and build troubleshooting. Use when deploying, checking deployment status, reviewing build logs, or managing environments."
+description: "Vercel deployments, environments, domains and build troubleshooting through the Vercel MCP. Use when deploying to Vercel, checking a deployment, reading its build or runtime logs, or managing its environments."
 ---
 
 # Vercel Deployment
@@ -14,7 +14,7 @@ Branch → Environment mapping:
 | Branch pattern | Environment |
 |----------------|-------------|
 | `main` | Production deployment (auto) |
-| `feature/*`, `fix/*` | Preview deployment (auto) |
+| Any other branch (`feat/*`, `fix/*`, …) | Preview deployment (auto) |
 
 ## MCP Tools
 

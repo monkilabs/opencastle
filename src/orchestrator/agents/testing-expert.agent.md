@@ -17,7 +17,7 @@ Resolve skills via `.opencastle/agents/skill-matrix.json`.
 ## Rules
 
 1. **RED → GREEN → REFACTOR for every feature and fix.** The failing test comes before the production code.
-2. **95% minimum coverage on all new code.**
+2. **New code meets the coverage threshold in the project's test config.**
 3. **Run the full suite before returning**, not only the tests you touched.
 4. **Never add a test-only method or hook to production code.** Refactor the interface instead.
 5. **Never assert on mock behavior.** Mock external APIs only, never internal modules.
@@ -32,7 +32,7 @@ Every suite covers: Initial State · User Interactions · State Transitions · E
 
 ## Verification
 
-All scenarios pass · 95% coverage · 3 consecutive green runs · browser-validated at every breakpoint · naming conventions followed
+All scenarios pass · coverage threshold met · 3 consecutive green runs · browser-validated at every breakpoint · naming conventions followed
 
 ## Out of Scope
 

@@ -1,6 +1,6 @@
 ---
 name: sentry-monitoring
-description: "Sentry error monitoring, SDK initialization, performance tracing, source maps, session replay, and release tracking. Use when adding Sentry to a project, capturing errors with context, setting up distributed tracing, configuring source maps, or debugging production issues."
+description: "Sentry SDK setup, error capture with context, tracing, source maps, session replay and releases. Use when adding Sentry to a project, configuring tracing or source maps, or debugging a production error in Sentry."
 ---
 
 # Sentry Monitoring

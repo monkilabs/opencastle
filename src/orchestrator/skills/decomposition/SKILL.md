@@ -1,6 +1,6 @@
 ---
 name: decomposition
-description: "Resolves task dependencies, generates machine-actionable delegation specs, structures phased subtask plans for multi-agent work. Use when writing delegation specs, resolving task dependencies, building phased subtask plans for multi-agent work, assigning work to sub-agents, or partitioning a feature into parallelizable phases."
+description: "Breaks a feature into phased subtasks by dependency and writes the delegation spec for each. Use when planning delegations for multi-agent work, ordering dependent tasks, or splitting a feature into parallel phases."
 ---
 
 # Task Decomposition

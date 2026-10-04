@@ -1,6 +1,6 @@
 ---
 name: cypress-testing
-description: "Writes Cypress E2E/component tests, configures `cy.intercept()` and `cy.session()`, authors custom commands, and wires CI artifacts. Use when creating E2E specs, component tests, or CI test pipelines. Trigger terms: cypress, e2e, component test, cy.intercept, cy.session"
+description: "Cypress E2E and component tests: cy.intercept(), cy.session(), custom commands and CI artifacts. Use when writing or debugging Cypress specs, or running Cypress in CI."
 ---
 
 # Cypress Testing

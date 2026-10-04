@@ -1,6 +1,6 @@
 ---
 name: unslop
-description: "Removes AI tells from prose: puffery, AI vocabulary, em dashes, inline-header lists, hedging, filler, and abstract metaphor nouns. Use when writing or editing any prose a human reads, including README files, docs, PR descriptions, commit messages, changelogs, release notes, and marketing copy."
+description: "Removes AI tells from prose: puffery, AI vocabulary, em dashes, hedging, filler and abstract metaphor nouns. Use when writing or editing prose a person reads: docs, README files, PR descriptions, commit messages, changelogs, release notes."
 ---
 
 # Unslop

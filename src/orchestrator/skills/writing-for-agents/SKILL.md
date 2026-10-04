@@ -1,6 +1,6 @@
 ---
 name: writing-for-agents
-description: "Levers for writing documents an agent consumes: context pointers, the two loads, information hierarchy, progressive disclosure, completion criteria, leading words, and pruning. Use when creating or editing a skill, an agent definition, an instruction file, AGENTS.md, or CLAUDE.md."
+description: "Levers for writing documents an agent reads: context pointers, progressive disclosure, completion criteria, leading words and pruning. Use when creating or editing a skill, an agent, an instruction file, AGENTS.md or CLAUDE.md."
 ---
 
 # Writing for Agents
@@ -79,6 +79,6 @@ When skills multiply past what a human can remember, that piled-up cognitive loa
 
 ## How this project compiles a skill
 
-A skill is one directory holding `SKILL.md` with `name` and `description` frontmatter. The `description` is the skill's top-level context pointer and the only part guaranteed to reach every assistant, so it carries the trigger branches. Claude Code and the single-file targets also receive sibling files, but Cursor and Windsurf compile `SKILL.md` alone. Anything the agent must have therefore belongs in `SKILL.md`.
+A skill is one directory holding `SKILL.md` with `name` and `description` frontmatter. The `description` is the skill's top-level context pointer, always loaded, so it carries the trigger branches. Every target copies the whole directory, so companion files ship beside `SKILL.md` and are reached through the pointers `SKILL.md` gives them: what every branch needs stays in `SKILL.md`, what only some branches need can live in a companion file.
 
 Adapted from the `writing-for-agents` skill in [mattpocock/skills](https://github.com/mattpocock/skills), MIT, copyright 2026 Matt Pocock.

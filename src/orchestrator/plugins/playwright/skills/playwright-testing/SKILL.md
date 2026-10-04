@@ -1,9 +1,7 @@
 ---
 name: playwright-testing
-description: "Playwright E2E testing patterns, cross-browser configuration, page objects, and CI setup. Use when creating E2E specs, visual regression suites, or configuring Playwright in CI. Trigger terms: playwright, e2e, trace, page object, cross-browser"
+description: "Playwright E2E tests: page objects, cross-browser projects, traces and CI setup. Use when writing or debugging Playwright specs, or configuring Playwright in CI."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Playwright Testing
 

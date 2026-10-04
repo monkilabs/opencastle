@@ -1,5 +1,3 @@
-> Parent: [SKILL.md](./SKILL.md)
-
 # Fast Review — Reviewer Prompt Template
 
 ```markdown

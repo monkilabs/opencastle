@@ -1,6 +1,6 @@
 ---
 name: project-consistency
-description: "Generates shared CSS variables, validates component naming conventions, creates layout pattern templates. Use when coordinating design system, theme, consistent styling, CSS variables, or component library across parallel agents."
+description: "Foundation-first pattern that keeps parallel UI work consistent: shared tokens, layout and UI components built before any page. Use when several agents build UI at once, or a design system or theme is being set up."
 ---
 
 # Project Consistency
@@ -50,7 +50,7 @@ Prompt templates: see [TEMPLATES.md](./TEMPLATES.md).
 	--color-primary-600: #0284c7;
 
 	/* Typography */
-	--font-base: Inter, system-ui, -apple-system, sans-serif;
+	--font-base: 'Source Sans 3', system-ui, sans-serif; /* the pairing chosen in frontend-design */
 	--text-sm: 0.875rem;
 	--text-base: 1rem;
 

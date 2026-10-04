@@ -1,42 +1,23 @@
 ---
 name: turborepo-monorepo
-description: "Configure pipelines, set up local/remote caching, and run scoped tasks in a Turborepo monorepo. Use when you say: 'enable remote caching', 'optimize pipeline inputs/outputs', or 'filter builds to affected packages'."
+description: "Turborepo task pipelines, caching and package filtering. Use when editing turbo.json, running tasks for changed or filtered packages, or debugging cache misses and remote caching."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Turborepo Monorepo
 
 ## Commands
 
-### Running Tasks
-
 ```bash
-turbo run build                    # Build all packages
-turbo run test                     # Test all packages
-turbo run lint                     # Lint all packages
-turbo run build --filter=web       # Build specific package
-turbo run build --filter=./apps/*  # Build all apps
-turbo run build --filter=...[HEAD~1]  # Only affected since last commit
+turbo run build                       # Build all packages
+turbo run build --filter=web          # One package
+turbo run build --filter=./apps/*     # All apps
+turbo run build test lint --affected  # Only packages changed vs the default branch (CI)
+turbo run build --dry-run             # Preview what would run
+turbo run build --graph               # Visualize task graph
+turbo run build --force               # Ignore cache, rebuild all
 ```
 
-### Common Patterns
-
-```bash
-turbo run build test lint          # Run multiple tasks
-turbo run build --dry-run          # Preview what would run
-turbo run build --graph            # Visualize task graph
-turbo run build --force            # Ignore cache, rebuild all
-turbo run build --concurrency=4    # Limit parallelism
-```
-
-### Forbidden Commands
-
-```bash
-# NEVER use these directly — always go through turbo:
-npm run build      # Skips caching and parallelism
-cd apps/web && npm test  # Skips dependency resolution
-```
+Run tasks through `turbo run` (or a root script that wraps it). `cd apps/web && npm test` skips caching and dependency order.
 
 ## Pipeline Configuration (turbo.json)
 
@@ -63,69 +44,15 @@ cd apps/web && npm test  # Skips dependency resolution
 }
 ```
 
-### Key Concepts
-
 - `^build` — run `build` in dependencies first (topological)
-- `dependsOn` — declare task dependencies
-- `outputs` — files to cache (miss = rebuild)
-- `inputs` — files to hash for cache key (default: all tracked files)
-- `cache: false` — never cache (use for `dev`, `start`)
-- `persistent: true` — long-running tasks (dev servers)
+- `outputs` — files to cache; leave them out and a cache hit restores no files
+- `inputs` — files hashed for the cache key (default: all tracked files in the package)
+- `cache: false` + `persistent: true` — long-running tasks (dev servers)
 
 ## Caching
 
-### Local Cache
+The local cache lives in `.turbo/cache` (Turborepo 2.0+). Keys hash task inputs, declared env vars, dependencies' outputs and `turbo.json`. An env var the build reads but `env` does not declare causes stale hits; one that changes every run causes constant misses.
 
-Turborepo caches task outputs automatically in `node_modules/.cache/turbo`. Cache keys are computed from:
+Remote cache: `turbo login` and `turbo link` locally; in CI set `TURBO_TOKEN` and `TURBO_TEAM` and a plain `turbo run` reads and writes it. Persistent misses → check `inputs`/`outputs`/`env` in `turbo.json`, then compare runs with `--dry-run=json`.
 
-1. Task inputs (source files)
-2. Environment variables
-3. Dependencies' build outputs
-4. `turbo.json` configuration
-
-### Remote Cache
-
-```bash
-turbo login                        # Authenticate
-turbo link                         # Link project to remote cache
-turbo run build --remote-only      # Force remote cache usage
-```
-
-- Shares cache across CI and team members
-- Vercel Remote Cache or self-hosted (Ducktape, TurboCache)
-- Set `TURBO_TOKEN` and `TURBO_TEAM` in CI environment
-
-## Quick Workflow: Setup remote caching in CI
-1. Add `TURBO_TOKEN` and `TURBO_TEAM` to your CI secrets.  
-2. Locally run `turbo login` and `turbo link` to verify the project is linked.  
-3. Add `turbo run build --remote` to the CI pipeline and watch for cache hit/miss logs.  
-4. If cache misses persist: verify `inputs`/`outputs` in `turbo.json`, stable env vars, then re-run.  
-
-**Validation (recommended):** run `turbo run build --dry-run` locally or in CI to preview the task graph and catch misconfigured inputs/outputs before executing.
-
-
-## Package Workspace Structure
-
-```
-monorepo/
-├── turbo.json
-├── package.json              # Root workspace config
-├── apps/
-│   ├── web/                  # Next.js app
-│   └── docs/                 # Documentation site
-├── packages/
-│   ├── ui/                   # Shared UI components
-│   ├── config/               # Shared config (ESLint, TS)
-│   └── utils/                # Shared utilities
-```
-
-## Best Practices
-
-- Always use `turbo run` instead of directly invoking package scripts
-- Define `outputs` for every cacheable task — missing outputs mean missing cache
-- Use `--filter` to scope commands to affected packages
-- Set `inputs` to narrow cache keys and avoid unnecessary rebuilds
-- Use `--dry-run` to debug pipeline configuration
-- Add `TURBO_TOKEN` and `TURBO_TEAM` to CI for remote caching
-- Never commit `.turbo/` or `node_modules/.cache/turbo`
-
+Never commit `.turbo/`.

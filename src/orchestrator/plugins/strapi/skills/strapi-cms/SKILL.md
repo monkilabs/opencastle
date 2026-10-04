@@ -1,9 +1,7 @@
 ---
 name: strapi-cms
-description: "Builds Strapi content types, extends controllers and services, implements lifecycle hooks, and configures REST/GraphQL APIs. Use when creating content types, writing custom controllers, developing Strapi plugins, or querying the API."
+description: "Strapi content types, custom controllers and services, lifecycle hooks, and REST/GraphQL APIs. Use when changing a Strapi content model, extending its API, or building a Strapi plugin."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Strapi CMS
 

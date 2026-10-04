@@ -1,6 +1,6 @@
 ---
 name: cloudflare-platform
-description: "Creates and deploys Cloudflare Workers, configures wrangler.toml bindings, sets up KV/D1/R2 storage and Durable Objects, manages Pages deployments, and implements edge function patterns. Use when building or deploying Cloudflare Workers, setting up Pages, working with KV/D1/R2 storage, configuring wrangler.toml, or deploying edge applications."
+description: "Cloudflare Workers, Pages, wrangler bindings, KV/D1/R2 storage and Durable Objects. Use when building or deploying a Worker or Pages site, editing wrangler.toml, or using KV, D1, R2 or Durable Objects."
 ---
 
 # Cloudflare Platform
@@ -8,7 +8,7 @@ description: "Creates and deploys Cloudflare Workers, configures wrangler.toml b
 ## Workers
 
 - V8 isolates, not Node: `process`, `Buffer`, `fs` do not exist unless `compatibility_flags = ["nodejs_compat"]` is set. `compatibility_date` must be set or deploys fail.
-- Free tier bundle limit is 1MB. Cold starts are 0ms — keep dependencies minimal.
+- Worker size limit is 3 MB compressed on the Free plan, 10 MB on Paid. Keep dependencies minimal.
 - `ctx.waitUntil(promise)` for side effects that must outlive the response (logging, analytics).
 - Bindings are reachable only via the handler's `env` argument, and must exist in both `wrangler.toml` and the `Env` interface.
 - Durable Objects need `[[durable_objects.bindings]]` **and** a `[[migrations]]` block with `new_classes = ["Counter"]` — the binding alone will not deploy.

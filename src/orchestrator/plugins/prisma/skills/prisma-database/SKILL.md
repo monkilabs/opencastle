@@ -1,9 +1,7 @@
 ---
 name: prisma-database
-description: "Prisma ORM schema design, migrations, client generation, and query patterns. Use when designing database schemas, writing migrations, querying data, or managing Prisma Client."
+description: "Prisma schema design, migrations, client generation and query patterns. Use when changing a Prisma schema, writing a migration, or querying with Prisma Client."
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Prisma Database
 

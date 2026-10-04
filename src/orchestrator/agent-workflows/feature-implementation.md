@@ -183,7 +183,7 @@ If there are no open questions, explicitly state: "No open questions — plan is
 
 ### Exit Criteria (per track)
 
-- [ ] 95% test coverage on new code
+- [ ] New code meets the coverage threshold in the project's test config
 - [ ] Browser screenshots at all breakpoints
 - [ ] Security audit passes (or panel review scheduled)
 - [ ] Documentation updated
