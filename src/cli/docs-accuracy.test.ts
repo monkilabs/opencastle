@@ -236,6 +236,48 @@ describe('shipped content instructs only commands that exist', () => {
       .map((x) => `${x.rel}: ${x.hit}`)
     expect(offenders).toEqual([])
   })
+
+  // Other people's tools, held to a positive list the way our own commands are.
+  // `npx npm-dedupe` (no such package), `rg --type tsx` (ripgrep has no such
+  // type; `ts` covers .tsx) and `npx email dev` (the `email` binary is in
+  // `react-email`, which the skill never installed) each shipped to every user
+  // because nothing asked whether they run. A package joins this list once
+  // `npm view <name> bin` shows the binary the content calls, or once the skill
+  // that calls it says to install it.
+  const NPX_PACKAGES = new Set([
+    'opencastle', 'nx', 'playwright', 'cypress', 'jest', 'eslint', 'prisma', 'convex', 'expo',
+    'create-expo-module', 'react-email', 'source-map-explorer', 'markdown-link-check',
+    'license-checker', '@arethetypeswrong/cli', '@sentry/wizard', '@delorenj/mcp-server-trello',
+  ])
+  /** ripgrep's own names, from `rg --type-list` — the ones a skill could want. */
+  const RG_TYPES = new Set([
+    'ts', 'typescript', 'js', 'json', 'css', 'html', 'md', 'markdown', 'py', 'python', 'go', 'rust',
+    'java', 'kotlin', 'swift', 'ruby', 'php', 'sh', 'sql', 'yaml', 'toml', 'svelte', 'vue', 'graphql',
+    'docker', 'c', 'cpp', 'csharp',
+  ])
+  const npxPackages = (text: string): string[] =>
+    [...text.matchAll(/\bnpx (?:-y |--yes )?((?:@[a-z0-9-]+\/)?[a-z0-9][a-z0-9._-]*)/g)].map((m) => m[1])
+  const rgTypes = (text: string): string[] =>
+    [...text.matchAll(/\brg\b[^`\n|]*?\s(?:--type(?:-not)?[ =]|-[tT] ?)([a-z]+)/g)].map((m) => m[1])
+
+  it('reads the package and the ripgrep type from the lines that shipped broken', () => {
+    expect(npxPackages('Preview locally with `npx email dev`.')).toEqual(['email'])
+    expect(npxPackages('`npx -y @sentry/wizard@latest -i nextjs`')).toEqual(['@sentry/wizard'])
+    expect(rgTypes('`rg -n "useEffect" --type tsx src/`')).toEqual(['tsx'])
+    expect(rgTypes('`rg -tts "x" src-tests/`')).toEqual(['ts'])
+  })
+
+  it('runs through npx only packages someone has checked', () => {
+    const offenders = instructionFiles.flatMap((f) =>
+      npxPackages(f.text).filter((p) => !NPX_PACKAGES.has(p)).map((p) => `${f.rel}: npx ${p}`))
+    expect(offenders).toEqual([])
+  })
+
+  it('filters ripgrep only by types ripgrep has', () => {
+    const offenders = instructionFiles.flatMap((f) =>
+      rgTypes(f.text).filter((t) => !RG_TYPES.has(t)).map((t) => `${f.rel}: rg --type ${t}`))
+    expect(offenders).toEqual([])
+  })
 })
 
 /**

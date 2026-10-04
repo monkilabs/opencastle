@@ -27,4 +27,4 @@ Failures here are nearly always DNS propagation, a wrong API key scope, or a mis
 
 ## Templates
 
-`npm install resend @react-email/components`. Build templates from `@react-email/components` primitives (`Html`, `Head`, `Body`, `Container`, `Heading`, `Text`, `Button`) — plain HTML/CSS is unreliable across clients. Preview locally with `npx email dev`.
+`npm install resend @react-email/components`. Build templates from `@react-email/components` primitives (`Html`, `Head`, `Body`, `Container`, `Heading`, `Text`, `Button`) — plain HTML/CSS is unreliable across clients. Preview locally with `npx react-email dev` — the preview server is the `react-email` package, which `@react-email/components` does not install.
