@@ -389,6 +389,11 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
     }
   }
 
+  // ── 6b. Python or Go, when nothing JavaScript said otherwise ──
+  // Read for the language and the web framework, which decide what the project
+  // is given: a FastAPI service has no use for TypeScript or SEO rules.
+  if (!info.language) await detectPythonOrGo(projectRoot, info)
+
   // ── 7. Detect CSS modules via src scan ──────────────────────
   if (!info.styling.includes('css-modules')) {
     const hasCssModules = await scanForPattern(projectRoot, /\.module\.(css|scss|sass)$/);
@@ -415,6 +420,30 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
 }
 
 // ── Internal helpers ──────────────────────────────────────────
+
+/** Framework packages of Python and Go projects, by how their manifest names them. */
+const PYTHON_FRAMEWORKS: Array<[RegExp, string]> = [[/\bfastapi\b/i, 'fastapi'], [/\bdjango\b/i, 'django'], [/\bflask\b/i, 'flask']]
+const GO_FRAMEWORKS: Array<[RegExp, string]> = [
+  [/github\.com\/gin-gonic\/gin\b/, 'gin'], [/github\.com\/labstack\/echo\b/, 'echo'],
+  [/github\.com\/go-chi\/chi\b/, 'chi'], [/github\.com\/gofiber\/fiber\b/, 'fiber'],
+]
+
+async function detectPythonOrGo(root: string, info: RepoInfoInternal): Promise<void> {
+  const read = (rel: string): Promise<string> => readFile(resolve(root, rel), 'utf8').catch(() => '')
+  if (await fileExists(resolve(root, 'go.mod'))) {
+    info.language = 'go'
+    info.configFiles.push('go.mod')
+    const mod = await read('go.mod')
+    for (const [re, label] of GO_FRAMEWORKS) if (re.test(mod)) addUnique(info.frameworks, label)
+    return
+  }
+  const manifests = (await checkFiles(root, ['pyproject.toml', 'requirements.txt', 'setup.py', 'setup.cfg', 'Pipfile']))
+  if (manifests.length === 0) return
+  info.language = 'python'
+  info.configFiles.push(...manifests)
+  const text = (await Promise.all(manifests.map(read))).join('\n')
+  for (const [re, label] of PYTHON_FRAMEWORKS) if (re.test(text)) addUnique(info.frameworks, label)
+}
 
 async function checkFiles(root: string, files: string[]): Promise<string[]> {
   const found: string[] = [];

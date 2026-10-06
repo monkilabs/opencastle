@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { updateSkillMatrixContent, isEnvVarSatisfied } from './stack-config.js';
+import { updateSkillMatrixContent, isEnvVarSatisfied, getExcludedCoreSkills, isPreselected } from './stack-config.js';
 import type { StackConfig } from './types.js';
 import type { SkillMatrixData } from './stack-config.js';
 
@@ -67,6 +67,30 @@ describe('isEnvVarSatisfied', () => {
     expect(set('OC_TEST_TOKEN=""')).toBe(false);
     expect(set("OC_TEST_TOKEN=''  # fill me")).toBe(false);
     expect(set('OC_TEST_TOKEN=   # fill me')).toBe(false);
+  });
+});
+
+describe('what a Python or Go project is given', () => {
+  const browser = { preselected: true, subCategory: 'e2e-testing' };
+
+  it('leaves TypeScript and web-interface rules, and the browser, out of an API service', () => {
+    const api = { language: 'python', frameworks: ['fastapi'] };
+    expect([...getExcludedCoreSkills(api)].sort()).toEqual(['accessibility-standards', 'frontend-design', 'seo-patterns', 'typescript-best-practices']);
+    expect(isPreselected(browser, api)).toBe(false);
+    expect(isPreselected(browser, { language: 'go', frameworks: ['gin'] })).toBe(false);
+  });
+
+  it('keeps the web rules and the browser for a framework that renders pages', () => {
+    const site = { language: 'python', frameworks: ['django'] };
+    expect([...getExcludedCoreSkills(site)]).toEqual(['typescript-best-practices']);
+    expect(isPreselected(browser, site)).toBe(true);
+  });
+
+  it('changes nothing for a JavaScript project, or a Python one with JavaScript in it', () => {
+    expect(getExcludedCoreSkills({ language: 'typescript' }).size).toBe(0);
+    expect(getExcludedCoreSkills({ language: 'python', packageManager: 'pnpm' }).size).toBe(0);
+    expect(isPreselected(browser, {})).toBe(true);
+    expect(isPreselected({ preselected: false }, {})).toBe(false);
   });
 });
 

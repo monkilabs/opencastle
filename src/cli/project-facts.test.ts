@@ -226,3 +226,78 @@ describe('everything else', () => {
     expect(facts.testFiles.sort()).toEqual(['e2e/login.spec.ts', 'src/a.test.ts'])
   })
 })
+
+describe('Python and Go projects', () => {
+  const FASTAPI = {
+    'pyproject.toml': `[tool.poetry]\nname = "conduit"\n\n[tool.poetry.dependencies]\npython = "^3.9"\nfastapi = "^0.79.1"\nalembic = "^1.8"\n\n[tool.poetry.dev-dependencies]\npytest = "^7.1"\nmypy = "^0.971"\n`,
+    'poetry.lock': '',
+    'app/api/routes/api.py': 'from fastapi import APIRouter\nfrom app.api.routes import users, articles\nrouter = APIRouter()\nrouter.include_router(users.router, tags=["users"], prefix="/users")\nrouter.include_router(\n    articles.router,\n    dependencies=[Depends(auth)],\n)\n',
+    'app/api/routes/users.py': 'router = APIRouter()\n\n@router.post("/login")\nasync def login(): ...\n\n@router.get("")\nasync def me(): ...\n',
+    'app/api/routes/articles/api.py': 'router = APIRouter()\nrouter.include_router(resource.router, prefix="/articles")\n',
+    'app/api/routes/articles/resource.py': 'router = APIRouter()\n\n@router.get("/{slug}")\nasync def one(): ...\n',
+    'app/db/migrations/versions/fdf8821871d7_main_tables.py': '',
+    'app/models/tables.py': 'class User(Base):\n    pass\n',
+    'tests/test_users.py': '',
+    'scripts/test': '#!/usr/bin/env bash\nset -e\npytest --cov=app\n',
+    '.github/workflows/ci.yml': 'jobs:\n  t:\n    steps:\n      - run: poetry install\n      - run: poetry run pip --version >/dev/null 2>&1 || rm -rf .venv\n      - run: poetry run uvicorn app.main:app &\n      - run: poetry run ./scripts/test\n',
+  }
+
+  it('reads a FastAPI service: no npm, its versions, its commands, and routes with the prefixes they are mounted at', async () => {
+    const facts = await readProjectFacts(project(FASTAPI), { language: 'python', frameworks: ['fastapi'] })
+    expect(facts.packageManager).toBe('poetry')
+    expect(facts.language).toBe('python')
+    expect(facts.stack).toEqual(expect.arrayContaining([
+      { layer: 'Language', name: 'Python', version: '3.9' },
+      { layer: 'Framework', name: 'FastAPI', version: '0.79.1' },
+      { layer: 'Database', name: 'Alembic', version: '1.8' },
+      { layer: 'Testing', name: 'pytest', version: '7.1' },
+    ]))
+    expect(facts.api.map((a) => `${a.methods[0]} ${a.route}`).sort()).toEqual(['GET /articles/{slug}', 'GET /users', 'POST /users/login'])
+    expect(facts.commands.map((c) => c.cmd)).toEqual(['./scripts/test', 'poetry install', 'poetry run pytest', 'poetry run mypy .'])
+    expect(facts.commands[0].does).toBe('pytest --cov=app')
+    expect(facts.testFrameworks).toEqual(['pytest'])
+    expect(facts.testFiles).toEqual(['tests/test_users.py'])
+    expect(facts.migrations).toMatchObject({ count: 1, latest: ['fdf8821871d7_main_tables'] })
+    expect(facts.models).toEqual({ source: 'SQLAlchemy', names: ['User'] })
+    // The check a change has to pass, not the job's plumbing.
+    expect(facts.ciCommands).toEqual(['poetry run ./scripts/test'])
+  })
+
+  it('reads Flask and Django routes, and requirements files', async () => {
+    const facts = await readProjectFacts(project({
+      'requirements.txt': 'Flask==3.0.2\nDjango>=5.0\n',
+      'app/views.py': '@app.route("/health", methods=["GET", "POST"])\ndef health(): ...\n',
+      'shop/urls.py': 'urlpatterns = [path("orders/", views.orders)]\n',
+    }), { language: 'python', frameworks: ['django', 'flask'] })
+    expect(facts.packageManager).toBe('pip')
+    expect(facts.api.map((a) => `${a.methods.join(',')} ${a.route}`).sort()).toEqual(['ANY /orders/', 'GET,POST /health'])
+    expect(facts.commands.map((c) => c.cmd)).toEqual(['pip install -r requirements.txt'])
+  })
+
+  it('reads a Go service: its version, its modules, its routes, and go test', async () => {
+    const facts = await readProjectFacts(project({
+      'go.mod': 'module example.com/api\n\ngo 1.22\n\nrequire (\n\tgithub.com/gin-gonic/gin v1.10.0\n\tgorm.io/gorm v1.25.12\n)\n',
+      'users/routers.go': 'func Register(r *gin.RouterGroup) {\n\tr.POST("/login", Login)\n\tr.GET("/:id", One)\n}\n',
+      'main.go': 'http.HandleFunc("GET /healthz", health)\n',
+      'users/users_test.go': '',
+      'Makefile': '.PHONY: run\nrun:\n\tgo run .\n',
+    }), { language: 'go', frameworks: ['gin'] })
+    expect(facts.packageManager).toBe('go')
+    expect(facts.stack).toEqual(expect.arrayContaining([
+      { layer: 'Language', name: 'Go', version: '1.22' },
+      { layer: 'Framework', name: 'Gin', version: '1.10.0' },
+      { layer: 'Database', name: 'GORM', version: '1.25.12' },
+    ]))
+    expect(facts.api.map((a) => `${a.methods[0]} ${a.route}`).sort()).toEqual(['GET /:id', 'GET /healthz', 'POST /login'])
+    expect(facts.commands.map((c) => c.cmd)).toEqual(['make run', 'go build ./...', 'go test ./...', 'go vet ./...'])
+    expect(facts.testFrameworks).toEqual(['go test'])
+  })
+
+  it('leaves a JavaScript project as it was: npm only where there is a package.json', async () => {
+    const facts = await readProjectFacts(project({ 'README.md': '# x\n' }), {})
+    expect(facts.packageManager).toBe('')
+    expect(facts.commands).toEqual([])
+    const withPkg = await readProjectFacts(project({ 'package.json': pkg({ scripts: { test: 'vitest' } }) }), {})
+    expect(withPkg.packageManager).toBe('npm')
+  })
+})

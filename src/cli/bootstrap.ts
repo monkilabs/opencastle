@@ -89,17 +89,30 @@ function devLine(facts: ProjectFacts): string | null {
 
 const SCRIPT_ORDER = ['dev', 'build', 'start', 'test', 'lint', 'typecheck', 'type-check', 'format']
 
+/** At most `max` characters, cut between words: `--cov-config=se` read as a different flag. */
+function clip(text: string, max: number): string {
+  if (text.length <= max) return text
+  const cut = text.slice(0, max - 1)
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(' '), max / 2)).trimEnd()} …`
+}
+
 function keyCommands(facts: ProjectFacts): string | null {
   const names = Object.keys(facts.scripts).filter((s) => !/^(pre|post)/.test(s))
-  if (names.length === 0) return null
+  if (names.length === 0 && facts.commands.length === 0) return null
   names.sort((a, b) => {
     const ia = SCRIPT_ORDER.indexOf(a)
     const ib = SCRIPT_ORDER.indexOf(b)
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b)
   })
   const run = (s: string) => runScript(facts, s)
-  const width = Math.max(...names.slice(0, 14).map((s) => run(s).length))
-  const lines = names.slice(0, 14).map((s) => `${run(s).padEnd(width)}  # ${facts.scripts[s].slice(0, 70)}`)
+  // package.json's scripts, then what a Makefile, justfile, `scripts/` or the
+  // language's own tools declare.
+  const rows: Array<[string, string]> = [
+    ...names.slice(0, 14).map((s): [string, string] => [run(s), clip(facts.scripts[s], 70)]),
+    ...facts.commands.map((c): [string, string] => [c.cmd, clip(c.does, 70)]),
+  ]
+  const width = Math.max(...rows.map(([cmd]) => cmd.length))
+  const lines = rows.map(([cmd, does]) => (does ? `${cmd.padEnd(width)}  # ${does}` : cmd))
   const ci = facts.ciCommands.length
     ? ['', `CI (${inline(facts.ciWorkflows, 3)}) runs: ${inline(facts.ciCommands, 8)} — a change passes these before it merges.`]
     : []
@@ -166,8 +179,10 @@ function renderProjectInstructions(facts: ProjectFacts, info: RepoInfo, stack: S
     facts.name ? `**${facts.name}**` : null,
     facts.description ? `— ${facts.description}` : null,
   ].filter(Boolean).join(' ')
-  const language = { typescript: 'TypeScript', javascript: 'JavaScript' }[facts.language ?? ''] ?? facts.language
-  const basics = [language, facts.nodeVersion ? `Node ${facts.nodeVersion}` : null, `package manager ${code(facts.packageManager)}`, facts.workspaces.length ? `${info.monorepo ?? 'workspaces'} monorepo` : null]
+  const language = { typescript: 'TypeScript', javascript: 'JavaScript', python: 'Python', go: 'Go' }[facts.language ?? ''] ?? facts.language
+  // Go modules are not a package manager to name; nothing found is nothing said.
+  const manager = facts.packageManager && facts.packageManager !== 'go' ? `package manager ${code(facts.packageManager)}` : null
+  const basics = [language, facts.nodeVersion ? `Node ${facts.nodeVersion}` : null, manager, facts.workspaces.length ? `${info.monorepo ?? 'workspaces'} monorepo` : null]
     .filter(Boolean).join(' · ')
 
   const stackRows = facts.stack.map((s) => [s.layer, s.name, s.version ?? '—'])
@@ -211,7 +226,7 @@ function renderProjectInstructions(facts: ProjectFacts, info: RepoInfo, stack: S
 // ── stack/*.md ─────────────────────────────────────────────────
 
 /** The frameworks that serve an API, in the order one is named for it. */
-const SERVES_API = ['Next.js', 'Astro', 'SvelteKit', 'Remix', 'Nuxt', 'Express', 'Fastify', 'Hono']
+const SERVES_API = ['Next.js', 'Astro', 'SvelteKit', 'Remix', 'Nuxt', 'Express', 'Fastify', 'Hono', 'FastAPI', 'Django', 'Flask', 'Gin', 'Echo', 'chi', 'Fiber']
 
 function renderApiConfig(facts: ProjectFacts, info: RepoInfo): string {
   const frameworks = facts.stack.filter((s) => s.layer === 'Framework')
@@ -223,7 +238,11 @@ function renderApiConfig(facts: ProjectFacts, info: RepoInfo): string {
     [fw ? `Framework: ${fw.name}${fw.version ? ` ${fw.version}` : ''}.` : null, READ_BY(['api-patterns'])].filter(Boolean).join(' '),
     ['## Endpoints', '', facts.api.length
       ? table(['Endpoint', 'Methods', 'File'], facts.api.map((a) => [code(a.route), a.methods.join(', ') || '—', code(a.file)]))
-      : facts.rpcRouters.length ? 'No route files: the API is tRPC, below.' : 'None found in route files.'].join('\n'),
+      : facts.rpcRouters.length ? 'No route files: the API is tRPC, below.' : 'None found in route files.',
+      // Go routers are grouped in code that passes the group around; the paths
+      // are what each file declares.
+      ...(facts.api.some((a) => a.file.endsWith('.go')) ? ['', 'Paths are as each file declares them, relative to the router group it is registered on.'] : []),
+    ].join('\n'),
     facts.rpcRouters.length ? ['## tRPC routers', '', ...facts.rpcRouters.map((f) => `- ${code(f)}`)].join('\n') : null,
     facts.serverActions.length ? ['## Server Actions', '', ...facts.serverActions.map((f) => `- ${code(f)}`)].join('\n') : null,
     facts.middleware ? ['## Middleware', '', `${code(facts.middleware)} runs before matching requests.`].join('\n') : null,
@@ -275,7 +294,10 @@ function renderCmsConfig(facts: ProjectFacts, provider: string): string {
 
 function renderTestingConfig(facts: ProjectFacts, info: RepoInfo, browserChecks: boolean): string {
   const dirs = [...new Set(facts.testFiles.map((f) => f.split('/').slice(0, -1).join('/') || '.'))].slice(0, 6)
-  const testScripts = Object.keys(facts.scripts).filter((s) => /^(test|e2e)/.test(s)).map((s) => `${facts.packageManager} run ${s}`)
+  const testScripts = [
+    ...Object.keys(facts.scripts).filter((s) => /^(test|e2e)/.test(s)).map((s) => `${facts.packageManager} run ${s}`),
+    ...facts.commands.filter((c) => /\b(test|pytest)\b/.test(c.cmd)).map((c) => c.cmd),
+  ]
   const configs = facts.testConfigs
   const frameworks = facts.testFrameworks.length ? facts.testFrameworks : (info.testing ?? []).map(displayName)
   const bp = facts.breakpoints
@@ -284,7 +306,7 @@ function renderTestingConfig(facts: ProjectFacts, info: RepoInfo, browserChecks:
     HEADER,
     READ_BY(['testing-workflow', browserChecks ? 'browser-testing' : null]),
     [
-      frameworks.length ? `**Frameworks:** ${frameworks.join(', ')}${configs.length ? ` (${inline(configs)})` : ''}` : '**Frameworks:** none in package.json.',
+      frameworks.length ? `**Frameworks:** ${frameworks.join(', ')}${configs.length ? ` (${inline(configs)})` : ''}` : '**Frameworks:** none found.',
       facts.testFiles.length ? `**Test files:** ${facts.testFiles.length}, in ${inline(dirs, 6)}` : '**Test files:** none found.',
       testScripts.length ? `**Run:** ${inline(testScripts)}` : null,
       facts.coverage.length ? `**Coverage required:** ${facts.coverage.join(', ')} (from the test config)` : null,

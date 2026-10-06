@@ -14,7 +14,7 @@ import { join, resolve, relative, dirname, isAbsolute, sep } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PLUGINS } from '../orchestrator/plugins/index.js'
 import { getOrchestratorRoot, getPluginsRoot } from './copy.js'
-import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getIncludedMcpServers, getRequiredMcpEnvVars } from './stack-config.js'
+import { getExcludedSkills, getExcludedAgents, getIncludedPluginIds, getIncludedMcpServers, getRequiredMcpEnvVars, getExcludedCoreSkills } from './stack-config.js'
 import { splitFrontmatter, parseFrontmatterString } from './adapters/frontmatter.js'
 import { packageLaunch, isPinned } from './mcp-audit.js'
 import { disallowedBy, hostDisallowedBy, findInlineSecret, emptyPolicy, globMatch, hostOfUrl, hostAllowedBy, type EffectivePolicy } from './policy.js'
@@ -713,6 +713,7 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
   // exclusions anyone wrote, so a team layer naming one is not a mistake.
   const stackOut = new Set<string>()
   const excludedSkills = stack ? getExcludedSkills(stack) : new Set<string>()
+  for (const name of getExcludedCoreSkills(repoInfo)) excludedSkills.add(name)
   const excludedAgents = stack ? getExcludedAgents(stack) : new Set<string>()
   for (const item of scanLayer(core, projectRoot).items) {
     if (item.kind === 'skills' && excludedSkills.has(item.name)) {
