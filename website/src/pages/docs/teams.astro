@@ -735,7 +735,7 @@ $ npx opencastle baseline check opencastle-baseline
                 </tr>
                 <tr>
                   <td><code>exclude</code></td><td>string[]</td>
-                  <td>Items from the layers below to leave out, as <code>kind/name</code>: <code>skills/seo-patterns</code>, <code>agents/researcher</code> — or an MCP server a lower layer defines or an integration brings, as <code>mcpServers/Slack</code>. Naming content no lower layer provides is a warning. Excluding an item a lower layer's policy requires is an error.</td>
+                  <td>Items from the layers below to leave out, as <code>kind/name</code>: <code>skills/seo-patterns</code>, <code>agents/researcher</code>. Content takes <code>*</code> for any run of characters in a name: <code>skills/*</code> leaves out every skill from below, so a team that wants only its own needs one line, not one per skill. An MCP server a lower layer defines or an integration brings is named exactly, as <code>mcpServers/Slack</code>. Naming content no lower layer provides, or a pattern that matches nothing, is a warning. Excluding an item a lower layer's policy requires is an error.</td>
                 </tr>
                 <tr>
                   <td><code>mcpServers</code></td><td>object</td>

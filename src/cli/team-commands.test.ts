@@ -172,6 +172,25 @@ describe.skipIf(!built)('a repository extending a baseline', () => {
     expect(init.out).toContain('in your shell — .env is committed here')
   })
 
+  it('init run again leaves an unchanged manifest alone, timestamp and all', () => {
+    const path = join(dir, '.opencastle', 'manifest.json')
+    const before = readFileSync(path, 'utf8')
+    expect(run(dir, ['init', '--yes']).code).toBe(0)
+    expect(readFileSync(path, 'utf8')).toBe(before)
+  })
+
+  it('sync does not call a project healthy over a server only a person can fix', () => {
+    // Not on the baseline's allowlist, and added by hand: sync cannot change it.
+    const mcp = join(dir, '.vscode', 'mcp.json')
+    const config = JSON.parse(readFileSync(mcp, 'utf8'))
+    config.servers['my-tool'] = { command: 'npx', args: ['-y', 'my-tool-mcp@1.0.0'] }
+    writeFileSync(mcp, JSON.stringify(config, null, 2))
+    const sync = run(dir, ['sync', '--yes'])
+    expect(sync.code).toBe(0)
+    expect(sync.out).toContain('1 MCP server entry needs fixing by hand')
+    expect(sync.out).toContain('npx opencastle doctor')
+  })
+
   it('init refuses to downgrade too', () => {
     const path = join(dir, '.opencastle', 'manifest.json')
     const manifest = JSON.parse(readFileSync(path, 'utf8'))
@@ -256,6 +275,15 @@ describe.skipIf(!built)('a baseline package', () => {
     const report = JSON.parse(check.out)
     expect(report.errors).toEqual([])
     expect(report.contributes).toMatchObject({ skills: 1, instructions: 1 })
+  })
+
+  it('warns when the baseline is over its own context budget before a repository adds anything', () => {
+    run(dir, ['baseline', 'init', 'base', '--name', '@acme/base'])
+    const config = join(dir, 'base', 'dev.opencastle', 'config.json')
+    writeFileSync(config, readFileSync(config, 'utf8').replace(/"contextBudget": \d+/, '"contextBudget": 100'))
+    const check = run(dir, ['baseline', 'check', 'base'])
+    expect(check.code).toBe(0)
+    expect(check.out).toMatch(/dev\.opencastle\/config\.json: policy\.contextBudget is 100 tokens, but a repository extending this baseline starts at ~\d+/)
   })
 
   it('fails one whose layer sits outside the package, as every consumer would', () => {

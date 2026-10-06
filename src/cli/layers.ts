@@ -766,6 +766,24 @@ export function resolveSources(opts: ResolveOptions): ResolvedSources {
     for (const written of layer.config.exclude ?? []) {
       // Servers are excluded where servers are merged, below.
       if (written.startsWith('mcpServers/')) continue
+      if (written.includes('*')) {
+        const literal = written.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'))
+        const pattern = new RegExp(`^${literal.join('[^/]*')}$`)
+        const hits = [...items.keys()].filter((ref) => pattern.test(ref))
+        for (const ref of hits) {
+          excluded.push({ ref, by: layer.id, from: items.get(ref)!.layer })
+          items.delete(ref)
+        }
+        if (hits.length === 0) {
+          issues.push({
+            level: 'warning',
+            where,
+            message: `excludes ${written}, which matches nothing a layer below provides`,
+            fix: 'check the pattern — npx opencastle explain lists everything that is compiled',
+          })
+        }
+        continue
+      }
       const renamed = items.has(written) ? null : integrationSkill(written)
       if (renamed) {
         issues.push({
