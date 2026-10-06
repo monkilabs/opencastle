@@ -210,8 +210,8 @@ gets the ones its stack needs: Content Engineer comes with a CMS, Data Engineer
 with a database.
 
 **Skills** — 17 domain skills plus 31 tool integrations, loaded on demand so
-they don't sit in the context window. Selected during init from what your
-repository actually uses.
+they don't sit in the context window. The integrations are chosen during init
+from what your repository actually uses.
 
 **Workflows** — 6 templates for recurring work that needs more than a prompt
 (database migrations, CMS schema changes, data pipelines, performance,
