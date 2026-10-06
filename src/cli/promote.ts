@@ -103,10 +103,24 @@ function filesIn(dir: string): string[] {
 
 // ── skill ─────────────────────────────────────────────────────
 
-/** Where assistants keep a person's own skills. */
+/**
+ * Where assistants keep a person's own skills.
+ *
+ * Claude Code's and Codex's under their config homes when those are moved:
+ * `promote memory` read `CLAUDE_CONFIG_DIR` and this did not, so one person's
+ * memories and skills were looked for in two different places.
+ */
 export function personalSkillDirs(): string[] {
   const h = home()
-  return ['.claude/skills', '.agents/skills', '.codex/skills', '.cursor/skills', '.copilot/skills'].map((d) => join(h, d))
+  const claude = process.env.CLAUDE_CONFIG_DIR || join(h, '.claude')
+  const codex = process.env.CODEX_HOME || join(h, '.codex')
+  return [
+    join(claude, 'skills'),
+    join(h, '.agents', 'skills'),
+    join(codex, 'skills'),
+    join(h, '.cursor', 'skills'),
+    join(h, '.copilot', 'skills'),
+  ]
 }
 
 function findSkill(ref: string, cwd: string): string {

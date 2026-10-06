@@ -40,8 +40,15 @@ export interface TeamIssue {
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 export const ITEM_REF = new RegExp(`^(${CONTENT_KINDS.join('|')})/[A-Za-z0-9][A-Za-z0-9._-]*$`)
-/** What `exclude` may name: content, or an MCP server a layer below defines. */
-export const EXCLUDE_REF = new RegExp(`^(${[...CONTENT_KINDS, 'mcpServers'].join('|')})/[A-Za-z0-9][A-Za-z0-9._-]*$`)
+/**
+ * What `exclude` may name: content, or an MCP server a layer below defines.
+ * Content takes `*` for any run of characters within a name — `skills/*` leaves
+ * out every skill from below, where a team that wanted only its own had to list
+ * each of them.
+ */
+export const EXCLUDE_REF = new RegExp(
+  `^(?:(${CONTENT_KINDS.join('|')})/[A-Za-z0-9*][A-Za-z0-9._*-]*|mcpServers/[A-Za-z0-9][A-Za-z0-9._-]*)$`,
+)
 
 const ItemRef = v.pipe(
   v.string(),
@@ -49,7 +56,7 @@ const ItemRef = v.pipe(
 )
 const ExcludeRef = v.pipe(
   v.string(),
-  v.regex(EXCLUDE_REF, 'must name a kind and an item, e.g. "skills/seo-patterns" or "mcpServers/Slack"'),
+  v.regex(EXCLUDE_REF, 'must name a kind and an item, e.g. "skills/seo-patterns", "skills/*" or "mcpServers/Slack"'),
 )
 
 const McpServer = v.strictObject({

@@ -62,6 +62,14 @@ describe.skipIf(!built)('opencastle promote', () => {
       expect(existsSync(join(project, '.claude', 'skills', 'deploy-runbook', 'scripts', 'rollback.sh'))).toBe(true)
     })
 
+    it('looks in Claude Code’s config directory where CLAUDE_CONFIG_DIR moves it, as promote memory does', () => {
+      config = join(root, 'elsewhere')
+      write(config, { 'skills/sql-tips/SKILL.md': skill('sql-tips') })
+      const out = run(project, 'promote', 'skill', 'sql-tips', '--dry-run')
+      expect(out.status, out.stderr).toBe(0)
+      expect(out.stdout).toContain(join('elsewhere', 'skills', 'sql-tips'))
+    })
+
     it('finds one in the shared .agents/skills/ too', () => {
       write(home, { '.agents/skills/deploy-runbook/SKILL.md': skill('deploy-runbook') })
       expect(run(project, 'promote', 'skill', 'deploy-runbook').status).toBe(0)

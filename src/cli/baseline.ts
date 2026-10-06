@@ -324,6 +324,16 @@ function check(pkgRoot: string, dir: string): CheckReport {
         try {
           const r = contentReport(source)
           contextTokens = tokensOf(r.instructionChars + r.indexChars)
+          // Its own budget, already spent: every repository extending it starts
+          // over it, and doctor warns in each of them about content they did
+          // not add. The check said "Ready to publish" over that.
+          const budget = resolved.policy.contextBudget
+          if (budget && contextTokens > budget.tokens) {
+            warnings.push(
+              `${shown(resolved.layers.find((l) => l.kind === 'baseline')?.configFile ?? 'config.json')}: policy.contextBudget is ${budget.tokens} tokens, but a repository extending this baseline starts at ~${contextTokens}, before adding anything\n` +
+                `→ raise the budget, or move always-loaded instructions into skills, which load only when a task needs them`,
+            )
+          }
         } finally {
           source.dispose()
         }

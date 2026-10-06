@@ -1,7 +1,7 @@
 import { isAbsolute, resolve, relative, join, dirname } from 'node:path'
 import { existsSync } from 'node:fs'
 import { readFile, mkdir, writeFile, unlink, copyFile, readdir, rm } from 'node:fs/promises'
-import { readManifest, writeManifest } from './manifest.js'
+import { readManifest, writeManifest, manifestMeaning } from './manifest.js'
 import { multiselect, confirm, closePrompts, stdinIsExhausted, c } from './prompt.js'
 import { isLegacyStack, migrateStackConfig, IDE_LABELS } from './types.js'
 import { TECH_PLUGINS, TEAM_PLUGINS } from '../orchestrator/plugins/index.js'
@@ -48,19 +48,6 @@ function reportTeamIssues(resolved: ResolvedSources): void {
   )
   for (const line of formatIssues(errors)) console.error(`    ${line.startsWith('  ') ? c.dim(line) : line}`)
   console.error('')
-}
-
-/**
- * The manifest without the field that changes on every write.
- *
- * `updatedAt` changed on every sync, so two branches that both synced always
- * conflicted on the manifest — in the one file every command reads first,
- * where a conflict makes every command stop. Written only when something it
- * records has actually changed.
- */
-function manifestMeaning(m: Record<string, unknown>): string {
-  const { updatedAt: _u, installedAt: _i, ...rest } = m
-  return JSON.stringify(rest)
 }
 
 const UPDATE_HELP = `
@@ -261,6 +248,10 @@ export default async function update({
   // generated file by hand — and gating on version equality meant `sync --check`
   // could report drift while `sync` insisted everything was up to date. Compare
   // against a fresh compile instead; recompiling is idempotent and cheap.
+  // MCP entries only a person can fix. They do not make `sync` recompile, but
+  // saying everything matches over them, while `sync --check` fails on them,
+  // told the user the opposite of the check.
+  let forAPerson = 0
   const needsSync = await (async () => {
     if (manifest.version !== pkg.version || forceFlag || reconfigureFlag) return true
     // A generated config that will not parse is work outstanding, and the drift
@@ -306,6 +297,7 @@ export default async function update({
     try {
       const { buildCheckReport } = await import('./sync-check.js')
       const report = await buildCheckReport(pkgRoot, projectRoot)
+      forAPerson = report.drift.filter((d) => d.origin === 'mcp' && d.kind === 'unreducible').length
       // Not a broken MCP server only a person can fix: recompiling cannot clear
       // it, and doing so on every run rewrote the committed manifest for nothing.
       return report.drift.some((d) => !(d.origin === 'mcp' && d.kind === 'unreducible'))
@@ -342,6 +334,12 @@ export default async function update({
 
   if (!needsSync && !dryRun) {
     console.log(`  ${c.green('✓')} Everything matches its sources (v${pkg.version}).`)
+    if (forAPerson > 0) {
+      console.log(
+        `  ${c.yellow('!')} ${forAPerson} MCP server entr${forAPerson === 1 ? 'y needs' : 'ies need'} fixing by hand, ` +
+          `which sync cannot do — ${c.cyan('npx opencastle doctor')} names ${forAPerson === 1 ? 'it' : 'them'}.`,
+      )
+    }
     // `--yes` means "do not ask me anything". This one slipped the guard, so a CI
     // runner holding stdin open would block here on an up-to-date project, and
     // `add`, which routes through sync, asked twice for one instruction.

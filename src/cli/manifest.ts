@@ -83,6 +83,19 @@ export async function writeManifest(
 }
 
 /**
+ * The manifest without the fields that change on every write.
+ *
+ * `updatedAt` changed on every sync, so two branches that both synced always
+ * conflicted on the manifest — in the one file every command reads first,
+ * where a conflict makes every command stop. It is written only when something
+ * it records has actually changed.
+ */
+export function manifestMeaning(m: object): string {
+  const { updatedAt: _u, installedAt: _i, ...rest } = m as Record<string, unknown>;
+  return JSON.stringify(rest);
+}
+
+/**
  * Create a fresh manifest object.
  */
 export function createManifest(version: string, ide: string, ides?: string[]): Manifest {

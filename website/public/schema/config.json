@@ -32,9 +32,9 @@
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^(instructions|agents|skills|prompts|workflows|mcpServers)/[A-Za-z0-9][A-Za-z0-9._-]*$"
+        "pattern": "^(?:(instructions|agents|skills|prompts|workflows)/[A-Za-z0-9*][A-Za-z0-9._*-]*|mcpServers/[A-Za-z0-9][A-Za-z0-9._-]*)$"
       },
-      "description": "Items from the layers below to leave out, e.g. \"skills/seo-patterns\", or an MCP server they define or an integration brings, e.g. \"mcpServers/Slack\"."
+      "description": "Items from the layers below to leave out, e.g. \"skills/seo-patterns\" — or \"skills/*\", where * matches any run of characters in a name — or an MCP server they define or an integration brings, e.g. \"mcpServers/Slack\"."
     },
     "mcpServers": {
       "type": "object",

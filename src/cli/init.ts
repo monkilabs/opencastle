@@ -3,7 +3,7 @@ import { readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { multiselect, confirm, closePrompts, c } from './prompt.js'
-import { readManifest, writeManifest, createManifest } from './manifest.js'
+import { readManifest, writeManifest, createManifest, manifestMeaning } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
 import { getCustomizationsTransform, isPreselected } from './stack-config.js'
@@ -706,7 +706,12 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // differed from what the next sync saw and that sync rewrote the manifest —
   // a committed file changing on a run that changed nothing about the project.
   manifest.repoInfo = mergeStackIntoRepoInfo(await detectRepoInfo(projectRoot), stack)
-  await writeManifest(projectRoot, manifest)
+  // Nothing it records changed: leave it, timestamp and all. A second `init`
+  // rewrote `updatedAt`, a diff in a committed file from a run that changed
+  // nothing — the same reason `sync` compares before it writes.
+  if (!existing || manifestMeaning(manifest) !== manifestMeaning(existing)) {
+    await writeManifest(projectRoot, manifest)
+  }
 
   // ── Update .gitignore ───────────────────────────────────────────
   // Only local artefacts and .env; the generated config is meant to be committed.

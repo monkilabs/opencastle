@@ -89,6 +89,11 @@ describe('the config file', () => {
     expect(issues[0].fix).toContain('"extends"')
   })
 
+  it('accepts a pattern in an exclude of content, and not of a server', () => {
+    expect(parseTeamConfig('{ "exclude": ["skills/*", "agents/content-*"] }', 'x').issues).toEqual([])
+    expect(parseTeamConfig('{ "exclude": ["mcpServers/*"] }', 'x').issues).not.toEqual([])
+  })
+
   it('rejects an exclude that names no kind', () => {
     const { issues } = parseTeamConfig('{ "exclude": ["seo-patterns"] }', 'x')
     expect(issues[0].message).toMatch(/must name a kind/)
@@ -219,6 +224,21 @@ describe('resolving layers', () => {
     expect(r.items.has('skills/testing-workflow')).toBe(false)
     expect(r.excluded).toEqual([{ ref: 'skills/testing-workflow', by: 'project', from: 'opencastle' }])
     expect(r.issues).toEqual([expect.objectContaining({ level: 'warning', message: expect.stringContaining('skills/no-such-skill') })])
+  })
+
+  it('excludes by pattern: skills/* leaves out every skill from below', () => {
+    write(project, { '.opencastle/config.json': '{ "exclude": ["skills/*", "workflows/data-*"] }' })
+    const r = resolveHere()
+    expect([...r.items.keys()].filter((k) => k.startsWith('skills/'))).toEqual([])
+    expect(r.items.has('workflows/data-pipeline')).toBe(false)
+    expect(r.items.has('workflows/refactoring')).toBe(true)
+    expect(r.excluded.length).toBeGreaterThan(5)
+    expect(r.issues).toEqual([])
+  })
+
+  it('warns about a pattern that matches nothing', () => {
+    write(project, { '.opencastle/config.json': '{ "exclude": ["skills/no-such-*"] }' })
+    expect(resolveHere().issues).toEqual([expect.objectContaining({ level: 'warning', message: expect.stringContaining('matches nothing') })])
   })
 
   it('does not call an exclude of something the stack already left out a mistake', () => {
