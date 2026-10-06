@@ -34,9 +34,7 @@ const commands = [
       { flag: '--json', desc: 'Machine-readable output' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
-    details: [
-      { heading: 'Why no flags', content: `<p>The tool can see whether a target is missing files, whether sources are newer than what was generated, and whether a run was interrupted. Asking you to restate that on the command line is what produced the old <code>--status</code>, <code>--resume</code>, and <code>--retry-failed</code> flag families. Those are gone; the state is read instead.</p>` },
-    ],
+    details: [],
     examples: [
       { cmd: 'npx opencastle', desc: 'Status and the next step' },
       { cmd: 'npx opencastle --json', desc: 'Same, for scripts' },
@@ -60,11 +58,9 @@ const commands = [
       { heading: 'What it does', content: `<ol>
         <li><strong>Finds your assistants</strong> — any of <code>CLAUDE.md</code> or <code>.claude/</code>, <code>.cursorrules</code> or <code>.cursor/rules</code>, <code>.github/copilot-instructions.md</code>, <code>.windsurfrules</code> or <code>.windsurf/rules</code>, <code>GEMINI.md</code>, <code>.codex</code>, or <code>opencode.json</code> makes that assistant a compile target. <code>AGENTS.md</code> counts, as Codex CLI, only when none of those is present.</li>
         <li><strong>Scans the stack</strong> — frameworks, databases, CMSes, deployment targets, test runners, monorepo tools — and writes what it read into <code>.opencastle/</code>: versions, commands, routes, models, migrations, environment variable names. JavaScript and TypeScript projects are read from <code>package.json</code>; Python ones from <code>pyproject.toml</code> or <code>requirements.txt</code> (FastAPI, Django, Flask), Go ones from <code>go.mod</code> (Gin, Echo, chi, Fiber); a Makefile, justfile or <code>scripts/</code> adds its commands to any of them. A Python or Go service with no web interface gets no TypeScript or web-interface rules, and no browser to test with.</li>
-        <li><strong>Shows the plan</strong> — what it found and what it will write</li>
-        <li><strong>Asks once</strong> — then compiles agents, skills, instructions, and MCP config for each target. On a project that is already set up it asks <code>Re-initialize? [y/N]</code> first.</li>
+        <li><strong>Shows the plan and asks once</strong> — then compiles agents, skills, instructions, and MCP config for each target. On a project that is already set up it asks <code>Re-initialize? [y/N]</code> first.</li>
         <li><strong>Leaves your writing alone</strong> — what you wrote in <code>CLAUDE.md</code>, <code>.cursorrules</code> and the other root files stays above a managed block. A file of yours inside a directory OpenCastle generates (<code>.cursor/rules/</code>, <code>.claude/agents/</code>, <code>.agents/skills/</code>, …) is named in the summary and removed by the next <code>sync</code>; move it into <code>.opencastle/</code> and it is compiled for every assistant.</li>
       </ol>` },
-      { heading: 'If you would rather choose', content: `<p><code>--customize</code> restores the full selection: an IDE picker followed by a screen per plugin category. Most people do not need it — detection is pre-checked from the same signals you would be confirming by hand.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle init', desc: 'Detect, show the plan, confirm once' },
@@ -90,15 +86,12 @@ const commands = [
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'What is preserved', content: `<p>Your customizations in <code>.opencastle/</code> are never overwritten. Framework directories are regenerated wholesale so renamed or removed sources do not leave stale files behind — which also removes a file of yours placed in one. Keep those in <code>.opencastle/</code>.</p>` },
-      { heading: 'Team sources and the lock', content: `<p><code>sync</code> writes <code>.opencastle/lock.json</code> in every project, the record of what every assistant is given; commit it. When <code>.opencastle/config.json</code> exists, it is resolved first: the baselines it extends, the project's own instructions, skills and agents, its MCP servers, and the policy. Any error — a baseline that is not installed, a server the policy refuses, a credential written inline — and nothing is written. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
-<p>A project compiled by a newer OpenCastle than the one you are running is refused — it would replace newer output with older, and the next teammate's sync would put it back. Run the project's version, or pass <code>--allow-downgrade</code> to go back on purpose. The same goes for a baseline: an installed copy older than the one the lock records — a <code>node_modules</code> from before the bump — is refused, with <code>npm install</code> as the fix. The manifest is rewritten only when something it records changed.</p>` },
-      { heading: 'In CI', content: `<p><code>sync --check</code> compiles to a scratch directory and compares, so a hand-edited rule file or a forgotten recompile fails the build. On GitHub Actions it also annotates each drifted file in the pull request with that file's own fix, and writes a table to the run's summary page — no configuration, it reads <code>GITHUB_ACTIONS</code>. With <code>--json</code> the annotations are left out so the output stays parseable.</p>
-<p>It reads MCP configs with the same audit <code>doctor</code> runs, so the two cannot disagree: a server entry still at an earlier OpenCastle default is drift that <code>sync</code> clears, and a broken server only a person can fix fails the check with its remedy. It also fails when the team's sources do not resolve or break the policy, and when <code>.opencastle/lock.json</code> is missing or stale.</p>
-<p>On GitHub Actions, <a href="#ci"><code>opencastle ci</code></a> writes the whole workflow: dependencies installed so baselines resolve, this check, and <code>review</code> on pull requests. On any other CI, install dependencies — with <code>opencastle</code> as a devDependency — and run:</p>
-<pre><code>npx opencastle sync --check</code></pre>` },
-      { heading: 'MCP servers move forward, edits stay', content: `<p>A server entry is left alone once it is in your config, because people tune them. An entry still exactly as an earlier release wrote it — a retired package, an <code>@latest</code>, a shape your assistant cannot load — is replaced with the current default, and the output names each one. Anything you edited stays yours.</p>` },
-      { heading: 'Previously called update', content: `<p><code>opencastle update</code> still works as an alias. The operation is a compile-and-sync rather than a version bump, so the name follows what it does.</p>` },
+      { heading: 'What is preserved', content: `<p><code>.opencastle/</code> is never overwritten, nor your text around the managed block in a root file. Generated directories are rewritten whole, so a file of yours placed in one is removed; keep it in <code>.opencastle/</code>. An MCP server entry you edited stays as you left it; one still exactly as an earlier release wrote it is updated to the current default, and named.</p>` },
+      { heading: 'Team sources and the lock', content: `<p><code>sync</code> writes <code>.opencastle/lock.json</code>, the record of what every assistant is given; commit it. When <code>.opencastle/config.json</code> exists, it is resolved first — baselines, the project's own content, MCP servers, policy — and any error, such as a baseline that is not installed or a server the policy refuses, means nothing is written. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
+<p>A project compiled by a newer OpenCastle than the one you run is refused, and so is an installed baseline older than the one the lock records (run <code>npm install</code>). <code>--allow-downgrade</code> goes back on purpose.</p>` },
+      { heading: 'sync --check', content: `<p>Compiles to a scratch directory and compares, writing nothing. It fails when a generated file was edited by hand or not recompiled, when the lock is missing or stale, when the team's sources do not resolve or break the policy, and on any MCP problem <code>doctor</code> fails on. On GitHub Actions it annotates each drifted file with its fix and writes a table to the job summary; <code>--json</code> leaves the annotations out.</p>
+<p><a href="#ci"><code>opencastle ci</code></a> writes the GitHub Actions workflow. On any other CI, install dependencies, with <code>opencastle</code> as a devDependency, and run <code>npx opencastle sync --check</code>.</p>` },
+      { heading: 'Previously called update', content: `<p><code>opencastle update</code> still works.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle sync', desc: 'Recompile all targets' },
@@ -118,9 +111,7 @@ const commands = [
       { flag: '--dry-run', desc: 'Preview without writing' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
-    details: [
-      { heading: 'Why this exists', content: `<p>Adopting a tool after setup used to mean re-running the whole selection. This edits the stored stack and recompiles, so it is one command.</p>` },
-    ],
+    details: [],
     examples: [
       { cmd: 'npx opencastle add supabase', desc: 'Add one integration' },
       { cmd: 'npx opencastle add nextjs vercel sentry', desc: 'Add several at once' },
@@ -138,19 +129,19 @@ const commands = [
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'When to run it', content: `<p>After upgrading, after a merge that touched generated files, or whenever an assistant does not seem to be picking up the config. For a quick "is anything stale" answer, plain <code>opencastle</code> is faster.</p>` },
-      { heading: 'What it checks in MCP configs', content: `<p>An MCP server is code your agents run with your credentials, so <code>doctor</code> reads every target's MCP config the way a supply-chain review would — including servers you added yourself:</p>
+      { heading: 'What it checks in MCP configs', content: `<p>Every target's MCP config, including servers you added yourself:</p>
 <ul>
   <li><strong>Warning</strong> — a package launched without an exact version (<code>@latest</code>, a range, or none), so each machine runs whatever was published last. A failure instead when the team's policy sets <code>requirePinned</code>.</li>
   <li><strong>Failure</strong> — a package OpenCastle knows is not on npm (one an earlier release wrote, or one since unpublished), or a remote server in <code>.mcp.json</code> with no <code>"type"</code>, which Claude Code reads as a stdio server and never loads.</li>
   <li><strong>Failure</strong> — a credential written into the file, or a server the team's policy does not allow, whether by name or by the host it connects to.</li>
 </ul>
-<p>Each finding names the fix that works for it: <code>opencastle sync</code> for entries still as OpenCastle wrote them, a fix by hand for everything else.</p>` },
-      { heading: 'Team sources', content: `<ul>
+<p>Each finding names its fix.</p>` },
+      { heading: 'Team sources and lessons', content: `<ul>
   <li><strong>Team sources</strong> — <code>.opencastle/config.json</code> and the baselines it extends resolve, and what they contribute.</li>
   <li><strong>Always-loaded context</strong> — the tokens every assistant loads before a task (instructions plus the skill and agent index, estimated at four characters per token), against the budget a layer set; a warning past it, naming the three largest contributors.</li>
   <li><strong>Team instructions match this repository</strong> — <code>npm run</code> scripts named in team content that <code>package.json</code> does not define, and backticked paths in the project's own content that do not exist.</li>
-  <li><strong>OpenCastle version</strong> — a failure when you run an older release than the one that compiled the project: <code>sync</code> refuses to run and <code>sync --check</code> compares nothing until you run the project's version.</li>
+  <li><strong>OpenCastle version</strong> — a failure when you run an older release than the one that compiled the project.</li>
+  <li><strong>Lessons</strong> — one whose cited code changed since it was verified, with <a href="#lesson"><code>lesson verify</code> or <code>lesson archive</code></a> as the fix.</li>
 </ul>` },
     ],
     examples: [
@@ -173,7 +164,6 @@ const commands = [
     ],
     details: [
       { heading: 'What --all keeps', content: `<p>A file that also holds your writing — <code>CLAUDE.md</code>, <code>.cursorrules</code>, <code>opencode.json</code> — loses only the OpenCastle block or servers. <code>.opencastle/</code> is moved to <code>.opencastle.removed/</code>, with your conventions and lessons, for you to delete when you are sure.</p>` },
-      { heading: 'Replaces eject and destroy', content: `<p>Those two names gave no hint which one deleted your files. This asks, and the flags spell out the answer when you already know it: <code>--keep-files</code> is the old <code>eject</code>, <code>--all</code> is the old <code>destroy</code>.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle remove', desc: 'Ask, then remove' },
@@ -210,13 +200,13 @@ const commands = [
         </tbody>
       </table>
 <p>Each subcommand has its own help: <code>opencastle convoy run --help</code>.</p>` },
-      { heading: 'Plan, ask, run', content: `<p><code>opencastle convoy "&lt;task&gt;"</code> sizes the request, and at the same time plans it straight from the request and writes a PRD; the size decides which of the two is kept. A small change keeps the plan; larger work keeps the PRD, in <code>.opencastle/prds/</code>, which is reviewed while the tasks are planned from it, and if needed fixed and planned again. Planning asks the model for less reasoning than its default, and on Claude Code loads no MCP server or skill. Measured on a small project with Claude Code: 24–28 seconds for a two-endpoint change, 1m 41s for a feature that needed a PRD. The spec goes to <code>.opencastle/convoys/</code>. The agent sessions read the repository and change nothing, and a task that only writes tests for another task is folded into it. It prints the plan as a table — each task, its agent, what it waits for and the files it may change — with the branch, the runtime, the checks that run at the end, and what planning spent. Then it asks <code>Run it? [Y/n]</code>.</p>
+      { heading: 'Plan, ask, run', content: `<p><code>opencastle convoy "&lt;task&gt;"</code> plans without changing anything. A small change is planned straight from the request; larger work first gets a PRD in <code>.opencastle/prds/</code>, reviewed while the tasks are planned from it. The spec goes to <code>.opencastle/convoys/</code>, and the plan is printed as a table — each task, its agent, what it waits for and the files it may change — with the branch, the runtime and the checks that run at the end. Then it asks <code>Run it? [Y/n]</code>.</p>
 <ul>
   <li><code>--yes</code> runs it without asking, after one more agent session reviews the plan.</li>
   <li>No answer — stdin closed, as in a script — means no: nothing runs, and the command to run it later is printed.</li>
   <li><code>--dry-run</code> stops after writing the spec.</li>
 </ul>
-<p>A run prints each task as it starts and finishes, with its time and cost. It ends with the branch, the <code>git diff</code> and <code>git merge</code> commands for it, the lessons workers reported — committed on the branch as files in <code>.opencastle/lessons/</code>, so they are reviewed and merged with the work — and the bugs they found outside their tasks, the tokens and cost spent (marked <em>est.</em> only where the runtime reported none), and the path of the event log. On a terminal outside CI it also starts the live dashboard and prints its address. Ctrl+C stops the agents and exits with code 130; <code>opencastle convoy resume</code> carries on. The exit code is 0 when every task is done and every check passed, and 1 otherwise.</p>` },
+<p>A run prints each task as it starts and finishes, with its time and cost. It ends with the branch and the <code>git diff</code> and <code>git merge</code> commands for it, the lessons workers recorded (committed on the branch, so they are reviewed with the work), the bugs they found outside their tasks, and the tokens and cost spent. On a terminal outside CI it also starts the live dashboard. Ctrl+C stops the agents and exits 130; <code>opencastle convoy resume</code> carries on. It exits 0 when every task is done and every check passed, 1 otherwise.</p>` },
       { heading: 'Runtime', content: `<p>The runtime is the first of: <code>--adapter</code>, the spec's <code>adapter</code>, the assistant <code>opencastle init</code> set up, or the first agent CLI found on PATH. A runtime that is named but not installed is an error, never a quiet switch to another. The run's first lines say which it chose and why.</p>
 <table>
   <thead><tr><th>Assistant set up by init</th><th>Runtime</th><th>Command</th></tr></thead>
@@ -228,7 +218,7 @@ const commands = [
     <tr><td>Codex CLI</td><td><code>codex</code></td><td><code>codex</code></td></tr>
   </tbody>
 </table>
-<p>Windsurf and Antigravity have no command-line agent; a project set up only for them runs on the first agent CLI found on PATH, or the one <code>--adapter</code> names. Runtimes are found the same way on macOS, Linux and Windows, npm-installed ones included.</p>` },
+<p>Windsurf and Antigravity have no command-line agent; a project set up only for them runs on the first agent CLI found on PATH, or the one <code>--adapter</code> names.</p>` },
       { heading: 'Models', content: `<p>A task with no <code>model</code> in its spec runs on its agent's capability tier. Claude Code maps premium, standard and economy to its own <code>opus</code>, <code>sonnet</code> and <code>haiku</code> aliases; reviews run on economy, and the planner writes on standard and checks on economy. The other runtimes run on their own default model. A <code>model</code> in the spec, on a task or under <code>defaults</code>, always wins.</p>` },
       { heading: 'Experimental', content: `<p>This namespace may change or be removed. The compiler does not depend on it. How it works inside is in <a href="https://github.com/monkilabs/opencastle/blob/main/ARCHITECTURE.md#convoy-architecture">ARCHITECTURE.md</a>.</p>` },
     ],
@@ -374,7 +364,7 @@ const commands = [
     category: 'teams',
     name: 'promote',
     summary: 'Make a skill or memory from your own assistant the team\'s',
-    description: 'Knowledge starts personal: a skill one developer wrote for their own assistant, a correction Claude Code remembered on one laptop. <code>promote</code> moves it into the team\'s sources — this repository\'s <code>.opencastle/</code>, or a baseline every repository extends — where the next <code>sync</code> compiles it into every assistant. It lands as a change in your working tree; the pull request that commits it is where the team agrees.',
+    description: 'Moves a skill one developer wrote for their own assistant, or what Claude Code remembered on one laptop, into the team\'s sources — this repository\'s <code>.opencastle/</code> or a baseline — where the next <code>sync</code> compiles it into every assistant. It lands as a change in your working tree, for a pull request.',
     usage: 'npx opencastle promote <skill|memory> [name|path] [options]',
     options: [
       { flag: '--to <dir>', desc: 'skill: a baseline or Agent Plugin directory to put it in' },
@@ -391,6 +381,31 @@ const commands = [
       { cmd: 'npx opencastle promote skill deploy-runbook', desc: 'Your skill, in every teammate\'s assistant after the next sync' },
       { cmd: 'npx opencastle promote skill deploy-runbook --to ../ai-standard', desc: 'Into the baseline every repository extends' },
       { cmd: 'npx opencastle promote memory --dry-run', desc: 'See which of your assistant\'s memories would become lessons' },
+    ],
+  },
+  {
+    id: 'lesson',
+    category: 'teams',
+    name: 'lesson',
+    summary: 'Record, verify or archive a lesson',
+    description: 'Agents run it, from their instructions, when they learn something the hard way: one file per lesson in <code>.opencastle/lessons/</code>, and the index they read first, <code>.opencastle/LESSONS-LEARNED.md</code>, rewritten. You run <code>verify</code> and <code>archive</code> when <code>doctor</code> names a lesson whose cited code has changed. It is left out of <code>--help</code> for that reason.',
+    usage: `npx opencastle lesson [add] --title <text> --category <cat> --severity <level> --problem <text> [options]
+npx opencastle lesson verify <id> [--cite <path[:line]>]...
+npx opencastle lesson archive <id> --into <file>`,
+    options: [
+      { flag: '--title, --category, --severity, --problem', desc: 'add: required. Severity is high, medium or low; npx opencastle lesson --help lists the categories' },
+      { flag: '--wrong, --correct, --why', desc: 'add: what was tried, what works, and the root cause' },
+      { flag: '--cite <path[:line]>', desc: 'The code the lesson is about; repeat for more. On verify, replaces the citations' },
+      { flag: '--into <file>', desc: 'archive: the skill or instruction file the lesson now lives in' },
+      { flag: '--dry-run', desc: 'Print what would be written, and write nothing' },
+      { flag: '--help, -h', desc: 'Show help' },
+    ],
+    details: [
+      { heading: 'verify and archive', content: `<p><code>verify</code> says a lesson still holds: it stamps today\'s date and what the cited files hold now, so <code>doctor</code> stops reporting them. <code>archive</code> marks a lesson merged into the file <code>--into</code> names; it stays on record and leaves the list agents read. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
+    ],
+    examples: [
+      { cmd: 'npx opencastle lesson verify 2026-10-02-always-quote-shell-variables', desc: 'It still holds' },
+      { cmd: 'npx opencastle lesson archive 2026-10-02-always-quote-shell-variables --into .opencastle/skills/git-workflow/SKILL.md', desc: 'It now lives in a skill' },
     ],
   },
   {
@@ -520,6 +535,7 @@ Options:
   --json           Machine-readable output where supported
   --help, -h       Show help for a command
   --version, -v    Show version number`}</code></pre>
+          <p class="docs-subtitle"><code>--debug</code>, with any command, prints the stack trace of an error.</p>
         </div>
 
         <!-- Setup -->

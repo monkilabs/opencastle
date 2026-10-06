@@ -8,6 +8,14 @@ const integrationCount = Object.keys(PLUGINS).length;
 
 const pages = [
   {
+    href: '/docs/concepts',
+    title: 'Concepts',
+    description: 'How OpenCastle works: one source for every assistant, what an assistant loads and when, agents, integrations, layers, the lock and lessons — with a glossary of the words the docs use.',
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+    sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`,
+    badge: 'start here',
+  },
+  {
     href: '/docs/agentic-development',
     title: 'Agentic Development',
     description: 'Guide to agentic development and multi-agent orchestration. Vibecoding best practices, prompt patterns, specialist agents, quality gates, and how to coordinate AI agent teams.',
@@ -63,6 +71,14 @@ const pages = [
     sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="13" y2="11"/></svg>`,
     badge: '2 recipes',
   },
+  {
+    href: '/docs/troubleshooting',
+    title: 'Troubleshooting',
+    description: 'What goes wrong and what clears it: commands not found, sync --check failing in CI, files a sync removed, version refusals, MCP servers that do not start, commands that do not appear.',
+    icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    badge: 'fixes',
+  },
 ];
 ---
 
@@ -94,7 +110,7 @@ const pages = [
           <li>
             <a class="docs-sidebar__link docs-sidebar__link--active" href="#quick-start">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-              Quick Start
+              Get started
             </a>
           </li>
           <li>
@@ -133,7 +149,7 @@ const pages = [
 
         <!-- Quick start -->
         <section class="quickstart" id="quick-start">
-          <h3 class="quickstart__heading">Quick Start</h3>
+          <h3 class="quickstart__heading">Get started</h3>
           <div class="quickstart__steps">
             <!-- Step 1: Install -->
             <div class="quickstart__step">
@@ -206,7 +222,7 @@ const pages = [
               <span class="quickstart__num">4</span>
               <div>
                 <p class="quickstart__label">Bootstrap an existing codebase</p>
-                <p class="quickstart__desc"><code class="quickstart__code">init</code> has written the stack, structure, commands, routes and models into <code class="quickstart__code">.opencastle/</code> from the code. Run the <code class="quickstart__code">bootstrap-customizations</code> prompt once to fill in what files cannot say &mdash; architecture, access rules, test conventions &mdash; listed at the end of each file.</p>
+                <p class="quickstart__desc"><code class="quickstart__code">init</code> has written the stack, structure, commands, routes and models into <code class="quickstart__code">.opencastle/</code> from the code. Run the <code class="quickstart__code">bootstrap-customizations</code> prompt once to fill in what files cannot say &mdash; architecture, access rules, test conventions &mdash; listed at the end of each file. It ends by running <code class="quickstart__code">npx opencastle sync</code>, so every assistant gets the result.</p>
                 <div class="quickstart__panels" data-panel-group="step4">
                   <div class="quickstart__panel quickstart__panel--active" data-ide="vscode" role="tabpanel">
                     <p class="quickstart__desc">In Copilot Chat type <code class="quickstart__code">/oc:bootstrap-customizations</code> &mdash; it runs as the Team Lead (OpenCastle) agent.</p>
@@ -247,28 +263,28 @@ const pages = [
                     <span class="quickstart__option-letter">A</span>
                     <div>
                       <p class="quickstart__option-title">In your assistant&rsquo;s chat <span class="quickstart__option-badge">recommended</span></p>
-                      <p class="quickstart__desc">Ask the <strong>Team Lead</strong> for a feature, a fix or a refinement. It does a change in one area itself, and splits work across areas into tasks for specialist agents, in the same session. Work you want run unattended as parallel tasks is a convoy (option B).</p>
+                      <p class="quickstart__desc">Start with a prompt: <strong>implement-feature</strong> for a change, <strong>bug-fix</strong> for a bug. The Team Lead makes a change in one area itself, and splits work across areas into tasks for specialist agents, in the same session; it tests, has the change reviewed, and opens a pull request. Work you want run unattended as parallel tasks is a convoy (option B).</p>
                       <div class="quickstart__panels" data-panel-group="step5a">
                         <div class="quickstart__panel quickstart__panel--active" data-ide="vscode" role="tabpanel">
-                          <p class="quickstart__desc">In Copilot Chat pick the <strong>Team Lead (OpenCastle)</strong> agent and describe what you want built.</p>
+                          <p class="quickstart__desc">In Copilot Chat type <code class="quickstart__code">/oc:implement-feature</code> and what you want built; it selects the <strong>Team Lead (OpenCastle)</strong> agent.</p>
                         </div>
                         <div class="quickstart__panel" data-ide="cursor" role="tabpanel" hidden>
-                          <p class="quickstart__desc">Start a new chat, mention the Team Lead, and describe what you want built. Its rule loads when the model judges that a request matches it; naming it makes sure.</p>
+                          <p class="quickstart__desc">Ask for the prompt by name: <em>&ldquo;Run the implement-feature prompt: &hellip;&rdquo;</em></p>
                         </div>
                         <div class="quickstart__panel" data-ide="claude-code" role="tabpanel" hidden>
-                          <p class="quickstart__desc">Ask Claude to act as the Team Lead and describe what you want built &mdash; CLAUDE.md tells it where the Team Lead&rsquo;s definition is.</p>
+                          <p class="quickstart__desc">Type <code class="quickstart__code">/oc:implement-feature</code> and what you want built.</p>
                         </div>
                         <div class="quickstart__panel" data-ide="opencode" role="tabpanel" hidden>
-                          <p class="quickstart__desc">Ask it to act as the Team Lead and describe what you want built &mdash; AGENTS.md tells it where the Team Lead&rsquo;s definition is.</p>
+                          <p class="quickstart__desc">Ask for the prompt by name: <em>&ldquo;Run the implement-feature prompt: &hellip;&rdquo;</em></p>
                         </div>
                         <div class="quickstart__panel" data-ide="windsurf" role="tabpanel" hidden>
-                          <p class="quickstart__desc">Start a new chat, mention the Team Lead, and describe what you want built. Its rule loads when the model judges that a request matches it; naming it makes sure.</p>
+                          <p class="quickstart__desc">Ask for the prompt by name: <em>&ldquo;Run the implement-feature prompt: &hellip;&rdquo;</em></p>
                         </div>
                         <div class="quickstart__panel" data-ide="codex" role="tabpanel" hidden>
-                          <p class="quickstart__desc">Ask it to act as the Team Lead and describe what you want built &mdash; AGENTS.md tells it where the Team Lead&rsquo;s definition is.</p>
+                          <p class="quickstart__desc">Ask for the prompt by name: <em>&ldquo;Run the implement-feature prompt: &hellip;&rdquo;</em></p>
                         </div>
                         <div class="quickstart__panel" data-ide="gemini" role="tabpanel" hidden>
-                          <p class="quickstart__desc">Ask it to act as the Team Lead and describe what you want built &mdash; GEMINI.md tells it where the Team Lead&rsquo;s definition is.</p>
+                          <p class="quickstart__desc">Ask for the prompt by name: <em>&ldquo;Run the implement-feature prompt: &hellip;&rdquo;</em></p>
                         </div>
                       </div>
                       <p class="quickstart__desc">For common jobs a prompt gives it a fixed procedure &mdash; brainstorm, bug-fix, implement-feature and more; all of them work in your session, except convoy, which hands the work to the convoy planner. <a href="/docs/prompts#how-to-use">How each assistant runs them</a>.</p>
@@ -341,37 +357,44 @@ const pages = [
               <span class="quickstart__num">&bull;</span>
               <div>
                 <p class="quickstart__label">Ask what needs doing</p>
-                <p class="quickstart__desc">Run <code class="quickstart__code">opencastle</code> with no arguments. It reports which targets exist, whether the generated files are still current, which assistants are configured but not being compiled, and the one command to run next.</p>
+                <p class="quickstart__desc">Run <code class="quickstart__code">npx opencastle</code> with no arguments. It reports which targets exist, whether the generated files are still current, which assistants are configured but not being compiled, and the one command to run next.</p>
               </div>
             </div>
             <div class="quickstart__step">
               <span class="quickstart__num">&bull;</span>
               <div>
                 <p class="quickstart__label">Recompile</p>
-                <p class="quickstart__desc"><code class="quickstart__code">opencastle sync</code> regenerates every target from source. Your customizations in <code class="quickstart__code">.opencastle/</code> are kept, and so is your content above the managed block of a root file such as <code class="quickstart__code">CLAUDE.md</code>. A file added by hand inside a generated directory, such as <code class="quickstart__code">.cursor/rules/</code>, is removed &mdash; put it in <code class="quickstart__code">.opencastle/</code> and it is compiled for every assistant.</p>
+                <p class="quickstart__desc"><code class="quickstart__code">npx opencastle sync</code> regenerates every target from source. Your customizations in <code class="quickstart__code">.opencastle/</code> are kept, and so is your content above the managed block of a root file such as <code class="quickstart__code">CLAUDE.md</code>. A file added by hand inside a generated directory, such as <code class="quickstart__code">.cursor/rules/</code>, is removed &mdash; put it in <code class="quickstart__code">.opencastle/</code> and it is compiled for every assistant.</p>
               </div>
             </div>
             <div class="quickstart__step">
               <span class="quickstart__num">&bull;</span>
               <div>
                 <p class="quickstart__label">Catch drift in CI</p>
-                <p class="quickstart__desc"><code class="quickstart__code">opencastle sync --check</code> compiles to a scratch directory and compares. It writes nothing and exits non-zero when a generated file no longer matches its source &mdash; someone edited <code class="quickstart__code">.cursor/rules/foo.mdc</code> by hand, dropped a file into a generated directory, or upgraded without recompiling. Without it, drift is invisible: a stale rule file still loads fine.</p>
+                <p class="quickstart__desc"><code class="quickstart__code">npx opencastle sync --check</code> compiles to a scratch directory and compares. It writes nothing and exits non-zero when a generated file no longer matches its source &mdash; someone edited <code class="quickstart__code">.cursor/rules/foo.mdc</code> by hand, dropped a file into a generated directory, or upgraded without recompiling. Without it, drift is invisible: a stale rule file still loads fine.</p>
                 <p class="quickstart__desc">Commit the generated config, like a lockfile &mdash; that is what gives the check something to compare, and what lets a teammate clone the repo and have working rules without running anything. Only <code class="quickstart__code">.env</code> and run artefacts are gitignored.</p>
-                <p class="quickstart__desc">Run <code class="quickstart__code">opencastle ci</code> once. It writes <code class="quickstart__code">.github/workflows/opencastle.yml</code>: checkout, install, <code class="quickstart__code">sync --check</code> with the OpenCastle version the project uses, and <code class="quickstart__code">review</code> on pull requests. On another CI, run <code class="quickstart__code">npx opencastle sync --check</code> with opencastle as a devDependency. See <a href="/docs/cli#ci">opencastle ci</a>.</p>
+                <p class="quickstart__desc">Run <code class="quickstart__code">npm i -D opencastle &amp;&amp; npx opencastle ci</code> once. It writes <code class="quickstart__code">.github/workflows/opencastle.yml</code>: checkout, install, <code class="quickstart__code">sync --check</code> with the OpenCastle version the project uses, and <code class="quickstart__code">review</code> on pull requests. On another CI, run <code class="quickstart__code">npx opencastle sync --check</code> with opencastle as a devDependency. See <a href="/docs/cli#ci">opencastle ci</a>.</p>
               </div>
             </div>
             <div class="quickstart__step">
               <span class="quickstart__num">&bull;</span>
               <div>
                 <p class="quickstart__label">Adopt a new tool</p>
-                <p class="quickstart__desc"><code class="quickstart__code">opencastle add supabase</code> updates the stored stack and recompiles, so the integration's skills and MCP config reach every target. <code class="quickstart__code">opencastle add --list</code> shows what is available.</p>
+                <p class="quickstart__desc"><code class="quickstart__code">npx opencastle add supabase</code> updates the stored stack and recompiles, so the integration's skills and MCP config reach every target. <code class="quickstart__code">npx opencastle add --list</code> shows what is available.</p>
+              </div>
+            </div>
+            <div class="quickstart__step">
+              <span class="quickstart__num">&bull;</span>
+              <div>
+                <p class="quickstart__label">Upgrade</p>
+                <p class="quickstart__desc"><code class="quickstart__code">npm i -D opencastle@latest</code>, then <code class="quickstart__code">npx opencastle sync</code>: it names every file it changes or removes. Read the diff and commit it. Something not working? <a href="/docs/troubleshooting">Troubleshooting</a>.</p>
               </div>
             </div>
             <div class="quickstart__step">
               <span class="quickstart__num">&bull;</span>
               <div>
                 <p class="quickstart__label">Share it across a team</p>
-                <p class="quickstart__desc"><code class="quickstart__code">opencastle baseline init</code> starts a standard every repository can extend, and <code class="quickstart__code">opencastle explain</code> shows a new teammate what their assistant is given and what they still need to set up. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
+                <p class="quickstart__desc"><code class="quickstart__code">npx opencastle baseline init</code> starts a standard every repository can extend, and <code class="quickstart__code">npx opencastle explain</code> shows a new teammate what their assistant is given and what they still need to set up. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
               </div>
             </div>
           </div>

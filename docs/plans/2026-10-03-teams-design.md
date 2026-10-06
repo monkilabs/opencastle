@@ -1,7 +1,8 @@
 # OpenCastle for teams
 
-> Back to [README](../README.md) · Status: shipped through v1.3.0, 3 October 2026 ·
-> How to use it: [opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/)
+> Design notes, written as the team features shipped (through 3 October 2026);
+> kept for the decisions and the open questions. How to use them:
+> [opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/)
 
 A single developer's assistant config is a solved problem. A team's is not.
 Teams run several assistants side by side, each reads its own format, and

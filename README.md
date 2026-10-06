@@ -31,7 +31,9 @@ Your team's AI assistant config is scattered across seven formats. Someone wrote
 drift apart the moment anyone edits one of them.
 
 OpenCastle compiles one source into all of them, and tells you when they fall
-out of sync.
+out of sync. It starts that source from your code: the stack with its versions,
+the commands, the routes and the models, so your assistant knows the project on
+its first task.
 
 <br>
 
@@ -41,12 +43,9 @@ out of sync.
 npx opencastle init
 ```
 
-It reads your repository first: which assistants you already have config for,
-which framework and database you use, which test runner. Then it shows you what
-it found and asks once.
+It reads the repository, shows what it found, and asks once:
 
 ```
-  …
   Found assistant config:
     • Claude Code (CLAUDE.md)
 
@@ -55,123 +54,60 @@ it found and asks once.
 
   Integrations detected:
     nextjs, supabase, vitest, chrome-devtools
-
-  Set this up? [Y/n]
   …
-  ✓ Created 114 files
-  ✓ Created .gitignore with OpenCastle entries
+  ✓ Created 69 files
   ✓ Merged into your existing CLAUDE.md
     your content is above the managed block and is never overwritten
-  …
 ```
 
-What you wrote in `CLAUDE.md`, `.cursorrules`, `AGENTS.md` and the other root
-files stays above a managed block. A file of yours inside a directory OpenCastle
-generates (`.cursor/rules/`, `.claude/agents/`, …) is named by `init` and
-removed by the next `sync`; move it into `.opencastle/` and it compiles for
-every assistant.
-
-Node.js 22.5 or newer. Full walkthrough, including CI and upgrading:
-**[docs/quickstart.md](docs/quickstart.md)**.
+Then, in Claude Code or Copilot Chat, type `/oc:bootstrap-customizations` once,
+so an agent fills in what the code could not say, and `/oc:implement-feature`
+for your first change. Node.js 22.5 or newer. The full walkthrough, with CI and
+upgrading: **[docs/quickstart.md](docs/quickstart.md)**.
 
 <br>
 
 ## Everyday use
 
 ```bash
-opencastle              # what's installed, what drifted, what to run next
-opencastle sync         # recompile every target from source
-opencastle sync --check # fail if anything drifted (for CI)
-opencastle add stripe   # adopt a new tool, recompile
-opencastle doctor       # diagnose setup problems, audit MCP servers
+npx opencastle              # what is installed, what drifted, what to run next
+npx opencastle sync         # recompile every target from source
+npx opencastle sync --check # fail if anything drifted (for CI)
+npx opencastle add stripe   # adopt an integration, recompile
+npx opencastle doctor       # diagnose setup problems, audit MCP servers
 ```
 
-Running `opencastle` with no arguments is the one command worth remembering. It
-answers the question you actually have:
-
-```
-  🏰 OpenCastle v1.0.0
-
-  ! 2/3 targets installed — generated files no longer match their sources
-    ✓ claude-code    up to date
-    ✓ cursor         up to date
-    ! vscode         4 paths missing
-
-  Next: opencastle sync
-  1 target missing generated files
-```
-
-Commit the generated config, like a lockfile, and let CI check it:
-`npm i -D opencastle && npx opencastle ci` writes a GitHub Actions workflow that
-runs `sync --check` on every pull request
-([quickstart, step 4](docs/quickstart.md#4-keep-it-honest-in-ci)). Every command
-and flag: [opencastle.dev/docs/cli](https://www.opencastle.dev/docs/cli/).
-
-Upgrading from 0.35 or earlier? Run `opencastle sync` once — see
-[the quickstart](docs/quickstart.md#upgrading-from-035-or-earlier).
+Commit the generated config, like a lockfile. `npx opencastle ci` writes a
+GitHub Actions workflow that runs `sync --check` on every pull request. Every
+command and flag: [opencastle.dev/docs/cli](https://www.opencastle.dev/docs/cli/).
 
 <br>
 
 ## Built for teams
 
-Everyone keeps the assistant they like. The team keeps one reviewed source, and
-can share it across every repository it owns.
-
-```jsonc
-// .opencastle/config.json
-{
-  "$schema": "https://www.opencastle.dev/schema/config.json",
-  "extends": ["@acme/opencastle-baseline"],  // a devDependency; your lockfile pins it
-  "exclude": ["skills/seo-patterns"],
-  "mcpServers": {
-    "acme-db": {  // must be on the baseline's policy.mcp.allow
-      "command": "npx",
-      "args": ["-y", "@acme/db-mcp@2.2.0"],
-      "env": { "ACME_DB_URL": "${ACME_DB_URL}" }  // each assistant gets its own spelling
-    }
-  }
-}
-```
-
-`extends` takes npm packages, found in `node_modules`, or relative paths, which
-resolve from `.opencastle/` — a `baseline/` directory at the project root is
-`"../baseline"`.
+Everyone keeps the assistant they like; the team keeps one reviewed source.
 
 - **One standard, many repositories.** A baseline is an npm package with the
-  organisation's instructions, skills, agents, MCP servers and policy. As
-  `baseline init` lays it out, it is also an [Agent Plugin](https://agent-plugins.org),
-  so Copilot, VS Code, Cursor, Codex and Kiro can install it as it is. What a
-  repository adds under `.opencastle/` compiles into all seven assistants.
-- **Policy only tightens.** A baseline says which MCP servers may run, which
-  hosts remote ones may reach, that every server is pinned, which items no
-  repository may drop, and how much context may load before a task. A
-  repository can tighten it, never relax it.
-- **A lock you can review.** `sync` writes `.opencastle/lock.json`.
-  `opencastle review` turns a change to it into sentences on the pull request
-  and marks with ⚠️ what deserves a careful look, such as a new MCP server.
-- **MCP servers pinned and audited.** Every server OpenCastle adds is the
-  vendor's remote server, the project's own copy of a tool (`npx --no`), or a
-  package at an exact version. `doctor` and `sync --check` audit every MCP
-  config, including servers you added by hand: no exact version, a package
-  OpenCastle knows is not on npm, a credential written into the file, a server
-  the policy does not allow.
-- **Team memory.** Agents record lessons with `opencastle lesson`, one file each
-  in `.opencastle/lessons/`, citing the code they are about; `doctor` names a
-  lesson whose code has changed. `opencastle promote` turns a personal skill or
-  Claude Code's auto memory into the team's, for the pull request to review.
+  organisation's instructions, skills, agents, MCP servers and policy, which
+  every repository `extends`. It is also an [Agent Plugin](https://agent-plugins.org).
+- **Policy only tightens.** Which MCP servers may run, which hosts they reach,
+  exact versions, what no repository may drop, how much context loads before a
+  task. A repository can tighten it, never relax it.
+- **A lock you can review.** `sync` writes `.opencastle/lock.json`, and
+  `npx opencastle review` says on the pull request what a change does to every
+  assistant, marking with ⚠️ what deserves a careful look.
+- **Team memory.** Lessons agents record cite the code they are about, and
+  `doctor` names one whose code has changed.
 
 ```bash
-opencastle explain                     # what a new teammate's assistant gets, and what to set up
-opencastle ci --owners @acme/platform  # CI check and review on every PR; owners for the lock
-opencastle baseline init acme-baseline --name @acme/opencastle-baseline  # the organisation's baseline
-opencastle plugin check acme-baseline  # check it the way every assistant loads it
-opencastle promote memory              # what your assistant learned here, as lessons for the team
-opencastle fleet ~/src/*               # which repositories run which baseline version
+npx opencastle explain                     # what a new teammate's assistant gets, and what to set up
+npx opencastle ci --owners @acme/platform  # the check and the review on every pull request
+npx opencastle baseline init acme-baseline --name @acme/opencastle-baseline
+npx opencastle fleet ~/src/*               # which repositories run which baseline version
 ```
 
-The guide — layers, every config field, policy, the lock, a rollout recipe:
-**[opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/)**. What is
-still open, and why things are the way they are: **[docs/teams.md](docs/teams.md)**.
+Layers, every config field, policy, the lock and a rollout recipe:
+**[opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/)**.
 
 <br>
 
@@ -181,90 +117,67 @@ still open, and why things are the way they are: **[docs/teams.md](docs/teams.md
 |-----------|--------------|--------|------------|
 | **Claude Code** | `CLAUDE.md`, `.claude/agents/`, commands in `.claude/commands/oc/` | `.claude/skills/` | `.mcp.json` |
 | **VS Code** (GitHub Copilot) | `.github/copilot-instructions.md`, `.github/instructions/`, `.github/agents/`, prompts `.github/prompts/oc.*.prompt.md` | `.github/skills/` | `.vscode/mcp.json` |
-| **Cursor** | `.cursorrules`, `.cursor/rules/*.mdc` (instructions from `CLAUDE.md` or `AGENTS.md` instead, which Cursor also reads, when Claude Code, Codex or OpenCode is also selected) | `.agents/skills/` | `.cursor/mcp.json` |
+| **Cursor** | `.cursorrules`, `.cursor/rules/*.mdc` — the instructions come from `CLAUDE.md` or `AGENTS.md` when one of those is written, since Cursor reads them too | `.agents/skills/` | `.cursor/mcp.json` |
 | **Windsurf** (Devin Desktop) | `.windsurfrules`, `.windsurf/rules/*.md` | `.agents/skills/` | `.devin/mcp_config.json` |
 | **OpenCode** | `AGENTS.md`, `.opencode/` | `.agents/skills/` | `opencode.json` |
 | **Codex CLI** | `AGENTS.md`, `.codex/` | `.agents/skills/` | `.codex/config.toml` (trusted projects only) |
 | **Antigravity** | `GEMINI.md` (points to `AGENTS.md` when Codex or OpenCode is also selected), `.agents/` | `.agents/skills/` | `.agents/mcp_config.json` |
 
-Each target gets that assistant's native format, including its own frontmatter
-dialect for how a rule is scoped, and its MCP servers in the shape it expects.
-`opencastle explain` lists the paths for the assistants a project compiles for.
-
-In Claude Code and in VS Code's Copilot Chat, OpenCastle's prompts are slash
-commands in one namespace — `/oc:bug-fix`, `/oc:implement-feature`, and a
-team's own prompts as `/oc:<name>` — so a command of yours with the same name
-keeps working beside them. In `.claude/commands/` and `.github/prompts/`,
-OpenCastle writes only its `oc` files and leaves everything else alone. The
-other assistants get the prompts as files (`.cursor/rules/prompts/`,
-`.windsurf/rules/prompts/`, `.opencode/prompts/`, `.codex/prompts/`,
-`.agents/prompts/`) that you ask for by name.
+Each target gets its assistant's native format. In Claude Code and Copilot Chat
+the prompts are slash commands under `/oc:`, beside your own; the others get
+them as files you ask for by name.
 
 <br>
 
 ## What gets compiled
 
-**Agents** — 13 role definitions (Developer, UI/UX, Data, Security, Testing,
-Reviewer, and others), each with a defined scope and output contract. A project
-gets the ones its stack needs: Content Engineer comes with a CMS, Data Engineer
-with a database.
+**Instructions** — a short set every assistant always loads, and your project's
+facts, read from the code by `init`.
 
-**Skills** — 17 domain skills plus 31 tool integrations, loaded on demand so
-they don't sit in the context window. The integrations are chosen during init
-from what your repository actually uses.
+**Agents** — 13 role definitions (Team Lead, Developer, UI/UX, Data, Security,
+Testing, Reviewer, and others), each with a scope and an output contract. Each
+declares a capability *tier* — premium, standard or economy — rather than a
+model name: your assistant picks the model.
 
-**Workflows** — 6 templates for recurring work that needs more than a prompt
-(database migrations, CMS schema changes, data pipelines, performance,
-refactoring, security audits), each ending with the same delivery phase.
+**Skills** — 17 domain skills plus 31 tool integrations, loaded only when a task
+needs them. The integrations are chosen during init from what your repository
+uses.
 
 **Prompts** — 7: brainstorm, implement-feature, bug-fix, resolve-pr-comments,
 bootstrap-customizations and create-skill work in your session; convoy hands the
 work to the convoy planner.
 
-**Quality gates** — a review pass after each step, panel review for high-stakes
-changes, plus your own lint, test, and build commands.
-
-Agents declare a capability *tier* — premium, standard, or economy — rather than
-a model name. Your assistant picks the model: it knows which ones your account
-can reach and what they cost today. A pinned model name can only be wrong later.
+**Workflows** — 6 templates for recurring work that needs more than a prompt:
+database migrations, CMS schema changes, data pipelines, performance,
+refactoring and security audits.
 
 <br>
 
 ## Convoy Engine (experimental)
 
-For multi-step work you would rather not sit and watch. `opencastle convoy "<task>"`
-plans the work without changing anything, shows you the plan and asks once. Then it
-runs independent tasks at the same time, each in its own git worktree, on the
-runtime `opencastle init` set up: Claude Code, Codex, Cursor, OpenCode or Copilot.
-Each finished task is merged onto a branch of its own, your project's checks run
-once at the end, and your checkout is never touched. This part is experimental
-and may change; the compiler above does not depend on it.
+For multi-step work you would rather not sit and watch. This part is
+experimental and may change; the compiler does not depend on it.
+`npx opencastle convoy "<task>"` plans the work without changing anything, shows
+you the plan and asks once. Then it runs independent tasks at the same time,
+each in its own git worktree, on the agent runtime `init` set up, and merges
+them onto a branch of its own for you to review.
 
 ```bash
-opencastle convoy "Add tags to notes, and reject a note without a title"  # plan, show, ask, run
-opencastle convoy                     # the last run and the one next step
-opencastle convoy resume              # continue whatever is not done
-opencastle convoy dashboard           # the Observability dashboard, live
-opencastle convoy run my.convoy.yml   # run a spec you wrote
+npx opencastle convoy "Add tags to notes, and reject a note without a title"
+npx opencastle convoy dashboard   # the Observability dashboard, live
 ```
 
-Real runs, with their time and cost: [Use cases](https://www.opencastle.dev/docs/use-cases).
-Every command and flag: [CLI reference](https://www.opencastle.dev/docs/cli#convoy).
-How it works: [ARCHITECTURE.md](ARCHITECTURE.md#convoy-architecture). Inspired by
-Steve Yegge's [Gas Town](https://github.com/gastownhall/gastown).
-
-<br>
-
-## Architecture
-
-See **[ARCHITECTURE.md](ARCHITECTURE.md)** for how the adapters, team sources,
-skill matrix and convoy engine fit together.
+Real runs: [Use cases](https://www.opencastle.dev/docs/use-cases). How it works:
+[ARCHITECTURE.md](ARCHITECTURE.md#convoy-architecture). Inspired by Steve
+Yegge's [Gas Town](https://github.com/gastownhall/gastown).
 
 <br>
 
 ## Contributing
 
-See **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+How the adapters, team sources and convoy engine fit together:
+**[ARCHITECTURE.md](ARCHITECTURE.md)**. How to contribute:
+**[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 <br>
 

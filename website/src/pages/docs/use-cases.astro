@@ -160,10 +160,7 @@ $ npx opencastle init</code></pre>
   Set this up? [Y/n] y
 
   Configuring project...
-  ✓ Populated 2 config files
-  → Removed 9 unused template(s)
-  ✓ Created 110 files
-  ✓ Updated .gitignore with OpenCastle entries
+  …
   ✓ Merged into your existing CLAUDE.md
     your content is above the managed block and is never overwritten
   …</code></pre>
@@ -183,12 +180,10 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <div class="recipe-step__number">2</div>
             <h3 class="recipe-section__heading">Step 2: Describe the task</h3>
             <p class="recipe-section__body">
-              Say what you want, with the details that matter to you. Planning changes no code. One short
-              session sizes the request; this one came out small, so the tasks were planned straight from it.
-              Larger work gets a PRD in <code>.opencastle/prds/</code> first, which is reviewed, and fixed if
-              needed, while the tasks are planned from it. Either way the plan is then checked in code. This run
-              passed <code>--yes</code>, so one more session reviewed the plan (<code>Plan reviewed</code>) and the
-              run started without asking.
+              Say what you want, with the details that matter to you. Planning changes no code. This request
+              was sized small, so the tasks were planned straight from it; larger work gets a PRD in
+              <code>.opencastle/prds/</code> first. With <code>--yes</code>, one more session reviews the plan and
+              the run starts without asking.
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
@@ -217,16 +212,10 @@ $ git commit -m "Add OpenCastle"</code></pre>
   Planned in 2m 59s · 3 sessions · 334K tokens · $0.66</code></pre>
             </div>
             <p class="recipe-section__body">
-              This output is from an earlier build. The current one sizes the request, plans it and drafts a PRD
-              at the same time, keeps whichever the size calls for, and asks the model for less reasoning while it
-              plans. It planned the same request in 24 to 28 seconds for about $0.22, without the
-              <code>--yes</code> review.
-            </p>
-            <p class="recipe-section__body">
-              The table is the plan: who does what, after what, touching which files (cut to the terminal's
-              width; the spec has them all). Each task here owns the code and its tests. Under the table are the
-              branch the work lands on, the runtime, the checks that run once at the end (found in
-              <code>package.json</code>), the spec file, and what planning spent.
+              The table is the plan: who does what, after what, touching which files. Below it are the branch,
+              the runtime, the checks that run once at the end, found in <code>package.json</code>, and what
+              planning spent. (This output is from an earlier build; the current one plans the same request in
+              under 30 seconds, for about $0.22.)
             </p>
             <p class="recipe-section__body">
               Without <code>--yes</code>, the command stops here and asks. Enter runs the plan. <strong>n</strong>,
@@ -238,13 +227,9 @@ $ git commit -m "Add OpenCastle"</code></pre>
   Not started. To run it later: opencastle convoy run .opencastle/convoys/&lt;name&gt;.convoy.yml</code></pre>
             </div>
             <div class="recipe-tip">
-              <strong>Tip:</strong> when the planner gives tests a task of their own, the code folds that task into
-              the one it tests and says so, as in another run of this request:
-              <code>notes-unit-tests folded into data-layer-pagination: the agent that writes the code writes its
-              tests</code>. <code>--dry-run</code> plans and writes the spec, then stops. The spec is plain YAML:
-              edit it and run it with <code>npx opencastle convoy run</code>, as in
-              <a href="#spec-stop-resume">the second recipe</a>. To plan again from a PRD you edited, run
-              <code>npx opencastle convoy plan --prd .opencastle/prds/&lt;name&gt;.prd.md</code>.
+              <strong>Tip:</strong> <code>--dry-run</code> plans and writes the spec, then stops. The spec is plain
+              YAML: edit it and run it with <code>npx opencastle convoy run</code>, as in
+              <a href="#spec-stop-resume">the second recipe</a>.
             </div>
           </section>
 
@@ -253,9 +238,9 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <h3 class="recipe-section__heading">Step 3: The run</h3>
             <p class="recipe-section__body">
               Each task starts as soon as the tasks it depends on are done, in a worktree of its own. When its
-              agent finishes, the work is committed there and gets one read-only review — unless its task is
-              marked <code>review: auto</code> and the change is small — and is merged onto the run's branch, one
-              task at a time. Here the second task waits for the first; they change the same files. The
+              agent finishes, the work is committed there, gets one read-only review — a change of at most 10
+              lines in 2 files passes without one, unless it touches a sensitive path — and is merged onto the
+              run's branch. Here the second task waits for the first, because they change the same files. The
               test suite ran once, at the end, on the merged result.
             </p>
             <div class="recipe-output">
@@ -287,9 +272,7 @@ $ git commit -m "Add OpenCastle"</code></pre>
               on <code>haiku</code> and passed. The suite went from 4 tests to 12.
             </p>
             <div class="recipe-tip">
-              <strong>Tip:</strong> while it runs, the last line of the terminal shows what is running, what is
-              queued, how many are done, the time and the cost so far. <code>--verbose</code> also streams each
-              agent's output.
+              <strong>Tip:</strong> <code>--verbose</code> streams each agent's output.
             </div>
           </section>
 
@@ -297,12 +280,9 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <div class="recipe-step__number">4</div>
             <h3 class="recipe-section__heading">Step 4: Watch it</h3>
             <p class="recipe-section__body">
-              On a terminal the run starts the read-only Observability dashboard and prints its address
-              (<code>Live view:</code> above). It shows totals across every run, and for each run its branch,
-              runtime, models, time, tokens and cost; every task with what it waits for and what it spent; each
-              review and check with the attempt it read; retries; a failed task's reason and the end of its
-              output; and the event timeline. While a run is live it refreshes every 2 seconds. To open it at
-              any time:
+              On a terminal the run starts the read-only Observability dashboard (<code>Live view:</code> above):
+              every run's tasks, what they wait for and spent, reviews, checks, retries, a failed task's reason and
+              the event timeline. To open it at any time:
             </p>
             <div class="recipe-code">
               <div class="recipe-code__header">Terminal</div>
@@ -311,8 +291,8 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <img class="recipe-shot" src={dashboardShot.src} width="1440" height="900" loading="lazy"
               alt="The Observability dashboard's overview of seven real convoy runs: 7 runs and 22 tasks, all done, 6m 16s on average, 21.28M tokens and $19.44, part of it estimated, with runs per day below" />
             <p class="recipe-section__body">
-              This is the overview it opens on, over seven real runs on copies of this project. The same page,
-              where you can open each of those runs, is at <a href="https://www.opencastle.dev/dashboard/">opencastle.dev/dashboard</a>.
+              The overview, over seven real runs on copies of this project. Open each of them at
+              <a href="https://www.opencastle.dev/dashboard/">opencastle.dev/dashboard</a>.
             </p>
           </section>
 
@@ -348,9 +328,8 @@ $ git merge convoy/notes-pagination-delete</code></pre>
           <section class="recipe-section" id="run-cost">
             <h3 class="recipe-section__heading">Time and cost</h3>
             <p class="recipe-section__body">
-              Seven runs on this project with Claude Code. What a run takes depends on the runtime, the model,
-              the project and the task, so read these as data points, not a promise. The first three asked for
-              the same change.
+              Seven runs on this project with Claude Code, all on earlier builds; read them as data points, not a
+              promise. The first three asked for the same change.
             </p>
             <table class="recipe-table recipe-table--runs">
               <thead>
@@ -367,24 +346,12 @@ $ git merge convoy/notes-pagination-delete</code></pre>
               </tbody>
             </table>
             <ul class="recipe-section__list">
-              <li><strong>Planning a small change without a PRD costs less.</strong> The second and third runs
-                were planned by builds that wrote a PRD for every request, and both were sized low from it. A PRD
-                and its review took 5m 41s and $1.56, or 7m 25s and $1.67 with a fix; without them, 2m 59s and
-                $0.66.</li>
-              <li><strong>Planning is now much shorter.</strong> All of the times above are from earlier builds,
-                whose planning sessions spent most of their time thinking, one after another. The current build
-                asks for less reasoning and starts the steps that do not wait for each other together. Planning
-                only, on the same project: the pagination request in 24–28 seconds and $0.22, and a tags feature
-                that needed a PRD, five tasks folded into three, in 1m 41s and $0.59.</li>
-              <li><strong>Fewer tasks are not always faster.</strong> The two tasks of the first run touched the
-                same files, so they ran one after the other; the third run's four tasks ran up to two at once. How
-                many tests the agents write varies from run to run.</li>
-              <li><strong>The model matters most.</strong> A developer task on <code>sonnet</code> cost $0.48–$1.40.
-                The last run came before tasks were given a model by tier: everything ran on the account's
-                default, Opus, at $2.01–$2.60 a developer task.</li>
-              <li><strong>Reviews are small.</strong> They run on the economy model, <code>haiku</code>, at 44K–48K
-                tokens each. The tags and health runs came before that, with reviews on <code>sonnet</code> at
-                64K–67K tokens each.</li>
+              <li><strong>The model matters most.</strong> A developer task on <code>sonnet</code> cost $0.48–$1.40;
+                on Opus, the account default before tasks ran by tier, $2.01–$2.60.</li>
+              <li><strong>Planning is now much shorter.</strong> The current build plans the pagination request in
+                24–28 seconds for $0.22, and a feature that needs a PRD in under 2 minutes.</li>
+              <li><strong>Fewer tasks are not always faster.</strong> Tasks that change the same files run one after
+                the other.</li>
             </ul>
           </section>
 
@@ -652,11 +619,8 @@ tasks:
   Log: .opencastle/logs/convoys/convoy-1791044097553.ndjson</code></pre>
             </div>
             <p class="recipe-section__body">
-              The first attempt also edited <code>.opencastle/KNOWN-ISSUES.md</code>, which the project's
-              <code>CLAUDE.md</code> asks agents to do. The review blocked the change as outside the task's files,
-              and the second attempt, told why, passed. Workers are told to leave <code>.opencastle/</code> to the
-              convoy; this run came before that rule. The suite went from 4 tests to 12, and
-              <code>Spent</code> covers the whole run, both halves.
+              The first attempt also edited a file outside the task's list; the review blocked it, and the second
+              attempt, told why, passed. <code>Spent</code> covers both halves of the run.
             </p>
             <div class="recipe-tip">
               <strong>Tip:</strong> resume also re-runs failed tasks, with their retries back, and the tasks a
@@ -689,7 +653,7 @@ $ git merge convoy/search-export</code></pre>
                 <tr><td><code>gates</code>, <code>gate_retries</code></td><td>none, 0</td><td>Commands run once at the end, and how many fix attempts a failure gets</td></tr>
                 <tr><td><code>defaults.timeout</code>, <code>timeout</code></td><td><code>30m</code></td><td>Per task</td></tr>
                 <tr><td><code>defaults.max_retries</code>, <code>max_retries</code></td><td>1</td><td>Attempts after the first</td></tr>
-                <tr><td><code>defaults.review</code>, <code>review</code></td><td><code>auto</code></td><td><code>auto</code> passes a writer's change, and one of at most 10 lines in 2 files, without a reviewer; <code>fast</code> always reviews; <code>panel</code> asks three reviewers; <code>none</code> skips</td></tr>
+                <tr><td><code>defaults.review</code>, <code>review</code></td><td><code>auto</code></td><td><code>auto</code> passes a writer's change, and one of at most 10 lines in 2 files, without a reviewer — never one in <code>auth/</code>, <code>security/</code>, <code>migrations/</code> or <code>rls/</code>, or from the security or data agent; <code>fast</code> always reviews; <code>panel</code> asks three reviewers; <code>none</code> skips</td></tr>
                 <tr><td><code>defaults.model</code>, <code>model</code></td><td>by the agent's tier</td><td>The model, for every task or for one</td></tr>
                 <tr><td><code>defaults.permission_mode</code></td><td><code>acceptEdits</code></td><td>What the agents may do: <code>default</code>, <code>acceptEdits</code>, <code>auto</code>, <code>dontAsk</code>, <code>bypassPermissions</code> or <code>plan</code></td></tr>
               </tbody>

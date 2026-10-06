@@ -118,7 +118,7 @@ const sectionIcons: Record<string, string> = {
         <!-- Hero -->
         <section class="docs-hero">
           <h2 class="docs-hero__heading">Agentic Development & Multi-Agent Orchestration</h2>
-          <p class="docs-hero__sub">Master AI-assisted software development — from effective single-agent vibecoding to coordinating specialist agent teams interactively or through automated batch execution with orchestration frameworks like OpenCastle.</p>
+          <p class="docs-hero__sub">How work is split between agents, and the habits that get good results from any of them.</p>
         </section>
 
         <!-- 1. What Is It? -->
@@ -153,32 +153,7 @@ const sectionIcons: Record<string, string> = {
           <h3 class="section-title">Why Multi-Agent?</h3>
           <p>A single AI agent is powerful — but it has limits. Context windows fill up. Prompts lose focus when mixing UI, backend, tests, and security in one conversation. Knowledge is shallow across too many domains.</p>
           <p>Multi-agent development solves this by assigning <strong>specialist agents</strong> to focused tasks — just like a real engineering team. A Team Lead decomposes work, delegates to experts, and verifies results. Each agent operates within a well-scoped context, producing higher quality output.</p>
-          <div class="key-insight">
-            <strong>Key Insight:</strong> Multi-agent orchestration isn't about replacing developers — it's about giving each AI agent the right scope, the right context, and the right expertise to do its best work.
-          </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Decompose into specialist tasks</p>
-                <code class="card__example">"Developer: implement the form. Testing Expert: write E2E tests. Security Expert: audit auth flow."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Overload one agent with everything</p>
-                <code class="card__example">"Build the feature, write tests, add docs, fix accessibility, and optimize performance."</code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- 9 · Orchestration -->
@@ -209,28 +184,6 @@ const sectionIcons: Record<string, string> = {
             <li><strong>Independent verification</strong> — every output is reviewed before being accepted</li>
           </ul>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Define clear file ownership per agent</p>
-                <code class="card__example">"Developer A owns src/components/. Developer B owns src/api/. No overlap."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Let parallel agents edit the same files</p>
-                <code class="card__example">Two agents both modifying layout.tsx at the same time → merge conflicts and lost work</code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- 10 · Specialist Agents -->
@@ -268,28 +221,6 @@ const sectionIcons: Record<string, string> = {
             reach and what they cost today.
           </p>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Match agent tier to task complexity</p>
-                <code class="card__example">Premium model for security audits. Economy model for docs updates. Right tool for the job.</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Use the most expensive model for everything</p>
-                <code class="card__example">Running a premium model to update README files wastes budget without adding value.</code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- 11 · Quality Gates -->
@@ -299,55 +230,15 @@ const sectionIcons: Record<string, string> = {
           <ul class="docs-list">
             <li><strong>Deterministic checks</strong> — lint, type-check, and test suites run automatically</li>
             <li><strong>Fast review</strong> — a lightweight reviewer agent checks acceptance criteria, file partitions, and regressions</li>
-            <li><strong>Panel review</strong> — for high-stakes changes (security, auth, DB migrations), multiple independent reviewers vote PASS/BLOCK</li>
+            <li><strong>Panel review</strong> — three independent reviewers vote PASS or BLOCK, when a task asks for it</li>
             <li><strong>Self-improvement</strong> — lessons from failures are captured and fed back into future agent prompts</li>
           </ul>
-          <div class="highlight-box">
-            <p>Quality gates turn multi-agent development from "hope it works" into a verified pipeline. Every agent's output is independently checked before it touches the main branch.</p>
-          </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Verify at every step of the pipeline</p>
-                <code class="card__example">Agent delivers → fast review → lint/typecheck → tests → merge. Every gate must pass.</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <svg class="card__icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Trust agent output without verification</p>
-                <code class="card__example">Merging code because "the agent said it works" — always run tests and reviews.</code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- 12 · Architecture -->
         <section id="architecture" class="docs-section">
           <h3 class="section-title">Architecture</h3>
-
-          <h4 class="arch-subheading">The Ralph Wiggum Loop</h4>
-          <p><a href="https://ghuntley.com/ralph/" class="docs-link" target="_blank" rel="noopener noreferrer">The Ralph Wiggum Loop</a>, invented by Geoffrey Huntley, is a single-agent technique for autonomous coding. It's a simple bash loop — <code>while :; do cat PROMPT.md | claude-code; done</code> — where one AI agent iterates repeatedly on a task until it's done. Named after the Simpsons character because he's cheerfully persistent despite failures: eventual consistency through brute force.</p>
-
-          <ul class="docs-list">
-            <li><strong>One task per iteration</strong> — each loop gets a fresh context window; the spec in <code>PROMPT.md</code> is deterministically loaded every time</li>
-            <li><strong>Backpressure</strong> — tests, type checkers, and linters act as gates; bad code is rejected automatically before the next iteration</li>
-            <li><strong>Self-improvement</strong> — the agent updates <code>AGENT.md</code> and <code>fix_plan.md</code> between runs, accumulating knowledge across iterations</li>
-            <li><strong>Brute force meets persistence</strong> — the loop is the hero, not the model; it runs until the work is done</li>
-            <li><strong>Best for greenfield</strong> — works well as a single-agent technique for new projects (Geoffrey Huntley built an entire programming language, CURSED, using this technique)</li>
-          </ul>
-
-          <div class="key-insight">
-            <strong>Single-agent primitive:</strong> Ralph Wiggum shows that one agent looping with specs and backpressure can build real software. Gas Town scales this idea to many agents working in parallel with a full orchestration layer.
-          </div>
 
           <h4 class="arch-subheading">Parallel agents, in practice</h4>
           <p>Steve Yegge's <a href="https://github.com/gastownhall/gastown" class="docs-link" target="_blank" rel="noopener noreferrer">Gas Town</a> scales the loop to many coding agents at once. A Mayor agent turns a request into &ldquo;beads&rdquo; with dependencies, and <code>bd ready</code> lists the ones with no open blockers (<a href="https://github.com/gastownhall/beads" class="docs-link" target="_blank" rel="noopener noreferrer">beads</a>). Each worker gets a git worktree and a tmux session. A merge queue, the Refinery, batches finished work, runs the checks on the merged stack, and bisects when they fail (<a href="https://github.com/gastownhall/gastown/blob/main/docs/reference.md" class="docs-link" target="_blank" rel="noopener noreferrer">reference</a>). Its successor is <a href="https://steve-yegge.medium.com/welcome-to-gas-city-57f564bb3607" class="docs-link" target="_blank" rel="noopener noreferrer">Gas City</a>.</p>
@@ -396,7 +287,7 @@ const sectionIcons: Record<string, string> = {
           <div class="highlight-box">
             <ul class="highlight-box__list">
               <li><strong>One source, every assistant</strong> — <code>npx opencastle init</code> compiles agents, skills and MCP config for Claude Code, Copilot, Cursor, Windsurf, Codex CLI, OpenCode and Antigravity; the convoy engine runs those same agents</li>
-              <li><strong>The runtime you have</strong> — it drives the CLI for the assistant init set up: Claude Code, Copilot, Cursor, OpenCode or Codex, on macOS and Linux; Windows is supported, not yet tested</li>
+              <li><strong>The runtime you have</strong> — it drives the CLI for the assistant init set up: Claude Code, Copilot, Cursor, OpenCode or Codex</li>
               <li><strong>Nothing to host</strong> — state is one SQLite file in <code>.opencastle/</code>; a stopped run resumes with <code>opencastle convoy resume</code></li>
               <li><strong>Observable</strong> — an event log per run and a read-only dashboard, <code>opencastle convoy dashboard</code></li>
             </ul>
@@ -444,70 +335,17 @@ const sectionIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Reference existing files and patterns</p>
-                <code class="card__example">"Create a new API route at `src/api/invoices.ts` following the same pattern as `src/api/orders.ts` — validate with Zod, use the existing `db` client, and return typed responses."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Expect the agent to guess your conventions</p>
-                <code class="card__example">"Make an invoices endpoint."</code>
-              </div>
-            </div>
-          </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Specify acceptance criteria</p>
-                <code class="card__example">"The component should handle loading, error, and empty states. It needs to be keyboard-accessible and work at mobile breakpoints. Add unit tests for the data transformation logic."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Leave requirements implicit</p>
-                <code class="card__example">"Build a user list component."</code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- Build Tools, Not Tasks -->
         <section class="content-section" id="build-tools">
           <h3 class="section-heading">Build Tools, Not Tasks</h3>
           <p class="section-text">
-            This is the single most impactful pattern for agentic development. When facing a large refactoring or repetitive task, <strong>ask the agent to create a tool or script</strong> that performs the operation — rather than asking it to do the work directly.
+            For a large refactoring or a repetitive change, <strong>ask the agent for a script</strong> that makes it, rather than for the edits themselves.
           </p>
 
-          <div class="highlight-box">
-            <h4 class="highlight-box__title">Why Tools Beat Direct Edits</h4>
-            <ul class="highlight-box__list">
-              <li><strong>Repeatable</strong> — Run the tool again if new files appear or requirements change</li>
-              <li><strong>Verifiable</strong> — Review the tool's logic once, trust it for 500 files</li>
-              <li><strong>Reviewable</strong> — A 50-line script is easier to code review than 200 scattered file edits</li>
-              <li><strong>Debuggable</strong> — When something goes wrong, you debug one script — not hunt through hundreds of diffs</li>
-              <li><strong>Safe</strong> — Run with <code>--dry-run</code> first, apply when confident</li>
-            </ul>
-          </div>
+          <p class="section-text">A script is reviewed once, runs again when new files appear, and can offer <code>--dry-run</code>; two hundred hand edits are none of those.</p>
 
           <div class="do-dont-grid">
             <div class="card card--do">
@@ -533,53 +371,7 @@ const sectionIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO — Ask for a tool</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Create a migration script</p>
-                <code class="card__example">"Write a script that reads all YAML config files in `config/`, converts them to TOML format, and writes the output to `config-v2/`. Preserve comments where possible."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T — Do it manually</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Convert each file individually</p>
-                <code class="card__example">"Convert config/database.yml to TOML. Now convert config/auth.yml. Now convert config/cache.yml..."</code>
-                <p class="card__note">Each conversion is a separate context window with no shared logic. Errors compound instead of being fixed once.</p>
-              </div>
-            </div>
-          </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO — Ask for a tool</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Build a linter rule</p>
-                <code class="card__example">"Create an ESLint rule that flags any direct `console.log` calls in `src/` and suggests using our logger utility from `src/lib/logger` instead. Include auto-fix support."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T — Do it manually</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Find-and-replace across the codebase</p>
-                <code class="card__example">"Replace all console.log calls with logger calls in the codebase."</code>
-                <p class="card__note">A rule catches new violations too. Manual replacement is a one-shot fix that regresses immediately.</p>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- Scope Your Requests -->
@@ -612,28 +404,6 @@ const sectionIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Ship and verify incrementally</p>
-                <code class="card__example">"Let's start with just the data model and API. Once that's working and tested, we'll add the UI."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Wait until everything is done to test anything</p>
-                <code class="card__example">"Build the full feature, I'll test it all at the end."</code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- Verify, Don't Trust -->
@@ -666,28 +436,6 @@ const sectionIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Review diffs before committing</p>
-                <code class="card__example">"Show me the git diff of all changes so I can review before we commit."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Let the agent commit and push on its own</p>
-                <code class="card__example">"Just push all changes to main." <span class="card__aside">(skipping review entirely)</span></code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- Use Context Effectively -->
@@ -721,28 +469,6 @@ const sectionIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Mention constraints and requirements</p>
-                <code class="card__example">"We use Tailwind CSS v4 with our custom design tokens. Colors come from `theme.colors` — don't use arbitrary hex values. All components must support dark mode."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Let the agent make style decisions</p>
-                <code class="card__example">"Style the card component nicely."</code>
-              </div>
-            </div>
-          </div>
         </section>
 
         <!-- Iterate, Don't Restart -->
@@ -776,28 +502,6 @@ const sectionIcons: Record<string, string> = {
             </div>
           </div>
 
-          <div class="do-dont-grid">
-            <div class="card card--do">
-              <div class="card__header">
-                <span class="card__icon card__icon--do">✓</span>
-                <span class="card__label card__label--do">DO</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Acknowledge what's right</p>
-                <code class="card__example">"The API route structure and validation are perfect. Just two changes: rename the `getData` function to `fetchInvoices`, and add pagination support using cursor-based pagination."</code>
-              </div>
-            </div>
-            <div class="card card--dont">
-              <div class="card__header">
-                <span class="card__icon card__icon--dont">✗</span>
-                <span class="card__label card__label--dont">DON'T</span>
-              </div>
-              <div class="card__body">
-                <p class="card__title">Provide only negative feedback</p>
-                <code class="card__example">"That's not what I wanted."</code>
-              </div>
-            </div>
-          </div>
         </section>
 
       </main>

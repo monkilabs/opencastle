@@ -1,0 +1,596 @@
+---
+/**
+ * The page shell for a docs page written as prose: head, header, a sidebar of
+ * its sections, the content, and the footer. Pages written before it carry the
+ * same shell inline.
+ */
+import '../styles/global.css';
+
+interface Section {
+  id: string;
+  label: string;
+  /** Starts a new group in the sidebar, under this label. */
+  group?: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  /** The page's path, e.g. `/docs/concepts/`. */
+  path: string;
+  /** Its name in the header's breadcrumb. */
+  heading: string;
+  sections: Section[];
+}
+
+const { title, description, path, heading, sections } = Astro.props;
+const url = `https://www.opencastle.dev${path}`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={url} />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content={url} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="https://www.opencastle.dev/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content="https://www.opencastle.dev/og-image.png" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+  </head>
+  <body>
+    <header class="docs-header">
+      <div class="docs-header__inner">
+        <div class="docs-header__brand">
+          <a href="/" class="docs-header__logo-link">
+            <img class="docs-header__icon" src="/icon-192.png" alt="OpenCastle" width="28" height="28" />
+          </a>
+          <h1 class="docs-header__title">
+            <a href="/docs/" class="docs-header__breadcrumb-link">Docs</a>
+            <span class="docs-header__breadcrumb-sep">/</span>
+            {heading}
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <div class="docs-layout">
+      <nav class="docs-sidebar" id="docs-sidebar">
+        {sections.map((s, i) => (
+          <Fragment>
+            {s.group && i > 0 && <div class="docs-sidebar__divider"></div>}
+            {s.group && <p class="docs-sidebar__label">{s.group}</p>}
+            <a class={`docs-sidebar__link${i === 0 ? ' docs-sidebar__link--active' : ''}`} href={`#${s.id}`}>{s.label}</a>
+          </Fragment>
+        ))}
+      </nav>
+
+      <main class="docs-main">
+        <slot />
+      </main>
+    </div>
+
+    <footer class="footer">
+      <div class="footer__inner">
+        <span class="footer__copyright">
+          MIT License · Filip Mares · 2026
+        </span>
+        <ul class="footer__links">
+          <li><a href="/docs/">Docs</a></li>
+          <li><a href="https://github.com/monkilabs/opencastle" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+          <li><a href="https://github.com/monkilabs/opencastle/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">License</a></li>
+        </ul>
+      </div>
+    </footer>
+
+    <style is:global>
+      :root {
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #111118;
+        --bg-tertiary: #1a1a24;
+        --border-primary: #1e1e2e;
+        --border-secondary: #2a2a3a;
+        --border-color: rgba(255, 255, 255, 0.06);
+        --text-primary: #e2e2e8;
+        --text-secondary: #8888a0;
+        --text-tertiary: #55556a;
+        --text-accent: #a78bfa;
+        --accent-glow: rgba(167, 139, 250, .12);
+        --max-width: 1280px;
+        --transition-fast: .15s ease;
+      }
+
+      /* ── Header ── */
+      .docs-header {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        background: rgba(10, 10, 15, .85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border-primary);
+        height: 56px;
+      }
+      .docs-header__inner {
+        max-width: var(--max-width);
+        margin: 0 auto;
+        padding: 0 1.5rem;
+        height: 100%;
+        display: flex;
+        align-items: center;
+      }
+      .docs-header__brand {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+      }
+      .docs-header__logo-link {
+        display: flex;
+        align-items: center;
+        text-decoration: none;
+      }
+      .docs-header__breadcrumb-link {
+        color: var(--text-secondary);
+        text-decoration: none;
+        transition: color var(--transition-fast);
+      }
+      .docs-header__breadcrumb-link:hover {
+        color: var(--text-accent);
+      }
+      .docs-header__breadcrumb-sep {
+        color: var(--text-tertiary);
+        margin: 0 2px;
+        font-weight: 400;
+      }
+      .docs-header__icon { border-radius: 6px; }
+      .docs-header__title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -.01em;
+      }
+
+      /* ── Layout ── */
+      .docs-layout {
+        display: flex;
+        max-width: var(--max-width);
+        margin: 0 auto;
+        position: relative;
+      }
+
+      /* ── Sidebar ── */
+      .docs-sidebar {
+        position: sticky;
+        top: 56px;
+        height: calc(100vh - 56px);
+        width: 200px;
+        flex-shrink: 0;
+        padding: 24px 0 24px 24px;
+        overflow-y: auto;
+        display: none;
+      }
+      @media (min-width: 1024px) {
+        .docs-sidebar { display: block; }
+      }
+      .docs-sidebar__list {
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .docs-sidebar__link {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 14px;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--text-tertiary);
+        text-decoration: none;
+        border-radius: 8px;
+        transition: color var(--transition-fast), background var(--transition-fast);
+        line-height: 1.4;
+      }
+      .docs-sidebar__link:hover {
+        color: var(--text-secondary);
+        background: rgba(255, 255, 255, 0.04);
+      }
+      .docs-sidebar__link--active {
+        color: var(--text-accent);
+        background: rgba(167, 139, 250, 0.08);
+        font-weight: 600;
+      }
+      .docs-sidebar__link svg {
+        flex-shrink: 0;
+        opacity: 0.7;
+      }
+      .docs-sidebar__link--active svg {
+        opacity: 1;
+      }
+      .docs-sidebar__divider {
+        height: 1px;
+        background: var(--border-primary);
+        margin: 12px 14px;
+      }
+      .docs-sidebar__label {
+        font-size: .65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--text-tertiary);
+        padding: 8px 14px 4px;
+      }
+
+      /* ── Main ── */
+      .docs-main {
+        flex: 1;
+        min-width: 0;
+        max-width: 860px;
+        padding: 32px 24px 64px;
+      }
+
+      /* ── Hero ── */
+      .docs-hero {
+        margin-bottom: 2.5rem;
+      }
+      .docs-hero__heading {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -.02em;
+        margin-bottom: .5rem;
+      }
+      .docs-hero__sub {
+        color: var(--text-secondary);
+        font-size: 1.05rem;
+        line-height: 1.6;
+      }
+
+      /* ── Sections ── */
+      .docs-section {
+        margin-bottom: 3rem;
+        scroll-margin-top: 72px;
+      }
+      .docs-section p {
+        color: var(--text-secondary);
+        font-size: .95rem;
+        line-height: 1.7;
+        margin-bottom: 1rem;
+      }
+      .docs-section p strong,
+      .docs-section p em {
+        color: var(--text-primary);
+      }
+      .section-title {
+        font-size: 1.25rem;
+        font-weight: 700;
+        letter-spacing: -.01em;
+        margin-bottom: .75rem;
+        padding-bottom: .5rem;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .arch-subheading {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        letter-spacing: -.01em;
+        margin: 1.75rem 0 .6rem;
+      }
+      .section-divider {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin: 3rem 0 2rem;
+      }
+      .section-divider__line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--border-secondary), transparent);
+      }
+      .section-divider__label {
+        font-size: .75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .08em;
+        color: var(--text-accent);
+        white-space: nowrap;
+      }
+
+      /* ── Lists ── */
+      .docs-list {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 1.5rem;
+      }
+      .docs-list li {
+        color: var(--text-secondary);
+        font-size: .9rem;
+        line-height: 1.6;
+        padding-left: 1.25rem;
+        position: relative;
+        margin-bottom: .5rem;
+      }
+      .docs-list li::before {
+        content: '→';
+        position: absolute;
+        left: 0;
+        color: var(--text-accent);
+      }
+      .docs-list li strong {
+        color: var(--text-primary);
+      }
+      .steps {
+        list-style: none;
+        padding: 0;
+        margin-bottom: 1.5rem;
+        counter-reset: step;
+      }
+      .steps li {
+        counter-increment: step;
+        position: relative;
+        padding: .75rem 0 .75rem 2.5rem;
+        color: var(--text-secondary);
+        font-size: .9rem;
+        line-height: 1.7;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .steps li:last-child {
+        border-bottom: none;
+      }
+      .steps li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: .85rem;
+        width: 1.6rem;
+        height: 1.6rem;
+        border-radius: 50%;
+        background: rgba(167, 139, 250, .12);
+        color: var(--text-accent);
+        font-size: .75rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .steps li strong {
+        color: var(--text-primary);
+      }
+      .docs-link { color: var(--text-accent); text-decoration: none; }
+      .docs-link:hover { text-decoration: underline; }
+
+      /* ── Key insight ── */
+      .key-insight {
+        padding: 1.25rem;
+        background: var(--accent-glow);
+        border: 1px solid rgba(167, 139, 250, .2);
+        border-radius: 10px;
+        margin: 1rem 0 1.5rem;
+      }
+      .key-insight p {
+        color: var(--text-secondary);
+        font-size: .9rem;
+        line-height: 1.6;
+        margin: 0;
+      }
+      .key-insight strong {
+        color: var(--text-accent);
+      }
+
+      /* ── Layer diagram ── */
+      .architecture-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-primary);
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 1.5rem;
+      }
+      .architecture-card__header {
+        padding: .75rem 1.25rem;
+        font-size: .8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--text-accent);
+        border-bottom: 1px solid var(--border-primary);
+        background: rgba(167, 139, 250, 0.04);
+      }
+      .architecture-card__flow {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: .75rem;
+        padding: 1.5rem;
+        text-align: center;
+      }
+      .architecture-card__node {
+        padding: .5rem 1.25rem;
+        border-radius: 8px;
+        font-size: .85rem;
+        font-weight: 600;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-secondary);
+        color: var(--text-primary);
+      }
+      .architecture-card__node--lead {
+        background: rgba(167, 139, 250, 0.1);
+        border-color: rgba(167, 139, 250, 0.3);
+        color: var(--text-accent);
+      }
+      .architecture-card__arrow {
+        font-size: .75rem;
+        color: var(--text-tertiary);
+        font-style: italic;
+      }
+      .architecture-card__row {
+        display: flex;
+        gap: .5rem;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .architecture-card__row .architecture-card__node {
+        font-size: .75rem;
+        padding: .35rem .75rem;
+      }
+
+      /* ── Tables ── */
+      .comparison-table-wrap {
+        overflow-x: auto;
+        margin-bottom: 1.5rem;
+        border-radius: 10px;
+        border: 1px solid var(--border-primary);
+      }
+      .comparison-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .875rem;
+      }
+      .comparison-table thead tr {
+        background: rgba(167, 139, 250, 0.06);
+        border-bottom: 1px solid var(--border-secondary);
+      }
+      .comparison-table th {
+        padding: .65rem 1rem;
+        text-align: left;
+        font-size: .75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        color: var(--text-accent);
+        white-space: nowrap;
+      }
+      .comparison-table td {
+        padding: .65rem 1rem;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: top;
+      }
+      .comparison-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+      .comparison-table tbody tr:nth-child(even) td {
+        background: rgba(255, 255, 255, 0.015);
+      }
+      .comparison-table td:first-child {
+        font-weight: 600;
+        color: var(--text-primary);
+        white-space: nowrap;
+      }
+
+      /* ── Code ── */
+      code {
+        background: var(--bg-tertiary);
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        color: #c9d1d9;
+        font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      }
+      pre {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 8px 0 16px;
+        overflow-x: auto;
+      }
+      pre code {
+        display: block;
+        padding: 16px;
+        background: none;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        white-space: pre;
+      }
+
+      /* ── Mobile sidebar toggle ── */
+      .docs-mobile-toggle {
+        display: none;
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 60;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        transition: background var(--transition-fast);
+      }
+      .docs-mobile-toggle:hover { background: var(--bg-tertiary); }
+      @media (max-width: 1023px) {
+        .docs-mobile-toggle { display: flex; }
+        .docs-sidebar--open {
+          display: block;
+          position: fixed;
+          top: 56px;
+          left: 0;
+          width: 220px;
+          height: calc(100vh - 56px);
+          background: var(--bg-secondary);
+          border-right: 1px solid var(--border-color);
+          z-index: 55;
+          padding: 16px;
+        }
+      }
+      @media (max-width: 640px) {
+        .comparison-table td:first-child { white-space: normal; }
+      }
+    </style>
+
+    <button class="docs-mobile-toggle" id="mobile-toggle" type="button" aria-label="Toggle navigation">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+
+    <script>
+      const sidebar = document.getElementById('docs-sidebar');
+      const mobileToggle = document.getElementById('mobile-toggle');
+      const sidebarLinks = sidebar?.querySelectorAll('.docs-sidebar__link');
+
+      // Highlight the section in view
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            sidebarLinks?.forEach(link => {
+              link.classList.toggle('docs-sidebar__link--active',
+                link.getAttribute('href') === `#${entry.target.id}`);
+            });
+          }
+        });
+      }, { rootMargin: '-80px 0px -60% 0px' });
+
+      document.querySelectorAll('.docs-section').forEach(s => observer.observe(s));
+
+      mobileToggle?.addEventListener('click', () => {
+        sidebar?.classList.toggle('docs-sidebar--open');
+      });
+
+      sidebarLinks?.forEach(link => {
+        link.addEventListener('click', () => {
+          sidebar?.classList.remove('docs-sidebar--open');
+        });
+      });
+
+      document.addEventListener('click', (e) => {
+        if (sidebar?.classList.contains('docs-sidebar--open') &&
+            !sidebar.contains(e.target as Node) &&
+            e.target !== mobileToggle) {
+          sidebar.classList.remove('docs-sidebar--open');
+        }
+      });
+    </script>
+  </body>
+</html>

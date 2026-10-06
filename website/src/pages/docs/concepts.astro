@@ -1,0 +1,117 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const sections = [
+  { id: 'compile', label: 'One source, every assistant', group: 'How it works' },
+  { id: 'given', label: 'What an assistant is given' },
+  { id: 'agents', label: 'Agents and the Team Lead' },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'layers', label: 'Layers and policy', group: 'Teams' },
+  { id: 'lock', label: 'The lock' },
+  { id: 'lessons', label: 'Lessons' },
+  { id: 'convoy', label: 'Convoy', group: 'Experimental' },
+  { id: 'glossary', label: 'Glossary', group: 'Reference' },
+];
+---
+
+<DocsLayout
+  title="Concepts — OpenCastle"
+  description="How OpenCastle works: one source compiled for every assistant, what an assistant is given and when, agents, integrations, layers, the lock, lessons and the convoy engine — and the words the docs use for them."
+  path="/docs/concepts/"
+  heading="Concepts"
+  sections={sections}
+>
+  <section class="docs-hero">
+    <h2 class="docs-hero__heading">Concepts</h2>
+    <p class="docs-hero__sub">How OpenCastle works, in the words the rest of the docs use for it.</p>
+  </section>
+
+  <section class="docs-section" id="compile">
+    <h3 class="section-title">One source, every assistant</h3>
+    <p>You keep one source: <code>.opencastle/</code> in the repository. <code>sync</code> compiles it, with OpenCastle's own content and any baseline the team extends, into each assistant's native files — <code>CLAUDE.md</code> and <code>.claude/</code> for Claude Code, <code>.cursor/rules/</code> for Cursor, <code>.github/</code> for Copilot, and so on. <code>sync --check</code> compiles to a scratch directory and compares, so a hand edit or a forgotten recompile fails CI instead of drifting silently.</p>
+    <p>Three kinds of path, and who owns each:</p>
+    <ul class="docs-list">
+      <li><strong>Yours:</strong> <code>.opencastle/</code>, and your own writing in a root file such as <code>CLAUDE.md</code> — above or below its <em>managed block</em>, the marked part every sync rewrites.</li>
+      <li><strong>Generated:</strong> the managed blocks, and whole directories such as <code>.claude/skills/</code> or <code>.cursor/rules/</code>. A file you add to one is removed by the next sync; put it in <code>.opencastle/</code> instead and it compiles for every assistant.</li>
+      <li><strong>Shared:</strong> MCP config files. OpenCastle updates its own servers and leaves yours.</li>
+    </ul>
+    <p>Generated config is committed, like a lockfile: a teammate who clones the repository has working rules without running anything.</p>
+  </section>
+
+  <section class="docs-section" id="given">
+    <h3 class="section-title">What an assistant is given, and when</h3>
+    <p>Every token loaded before a task is paid for on every task, so OpenCastle keeps that part small and loads the rest when a task needs it.</p>
+    <ul class="docs-list">
+      <li><strong>Always loaded — instructions.</strong> A short set of rules that hold in any project, the project's facts (<code>.opencastle/project.instructions.md</code>: stack and versions, commands, routes, environment variable names, read from the code by <code>init</code>), and the team's own instructions. <code>npx opencastle explain</code> shows what they cost; a team can set a budget.</li>
+      <li><strong>Skills</strong> load when a task matches their description: how to test, review, write an API, use this project's database or CMS. An assistant sees only their names and descriptions until then.</li>
+      <li><strong>Agents</strong> are specialists to delegate to. <strong>Prompts</strong> — <code>/oc:implement-feature</code>, <code>/oc:bug-fix</code> — start a piece of work. <strong>Workflow templates</strong> give recurring work its steps: a migration, a refactor, a security audit.</li>
+    </ul>
+  </section>
+
+  <section class="docs-section" id="agents">
+    <h3 class="section-title">Agents and the Team Lead</h3>
+    <p>Each agent has a scope, the files it may change, and what it reports when it finishes: the Developer, UI/UX Expert, Data Engineer, Security Expert, Testing Expert, Reviewer and others. A project gets the ones its stack needs.</p>
+    <p>The <strong>Team Lead</strong> coordinates work that spans several areas: it splits the work into tasks with one owner and their own files each, orders them by dependency, hands each to the specialist that fits, checks every result, has the combined change reviewed, and opens one pull request. A change in one area it makes itself. It all happens in your session.</p>
+    <p>Agents declare a <strong>tier</strong> — premium, standard or economy — instead of a model name. Your assistant picks the model for the tier: it knows which ones your account can use.</p>
+  </section>
+
+  <section class="docs-section" id="integrations">
+    <h3 class="section-title">Integrations</h3>
+    <p>An integration is a tool OpenCastle knows: Next.js, Supabase, Stripe, Playwright, Linear and others. <code>init</code> adds the ones your repository uses, and <code>npx opencastle add &lt;name&gt;</code> adds one later. Each brings a skill with that tool's version-specific details and, where the tool has one, an MCP server — pinned to an exact version, and written in each assistant's own config format with its own spelling for environment variables. <a class="docs-link" href="/docs/plugins/">Every integration</a>.</p>
+  </section>
+
+  <section class="docs-section" id="layers">
+    <h3 class="section-title">Layers and policy</h3>
+    <p>What a repository compiles is three layers, each able to add to and override the one before:</p>
+    <ol class="steps">
+      <li><strong>OpenCastle's own content</strong> — the instructions, agents, skills, prompts and workflows it ships.</li>
+      <li><strong>Baselines</strong> — npm packages, or paths, named in <code>extends</code>: the organisation's instructions, skills, MCP servers and policy, shared by every repository that extends them. A baseline is also an <a class="docs-link" href="/docs/agent-plugins/">Agent Plugin</a>.</li>
+      <li><strong>The project</strong> — <code>.opencastle/</code>.</li>
+    </ol>
+    <p><code>exclude</code> leaves an item out — <code>skills/seo-patterns</code>, or <code>skills/*</code>. A baseline's <strong>policy</strong> says which MCP servers may run and reach which hosts, that every server is pinned, what no repository may drop, and how much may load before a task. A later layer can tighten a policy, never relax it.</p>
+  </section>
+
+  <section class="docs-section" id="lock">
+    <h3 class="section-title">The lock</h3>
+    <p><code>sync</code> records what every assistant is given in <code>.opencastle/lock.json</code>: each item, the layer it came from, and its digest; each MCP server and what it launches; the layers' versions; the always-loaded cost. A change to what the assistants are given moves the lock, so code review sees it. <code>npx opencastle review</code> turns the change into sentences on the pull request, marking with ⚠️ what deserves a careful look, and <code>npx opencastle fleet</code> reads the locks of many repositories at once.</p>
+  </section>
+
+  <section class="docs-section" id="lessons">
+    <h3 class="section-title">Lessons</h3>
+    <p>When a retry teaches an agent something the next one should know — a command that fails, a tool's quirk, a convention written down nowhere — it records a lesson: one file in <code>.opencastle/lessons/</code>, citing the code it is about. Agents read the index, <code>.opencastle/LESSONS-LEARNED.md</code>, before they start. <code>doctor</code> names a lesson whose cited code has changed, and warns when the index grows past about 2,000 tokens; a lesson that has proven itself graduates into the skill it is about. <code>npx opencastle promote memory</code> turns what your own assistant learned into lessons for the team.</p>
+  </section>
+
+  <section class="docs-section" id="convoy">
+    <h3 class="section-title">Convoy (experimental)</h3>
+    <p>For work you would rather not sit and watch. <code>npx opencastle convoy "&lt;task&gt;"</code> — or <code>/oc:convoy</code> in your assistant — plans the work without changing anything and shows you the plan. The run starts each task in its own git worktree, several at a time, on the agent runtime <code>init</code> set up, reviews each, merges them onto a branch of its own, and runs your checks once at the end. Convoy runs log themselves; <code>npx opencastle convoy dashboard</code> shows them. Everything else on this page works without it. <a class="docs-link" href="/docs/use-cases/">Worked runs</a>.</p>
+  </section>
+
+  <section class="docs-section" id="glossary">
+    <h3 class="section-title">Glossary</h3>
+    <div class="comparison-table-wrap">
+      <table class="comparison-table">
+        <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>Assistant, target</td><td>One AI coding assistant OpenCastle compiles for: Claude Code, VS Code (Copilot), Cursor, Windsurf, OpenCode, Codex CLI, Antigravity. In the CLI's output, a target.</td></tr>
+          <tr><td>Integration</td><td>A tool OpenCastle knows, with a skill and usually an MCP server. Added by <code>init</code> or <code>add</code>.</td></tr>
+          <tr><td>Agent Plugin</td><td>The open standard for packaging skills and MCP servers for any assistant. Every baseline <code>baseline init</code> creates is one.</td></tr>
+          <tr><td>Baseline</td><td>A package of instructions, skills, agents, MCP servers and policy that many repositories extend.</td></tr>
+          <tr><td>Layer</td><td>One of OpenCastle's content, a baseline, or the project; later layers override earlier ones.</td></tr>
+          <tr><td>Policy</td><td>A baseline's rules for MCP servers, required items and the context budget. Only tightens.</td></tr>
+          <tr><td>Lock</td><td><code>.opencastle/lock.json</code>: what every assistant is given, for review.</td></tr>
+          <tr><td>Managed block</td><td>The marked part of a root file such as <code>CLAUDE.md</code> that every sync rewrites; the rest is yours.</td></tr>
+          <tr><td>Drift</td><td>A generated file that no longer matches its source. <code>sync --check</code> finds it; <code>sync</code> clears it.</td></tr>
+          <tr><td>Project facts</td><td><code>.opencastle/project.instructions.md</code>, written from the code by <code>init</code> and always loaded.</td></tr>
+          <tr><td>Instruction</td><td>Text every assistant always loads.</td></tr>
+          <tr><td>Skill</td><td>Knowledge an assistant loads when a task matches its description.</td></tr>
+          <tr><td>Agent</td><td>A specialist with a scope, to delegate to.</td></tr>
+          <tr><td>Tier</td><td>premium, standard or economy: the kind of model an agent's work wants.</td></tr>
+          <tr><td>Prompt, command</td><td>A ready procedure: <code>/oc:&lt;name&gt;</code> in Claude Code and Copilot Chat, asked for by name elsewhere.</td></tr>
+          <tr><td>Workflow template</td><td>The steps of a recurring kind of work, ending with delivery.</td></tr>
+          <tr><td>Lesson</td><td>Something an agent learned the hard way, one file each, citing code.</td></tr>
+          <tr><td>Convoy</td><td>A planned set of tasks run in parallel by the experimental engine.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</DocsLayout>

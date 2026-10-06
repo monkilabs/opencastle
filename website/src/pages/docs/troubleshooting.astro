@@ -1,0 +1,94 @@
+---
+import DocsLayout from '../../layouts/DocsLayout.astro';
+
+const sections = [
+  { id: 'commands', label: 'Commands', group: 'Setup' },
+  { id: 'ci', label: 'CI and drift' },
+  { id: 'versions', label: 'Versions and upgrades' },
+  { id: 'mcp', label: 'MCP servers and secrets', group: 'Using it' },
+  { id: 'assistant', label: 'In your assistant' },
+  { id: 'lessons', label: 'Lessons' },
+  { id: 'convoy', label: 'Convoy', group: 'Experimental' },
+];
+---
+
+<DocsLayout
+  title="Troubleshooting — OpenCastle"
+  description="Fixes for what goes wrong with OpenCastle: commands not found, sync --check failing in CI, files a sync removed, version refusals, MCP servers that do not start, slash commands that do not appear, stale lessons, and convoy runs."
+  path="/docs/troubleshooting/"
+  heading="Troubleshooting"
+  sections={sections}
+>
+  <section class="docs-hero">
+    <h2 class="docs-hero__heading">Troubleshooting</h2>
+    <p class="docs-hero__sub">What you see, why, and what clears it. <code>npx opencastle doctor</code> names most of these itself, with the command that fixes each.</p>
+  </section>
+
+  <section class="docs-section" id="commands">
+    <h3 class="section-title">Commands</h3>
+    <ul class="docs-list">
+      <li><strong><code>opencastle: command not found</code>.</strong> <code>npx opencastle init</code> runs OpenCastle without installing it. Run every command the same way — <code>npx opencastle sync</code> — or install it once with <code>npm i -D opencastle</code>, which also pins the version for everyone.</li>
+      <li><strong><code>Unknown command</code>.</strong> <code>npx opencastle --help</code> lists the commands, and <code>npx opencastle help &lt;command&gt;</code> one command's options. A removed command says what replaced it.</li>
+      <li><strong><code>unknown setting "…"</code> in <code>.opencastle/config.json</code>.</strong> A misspelled key; the message suggests the one meant. Point your editor at the <a class="docs-link" href="/schema/config.json">schema</a> with <code>"$schema"</code> to catch it as you type.</li>
+    </ul>
+  </section>
+
+  <section class="docs-section" id="ci">
+    <h3 class="section-title">CI and drift</h3>
+    <ul class="docs-list">
+      <li><strong><code>sync --check</code> fails on a pull request.</strong> A generated file no longer matches what its sources compile to. The report names each file and how it drifted: <em>changed</em> (edited by hand — make the edit in <code>.opencastle/</code> instead), <em>missing</em> or <em>outdated</em> (sources changed without a recompile), or <em>extra</em> (a file added to a generated directory). Run <code>npx opencastle sync</code> on the branch and commit the result. On GitHub Actions each file is annotated in the pull request with its own fix.</li>
+      <li><strong>A dependency bot's baseline bump fails the check.</strong> The new baseline compiles to different files, and the bot cannot recompile. Check out its branch, run <code>npx opencastle sync</code>, and push; <code>npx opencastle review</code> on that pull request says what the new version changes for this repository's assistants.</li>
+      <li><strong>A file of yours disappeared after <code>sync</code>.</strong> It was in a directory OpenCastle generates, such as <code>.claude/agents/</code> or <code>.cursor/rules/</code>; <code>init</code> and <code>sync --check</code> name such files before they go. Restore it from git and move it into <code>.opencastle/</code> — <code>instructions/</code>, <code>skills/&lt;name&gt;/</code> or <code>agents/</code> — so it compiles for every assistant.</li>
+      <li><strong>A merge conflict in <code>.opencastle/lock.json</code>.</strong> The lock is generated. Resolve the conflicts in the sources, take either side of the lock, run <code>npx opencastle sync</code>, and commit the lock it writes.</li>
+      <li><strong>An MCP server "needs fixing by hand".</strong> A server someone added to an MCP config that the team's policy does not allow, or that runs an unpinned or unknown package. <code>sync</code> cannot change a server it did not write; <code>npx opencastle doctor</code> names the server and what is wrong with it.</li>
+    </ul>
+  </section>
+
+  <section class="docs-section" id="versions">
+    <h3 class="section-title">Versions and upgrades</h3>
+    <ul class="docs-list">
+      <li><strong><code>This project was compiled by OpenCastle X; this is Y</code>.</strong> You are running an older OpenCastle than the one that compiled the project, and compiling would take every teammate's files back. Run <code>npx opencastle@X</code>, or add OpenCastle to <code>devDependencies</code> so everyone runs one version. <code>--allow-downgrade</code> goes back on purpose.</li>
+      <li><strong>A baseline is older than the one the lock records.</strong> Your <code>node_modules</code> predates a bump. Run <code>npm install</code> (or your package manager's), then sync.</li>
+      <li><strong>A baseline cannot be found.</strong> An npm baseline must be installed: add it to <code>devDependencies</code>, and in CI install the dependencies before OpenCastle runs. A path in <code>extends</code> resolves from <code>.opencastle/</code>, so a <code>baseline/</code> directory at the project root is <code>"../baseline"</code>.</li>
+      <li><strong>Upgrading.</strong> <code>npm i -D opencastle@latest</code>, then <code>npx opencastle sync</code>; it names every file it changes or removes. Commit the result.</li>
+    </ul>
+  </section>
+
+  <section class="docs-section" id="mcp">
+    <h3 class="section-title">MCP servers and secrets</h3>
+    <ul class="docs-list">
+      <li><strong>A server fails to start or to authenticate.</strong> It usually needs an environment variable. <code>npx opencastle explain</code> lists the ones you have not set, and which server needs each. Set them in your shell, or in <code>.env</code> at the project root — never in a committed file; <code>init</code> will not write into a <code>.env</code> the repository commits.</li>
+      <li><strong>VS Code asks for a token.</strong> A token inside a remote server's header is a password input VS Code asks for once and keeps. A server's environment variables come from <code>.env</code>.</li>
+      <li><strong>Codex does not load the servers.</strong> Codex reads <code>.codex/config.toml</code> only in a project you have marked as trusted. Trust the project when Codex asks.</li>
+      <li><strong>A server asks you to sign in in a browser.</strong> Expected for servers that use OAuth (Linear, Notion, Sentry and others): the first time it starts, then never again.</li>
+    </ul>
+  </section>
+
+  <section class="docs-section" id="assistant">
+    <h3 class="section-title">In your assistant</h3>
+    <ul class="docs-list">
+      <li><strong>The <code>/oc:</code> commands do not appear.</strong> Restart Claude Code, or in VS Code run <em>Developer: Reload Window</em>. Cursor, Windsurf, OpenCode, Codex and Antigravity have no slash commands for them: ask for a prompt by name — "run the bug-fix prompt".</li>
+      <li><strong>The assistant does not know the project.</strong> <code>npx opencastle doctor</code> says when <code>.opencastle/project.instructions.md</code> is still a template, and how much is left to describe. Run <code>/oc:bootstrap-customizations</code>, or ask for the bootstrap-customizations prompt.</li>
+      <li><strong>An edit to <code>project.instructions.md</code> has no effect.</strong> It is compiled into what every assistant always loads. Run <code>npx opencastle sync</code> after editing it.</li>
+      <li><strong>An agent tries to log its session and is told the command was removed.</strong> The project was compiled by an earlier release, whose instructions asked for it. Run <code>npx opencastle sync</code>.</li>
+    </ul>
+  </section>
+
+  <section class="docs-section" id="lessons">
+    <h3 class="section-title">Lessons</h3>
+    <ul class="docs-list">
+      <li><strong><code>doctor</code>: a lesson cites code that has changed.</strong> Read the lesson against the code. Still true: <code>npx opencastle lesson verify &lt;id&gt;</code>, with <code>--cite &lt;new path&gt;</code> if the code moved. No longer true, or now in a skill: <code>npx opencastle lesson archive &lt;id&gt; --into &lt;file&gt;</code>.</li>
+      <li><strong><code>doctor</code>: the lessons index is large.</strong> Every agent reads it before every task. Move the lessons that keep coming up into the skill or instruction file they are about, and archive them there.</li>
+      <li><strong>A lesson is refused.</strong> It names a category or severity that does not exist — <code>.opencastle/LESSONS-LEARNED.md</code> lists them — or it would commit something that looks like a credential.</li>
+    </ul>
+  </section>
+
+  <section class="docs-section" id="convoy">
+    <h3 class="section-title">Convoy</h3>
+    <ul class="docs-list">
+      <li><strong>The plan or the run cannot start an agent.</strong> A convoy runs on the agent CLI <code>init</code> set up — <code>claude</code>, <code>codex</code>, <code>cursor-agent</code>, <code>opencode</code> or <code>copilot</code> — which must be installed and signed in. <code>--adapter &lt;name&gt;</code> picks another.</li>
+      <li><strong>The tasks do not see your latest change.</strong> Each task starts from the last commit. Commit before you run.</li>
+      <li><strong>A run stopped, or failed part-way.</strong> <code>npx opencastle convoy</code> shows the last run and the one next step; <code>npx opencastle convoy resume</code> continues whatever is not done. <code>npx opencastle convoy dashboard</code> shows each task, its review and the checks.</li>
+    </ul>
+  </section>
+</DocsLayout>
