@@ -299,6 +299,33 @@ describe('detectRepoInfo', () => {
 
 // ── buildDetectedToolsSet ──────────────────────────────────────
 
+describe('detectRepoInfo — Python and Go', () => {
+  let dir: string
+  beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'opencastle-lang-')) })
+  afterEach(async () => { await rm(dir, { recursive: true, force: true }) })
+
+  it('reads a FastAPI service as Python with its framework, and no JavaScript package manager', async () => {
+    await writeFile(join(dir, 'pyproject.toml'), '[tool.poetry.dependencies]\npython = "^3.11"\nfastapi = "^0.110"\n')
+    const info = await detectRepoInfo(dir)
+    expect(info.language).toBe('python')
+    expect(info.frameworks).toEqual(['fastapi'])
+    expect(info.packageManager).toBeUndefined()
+  })
+
+  it('reads a Go module with Gin', async () => {
+    await writeFile(join(dir, 'go.mod'), 'module x\n\ngo 1.22\n\nrequire github.com/gin-gonic/gin v1.10.0\n')
+    const info = await detectRepoInfo(dir)
+    expect(info.language).toBe('go')
+    expect(info.frameworks).toEqual(['gin'])
+  })
+
+  it('keeps TypeScript for a project that has both', async () => {
+    await writeFile(join(dir, 'tsconfig.json'), '{}')
+    await writeFile(join(dir, 'requirements.txt'), 'flask\n')
+    expect((await detectRepoInfo(dir)).language).toBe('typescript')
+  })
+})
+
 describe('buildDetectedToolsSet', () => {
   it('maps detection labels to plugin IDs', () => {
     const set = buildDetectedToolsSet({

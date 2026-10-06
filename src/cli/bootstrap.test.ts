@@ -188,6 +188,17 @@ describe('bootstrapCustomizations', () => {
     expect(content).toMatch(/^npm test\s+# vitest$/m)
   })
 
+  it('writes a Python service as Python: its tool, its commands, no npm', async () => {
+    await writeFile(join(tempDir, 'pyproject.toml'), '[tool.poetry.dependencies]\npython = "^3.11"\nfastapi = "^0.110"\npytest = "^8"\n', 'utf8')
+    await writeFile(join(tempDir, 'poetry.lock'), '', 'utf8')
+    await bootstrapCustomizations(tempDir, { language: 'python', frameworks: ['fastapi'] }, STACK_EMPTY)
+    const content = await readFile(join(tempDir, '.opencastle', 'project.instructions.md'), 'utf8')
+    expect(content).toContain('Python · package manager `poetry`')
+    expect(content).toMatch(/^poetry run pytest\s+# run the tests$/m)
+    expect(content).toContain('| Framework | FastAPI | 0.110 |')
+    expect(content).not.toMatch(/\bnpm\b/)
+  })
+
   // ── 9. Empty repoInfo ────────────────────────────────────────
 
   it('handles empty repoInfo gracefully without crashing', async () => {

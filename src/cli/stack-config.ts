@@ -148,6 +148,42 @@ export function getIncludedPluginIds(stack: StackConfig): Set<string> {
   return new Set([...stack.techTools, ...stack.teamTools]);
 }
 
+/** Frameworks of Python and Go that render pages, not only an API. */
+const RENDERS_PAGES = ['django', 'flask']
+
+/**
+ * A Python or Go project with no JavaScript in it, and no framework that
+ * renders pages: an API service, a CLI, a worker. It has no use for TypeScript
+ * or web-interface rules, and nothing for a browser to test.
+ */
+export function servesNoWebInterface(repoInfo?: RepoInfo): boolean {
+  const language = repoInfo?.language
+  if (language !== 'python' && language !== 'go') return false
+  if (repoInfo?.packageManager || repoInfo?.styling?.length) return false
+  return !(repoInfo?.frameworks ?? []).some((f) => RENDERS_PAGES.includes(f))
+}
+
+/**
+ * Core skills to leave out for what the project is. A FastAPI service was
+ * given TypeScript, React, SEO and frontend-design rules on its first day; a
+ * Django or Flask app, which renders pages, keeps the web ones.
+ */
+export function getExcludedCoreSkills(repoInfo?: RepoInfo): Set<string> {
+  const language = repoInfo?.language
+  if ((language !== 'python' && language !== 'go') || repoInfo?.packageManager) return new Set()
+  const web = servesNoWebInterface(repoInfo) ? ['frontend-design', 'accessibility-standards', 'seo-patterns'] : []
+  return new Set(['typescript-best-practices', ...web])
+}
+
+/**
+ * Whether an integration starts selected. Chrome DevTools is preselected for
+ * browser checks, which a project with no web interface cannot use.
+ */
+export function isPreselected(plugin: { preselected?: boolean; subCategory?: string }, repoInfo?: RepoInfo): boolean {
+  if (!plugin.preselected) return false
+  return !(plugin.subCategory === 'e2e-testing' && servesNoWebInterface(repoInfo))
+}
+
 /**
  * Agents to EXCLUDE — content-engineer if no CMS, data-engineer if no DB.
  */

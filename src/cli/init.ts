@@ -6,7 +6,7 @@ import { multiselect, confirm, closePrompts, c } from './prompt.js'
 import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
 import { updateGitignore } from './gitignore.js'
-import { getCustomizationsTransform } from './stack-config.js'
+import { getCustomizationsTransform, isPreselected } from './stack-config.js'
 import { getMcpConfigRelPath, stripManagedMcpServers, retireLegacyMcpConfig } from './mcp.js'
 import { getPluginsBySubCategory } from '../orchestrator/plugins/index.js'
 import type { PluginConfig } from '../orchestrator/plugins/types.js'
@@ -98,7 +98,7 @@ export function detectSelection(
       getPluginsBySubCategory(sc as PluginConfig['subCategory']),
     )
     for (const p of plugins) {
-      if (!p.preselected && !detected.has(p.id) && !kept.has(p.id)) continue
+      if (!isPreselected(p, repoInfo) && !detected.has(p.id) && !kept.has(p.id)) continue
       if (p.category === 'team') teamTools.push(p.id)
       else techTools.push(p.id)
     }
@@ -160,7 +160,7 @@ async function promptSelection(
         label: p.label,
         hint: p.hint,
         value: p.id,
-        ...((p.preselected || detectedTools.has(p.id) || existingTools.has(p.id)) && { selected: true }),
+        ...((isPreselected(p, repoInfo) || detectedTools.has(p.id) || existingTools.has(p.id)) && { selected: true }),
       })),
     )
     for (const id of selected) {

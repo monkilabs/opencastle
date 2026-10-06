@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PACKAGE_DETECTIONS } from './detect.js'
+import { readCommands, readLanguageFacts } from './project-facts-lang.js'
 
 /**
  * What a project is, read from its files: the facts `init` writes into
@@ -16,6 +17,7 @@ import { PACKAGE_DETECTIONS } from './detect.js'
  * needs judgement — architecture, production URLs — is left for a person or
  * `/oc:bootstrap-customizations`.
  */
+
 
 export interface ProjectFacts {
   name?: string
@@ -56,6 +58,8 @@ export interface ProjectFacts {
   configPaths: string[]
   /** Files that import a package, by the detection label of the package. */
   importers: Record<string, string[]>
+  /** Commands declared outside package.json: Makefile, justfile, `scripts/`, and a Python or Go project's tools. */
+  commands: Array<{ cmd: string; does: string }>
 }
 
 // ── Reading the tree ────────────────────────────────────────────────────────
@@ -435,6 +439,7 @@ const DISPLAY: Record<string, string> = {
   sentry: 'Sentry', notion: 'Notion', vercel: 'Vercel', netlify: 'Netlify', cloudflare: 'Cloudflare',
   docker: 'Docker', railway: 'Railway', fly: 'Fly.io', render: 'Render', 'github-actions': 'GitHub Actions',
   'gitlab-ci': 'GitLab CI', circleci: 'CircleCI', jenkins: 'Jenkins', turborepo: 'Turborepo', nx: 'Nx',
+  fastapi: 'FastAPI', django: 'Django', flask: 'Flask', gin: 'Gin', echo: 'Echo', chi: 'chi', fiber: 'Fiber',
 }
 
 export function displayName(label: string): string {
@@ -484,7 +489,10 @@ export interface DetectedStack {
  */
 async function findCiCommands(root: string, workflows: string[], pm: string): Promise<string[]> {
   const out: string[] = []
-  const runner = new RegExp(`^(?:${pm}|npm|pnpm|yarn|bun|npx|node)\\b`)
+  // The project's own tools, whatever its language. `pm` is empty for a project
+  // with no package manager, and an empty alternative would match every line.
+  const tools = [pm, 'npm', 'pnpm', 'yarn', 'bun', 'npx', 'node', 'pytest', 'python3? -m pytest', 'poetry run', 'uv run', 'pdm run', 'pipenv run', 'ruff', 'mypy', 'go (?:test|vet|build)', 'golangci-lint', 'make', '\\./scripts/']
+  const runner = new RegExp(`^(?:${tools.filter(Boolean).join('|')})(?:\\b|/)`)
   for (const wf of workflows) {
     const lines = (await read(root, wf)).split('\n')
     for (let i = 0; i < lines.length; i++) {
@@ -495,7 +503,11 @@ async function findCiCommands(root: string, workflows: string[], pm: string): Pr
         const indent = m[1].length
         for (let j = i + 1; j < lines.length && (lines[j].trim() === '' || lines[j].search(/\S/) > indent); j++) cmds.push(lines[j].trim())
       } else cmds.push(m[2].trim())
-      for (const c of cmds) if (runner.test(c) && !/\binstall\b|\bci$|\bci\s/.test(c) && !out.includes(c)) out.push(c)
+      // The checks a change must pass, not the job's plumbing: installs, shell
+      // control (`a || b`, a trailing `&`), a server started for the tests,
+      // migrations run to set a database up.
+      const plumbing = /\binstall\b|\bci$|\bci\s|\bsync$|\bmod download\b|\|\||&&|&\s*$|>\s*\/dev\/null|\bpip\b|\b(uvicorn|gunicorn|alembic)\b|\b(start|serve)$/
+      for (const c of cmds) if (runner.test(c) && !plumbing.test(c) && !out.includes(c)) out.push(c)
     }
   }
   return out.slice(0, 8)
@@ -536,9 +548,11 @@ async function readmeSummary(root: string, files: string[]): Promise<string | un
  * that the project itself does not use.
  */
 export async function readProjectFacts(root: string, detected: DetectedStack): Promise<ProjectFacts> {
+  const hasPackage = (await readPackage(root, 'package.json')) !== null
   const pkg = (await readPackage(root, 'package.json')) ?? {}
   const files = await listFiles(root)
   const frameworks = detected.frameworks ?? []
+  const lang = await readLanguageFacts((rel) => read(root, rel), files)
 
   // Every package.json of a monorepo declares versions; the root often none.
   const workspaceManifests = files.filter((f) => /^(apps|packages|libs|services|tooling)\/[^/]+\/package\.json$/.test(f))
@@ -556,14 +570,15 @@ export async function readProjectFacts(root: string, detected: DetectedStack): P
     for (const [name, rule] of Object.entries(PACKAGE_DETECTIONS)) {
       if (rule.label === label && deps[name]) return cleanVersion(deps[name])
     }
-    return cleanVersion(deps[label])
+    return cleanVersion(deps[label]) ?? lang?.versions.get(label)
   }
-  const stack: ProjectFacts['stack'] = []
+  const stack: ProjectFacts['stack'] = (lang?.stack ?? []).filter((s) => s.layer === 'Language')
   for (const [key, layer] of LAYERS) {
     for (const label of (detected as Record<string, string[] | undefined>)[key] ?? []) {
       stack.push({ layer, name: displayName(label), version: versionOf(label) })
     }
   }
+  stack.push(...(lang?.stack ?? []).filter((s) => s.layer !== 'Language'))
 
   const top = await readdir(root, { withFileTypes: true }).catch(() => [])
   const dirs: ProjectFacts['dirs'] = []
@@ -593,8 +608,11 @@ export async function readProjectFacts(root: string, detected: DetectedStack): P
     if (/^\s*['"]use server['"]/m.test((await read(root, f)).slice(0, 400))) serverActions.push(f)
   }
 
-  const testFrameworks = Object.entries(TEST_PACKAGES).filter(([p]) => deps[p]).map(([, name]) => name)
-  const testFiles = files.filter((f) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(f) || /(^|\/)(__tests__|e2e|cypress\/e2e)\//.test(f))
+  const testFrameworks = [...Object.entries(TEST_PACKAGES).filter(([p]) => deps[p]).map(([, name]) => name), ...(lang?.testFrameworks ?? [])]
+  const testFiles = [
+    ...files.filter((f) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(f) || /(^|\/)(__tests__|e2e|cypress\/e2e)\//.test(f)),
+    ...(lang?.testFiles ?? []),
+  ]
   const testConfigs = files.filter((f) => /(^|\/)(vitest|jest|playwright|cypress)\.config\.[cm]?[jt]s$/.test(f))
 
   const ciWorkflows = (await readdir(join(root, '.github', 'workflows')).catch(() => []))
@@ -610,8 +628,9 @@ export async function readProjectFacts(root: string, detected: DetectedStack): P
   return {
     name: pkg.name,
     description: pkg.description ?? (await readmeSummary(root, files)),
-    packageManager: detected.packageManager ?? 'npm',
-    language: detected.language,
+    // npm is the default only where there is a package.json for it to read.
+    packageManager: detected.packageManager ?? (hasPackage ? 'npm' : lang?.tool ?? ''),
+    language: detected.language ?? lang?.language,
     scripts: pkg.scripts ?? {},
     stack,
     dirs,
@@ -623,12 +642,12 @@ export async function readProjectFacts(root: string, detected: DetectedStack): P
       }),
     devPort: devPortOf(pkg.scripts ?? {}, frameworks, deps),
     pages,
-    api,
+    api: [...api, ...(lang?.api ?? [])],
     rpcRouters,
     serverActions,
     middleware: files.find((f) => /^((apps|packages)\/[^/]+\/)?(src\/)?middleware\.(ts|js)$/.test(f)),
-    models: await findModels(root, files),
-    migrations: findMigrations(files),
+    models: (await findModels(root, files)) ?? lang?.models ?? null,
+    migrations: findMigrations(files) ?? lang?.migrations ?? null,
     testFrameworks,
     testConfigs,
     testFiles,
@@ -643,5 +662,6 @@ export async function readProjectFacts(root: string, detected: DetectedStack): P
     importers: await findImporters(root, files, packagesFor([
       ...(detected.databases ?? []), ...(detected.cms ?? []), ...(detected.auth ?? []), ...(detected.services ?? []),
     ])),
+    commands: await readCommands((rel) => read(root, rel), files, lang),
   }
 }

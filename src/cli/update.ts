@@ -11,8 +11,7 @@ import {
   updateSkillMatrixFile,
   resolveStack,
   getCustomizationsTransform,
-  isEnvVarSatisfied,
-} from './stack-config.js'
+  isEnvVarSatisfied, isPreselected } from './stack-config.js'
 import { rebuildMcpConfig, getMcpConfigRelPath, retireLegacyMcpConfig, LEGACY_MCP_CONFIGS } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
@@ -391,7 +390,7 @@ export default async function update({
         value: p.id,
         selected: oldStack
           ? currentTech.has(p.id as TechTool)
-          : p.preselected || detectedTools.has(p.id),
+          : isPreselected(p, repoInfo) || detectedTools.has(p.id),
       }))
     )
 
@@ -404,7 +403,7 @@ export default async function update({
         value: p.id,
         selected: oldStack
           ? currentTeam.has(p.id as TeamTool)
-          : !!p.preselected,
+          : isPreselected(p, repoInfo),
       }))
     )
 
