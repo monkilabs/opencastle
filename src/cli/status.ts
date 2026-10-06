@@ -152,7 +152,7 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
       targets: [],
       stale: false,
       unmanaged: [],
-      nextCommand: 'opencastle doctor',
+      nextCommand: 'npx opencastle doctor',
       nextReason:
         err.reason === 'unreadable'
           ? `${err.file} cannot be read — fix the permissions, or remove what is standing in its place`
@@ -170,7 +170,7 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
       targets: [],
       stale: false,
       unmanaged,
-      nextCommand: 'opencastle init',
+      nextCommand: 'npx opencastle init',
       nextReason: unmanaged.length
         ? `found existing config for ${unmanaged.join(', ')} — init can compile it for every other assistant`
         : 'set up AI assistant config for this project',
@@ -297,13 +297,13 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
   // diagnostic that says "run sync". `doctor` is what is left when a failure
   // has no more specific command.
   if (missingRequired.length > 0) {
-    nextCommand = 'opencastle sync'
+    nextCommand = 'npx opencastle sync'
     nextReason = `${missingRequired.length} required file(s) missing from .opencastle/`
   } else if (incomplete.length > 0) {
-    nextCommand = 'opencastle sync'
+    nextCommand = 'npx opencastle sync'
     nextReason = `${incomplete.length} target${incomplete.length === 1 ? '' : 's'} missing generated files`
   } else if (failing.length > 0) {
-    nextCommand = 'opencastle doctor'
+    nextCommand = 'npx opencastle doctor'
     nextReason = `${failing.length} check(s) failing: ${failing.join(', ')}`
   } else if (checkFailed) {
     // Last of the failure branches, because a comparison can also fail for
@@ -311,13 +311,13 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     // to fall through to an mtime heuristic that answered "no drift", so an
     // unreadable framework directory produced "Everything is current" while
     // `doctor` and `sync --check` both exited 1.
-    nextCommand = 'opencastle doctor'
+    nextCommand = 'npx opencastle doctor'
     nextReason = `the drift check could not run (${checkFailed})`
   } else if (stale) {
-    nextCommand = 'opencastle sync'
+    nextCommand = 'npx opencastle sync'
     nextReason = 'generated files no longer match their sources'
   } else if (unmanaged.length > 0) {
-    nextCommand = 'opencastle init --customize'
+    nextCommand = 'npx opencastle init --customize'
     nextReason = `${unmanaged.join(', ')} config exists but is not being compiled`
   }
 
@@ -407,7 +407,7 @@ function render(report: StatusReport): void {
     console.log(`  ${c.bold('Next:')} ${c.cyan(report.nextCommand)}`)
     if (report.nextReason) console.log(`  ${c.dim(report.nextReason)}`)
   } else {
-    console.log(`  ${c.dim('Everything is current. Run')} ${c.cyan('opencastle doctor')} ${c.dim('for a deeper check.')}`)
+    console.log(`  ${c.dim('Everything is current. Run')} ${c.cyan('npx opencastle doctor')} ${c.dim('for a deeper check.')}`)
   }
   console.log('')
 }

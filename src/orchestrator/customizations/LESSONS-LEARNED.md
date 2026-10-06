@@ -7,8 +7,10 @@ tool quirk, a convention written down nowhere else. **Read this before you
 start work**, then open the lessons that match your task.
 
 Each lesson is a file in `.opencastle/lessons/`. Add one with
-`opencastle lesson --title ... --category ... --severity ... --problem ...`
-(and `--cite <path>` for the code it is about). Do not edit this index:
-it is rewritten from those files by every `opencastle sync`.
+`npx opencastle lesson --title ... --category ... --severity ... --problem ...`
+(and `--cite <path>` for the code it is about). The category is one of
+`task-management`, `jira`, `mcp-tools`, `codebase-tool`, `terminal`, `framework`, `cms`, `database`, `git`, `deployment`, `browser-testing`, `general`;
+the severity `high`, `medium` or `low`. Do not edit this index:
+it is rewritten from those files by every `npx opencastle sync`.
 
 No lessons yet.

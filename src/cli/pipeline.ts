@@ -820,13 +820,13 @@ function describeSpend(s: PlanningSpend): string {
 // ── The command ─────────────────────────────────────────────────────────────
 
 const HELP = `
-  opencastle convoy plan --prd <file> [options]
+  npx opencastle convoy plan --prd <file> [options]
 
   Plan again from a PRD you edited. The PRD is checked, broken into tasks and
   written as a spec; you see the plan and are asked before it runs.
 
   Options:
-    --prd <file>             The PRD to plan from (opencastle convoy "<task>" writes
+    --prd <file>             The PRD to plan from (npx opencastle convoy "<task>" writes
                              them to .opencastle/prds/)
     --yes, -y                Run the plan without asking
     --dry-run                Plan and write the spec, but do not run it
@@ -866,7 +866,7 @@ function parseArgs(args: string[], allowPrd: boolean): CliOptions {
         break
       case '--prd':
         if (!allowPrd) {
-          console.error(`  ✗ --prd belongs to \`opencastle convoy plan\`: plan from a task or from a PRD, not both.`)
+          console.error(`  ✗ --prd belongs to \`npx opencastle convoy plan\`: plan from a task or from a PRD, not both.`)
           process.exit(1)
         }
         opts.prd = value(i++, arg)
@@ -928,7 +928,7 @@ async function chooseRuntime(projectRoot: string, explicit: string | null): Prom
 async function planThenRun(source: { task: string } | { prd: string }, opts: CliOptions, pkgRoot: string): Promise<void> {
   const projectRoot = process.cwd()
   const runtime = await chooseRuntime(findProjectRoot(projectRoot) ?? projectRoot, opts.adapter)
-  console.log(`\n  ${c.bold('opencastle convoy')} ${c.dim('— planning, read-only')}`)
+  console.log(`\n  ${c.bold('npx opencastle convoy')} ${c.dim('— planning, read-only')}`)
   console.log(`  ${c.dim('Runtime:')} ${runtime.detail}\n`)
 
   let outcome: PlanOutcome
@@ -949,7 +949,7 @@ async function planThenRun(source: { task: string } | { prd: string }, opts: Cli
   }
 
   for (const row of renderPlan(outcome, process.stdout.columns ?? 100)) console.log(row)
-  const later = `opencastle convoy run ${relPath(outcome.specPath)}`
+  const later = `npx opencastle convoy run ${relPath(outcome.specPath)}`
 
   if (outcome.problems.length > 0) {
     console.error(`  ${c.red('✗')} The plan still fails these checks, so it was not started:`)
@@ -1003,7 +1003,7 @@ export default async function pipeline({ args, pkgRoot }: CliContext): Promise<v
     return
   }
   if (opts.prd === null) {
-    console.error('  ✗ Name the PRD to plan from: opencastle convoy plan --prd <file>')
+    console.error('  ✗ Name the PRD to plan from: npx opencastle convoy plan --prd <file>')
     console.log(HELP)
     process.exit(1)
   }

@@ -206,7 +206,7 @@ describe('checkMcpSupplyChain', () => {
     write('.cursor/mcp.json', { mcpServers: { Playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'] } } })
     const r = checkMcpSupplyChain(root, 'cursor')
     expect(r).toMatchObject({ ok: true, warning: true })
-    expect(r.fix).toMatch(/^opencastle sync/)
+    expect(r.fix).toMatch(/^npx opencastle sync/)
   })
 
   it('does not send the user to sync for a server sync will not touch', () => {
@@ -218,8 +218,8 @@ describe('checkMcpSupplyChain', () => {
   it('does not say sync fixes a server that sync will delete', () => {
     write('.mcp.json', { mcpServers: { Supabase: { url: 'https://mcp.supabase.com/mcp' } } })
     const r = checkMcpSupplyChain(root, 'claude-code', new Set())
-    expect(r.fix).toContain('opencastle sync removes Supabase')
-    expect(r.fix).toContain('opencastle add supabase')
+    expect(r.fix).toContain('npx opencastle sync removes Supabase')
+    expect(r.fix).toContain('npx opencastle add supabase')
     expect(r.fix).not.toContain('fixes')
   })
 
@@ -238,9 +238,9 @@ describe('checkMcpSupplyChain', () => {
       },
     })
     const r = checkMcpSupplyChain(root, 'cursor')
-    expect(r.fix).toContain('opencastle sync fixes chrome-devtools')
+    expect(r.fix).toContain('npx opencastle sync fixes chrome-devtools')
     expect(r.fix).toContain('Playwright changed since OpenCastle wrote them')
-    expect(r.fix).toContain('opencastle sync --force')
+    expect(r.fix).toContain('npx opencastle sync --force')
   })
 
   it('fails on a server that cannot load', () => {

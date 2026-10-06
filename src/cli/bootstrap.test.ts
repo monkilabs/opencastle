@@ -179,6 +179,15 @@ describe('bootstrapCustomizations', () => {
     expect(content).toMatch(/^pnpm test\s+# vitest$/m)
   })
 
+  it('gives npm the dev server as `npm run dev`, which is the form npm runs', async () => {
+    await writeFile(join(tempDir, 'package.json'), JSON.stringify({ scripts: { dev: 'next dev', test: 'vitest' } }), 'utf8')
+    await bootstrapCustomizations(tempDir, { packageManager: 'npm' }, STACK_EMPTY)
+    const content = await readFile(join(tempDir, '.opencastle', 'project.instructions.md'), 'utf8')
+    expect(content).toContain('Dev server: `npm run dev`')
+    expect(content).not.toMatch(/`npm dev`/)
+    expect(content).toMatch(/^npm test\s+# vitest$/m)
+  })
+
   // ── 9. Empty repoInfo ────────────────────────────────────────
 
   it('handles empty repoInfo gracefully without crashing', async () => {

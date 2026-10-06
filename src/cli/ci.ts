@@ -24,7 +24,7 @@ import type { CliContext } from './types.js'
  */
 
 const HELP = `
-  opencastle ci [options]
+  npx opencastle ci [options]
 
   Write a GitHub Actions workflow that fails a pull request when generated
   assistant config differs from its sources or breaks the team's policy, and
@@ -172,7 +172,7 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string,
     : []
   const pathFilter = paths.length > 0 ? [`    paths: [${[...new Set(paths)].map((p) => `'${p}'`).join(', ')}]`] : []
   const lines = [
-    '# Written by `opencastle ci`. Fails a pull request when the AI assistant config',
+    '# Written by `npx opencastle ci`. Fails a pull request when the AI assistant config',
     "# every developer gets differs from its sources or breaks the team's policy,",
     '# and summarises what the change does to the assistants.',
     `name: AI assistant config${prefix ? ` (${prefix})` : ''}`,
@@ -219,7 +219,7 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string,
       path: existing ?? join(repoRoot, '.github', 'CODEOWNERS'),
       block: [
         '',
-        '# What every AI assistant is given (opencastle ci). A change to its instructions,',
+        '# What every AI assistant is given (npx opencastle ci). A change to its instructions,',
         '# skills, agents, prompts, MCP servers or policy moves the lock, so these two',
         '# lines route all of them to the owners. Lessons (.opencastle/lessons/) do not.',
         `${at}${LOCK_REL} ${owners}`,
@@ -244,7 +244,7 @@ export default async function ci({ pkgRoot, args }: CliContext): Promise<void> {
     process.exit(1)
   }
   if (!(await readManifest(projectRoot))) {
-    console.error(`\n  ${c.red('✗')} OpenCastle is not set up here — run opencastle init first.\n`)
+    console.error(`\n  ${c.red('✗')} OpenCastle is not set up here — run npx opencastle init first.\n`)
     process.exit(1)
   }
 
@@ -277,13 +277,21 @@ export default async function ci({ pkgRoot, args }: CliContext): Promise<void> {
     return
   }
 
-  if (existsSync(plan.workflowPath) && !args.includes('--force')) {
-    console.error(`\n  ${c.red('✗')} ${rel(plan.workflowPath)} already exists. Pass --force to replace it.\n`)
+  // Running it again is not a mistake: the same workflow already there is
+  // done, not a conflict, and exiting 1 on it failed a setup script on its
+  // second run. Only a different file of that name needs a decision.
+  const current = existsSync(plan.workflowPath) ? readFileSync(plan.workflowPath, 'utf8') : null
+  if (current === plan.workflow) {
+    console.log(`\n  ${c.green('✓')} ${rel(plan.workflowPath)} is already this workflow`)
+  } else if (current !== null && !args.includes('--force')) {
+    console.error(`\n  ${c.red('✗')} ${rel(plan.workflowPath)} already exists and differs from the one OpenCastle writes.`)
+    console.error(`    ${c.dim('Compare them with --dry-run, then pass --force to replace it.')}\n`)
     process.exit(1)
+  } else {
+    await mkdir(dirname(plan.workflowPath), { recursive: true })
+    await writeFile(plan.workflowPath, plan.workflow)
+    console.log(`\n  ${c.green('✓')} Wrote ${rel(plan.workflowPath)}`)
   }
-  await mkdir(dirname(plan.workflowPath), { recursive: true })
-  await writeFile(plan.workflowPath, plan.workflow)
-  console.log(`\n  ${c.green('✓')} Wrote ${rel(plan.workflowPath)}`)
 
   if (plan.codeowners) {
     const existing = existsSync(plan.codeowners.path) ? readFileSync(plan.codeowners.path, 'utf8') : ''

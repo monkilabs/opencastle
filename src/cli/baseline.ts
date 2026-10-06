@@ -28,7 +28,7 @@ import type { CliContext } from './types.js'
  */
 
 const HELP = `
-  opencastle baseline <init|check> [dir] [options]
+  npx opencastle baseline <init|check> [dir] [options]
 
   init [dir]    Scaffold a baseline package (default: ./opencastle-baseline)
                 that is also an Agent Plugin: example instructions, a skill
@@ -63,7 +63,7 @@ function files(name: string, cliVersion: string): Record<string, string> {
           license: 'UNLICENSED',
           files: ['plugin.json', 'mcp.json', 'skills/', `${EXTENSION_NAMESPACE}/`, '.claude-plugin/', '.mcp.json'],
           opencastle: { baseline: '.' },
-          scripts: { check: 'opencastle baseline check', build: 'opencastle plugin build' },
+          scripts: { check: 'npx opencastle baseline check', build: 'npx opencastle plugin build' },
           devDependencies: { opencastle: `^${cliVersion}` },
           publishConfig: { access: 'restricted' },
         },
@@ -171,7 +171,7 @@ The version comes from package.json and the lockfile, like any dependency.
    extending it will, and the plugin the way assistants load it.
 2. Bump the version in package.json and plugin.json, and publish.
 3. Let your upgrade bot (Renovate, Dependabot) open the pull requests. In each,
-   CI runs \`opencastle sync --check\` and adds \`opencastle review\`'s summary of
+   CI runs \`npx opencastle sync --check\` and adds \`npx opencastle review\`'s summary of
    what the new version changes for that repository's assistants.
 `,
     '.github/workflows/check.yml': `name: Check baseline
@@ -264,10 +264,10 @@ function check(pkgRoot: string, dir: string): CheckReport {
     warnings.push(...report.warnings)
     if (report.manifest) {
       for (const f of staleClaudeFiles(layerRoot, report)) {
-        errors.push(`${f}: does not match plugin.json and mcp.json — run opencastle plugin build`)
+        errors.push(`${f}: does not match plugin.json and mcp.json — run npx opencastle plugin build`)
       }
       if (!existsSync(join(layerRoot, '.claude-plugin', 'plugin.json'))) {
-        warnings.push('.claude-plugin/plugin.json: missing — Claude Code reads only its own manifest; run opencastle plugin build')
+        warnings.push('.claude-plugin/plugin.json: missing — Claude Code reads only its own manifest; run npx opencastle plugin build')
       }
       if (version && report.manifest.version && version !== report.manifest.version) {
         warnings.push(`plugin.json: version ${report.manifest.version}, while package.json says ${version} — assistants offer updates by plugin.json's`)
@@ -290,7 +290,7 @@ function check(pkgRoot: string, dir: string): CheckReport {
   } else if (errors.length === 0) {
     warnings.push(
       'is not an Agent Plugin, so only OpenCastle can use it — assistants that read Agent Plugins cannot install it. ' +
-        '`opencastle baseline init` shows the layout: skills/ and mcp.json at the root, the rest in dev.opencastle/',
+        '`npx opencastle baseline init` shows the layout: skills/ and mcp.json at the root, the rest in dev.opencastle/',
     )
   }
 

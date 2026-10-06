@@ -12,14 +12,14 @@ import type { CliContext, StackConfig, TechTool, TeamTool } from './types.js'
  */
 
 const ADD_HELP = `
-  opencastle add <pack>...
+  npx opencastle add <pack>...
 
   Add an integration to this project and recompile the generated config.
 
   Examples:
-    opencastle add supabase
-    opencastle add nextjs vercel sentry
-    opencastle add --list
+    npx opencastle add supabase
+    npx opencastle add nextjs vercel sentry
+    npx opencastle add --list
 
   Options:
     --list          Show every available pack
@@ -37,7 +37,7 @@ function listPacks(): void {
   for (const p of TEAM_PLUGINS) {
     console.log(`    ${p.id.padEnd(16)} ${c.dim(p.name)}`)
   }
-  console.log(`\n  ${c.dim('Add with:')} ${c.cyan('opencastle add <pack>')}\n`)
+  console.log(`\n  ${c.dim('Add with:')} ${c.cyan('npx opencastle add <pack>')}\n`)
 }
 
 export default async function add({ pkgRoot, args }: CliContext): Promise<void> {
@@ -64,7 +64,7 @@ export default async function add({ pkgRoot, args }: CliContext): Promise<void> 
   const manifest = await readManifest(projectRoot)
   if (!manifest) {
     console.error(`\n  ${c.red('✗')} No OpenCastle installation found here.`)
-    console.error(`  ${c.dim('Run')} ${c.cyan('opencastle init')} ${c.dim('first.')}\n`)
+    console.error(`  ${c.dim('Run')} ${c.cyan('npx opencastle init')} ${c.dim('first.')}\n`)
     process.exit(1)
   }
 
@@ -74,7 +74,7 @@ export default async function add({ pkgRoot, args }: CliContext): Promise<void> 
   const unknown = requested.filter((r) => !techIds.has(r as TechTool) && !teamIds.has(r as TeamTool))
   if (unknown.length > 0) {
     console.error(`\n  ${c.red('✗')} Unknown pack${unknown.length === 1 ? '' : 's'}: ${unknown.join(', ')}`)
-    console.error(`  ${c.dim('See')} ${c.cyan('opencastle add --list')}\n`)
+    console.error(`  ${c.dim('See')} ${c.cyan('npx opencastle add --list')}\n`)
     process.exit(1)
   }
 

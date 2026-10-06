@@ -21,7 +21,7 @@ import type { CliContext } from './types.js'
  */
 
 const HELP = `
-  opencastle review [options]
+  npx opencastle review [options]
 
   Explain what a change to the AI assistant config does: which skills, agents,
   instructions and MCP servers every assistant gains, loses or gets changed,
@@ -342,7 +342,7 @@ export function reviewMarkdown(report: ReviewReport): string {
 function renderTerminal(report: ReviewReport): void {
   console.log(`\n  🏰 ${c.bold('OpenCastle review')} ${c.dim(`— compared with ${report.base}`)}\n`)
   if (report.staleLock) {
-    console.log(`  ${c.yellow('!')} ${LOCK_REL} is not what the sources compile to — run ${c.cyan('opencastle sync')}\n`)
+    console.log(`  ${c.yellow('!')} ${LOCK_REL} is not what the sources compile to — run ${c.cyan('npx opencastle sync')}\n`)
   }
   if (report.lines.length === 0) {
     console.log(`  ${c.green('✓')} No change to what any assistant is given.\n`)
@@ -398,7 +398,7 @@ export function lockAtRef(projectRoot: string, ref: string): Lock | null {
 /** What the sources compile to now, as a lock; or the committed one if they do not resolve. */
 async function headLock(pkgRoot: string, projectRoot: string): Promise<{ lock: Lock; stale: boolean }> {
   const manifest = await readManifest(projectRoot)
-  if (!manifest) throw new Error('OpenCastle is not set up here — run opencastle init')
+  if (!manifest) throw new Error('OpenCastle is not set up here — run npx opencastle init')
   refuseOlderCli(pkgRoot, manifest.version)
   const ides = (manifest.ides?.length ? manifest.ides : [manifest.ide]).filter(Boolean)
   const stack = resolveStack({ ...manifest, ides })

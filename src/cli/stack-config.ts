@@ -94,7 +94,15 @@ const MCP_ENV_REQUIREMENTS: McpEnvRequirement[] = Object.values(PLUGINS)
  */
 export function isEnvVarSatisfied(envVar: string, envFileContents: string): boolean {
   if (process.env[envVar]) return true
-  return new RegExp(`^\\s*(?:export\\s+)?${envVar}\\s*=\\s*\\S`, 'm').test(envFileContents)
+  // Line by line: a pattern with `\s` after the `=` crossed the newline, so an
+  // empty `NAME=` that init wrote as a placeholder counted as set by whatever
+  // the next line held. A comment or empty quotes are no value either.
+  const assignment = new RegExp(`^[ \\t]*(?:export[ \\t]+)?${envVar}[ \\t]*=(.*)$`)
+  for (const line of envFileContents.split(/\r?\n/)) {
+    const value = assignment.exec(line)?.[1].replace(/[ \t]+#.*$/, '').trim()
+    if (value && value !== '""' && value !== "''") return true
+  }
+  return false
 }
 
 export function resolveStack(manifest: {

@@ -29,7 +29,7 @@ import {
   requiredEnvVars,
   type ResolvedSources,
 } from './layers.js'
-import { buildLock, writeLock, LOCK_REL, priorTeam } from './lock.js'
+import { buildLock, writeLock, readLock, LOCK_REL, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
 import { parseMcpConfigText } from './mcp-file.js'
@@ -65,7 +65,7 @@ function manifestMeaning(m: Record<string, unknown>): string {
 }
 
 const UPDATE_HELP = `
-  opencastle update [options]
+  npx opencastle update [options]
 
   Update framework files to the latest version while preserving
   your customizations in the .opencastle/ directory.
@@ -73,8 +73,8 @@ const UPDATE_HELP = `
   Options:
     --dry-run         Preview what would be changed without writing files
     --force           Force update even if versions match
-    --allow-downgrade Recompile with this OpenCastle even though a newer one
-                      compiled the project
+    --allow-downgrade Recompile with this OpenCastle, or an installed baseline,
+                      even though a newer one compiled the project
     --reconfigure     Choose the tech and team tools again (the assistants
                       are chosen by opencastle init)
     --help, -h        Show this help
@@ -217,6 +217,26 @@ export default async function update({
       reportTeamIssues(early)
       process.exit(1)
     }
+    // A baseline older than the one the lock records is a node_modules from
+    // before the bump, and compiling would quietly take the repository back to
+    // it: the next commit downgrades the team's standard with nobody choosing
+    // to. The guard above covers OpenCastle's own version only.
+    const locked = readLock(projectRoot)?.layers ?? []
+    for (const layer of early.layers) {
+      if (layer.kind !== 'baseline' || !layer.version) continue
+      const was = locked.find((l) => l.id === layer.id)?.version
+      const now = parseVersion(layer.version)
+      const then = was ? parseVersion(was) : null
+      if (!now || !then || compareVersions(now, then) >= 0) continue
+      if (args.includes('--allow-downgrade')) {
+        console.log(`  ${c.yellow('!')} Downgrading ${layer.id} from ${was} to ${layer.version}, as asked.`)
+        continue
+      }
+      console.error(`\n  ${c.red('✗')} ${layer.id} ${layer.version} is installed here; this project was compiled with ${was}.`)
+      console.error(`    ${c.dim('Syncing would take the whole repository back to the older baseline. Install the dependencies again —')}`)
+      console.error(`    ${c.dim('npm install, or your package manager\'s — or pass --allow-downgrade to go back on purpose.')}\n`)
+      process.exit(1)
+    }
   }
 
   // ── Recreate the local-only directories ─────────────────────────
@@ -326,7 +346,10 @@ export default async function update({
     // `--yes` means "do not ask me anything". This one slipped the guard, so a CI
     // runner holding stdin open would block here on an up-to-date project, and
     // `add`, which routes through sync, asked twice for one instruction.
-    if (assumeYes) {
+    // Nobody to ask: a CI job, or input that is not a terminal. The question
+    // was printed anyway and answered with its default, a line of noise in
+    // every log.
+    if (assumeYes || !process.stdin.isTTY || (process.env.CI && process.env.CI !== 'false')) {
       closePrompts()
       return
     }
@@ -750,7 +773,7 @@ export default async function update({
     console.log(
       `  ${c.yellow('-')} Removed ${removedServers.size} MCP server(s) this project's stack no longer includes: ` +
         [...removedServers].sort().join(', ') +
-        c.dim(' (opencastle add <pack> brings one back)'),
+        c.dim(' (npx opencastle add <pack> brings one back)'),
     )
   }
   if (teamWritten.size > 0) {
@@ -794,7 +817,7 @@ export default async function update({
     )
   }
   if (lockWritten) {
-    console.log(`  ${c.green('✓')} Updated ${LOCK_REL} ${c.dim('(opencastle review explains the change)')}`)
+    console.log(`  ${c.green('✓')} Updated ${LOCK_REL} ${c.dim('(npx opencastle review explains the change)')}`)
   }
   if (lockHeld) {
     console.log(`  ${c.yellow('!')} Left ${LOCK_REL} as it was until every MCP config can be read — fix the file named below and sync again.`)
@@ -900,7 +923,7 @@ export default async function update({
     for (const p of new Set(tornRoots)) {
       console.log(`     ${c.bold(relative(projectRoot, p))}`)
       console.log(
-        `     ${c.dim('└')} ${c.dim('text beside it may be stale generated output; only you can tell. Run')} ${c.cyan('opencastle doctor')}\n`,
+        `     ${c.dim('└')} ${c.dim('text beside it may be stale generated output; only you can tell. Run')} ${c.cyan('npx opencastle doctor')}\n`,
       )
     }
   }

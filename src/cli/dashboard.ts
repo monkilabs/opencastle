@@ -211,7 +211,7 @@ export async function startDashboard(opts: DashboardOptions): Promise<DashboardH
 // ── command ───────────────────────────────────────────────────────────────────
 
 const HELP = `
-  opencastle convoy dashboard [options]
+  npx opencastle convoy dashboard [options]
 
   Open the Observability dashboard: a live, read-only view of this project's
   convoy runs. Totals across every run; and for each run its tasks and what
@@ -253,7 +253,7 @@ export default async function dashboard({ args }: CliContext): Promise<void> {
   const parsed = parseDashboardArgs(args)
   if ('error' in parsed) {
     console.error(`  ✗ ${parsed.error}`)
-    console.error('  Run "opencastle convoy dashboard --help" for usage.')
+    console.error('  Run "npx opencastle convoy dashboard --help" for usage.')
     process.exit(1)
   }
   if (parsed.help) {

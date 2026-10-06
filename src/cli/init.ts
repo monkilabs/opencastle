@@ -1,6 +1,7 @@
 import { isAbsolute, resolve, relative } from 'node:path'
 import { readFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { multiselect, confirm, closePrompts, c } from './prompt.js'
 import { readManifest, writeManifest, createManifest } from './manifest.js'
 import { removeDirIfExists, copyDir, getOrchestratorRoot } from './copy.js'
@@ -24,7 +25,7 @@ import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
 
 const INIT_HELP = `
-  opencastle init [options]
+  npx opencastle init [options]
 
   Set up this project: detects your stack and any assistant config you already
   have, shows what it will do, and asks once.
@@ -275,7 +276,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     if (!assumeYes && !dryRun) {
       const ok = await confirm('Set this up?', true)
       if (!ok) {
-        console.log(`\n  Aborted. Run ${c.cyan('opencastle init --customize')} to choose manually.\n`)
+        console.log(`\n  Aborted. Run ${c.cyan('npx opencastle init --customize')} to choose manually.\n`)
         closePrompts()
         return
       }
@@ -717,7 +718,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   for (const { ide, message } of failedTargets) {
     console.log(`  ${c.red('✗')} ${IDE_LABELS[ide as IdeChoice] ?? ide} could not be installed:`)
     console.log(`     ${c.dim(message)}`)
-    console.log(`     ${c.dim('Fix that, then run opencastle sync.')}`)
+    console.log(`     ${c.dim('Fix that, then run npx opencastle sync.')}`)
   }
   for (const file of unreadable) {
     const [abs, why] = file.split('\u0000')
@@ -742,8 +743,8 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     console.log(
       `     ${c.dim(
         isMcp
-          ? 'Fix the file, then run opencastle sync --force to add the MCP servers.'
-          : 'Fix the file, then run opencastle sync --force to generate it.',
+          ? 'Fix the file, then run npx opencastle sync --force to add the MCP servers.'
+          : 'Fix the file, then run npx opencastle sync --force to generate it.',
       )}`,
     )
   }
@@ -861,7 +862,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
     for (const p of new Set(tornRoots)) {
       console.log(`     ${c.bold(relative(projectRoot, p))}`)
       console.log(
-        `     ${c.dim('└')} ${c.dim('text beside it may be stale generated output; only you can tell. Run')} ${c.cyan('opencastle doctor')}\n`,
+        `     ${c.dim('└')} ${c.dim('text beside it may be stale generated output; only you can tell. Run')} ${c.cyan('npx opencastle doctor')}\n`,
       )
     }
   }
@@ -879,6 +880,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   }
 
   // ── Env var notice + .env file generation ────────────────────
+  const envCommitted = envVars.length > 0 && isTrackedByGit(projectRoot, '.env')
   if (envVars.length > 0) {
     console.log(`\n  ${c.yellow('⚠')}  Required environment variables for MCP servers:\n`)
     for (const { envVar, hint } of envVars) {
@@ -888,7 +890,11 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
 
     // Offer to create .env if it doesn't exist
     const envPath = resolve(projectRoot, '.env')
-    if (!dryRun && !existsSync(envPath)) {
+    if (envCommitted) {
+      // Some projects commit a `.env` of shared defaults. A placeholder there,
+      // and the "commit what this wrote" below, is how a token gets pushed.
+      console.log(`  ${c.yellow('⚠')}  .env is committed in this repository, so nothing was added to it — set these in your shell`)
+    } else if (!dryRun && !existsSync(envPath)) {
       // `--yes` means every question, not most of them. This one blocked a TTY
       // run and any CI runner that keeps stdin open.
       const createEnv =
@@ -948,7 +954,7 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   if (envVars.length > 0) {
     step++
     console.log(
-      `  ${step}. Set the environment variable${envVars.length > 1 ? 's' : ''} listed above (in .env or your shell)`
+      `  ${step}. Set the environment variable${envVars.length > 1 ? 's' : ''} listed above (${envCommitted ? 'in your shell — .env is committed here' : 'in .env or your shell'})`
     )
   }
   // The commands are namespaced, and a name nobody tells you is a name nobody
@@ -968,13 +974,13 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   step++
   console.log(`  ${step}. Commit what this wrote, .opencastle/ included — teammates get the same setup on clone`)
   step++
-  console.log(`  ${step}. ${c.cyan('opencastle ci')} — fail a pull request whose generated config no longer matches`)
+  console.log(`  ${step}. ${c.cyan('npx opencastle ci')} — fail a pull request whose generated config no longer matches`)
 
   // Name the assistants not yet being compiled for — the reason to come back.
   const configured = new Set(ides)
   const otherIdes = (Object.keys(IDE_ADAPTERS) as IdeChoice[]).filter((id) => !configured.has(id))
   if (otherIdes.length > 0) {
-    console.log(`\n  ${c.dim('Also used by your team?')} ${c.cyan('opencastle init --customize')}`)
+    console.log(`\n  ${c.dim('Also used by your team?')} ${c.cyan('npx opencastle init --customize')}`)
     console.log(`  ${c.dim(`compiles the same config for ${otherIdes.map((id) => IDE_LABELS[id]).join(', ')}`)}`)
   }
   console.log()
@@ -998,4 +1004,14 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // that is a real gap in the install.
   const couldNotRead = unreadable.filter((e) => e.split('\u0000')[1] === 'unreadable')
   if (couldNotRead.length > 0 || failedTargets.length > 0) process.exit(1)
+}
+
+/** Whether git tracks `rel` here. False outside a repository or without git. */
+function isTrackedByGit(projectRoot: string, rel: string): boolean {
+  try {
+    execFileSync('git', ['-C', projectRoot, 'ls-files', '--error-unmatch', '--', rel], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
 }

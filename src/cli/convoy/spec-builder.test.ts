@@ -139,8 +139,8 @@ describe('buildConvoyYaml', () => {
 
   it('starts with a comment saying how to run it', () => {
     const yaml = buildConvoyYaml(minimalPlan(), SETTINGS)
-    expect(yaml.startsWith('# Written by `opencastle convoy`.')).toBe(true)
-    expect(yaml).toContain('opencastle convoy run <this file>')
+    expect(yaml.startsWith('# Written by `npx opencastle convoy`.')).toBe(true)
+    expect(yaml).toContain('npx opencastle convoy run <this file>')
   })
 
   it('ensures prompt appears last in each task YAML block', () => {

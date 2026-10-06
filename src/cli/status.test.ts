@@ -98,7 +98,7 @@ describe('status report', () => {
   it('reports not installed on a bare project and points at init', async () => {
     const report = await buildStatusReport(pkgRoot, projectRoot)
     expect(report.installed).toBe(false)
-    expect(report.nextCommand).toBe('opencastle init')
+    expect(report.nextCommand).toBe('npx opencastle init')
     expect(report.unmanaged).toEqual([])
   })
 
@@ -124,7 +124,7 @@ describe('status report', () => {
     expect(report.ides).toEqual(['vscode'])
     expect(report.targets[0].present).toBe(false)
     expect(report.targets[0].missing.length).toBeGreaterThan(0)
-    expect(report.nextCommand).toBe('opencastle sync')
+    expect(report.nextCommand).toBe('npx opencastle sync')
     expect(report.nextReason).toMatch(/missing generated files/)
   })
 
@@ -148,7 +148,7 @@ describe('status report', () => {
 
     const report = await buildStatusReport(pkgRoot, projectRoot)
     expect(report.stale).toBe(true)
-    expect(report.nextCommand).toBe('opencastle sync')
+    expect(report.nextCommand).toBe('npx opencastle sync')
     expect(report.nextReason).toMatch(/no longer match their sources/)
   })
 

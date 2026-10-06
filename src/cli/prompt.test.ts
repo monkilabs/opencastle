@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { computeVisibleWindow, c } from './prompt.js';
 
 describe('computeVisibleWindow', () => {
@@ -66,20 +66,48 @@ describe('computeVisibleWindow', () => {
 });
 
 describe('colours', () => {
-  const saved = process.env.NO_COLOR;
+  const saved = { NO_COLOR: process.env.NO_COLOR, FORCE_COLOR: process.env.FORCE_COLOR, TERM: process.env.TERM }
+  const tty = process.stdout.isTTY
+  const setTty = (v: boolean | undefined) => Object.defineProperty(process.stdout, 'isTTY', { value: v, configurable: true })
+  beforeEach(() => {
+    delete process.env.NO_COLOR
+    delete process.env.FORCE_COLOR
+    delete process.env.TERM
+  })
   afterEach(() => {
-    if (saved === undefined) delete process.env.NO_COLOR;
-    else process.env.NO_COLOR = saved;
-  });
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+    setTty(tty)
+  })
 
-  it('wrap text in an SGR sequence by default', () => {
-    delete process.env.NO_COLOR;
-    expect(c.green('ok')).toBe('\x1B[32mok\x1B[0m');
-  });
+  it('wrap text in an SGR sequence on a terminal', () => {
+    setTty(true)
+    expect(c.green('ok')).toBe('\x1B[32mok\x1B[0m')
+  })
+
+  it('are left out when output is piped or redirected', () => {
+    setTty(false)
+    expect(c.green('ok')).toBe('ok')
+  })
+
+  it('are left out on a terminal that says it cannot show them', () => {
+    setTty(true)
+    process.env.TERM = 'dumb'
+    expect(c.green('ok')).toBe('ok')
+  })
 
   it('are left out when NO_COLOR is set (no-color.org)', () => {
-    process.env.NO_COLOR = '1';
-    expect(c.green('ok')).toBe('ok');
-    expect(c.bold(c.dim('x'))).toBe('x');
-  });
+    setTty(true)
+    process.env.NO_COLOR = '1'
+    expect(c.green('ok')).toBe('ok')
+    expect(c.bold(c.dim('x'))).toBe('x')
+  })
+
+  it('are put back anywhere by FORCE_COLOR', () => {
+    setTty(false)
+    process.env.FORCE_COLOR = '1'
+    expect(c.green('ok')).toBe('\x1B[32mok\x1B[0m')
+  })
 });

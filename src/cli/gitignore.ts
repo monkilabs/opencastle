@@ -83,7 +83,7 @@ function buildBlock(): string {
   return [
     START_MARKER,
     '# Generated assistant config is committed on purpose, so teammates get',
-    '# working rules on clone and `opencastle sync --check` can verify it in CI.',
+    '# working rules on clone and `npx opencastle sync --check` can verify it in CI.',
     '# Only local artefacts are ignored.',
     ...LOCAL_ONLY,
     END_MARKER,

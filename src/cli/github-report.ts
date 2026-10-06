@@ -48,15 +48,15 @@ function explain(d: Drift): string {
     // after, and blaming an edit that never happened sends people looking for it.
     case 'changed':
       if (d.path === LOCK_REL) {
-        return `${d.path}: the sources changed and nobody has run sync since. Run \`opencastle sync\` and commit the result; \`opencastle review\` explains the change.`
+        return `${d.path}: the sources changed and nobody has run sync since. Run \`npx opencastle sync\` and commit the result; \`npx opencastle review\` explains the change.`
       }
-      return `${where} differs from a fresh compile of its source. Run \`opencastle sync\` and commit the result. If the difference is a hand edit you want to keep, move it into .opencastle/ first — sync overwrites generated files.`
+      return `${where} differs from a fresh compile of its source. Run \`npx opencastle sync\` and commit the result. If the difference is a hand edit you want to keep, move it into .opencastle/ first — sync overwrites generated files.`
     case 'missing':
-      return `${where} should exist but does not. Run \`opencastle sync\` and commit the result; generated config is committed like a lockfile.`
+      return `${where} should exist but does not. Run \`npx opencastle sync\` and commit the result; generated config is committed like a lockfile.`
     case 'extra':
-      return `${where} ${d.detail ? `was ${d.detail}` : 'sits in generated output but no source produces it'}, so the next \`opencastle sync\` deletes it.`
+      return `${where} ${d.detail ? `was ${d.detail}` : 'sits in generated output but no source produces it'}, so the next \`npx opencastle sync\` deletes it.`
     case 'outdated':
-      return `${where}: ${d.detail ?? 'an MCP server entry sync would change'}. Run \`opencastle sync\` and commit — it touches only entries OpenCastle wrote and nobody edited.`
+      return `${where}: ${d.detail ?? 'an MCP server entry sync would change'}. Run \`npx opencastle sync\` and commit — it touches only entries OpenCastle wrote and nobody edited.`
     case 'unreducible':
       if (isComparisonFailure(d)) return `The comparison could not run: ${d.path}.${d.fix ? ` Fix: ${d.fix}` : ''}`
       return [`${where}: ${d.detail ?? 'needs a person'}`, d.fix && `Fix: ${d.fix}`].filter(Boolean).join('. ')

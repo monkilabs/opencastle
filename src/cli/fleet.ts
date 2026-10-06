@@ -16,7 +16,7 @@ import type { CliContext } from './types.js'
  */
 
 const HELP = `
-  opencastle fleet <dir...> [options]
+  npx opencastle fleet <dir...> [options]
 
   Read the committed .opencastle/lock.json of each repository given and show
   which OpenCastle and baseline versions they run, which lag behind the newest,

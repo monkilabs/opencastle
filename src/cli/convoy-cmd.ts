@@ -14,17 +14,17 @@ import type { CliContext } from './types.js'
  */
 
 const CONVOY_HELP = `
-  opencastle convoy [task] [options]
+  npx opencastle convoy [task] [options]
 
   Experimental: plan multi-step work and run it with agents in parallel.
 
   Usage:
-    opencastle convoy                     The last run and the one next step
-    opencastle convoy "<task>"            Plan it, show the plan, ask, then run it
-    opencastle convoy run <spec.yml>      Run a spec you wrote
-    opencastle convoy resume              Continue whatever is not done
-    opencastle convoy dashboard           The Observability dashboard, live
-    opencastle convoy plan --prd <file>   Plan again from a PRD you edited
+    npx opencastle convoy                     The last run and the one next step
+    npx opencastle convoy "<task>"            Plan it, show the plan, ask, then run it
+    npx opencastle convoy run <spec.yml>      Run a spec you wrote
+    npx opencastle convoy resume              Continue whatever is not done
+    npx opencastle convoy dashboard           The Observability dashboard, live
+    npx opencastle convoy plan --prd <file>   Plan again from a PRD you edited
 
   Options:
     --yes, -y                With a task: run the plan without asking
@@ -163,7 +163,7 @@ export function readLastRun(projectRoot: string): LastRun | null {
     running: count((s) => s === 'running' || s === 'assigned'),
     skipped: count((s) => s === 'skipped'),
     pending: count((s) => s === 'pending'),
-    next: last.alive ? 'opencastle convoy dashboard' : notDone ? 'opencastle convoy resume' : 'opencastle convoy "<task>"',
+    next: last.alive ? 'npx opencastle convoy dashboard' : notDone ? 'npx opencastle convoy resume' : 'npx opencastle convoy "<task>"',
     older_unfinished: older ? { id: older.id, name: older.name } : null,
   }
 }
@@ -178,11 +178,11 @@ function renderStatus(last: LastRun | null, json: boolean): void {
   console.log(`\n  🚚 ${c.bold('Convoy')} ${c.dim('(experimental)')}\n`)
   if (!last) {
     console.log('  No runs yet.\n')
-    console.log(`  ${c.bold('Start one:')} ${c.cyan('opencastle convoy "add rate limiting to the API"')}\n`)
+    console.log(`  ${c.bold('Start one:')} ${c.cyan('npx opencastle convoy "add rate limiting to the API"')}\n`)
     return
   }
 
-  const resumable = last.next === 'opencastle convoy resume'
+  const resumable = last.next === 'npx opencastle convoy resume'
   const mark = last.alive ? c.cyan('▶') : resumable ? c.yellow('!') : c.green('✓')
   const state = last.alive ? 'running now' : last.status
   console.log(`  ${mark} ${c.bold(last.name)} ${c.dim(`— ${state}`)}`)
@@ -203,7 +203,7 @@ function renderStatus(last: LastRun | null, json: boolean): void {
   console.log(`  ${c.bold('Next:')} ${c.cyan(last.next)}`)
   console.log(`  ${c.dim(why)}`)
   if (last.older_unfinished) {
-    console.log(`  ${c.dim(`An earlier run, ${last.older_unfinished.name}, has work left; opencastle convoy resume continues it.`)}`)
+    console.log(`  ${c.dim(`An earlier run, ${last.older_unfinished.name}, has work left; npx opencastle convoy resume continues it.`)}`)
   }
   console.log('')
 }
@@ -273,8 +273,8 @@ export default async function convoy(ctx: CliContext): Promise<void> {
   if (misplaced) {
     const owner = SUBCOMMAND_FLAGS.get(misplaced)!
     refuse(
-      `${misplaced} belongs to \`opencastle convoy ${owner}\`.`,
-      `Try: opencastle convoy ${owner} ${args.slice(args.indexOf(misplaced)).join(' ')}`,
+      `${misplaced} belongs to \`npx opencastle convoy ${owner}\`.`,
+      `Try: npx opencastle convoy ${owner} ${args.slice(args.indexOf(misplaced)).join(' ')}`,
     )
   }
 
@@ -284,8 +284,8 @@ export default async function convoy(ctx: CliContext): Promise<void> {
     const stray = args.find((a) => a.startsWith('-') && a !== '--json')
     if (stray) {
       refuse(
-        TASK_FLAGS.has(stray) ? `${stray} goes with a task: opencastle convoy "<task>" ${stray}` : await unknownFlag(stray, ['--json', ...TASK_FLAGS]),
-        'Run "opencastle convoy --help" for usage.',
+        TASK_FLAGS.has(stray) ? `${stray} goes with a task: npx opencastle convoy "<task>" ${stray}` : await unknownFlag(stray, ['--json', ...TASK_FLAGS]),
+        'Run "npx opencastle convoy --help" for usage.',
       )
     }
     renderStatus(readLastRun(findProjectRoot(process.cwd()) ?? process.cwd()), args.includes('--json'))
@@ -299,10 +299,10 @@ export default async function convoy(ctx: CliContext): Promise<void> {
   if (words.length === 1 && !words[0].includes(' ')) {
     const near = nearest(words[0], SUBCOMMANDS)
     refuse(
-      near ? `Unknown subcommand "${words[0]}". Did you mean opencastle convoy ${near}?` : `"${words[0]}" is one word; describe the task in a few.`,
+      near ? `Unknown subcommand "${words[0]}". Did you mean npx opencastle convoy ${near}?` : `"${words[0]}" is one word; describe the task in a few.`,
       near
-        ? 'To plan a task, describe it in a few words: opencastle convoy "add rate limiting to the API"'
-        : 'For example: opencastle convoy "add rate limiting to the API". For the last run: opencastle convoy',
+        ? 'To plan a task, describe it in a few words: npx opencastle convoy "add rate limiting to the API"'
+        : 'For example: npx opencastle convoy "add rate limiting to the API". For the last run: npx opencastle convoy',
     )
   }
 

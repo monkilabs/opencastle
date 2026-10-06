@@ -28,7 +28,7 @@ export interface BootstrapResult {
 
 /** Every written file starts with this: who wrote it and when, and that it is now the team's. */
 const HEADER =
-  `<!-- Written by \`opencastle init\` from the repository on ${new Date().toISOString().slice(0, 10)}. It is yours: correct it and\n` +
+  `<!-- Written by \`npx opencastle init\` from the repository on ${new Date().toISOString().slice(0, 10)}. It is yours: correct it and\n` +
   '     add what the code cannot say. No OpenCastle command rewrites it. -->'
 
 const code = (s: string): string => '`' + s + '`'
@@ -68,9 +68,20 @@ const READ_BY = (skills: Array<string | null>): string | null => {
   return named.length ? `Read by the ${named.map(code).join(' and ')} skill${named.length > 1 ? 's' : ''}.` : null
 }
 
+/**
+ * How this package manager runs a script. npm runs `test` and `start` directly
+ * and everything else through `run` — `npm dev` is "Unknown command"; pnpm,
+ * yarn and bun run any script by name.
+ */
+function runScript(facts: ProjectFacts, script: string): string {
+  return facts.packageManager !== 'npm' || script === 'test' || script === 'start'
+    ? `${facts.packageManager} ${script}`
+    : `npm run ${script}`
+}
+
 function devLine(facts: ProjectFacts): string | null {
   if (!facts.scripts.dev && !facts.scripts.start) return null
-  const cmd = `${facts.packageManager} ${facts.scripts.dev ? 'dev' : 'start'}`
+  const cmd = runScript(facts, facts.scripts.dev ? 'dev' : 'start')
   return `Dev server: ${code(cmd)}${facts.devPort ? ` → http://localhost:${facts.devPort}` : ''}`
 }
 
@@ -86,8 +97,7 @@ function keyCommands(facts: ProjectFacts): string | null {
     const ib = SCRIPT_ORDER.indexOf(b)
     return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b)
   })
-  // npm runs `test` and `start` directly and everything else through `run`; pnpm, yarn and bun run any script by name.
-  const run = (s: string) => (facts.packageManager !== 'npm' || s === 'test' || s === 'start' ? `${facts.packageManager} ${s}` : `npm run ${s}`)
+  const run = (s: string) => runScript(facts, s)
   const width = Math.max(...names.slice(0, 14).map((s) => run(s).length))
   const lines = names.slice(0, 14).map((s) => `${run(s).padEnd(width)}  # ${facts.scripts[s].slice(0, 70)}`)
   const ci = facts.ciCommands.length
@@ -401,7 +411,7 @@ async function handleTrackerConfig(
   content = content.replace('# Task Tracker Configuration', `# ${displayed} Configuration`)
 
   const renameComment =
-    '<!-- Populated by `opencastle init`.\n     Rename this file to match your tracker: linear-config.md, jira-config.md, etc. -->'
+    '<!-- Populated by `npx opencastle init`.\n     Rename this file to match your tracker: linear-config.md, jira-config.md, etc. -->'
   content = content.replace(renameComment + '\n', '')
 
   const newName = `${tracker}-config.md`

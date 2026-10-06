@@ -79,7 +79,7 @@ describe('parseRunArgs', () => {
   it('gives resume no spec, and says so for a stray word', () => {
     expect(parseRunArgs(['--dry-run'], 'resume')).toEqual(args({ dryRun: true }))
     expect((parseRunArgs(['task-1'], 'resume') as { error: string }).error).toMatch(/takes no name/)
-    expect(parseRunArgs(['-f', 'a.yml'], 'resume')).toEqual({ error: '-f belongs to opencastle convoy run' })
+    expect(parseRunArgs(['-f', 'a.yml'], 'resume')).toEqual({ error: '-f belongs to npx opencastle convoy run' })
   })
 })
 
@@ -270,7 +270,7 @@ tasks:
       WRITE two.txt second
 `)
     expect(await runSpec(args({ spec }))).toBe(1)
-    expect(text()).toMatch(/Resume with: opencastle convoy resume/)
+    expect(text()).toMatch(/Resume with: npx opencastle convoy resume/)
 
     rmSync(flag)
     out.length = 0
@@ -346,6 +346,6 @@ describe('convoy resume', () => {
     db.close()
     expect(await resumeLast(args())).toBe(1)
     expect(text()).toMatch(/is still running in another process/)
-    expect(text()).toContain('opencastle convoy dashboard')
+    expect(text()).toContain('npx opencastle convoy dashboard')
   })
 })

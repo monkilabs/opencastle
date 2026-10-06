@@ -150,6 +150,28 @@ describe.skipIf(!built)('a repository extending a baseline', () => {
     expect(down.out).toContain('Downgrading this project from OpenCastle 99.0.0')
   })
 
+  it('refuses a baseline older than the one the lock records — a node_modules from before the bump', () => {
+    installBaseline(dir, '1.3.0')
+    const sync = run(dir, ['sync', '--yes'])
+    expect(sync.code).toBe(1)
+    expect(sync.out).toContain('@acme/base 1.3.0 is installed here; this project was compiled with 1.4.0')
+    expect(JSON.parse(readFileSync(join(dir, '.opencastle', 'lock.json'), 'utf8')).layers[1].version).toBe('1.4.0')
+    const down = run(dir, ['sync', '--allow-downgrade', '--yes'])
+    expect(down.code).toBe(0)
+    expect(down.out).toContain('Downgrading @acme/base from 1.4.0 to 1.3.0')
+  })
+
+  it('adds nothing to a .env the repository commits', () => {
+    write(dir, { '.env': 'SHARED_DEFAULT=1\n' })
+    git(dir, 'add', '-f', '.env')
+    git(dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'shared defaults')
+    const init = run(dir, ['init', '--yes'])
+    expect(init.code).toBe(0)
+    expect(readFileSync(join(dir, '.env'), 'utf8')).toBe('SHARED_DEFAULT=1\n')
+    expect(init.out).toContain('.env is committed in this repository, so nothing was added to it')
+    expect(init.out).toContain('in your shell — .env is committed here')
+  })
+
   it('init refuses to downgrade too', () => {
     const path = join(dir, '.opencastle', 'manifest.json')
     const manifest = JSON.parse(readFileSync(path, 'utf8'))
@@ -198,7 +220,16 @@ describe.skipIf(!built)('a repository extending a baseline', () => {
     const workflow = readFileSync(join(dir, '.github', 'workflows', 'opencastle.yml'), 'utf8')
     expect(workflow).toContain('sync --check')
     expect(readFileSync(join(dir, '.github', 'CODEOWNERS'), 'utf8')).toContain('/.opencastle/lock.json @acme/platform')
-    expect(run(dir, ['ci']).code).toBe(1)
+    // Again: the same workflow is done, not a conflict.
+    const again = run(dir, ['ci'])
+    expect(again.code).toBe(0)
+    expect(again.out).toContain('is already this workflow')
+    // A different file of that name is someone's; it needs --force.
+    writeFileSync(join(dir, '.github', 'workflows', 'opencastle.yml'), 'name: ours\n')
+    const theirs = run(dir, ['ci'])
+    expect(theirs.code).toBe(1)
+    expect(theirs.out).toContain('differs from the one OpenCastle writes')
+    expect(readFileSync(join(dir, '.github', 'workflows', 'opencastle.yml'), 'utf8')).toBe('name: ours\n')
   })
 
   it('reads the fleet from committed locks', () => {
