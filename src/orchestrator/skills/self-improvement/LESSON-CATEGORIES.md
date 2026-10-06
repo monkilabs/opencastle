@@ -1,6 +1,6 @@
 # Lesson Categories & Severity
 
-The values `opencastle lesson` accepts. Anything else is refused.
+The values `npx opencastle lesson` accepts. Anything else is refused.
 
 ## Categories
 
@@ -29,7 +29,7 @@ The values `opencastle lesson` accepts. Anything else is refused.
 
 ## What a lesson file looks like
 
-`opencastle lesson` writes `.opencastle/lessons/<id>.md`:
+`npx opencastle lesson` writes `.opencastle/lessons/<id>.md`:
 
 ```markdown
 ---

@@ -30,4 +30,6 @@ Design principles and the reasoning behind them: [REFERENCE.md](./REFERENCE.md).
 
 Choose a pairing that fits the subject. Always ship a metric-preserving fallback chain (e.g. `'Fraunces', 'Georgia', serif`).
 
-> Load **project-consistency** skill for the full Foundation Phase pattern and prompt templates.
+## Several agents building UI at once
+
+Build the foundation first, in one task, and start the pages only when it is done: the design tokens (`:root` custom properties in one file), the shared layout, and the UI components. Every page task then imports those and adds none of its own — no new color, font or spacing value, no copied component, no inline `style`. Give each page task the paths to the tokens, the layout and the components, the aesthetic in its 2–3 words, and the content tone.

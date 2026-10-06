@@ -7,25 +7,7 @@
       "panel-majority-vote"
     ],
     "fast-review": [
-      "observability-logging",
       "panel-majority-vote"
-    ],
-    "decomposition": [
-      "panel-majority-vote",
-      "project-consistency",
-      "self-improvement"
-    ],
-    "agent-hooks": [
-      "session-checkpoints",
-      "observability-logging",
-      "self-improvement"
-    ],
-    "orchestration-protocols": [
-      "self-improvement",
-      "team-lead-reference"
-    ],
-    "team-lead-reference": [
-      "orchestration-protocols"
     ],
     "deployment-infrastructure": [
       "security-hardening",
@@ -33,9 +15,6 @@
     ],
     "git-workflow": [
       "task-management"
-    ],
-    "self-improvement": [
-      "agent-memory"
     ],
     "testing-workflow": [
       "e2e-testing"
@@ -112,12 +91,10 @@
       ],
       "directSkills": [
         "validation-gates",
-        "code-commenting",
-        "react-development",
         "api-patterns",
-        "documentation-standards",
         "security-hardening",
-        "typescript-best-practices"
+        "typescript-best-practices",
+        "testing-workflow"
       ]
     },
     "Data Engineer": {
@@ -138,8 +115,7 @@
       "directSkills": [
         "validation-gates",
         "frontend-design",
-        "accessibility-standards",
-        "react-development"
+        "accessibility-standards"
       ]
     },
     "Content Engineer": {
@@ -166,7 +142,6 @@
       ],
       "directSkills": [
         "validation-gates",
-        "documentation-standards",
         "security-hardening"
       ]
     },
@@ -175,8 +150,7 @@
         "observability"
       ],
       "directSkills": [
-        "validation-gates",
-        "performance-optimization"
+        "validation-gates"
       ]
     },
     "Architect": {
@@ -185,7 +159,6 @@
         "knowledge-management"
       ],
       "directSkills": [
-        "documentation-standards",
         "technical-writing",
         "writing-for-agents"
       ]
@@ -197,10 +170,8 @@
         "knowledge-management"
       ],
       "directSkills": [
-        "documentation-standards",
         "validation-gates",
         "seo-patterns",
-        "code-commenting",
         "technical-writing",
         "unslop"
       ]
@@ -213,7 +184,7 @@
       ],
       "directSkills": [
         "validation-gates",
-        "documentation-standards"
+        "deployment-infrastructure"
       ]
     },
     "Researcher": {
@@ -221,7 +192,6 @@
         "knowledge-management"
       ],
       "directSkills": [
-        "context-map",
         "self-improvement"
       ]
     },
@@ -231,16 +201,10 @@
         "knowledge-management"
       ],
       "directSkills": [
-        "team-lead-reference",
-        "session-checkpoints",
         "validation-gates",
         "fast-review",
         "panel-majority-vote",
-        "context-map",
-        "memory-merger",
-        "agent-hooks",
-        "decomposition",
-        "orchestration-protocols"
+        "git-workflow"
       ]
     }
   }

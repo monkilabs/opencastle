@@ -1,110 +1,39 @@
 ---
-description: 'Instruct the Team Lead to implement specific task from a roadmap with full orchestration, validation, traceability.'
+description: 'Implement a feature or change in this session — a roadmap item or a small follow-up: understand it, plan it to its size, build it with tests, verify it, have it reviewed, and open a pull request.'
 agent: 'Team Lead (OpenCastle)'
 ---
 
 <!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
-# Implement Roadmap Task
+# Implement a Feature
 
-You are the Team Lead. Implement the task described below following this strict workflow. It may be an item of `.opencastle/project/roadmap.md`, when the project keeps one.
+Implement the change the user gave with this command — a feature, a roadmap item, or a follow-up tweak — here, in this session. (Work to plan into parallel tasks and run unattended is `/oc:convoy`.)
 
-## Task
+## 1. Understand it
 
-{{roadmapTask}}
+- Restate the goal and what "done" means in a sentence or two. If either is unclear and a guess would waste work, ask first; for a large or open-ended request, suggest `/oc:brainstorm`.
+- Read what applies: the Project Context, `.opencastle/LESSONS-LEARNED.md`, `.opencastle/KNOWN-ISSUES.md`, and the code you will touch. Look for what already exists before writing anything new.
+- A tracker issue named in the request: read it. Its acceptance criteria are the definition of done.
 
----
+## 2. Plan it to its size
 
-## Workflow
+- **One area, a few files:** do it yourself, now.
+- **Several areas (API, UI, data, tests):** split it into tasks that each own their files, order them by dependency (shared types and schema, then the API, then the UI), and hand each to the specialist agent that fits, as the Team Lead does. Tasks that run at the same time never share a file.
 
-> **HARD GATE:** Steps 1→2 are **blocking prerequisites**. Do NOT write, edit, or delegate any code until tracker issues exist for every subtask. If you catch yourself writing code before issues are created, STOP immediately; create the issues; then resume.
+## 3. Build it
 
-### 1. Research & Context Gathering
+- Follow the project's conventions and the skill for each domain you touch.
+- Write or update the tests with the change, not after it.
+- Stay in scope: no refactoring the change does not need.
 
-1. **Read the roadmap** — Confirm scope, status, and acceptance criteria in `.opencastle/project/roadmap.md`, if there is one; otherwise from the task as given
-2. **Check blockers** — Read `.opencastle/KNOWN-ISSUES.md` and `.opencastle/LESSONS-LEARNED.md` for pitfalls and workarounds
-3. **Read architecture docs** — Check `.opencastle/project.instructions.md` and, when it exists, `.opencastle/project/decisions.md` for constraints
-4. **Search existing code** — Find related files, components, queries, and tests; check for reusable implementations before creating anything new
+## 4. Verify it
 
-### 2. Task Board Setup (BLOCKING — must complete before Step 3)
+- Run the project's tests, lint and build (Key Commands) and fix what fails.
+- A UI change: check it in a browser — it works at mobile and desktop widths, with no console errors (**browser-testing**).
+- Have it reviewed by someone who did not write it (**fast-review**). Auth, payments, data migrations, or anything that deletes data: **panel-majority-vote**.
 
-Every subtask must be tracked. **No issue = no implementation.** This step produces the issues that gate all downstream work.
+## 5. Deliver
 
-1. **Check existing issues** — Search the board for any in-progress or completed work related to this task
-2. **Decompose into issues** — Create one tracker issue per subtask using `[Area] Short description` naming
-3. **Set metadata** — Assign labels (agent name), priority, dependencies, and file partitions
-4. **Write descriptions** — Objective (1 sentence), files (partition paths), acceptance criteria (checklist), dependencies (links)
-5. **Link to roadmap** — Reference the roadmap section in the issue description so context is never lost
-6. **Verify issues exist** — List all created issue IDs. If count is 0, do NOT proceed to Step 2.5
-
-### 2.5 Write the Convoy Spec (BLOCKING — decides how Step 3 proceeds)
-
-All project-related work executes via OpenCastle's convoy engine — regardless of subtask count. The convoy engine is experimental; say so when you hand the spec over.
-
-1. **Write the spec** — plan the decomposed task list by the rules in the `generate-convoy` prompt: self-contained task prompts, plain file paths (no `*` or `?`), no two tasks in the same phase sharing a path, `depends_on` for ordering. That prompt returns JSON, which the CLI converts only when `npx opencastle convoy "<task>"` runs it; here, write the spec yourself as YAML to `.opencastle/convoys/<name>.convoy.yml`, with `version: 1` and the same fields. The spec IS the implementation plan; even single-task fixes go through convoy for observability.
-2. **Check the spec** — run `npx opencastle convoy run .opencastle/convoys/<name>.convoy.yml --dry-run`. It runs the same checks a run does — the spec's schema, glob paths, two tasks in the same phase sharing a path — and prints what would run, without starting an agent or recording anything. Fix what it reports before handing the spec over.
-3. **Hand the spec to the user** — tell them the convoy engine is experimental, and to run: `npx opencastle convoy run .opencastle/convoys/<name>.convoy.yml`. It runs each task in a git worktree made from the last commit, so the work it builds on must be committed; it runs on the agent runtime `opencastle init` set up, which must be installed and signed in (`--adapter <name>` picks another: claude, codex, cursor, opencode or copilot). The work lands on a branch of its own.
-4. **The convoy engine handles** isolated git worktrees, parallel execution, merge queue ordering, crash recovery, and structured logging automatically.
-5. **After convoy completes** — proceed to Step 4 (validation) and Step 5 (delivery/PR).
-
-### 3. Implementation Rules
-
-> **Convoy execution:** Convoy spec IS the implementation plan — skip manual delegation; jump to Step 4 after user runs convoy.
-
-#### Issue Traceability
-
-- Include tracker issue ID and title in every delegation prompt
-- Reference issue IDs (e.g., `TAS-42`) in commit messages; move issues In Progress → Done as work progresses
-
-#### DRY Code
-
-- Search before creating — check for existing components, hooks, utilities, queries first
-- Extract shared logic to `libs/`; no copy-paste across apps. Refactor duplicates when discovered
-
-#### Visual Consistency
-
-- Use shared component library; never re-implement existing components
-- Match spacing, typography, colors from existing pages; verify in all affected apps
-
-### 4. Validation & Testing
-
-> Load **validation-gates** skill for detailed steps on each gate.
-
-Every subtask must pass ALL gates before being marked Done:
-
-1. **Secret Scanning** — block if API keys/tokens/passwords found in diff
-2. **Deterministic Checks** — lint, test, build — zero errors (see **codebase-tool** skill)
-3. **Blast Radius** — ≤200 lines / ≤5 files normal; escalate if >500 lines or >10 files
-4. **Dependency Audit** — when `package.json` changes
-5. **Fast Review** (MANDATORY) — single reviewer sub-agent
-6. **Browser Testing** (MANDATORY for UI) — clear cache, verify features + responsive + screenshots
-7. **Regression Testing** — full suite for affected projects
-8. **Panel Review** — for security, DB migrations, architecture (use **panel-majority-vote** skill)
-9. **Final Smoke Test** — end-to-end verification of complete feature
-
-### 5. Delivery
-
-Follow the **Delivery Checklist** in the **git-workflow** skill — commit, push, open PR (not merged), link to tracker. Convoy engine creates commits on configured `branch` directly; open PR from that branch after validation passes.
-
-### 6. Documentation & Traceability
-
-1. **Update roadmap** (when the project keeps one) — Mark completed items with ✅ and date; include tracker issue IDs next to each scope item (e.g., `[PREFIX-6](<url>) — Description ✅ Done`)
-2. **Update known issues** — Add new limitations to `.opencastle/KNOWN-ISSUES.md`
-3. **Update architecture docs** — Add ADRs for architectural decisions to `.opencastle/project/decisions.md`, creating it with the first one
-4. **Link tracker issues** — Reference roadmap section, partition files, and related issues in each description
-5. **Close issues properly** — Move to Done only after independent verification passes all gates
-
-### 7. Completion Criteria
-
-Roadmap task is complete when:
-
-- [ ] All tracker subtask issues are Done
-- [ ] **All UI changes verified in Chrome browser via MCP with screenshots as proof**
-- [ ] **Every feature in acceptance criteria visually confirmed** — not just "page loads"
-- [ ] No duplicated code — shared logic extracted to libraries
-- [ ] Visual consistency maintained across all affected pages, apps
-- [ ] Documentation updated (roadmap, known issues, decisions)
-- [ ] Panel review passed for any high-stakes changes
-- [ ] Roadmap item marked complete in `.opencastle/project/roadmap.md`, if the task came from it
-- [ ] Delivery Checklist completed (see the **git-workflow** skill) — branch pushed, PR opened (not merged), tracker linked
-- [ ] Lessons learned captured if any retries occurred
+- Commit on a feature branch and open a pull request; never push to `main` (**git-workflow**). Link the tracker issue when there is one.
+- Report what changed (files), how you verified it, what is still open, and anything you noticed outside the task, with its file and line.
+- A retry that taught you something the next agent should know: record it (**self-improvement**).

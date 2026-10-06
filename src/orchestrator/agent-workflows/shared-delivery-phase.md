@@ -2,34 +2,17 @@
 
 # Shared Delivery Phase
 
-This phase is referenced by all workflow templates. It covers the final delivery steps after all implementation and verification is complete.
+The last phase of every workflow template, once the work is implemented and verified.
 
 ## Steps
 
-1. **Commit all changes** to the feature branch with tracker issue IDs in commit messages
-2. **Push the branch** to origin: `git push -u origin <branch-name>`
-3. **Open a PR** using `gh` CLI (always use `GH_PAGER=cat` to prevent pager issues):
+1. **Commit** to the feature branch, with the tracker issue ID in the messages when there is one.
+2. **Push** it: `git push -u origin <branch>`.
+3. **Open a pull request**, with the body written to a file first so the shell cannot mangle it:
    ```bash
-   GH_PAGER=cat gh pr create --base main --title "TAS-XX: Short description" --body "Resolves TAS-XX"
+   GH_PAGER=cat gh pr create --base main --title "<title>" --body-file /tmp/pr-body.md
    ```
-4. **Do NOT merge** — PRs are opened for human review only
-5. **Update tracker issues** with the PR URL for traceability
-6. **Clean up session checkpoint** if one exists
+4. **Do NOT merge** — a person reviews and merges it.
+5. **Link it** from the tracker issue, when there is one.
 
-## Branch & Delivery Strategy
-
-The **Team Lead owns delivery**, not individual specialist agents:
-
-- **Team Lead creates the branch** in Phase 1 before any delegation
-- **Sub-agents** work directly on the Team Lead's branch (shared working tree)
-- **Background agents** work in isolated worktrees branched from the feature branch
-- **Team Lead merges worktrees back** during verification
-- **Only the Team Lead pushes** to the branch and opens the PR
-
-## Exit Criteria
-
-- [ ] All changes committed with tracker issue IDs in messages
-- [ ] Branch pushed to origin
-- [ ] PR opened on GitHub (NOT merged)
-- [ ] Tracker issues updated with PR URL
-- [ ] All project issues marked Done or Cancelled
+Whoever coordinates the work owns delivery: the Team Lead creates the branch before delegating, sub-agents work on that branch, and only the Team Lead pushes and opens the pull request.

@@ -287,31 +287,6 @@ export async function checkSkillMatrix(projectRoot: string): Promise<CheckResult
   }
 }
 
-async function checkLogs(projectRoot: string): Promise<CheckResult> {
-  const dir = resolve(projectRoot, '.opencastle', 'logs');
-  if (!existsSync(dir)) {
-    // A local run artefact, not part of the project, so a fresh clone has none —
-    // and calling that a failure made `doctor` exit 1 on every clone. The first
-    // `opencastle log` creates it; until then "none yet" is the honest reading,
-    // and not something to warn about on every new install.
-    return {
-      ok: true,
-      label: 'Observability logs',
-      detail: 'none yet — created when an agent first logs a session',
-    };
-  }
-  // A diagnostic does not write. This used to create five empty `.ndjson` files
-  // as a side effect — files nothing on this branch reads, and exactly the ones
-  // `migrateLegacyLogs` exists to move aside.
-  const entries = existsSync(dir) ? await readdir(dir) : [];
-  const events = entries.filter((f) => f.endsWith('.ndjson'));
-  return {
-    ok: true,
-    label: 'Observability logs',
-    detail: events.length > 0 ? `${events.length} log file(s)` : 'no runs recorded yet',
-  };
-}
-
 async function checkMcpEnvVars(
   projectRoot: string,
   manifest: Manifest | null,
@@ -1013,7 +988,6 @@ export async function runSharedChecks(
     await checkCustomizations(projectRoot),
     await checkProjectContext(projectRoot),
     await checkSkillMatrix(projectRoot),
-    await checkLogs(projectRoot),
     await checkMcpEnvVars(projectRoot, manifest, state),
     await checkDotEnv(projectRoot, manifest),
     await checkGitignoredOutput(projectRoot, manifest),

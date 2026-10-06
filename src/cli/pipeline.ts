@@ -335,7 +335,7 @@ async function writeCachedComplexity(prdPath: string, prdContent: string, assess
 
 // ── Planning ────────────────────────────────────────────────────────────────
 
-/** Rounds of fix-prd, and of fix-convoy, before the planner stops asking. */
+/** Rounds of convoy-prd-fix, and of convoy-plan-fix, before the planner stops asking. */
 const MAX_FIX_ROUNDS = 2
 
 export interface PlanRequest {
@@ -352,7 +352,7 @@ export interface PlanRequest {
   projectRoot?: string
   verbose?: boolean
   /**
-   * Have validate-convoy review the plan. Only when nobody will read it before
+   * Have convoy-plan-review review the plan. Only when nobody will read it before
    * it runs (`--yes`): a person looking at the plan is the better reviewer,
    * and the session is skipped for them.
    */
@@ -415,7 +415,7 @@ async function settleAll<T>(work: Array<Promise<T>>): Promise<T[]> {
   return settled.map((s) => (s as PromiseFulfilledResult<T>).value)
 }
 
-/** generate-convoy, with the one retry an unreadable answer gets. */
+/** convoy-plan, with the one retry an unreadable answer gets. */
 async function generatePlan(
   step: StepRunner,
   goal: string,
@@ -428,7 +428,7 @@ async function generatePlan(
   let raw = ''
   let reason = ''
   for (let attempt = 1; attempt <= 2; attempt++) {
-    raw = (await step('generate-convoy', { goalText: goal, contextText: context, signal, onStart })).rawOutput
+    raw = (await step('convoy-plan', { goalText: goal, contextText: context, signal, onStart })).rawOutput
     const parsed = parseTaskPlanWithReason(raw)
     if (parsed.plan) return parsed.plan
     reason = parsed.reason ?? 'unreadable'
@@ -440,9 +440,9 @@ async function generatePlan(
   throw new Error(`The ${label} plan could not be read after a retry: ${reason}. The answer is in ${relPath(kept)}.`)
 }
 
-/** One fix-convoy round: patches applied to the plan, globs reduced again. */
+/** One convoy-plan-fix round: patches applied to the plan, globs reduced again. */
 async function fixPlan(step: StepRunner, plan: TaskPlan, problems: string): Promise<TaskPlan> {
-  const answer = await step('fix-convoy', { goalText: JSON.stringify(plan, null, 2), contextText: problems })
+  const answer = await step('convoy-plan-fix', { goalText: JSON.stringify(plan, null, 2), contextText: problems })
   const patches = parsePatches(answer.rawOutput)
   if (!patches?.length) {
     warn('No usable patches came back')
@@ -493,19 +493,19 @@ function speculate<T>(start: (signal: AbortSignal, onStart: () => void) => Promi
  * From a request (or an edited PRD) to a checked spec on disk.
  *
  * Sessions, all read-only, on the one adapter the caller resolved:
- * - assess-complexity on the request, beside a plan written straight from it,
+ * - convoy-assess on the request, beside a plan written straight from it,
  *   which is kept when the change is small and stopped when it is not;
- * - generate-prd, unless a PRD was given;
- * - validate-prd beside the plan from the PRD when how to plan it is already
- *   known, or beside assess-complexity on the PRD when it is not, which is
- *   skipped when this exact PRD was assessed before; up to two fix-prd +
- *   validate-prd rounds, and the plan is written again from the fixed PRD;
- * - generate-convoy, once, or once per group at the same time for a large
+ * - convoy-prd, unless a PRD was given;
+ * - convoy-prd-review beside the plan from the PRD when how to plan it is already
+ *   known, or beside convoy-assess on the PRD when it is not, which is
+ *   skipped when this exact PRD was assessed before; up to two convoy-prd-fix +
+ *   convoy-prd-review rounds, and the plan is written again from the fixed PRD;
+ * - convoy-plan, once, or once per group at the same time for a large
  *   feature; one retry when an answer cannot be read;
- * - fix-convoy only when the code's checks fail, at most twice;
- * - validate-convoy only as the reviewer for `--yes`.
+ * - convoy-plan-fix only when the code's checks fail, at most twice;
+ * - convoy-plan-review only as the reviewer for `--yes`.
  *
- * The semantic validate-convoy pass that followed every plan is gone: the
+ * The semantic convoy-plan-review pass that followed every plan is gone: the
  * checks it was there for are done in code, and a person reads the plan
  * before it runs.
  */
@@ -563,9 +563,9 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   if (!req.prdPath && req.task) {
     const task = req.task
     const direct = speculate((signal, onStart) => generatePlan(step, task, NO_PRD, 'task', convoyDir, signal, onStart))
-    drafting = speculate((signal, onStart) => step('generate-prd', { goalText: task, signal, onStart }))
+    drafting = speculate((signal, onStart) => step('convoy-prd', { goalText: task, signal, onStart }))
     await Promise.all([direct.started, drafting.started])
-    quick = await step('assess-complexity', { goalText: task, contextText: task })
+    quick = await step('convoy-assess', { goalText: task, contextText: task })
       .then((r) => parseComplexityAssessment(r.rawOutput))
       .catch(() => null)
     if (quick?.complexity === 'low' && quick.recommended_strategy !== 'chain') {
@@ -589,13 +589,13 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
       prdPath = resolve(root, req.prdPath)
       done('PRD', relPath(prdPath))
     } else {
-      const written = drafting ? await drafting.value : await step('generate-prd', { goalText: req.task ?? '' })
+      const written = drafting ? await drafting.value : await step('convoy-prd', { goalText: req.task ?? '' })
       prdPath = written.outputPath!
       done('PRD written', relPath(prdPath))
     }
     let prd = await readFile(prdPath!, 'utf8')
 
-    // Both only read the PRD, so they run side by side. fix-prd is told to keep
+    // Both only read the PRD, so they run side by side. convoy-prd-fix is told to keep
     // the PRD's phases, so the assessment of this draft still fits a fixed one;
     // it is cached under this draft's text, which is the text it describes.
     const cached = await readCachedComplexity(prdPath, prd)
@@ -617,10 +617,10 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
     let complexity: ComplexityAssessment | null
     try {
       ;[verdict, complexity] = await settleAll<PromptStepResult | ComplexityAssessment | null>([
-        step('validate-prd', { goalText: `<!-- validation-pass: 1 -->\n${prd}` }),
+        step('convoy-prd-review', { goalText: `<!-- validation-pass: 1 -->\n${prd}` }),
         known
           ? Promise.resolve(known)
-          : step('assess-complexity', { goalText: prd, contextText: req.task ?? '' })
+          : step('convoy-assess', { goalText: prd, contextText: req.task ?? '' })
               .then((r) => parseComplexityAssessment(r.rawOutput))
               .catch((err: unknown) => {
                 warn(`Could not size the work (${message(err)}) — planning it as one`)
@@ -644,9 +644,9 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
       for (let round = 1; round <= MAX_FIX_ROUNDS && !fixed; round++) {
         warn(`The PRD has issues — fixing (${round}/${MAX_FIX_ROUNDS})`)
         console.log(indented(issues))
-        await step('fix-prd', { goalText: prd, contextText: issues, outputPath: prdPath })
+        await step('convoy-prd-fix', { goalText: prd, contextText: issues, outputPath: prdPath })
         prd = await readFile(prdPath, 'utf8')
-        const again = await step('validate-prd', { goalText: `<!-- validation-pass: ${round + 1} -->\n${prd}` })
+        const again = await step('convoy-prd-review', { goalText: `<!-- validation-pass: ${round + 1} -->\n${prd}` })
         fixed = again.isValid === true
         if (!fixed) issues = again.errors || again.rawOutput
       }
@@ -743,7 +743,7 @@ export async function planConvoy(req: PlanRequest): Promise<PlanOutcome> {
   if (problems.length === 0) done('Plan checked')
 
   if (req.critic && problems.length === 0) {
-    const review = await step('validate-convoy', { goalText: buildConvoyYaml(plan, settings) })
+    const review = await step('convoy-plan-review', { goalText: buildConvoyYaml(plan, settings) })
     if (review.isValid) {
       done('Plan reviewed')
     } else {

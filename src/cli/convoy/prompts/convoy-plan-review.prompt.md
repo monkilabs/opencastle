@@ -2,10 +2,7 @@
 description: 'Review a convoy spec for what code cannot check: missing dependencies, missing or redundant tasks. Answers with a JSON verdict.'
 agent: 'Reviewer'
 output: validation
-pipeline: true
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Validate Task Plan
 

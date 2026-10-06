@@ -172,12 +172,11 @@ const VISIBLE = {
 /**
  * Reachable but deliberately absent from help.
  *
- * `log` and `lesson` are called by agents from generated instructions, not by
- * people — listing them taught users a vocabulary they never needed. `update`
- * is the pre-rename name of `sync`, kept so existing scripts keep working.
+ * `lesson` is called by agents from generated instructions, not by people —
+ * listing it taught users a vocabulary they never needed. `update` is the
+ * pre-rename name of `sync`, kept so existing scripts keep working.
  */
 const HIDDEN = {
-  log: () => import('../dist/cli/log.js'),
   lesson: () => import('../dist/cli/lesson.js'),
   update: () => import('../dist/cli/sync.js'),
 }
@@ -201,6 +200,9 @@ const REPLACED = {
   skills: null,
   package: null,
   dispute: null,
+  // Agents logged every session by hand; it never happened consistently, and
+  // a record nobody can rely on is worse than none. Convoy runs log themselves.
+  log: null,
 }
 
 const commands = { ...VISIBLE, ...HIDDEN }

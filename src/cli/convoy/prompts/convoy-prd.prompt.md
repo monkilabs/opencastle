@@ -2,10 +2,7 @@
 description: 'Write a Product Requirements Document (PRD) from a feature request. The convoy planner breaks the PRD into agent tasks.'
 agent: 'Team Lead (OpenCastle)'
 output: prd
-pipeline: true
 ---
-
-<!-- ⚠️ This file is managed by OpenCastle. Edits will be overwritten on update. Customize in the .opencastle/ directory instead. -->
 
 # Generate PRD
 

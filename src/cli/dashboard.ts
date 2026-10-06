@@ -12,7 +12,7 @@
  *   GET /api/runs                       runs, newest first, the event categories, and the overview of every run
  *   GET /api/runs/:id                   one run with its tasks, and what its events and side tables add
  *   GET /api/runs/:id/events?since=<n>  that run's events after cursor n (&limit, at most 2000)
- *   GET /api/sessions                   agent sessions: `opencastle log` records and the engine's own
+ *   GET /api/sessions                   agent sessions: the engine's, one per task a convoy finished
  */
 import { createServer } from 'node:http'
 import type { IncomingMessage, Server, ServerResponse } from 'node:http'

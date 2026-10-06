@@ -16,7 +16,7 @@
  * flag, cache token counts, an adapter column) reads without this file knowing
  * about every addition first.
  */
-import { closeSync, existsSync, fstatSync, openSync, readSync, statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -133,13 +133,9 @@ export interface EventRow {
   problem: boolean
 }
 
-/**
- * A session: a `type: "session"` record appended with `opencastle log`
- * (`source: 'log'`), or the `session` event the engine writes for each task it
- * finishes (`source: 'convoy'`, with the run's id).
- */
+/** A session: the `session` event the engine writes for each task a convoy finishes. */
 export interface SessionRow {
-  source: 'log' | 'convoy'
+  source: 'convoy'
   convoy_id: string | null
   timestamp: string | null
   agent: string | null
@@ -159,9 +155,9 @@ type Row = Record<string, unknown>
 /**
  * The nearest directory at or above `start` holding `.opencastle/`.
  *
- * The same walk `opencastle log` does. The dashboard used to read the current
- * directory only, so started from `proj/src` it showed nothing while `log`,
- * from the same place, was writing to `proj/.opencastle`.
+ * The dashboard used to read the current directory only, so started from
+ * `proj/src` it showed nothing while a run from the same place was writing to
+ * `proj/.opencastle`.
  */
 export function findProjectRoot(start: string): string | null {
   let dir = resolve(start)
@@ -663,71 +659,15 @@ export function isRunAlive(projectRoot: string, convoyId: string): boolean {
   })
 }
 
-// ── Agent sessions (`opencastle log`) ─────────────────────────────────────────
-
-/** Read at most this much of the end of the log; sessions are shown newest first. */
-const SESSION_LOG_TAIL_BYTES = 2 * 1024 * 1024
-
-function readTail(path: string, bytes: number): string {
-  const fd = openSync(path, 'r')
-  try {
-    const size = fstatSync(fd).size
-    const start = Math.max(0, size - bytes)
-    const buf = Buffer.alloc(size - start)
-    readSync(fd, buf, 0, buf.length, start)
-    const text = buf.toString('utf8')
-    // Starting mid-file means the first line is a fragment.
-    return start > 0 ? text.slice(text.indexOf('\n') + 1) : text
-  } finally {
-    closeSync(fd)
-  }
-}
-
-/** Session records from `.opencastle/logs/events.ndjson`, newest first. */
-export function readSessions(projectRoot: string, limit = 50): SessionRow[] {
-  const path = join(projectRoot, '.opencastle', 'logs', 'events.ndjson')
-  if (!existsSync(path)) return []
-  const out: SessionRow[] = []
-  const lines = readTail(path, SESSION_LOG_TAIL_BYTES).split('\n')
-  for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
-    const line = lines[i].trim()
-    if (!line) continue
-    let rec: unknown
-    try {
-      rec = JSON.parse(line)
-    } catch {
-      continue
-    }
-    if (typeof rec !== 'object' || rec === null) continue
-    const r = rec as Row
-    if (r.type !== 'session') continue
-    out.push({
-      source: 'log',
-      convoy_id: null,
-      timestamp: str(r.timestamp),
-      agent: str(r.agent),
-      task: str(r.task),
-      tracker_issue: str(r.tracker_issue),
-      outcome: str(r.outcome),
-      model: str(r.model),
-      duration_min: num(r.duration_min),
-      files_changed: num(r.files_changed),
-      retries: num(r.retries),
-    })
-  }
-  return out
-}
+// ── Agent sessions ────────────────────────────────────────────────────────────
 
 /**
- * Agent sessions from both places they are recorded, newest first: what
- * `opencastle log` appended (`source: 'log'`) and the engine's `session` event
- * for each task it finished (`source: 'convoy'`). Each keeps its source, so a
- * page can say which is which.
+ * Agent sessions, newest first: the engine's `session` event for each task a
+ * convoy finished. Agents outside a convoy no longer log their sessions by
+ * hand — it never happened consistently — so this is the only record.
  */
 export function readAllSessions(projectRoot: string, limit = 50): SessionRow[] {
-  const merged = [...readSessions(projectRoot, limit), ...readEngineSessions(projectRoot, null, limit)]
-  merged.sort((a, b) => String(b.timestamp ?? '').localeCompare(String(a.timestamp ?? '')))
-  return merged.slice(0, limit)
+  return readEngineSessions(projectRoot, null, limit)
 }
 
 /** The engine's `session` events, newest first: of one run, or of every run when `convoyId` is null. */

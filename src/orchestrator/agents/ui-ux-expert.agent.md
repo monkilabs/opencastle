@@ -26,7 +26,7 @@ Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 
 ## Multi-Page Convoy Consistency
 
-**Foundation task** creates the design tokens, shared layout, and UI component library — those choices are the project contract. **Page tasks** import from the foundation and add no new tokens, layouts, or design values. Load **project-consistency**.
+**Foundation task** creates the design tokens, shared layout, and UI component library — those choices are the project contract. **Page tasks** import from the foundation and add no new tokens, layouts, or design values (**frontend-design**).
 
 ## Verification
 
@@ -42,6 +42,3 @@ Server-side fetching · API integration · database changes · E2E test suites �
 2. **Accessibility** — WCAG checks and results
 3. **Responsive** — breakpoints tested (per project testing config)
 4. **Visual Evidence** — screenshots at each breakpoint
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

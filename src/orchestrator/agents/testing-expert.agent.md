@@ -16,7 +16,7 @@ Resolve skills via `.opencastle/agents/skill-matrix.json`.
 
 ## Rules
 
-1. **RED → GREEN → REFACTOR for every feature and fix.** The failing test comes before the production code.
+1. **A test that never failed proves nothing.** Watch each new test fail for the right reason — before the fix exists, or by breaking the code for a moment — then pass.
 2. **New code meets the coverage threshold in the project's test config.**
 3. **Run the full suite before returning**, not only the tests you touched.
 4. **Never add a test-only method or hook to production code.** Refactor the interface instead.
@@ -24,7 +24,7 @@ Resolve skills via `.opencastle/agents/skill-matrix.json`.
 6. **No `sleep` or timing hacks** — `waitFor` / expect-based polling only.
 7. **Report bugs; never fix them.**
 8. `data-testid` for element selection.
-9. Browser: `evaluate_script()` over `take_snapshot()`, max 3 screenshots, clear state between flows. Load **browser-testing** for breakpoint checklists and exact commands.
+9. Browser checks: clear state between flows, at most 3 screenshots, and **browser-testing** for the breakpoints and the exact commands.
 
 ## Test Plan
 
@@ -32,7 +32,7 @@ Every suite covers: Initial State · User Interactions · State Transitions · E
 
 ## Verification
 
-All scenarios pass · coverage threshold met · 3 consecutive green runs · browser-validated at every breakpoint · naming conventions followed
+All scenarios pass · coverage threshold met · 3 consecutive green runs · UI changes browser-validated at every breakpoint · naming conventions followed
 
 ## Out of Scope
 
@@ -45,6 +45,3 @@ Fixing bugs · refactoring production code · DB migrations · performance optim
 3. **Browser Validation** — screenshots, what they prove
 4. **Edge Cases** — covered and gaps
 5. **Regressions** — adjacent features verified
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

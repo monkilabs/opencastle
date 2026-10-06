@@ -1,55 +1,25 @@
 ---
 name: panel-majority-vote
-description: "Three isolated reviewers vote PASS or BLOCK; the majority decides. Use on the 3rd fast-review FAIL, for security-sensitive changes or database migrations, or when someone asks for an independent multi-reviewer panel."
+description: "Three isolated reviewers vote PASS or BLOCK on a high-risk change; the majority decides, and every MUST-FIX any of them raises is fixed. Use for changes to auth, payments, data migrations or anything that deletes data, after a third fast-review FAIL, or when someone asks for an independent panel."
 ---
 
-# Skill: Panel majority vote
+# Panel Majority Vote
 
-## Inputs / Outputs
+For changes where a missed defect is expensive: auth and permissions, payments, data migrations, anything that deletes data. Everything else gets one reviewer (**fast-review**).
 
-**Inputs:** `<runRoot>`, `<panelKey>` (filesystem-safe), question text, artifact list. Panel dir default: `<runRoot>/panel/`.
+1. **Ask one question** — "Is this change safe to merge?" — with what answers it: the diff, the acceptance criteria, the test results, the files involved.
+2. **Three reviewers, in parallel, in isolation.** Three sub-agents dispatched as the **Reviewer** with the identical prompt; none sees another's answer or the conversation. Each answers in exactly these sections:
 
-| File | Path |
-|------|------|
-| Prompt payload (optional) | `<panelDir>/<panelKey>-panel-prompt.md` |
-| Raw reviewer outputs | `<panelDir>/<panelKey>-reviewer-outputs.md` |
-| Consolidated report | `<panelDir>/<panelKey>.md` |
+   ```text
+   VERDICT: PASS | BLOCK
+   MUST-FIX: <defects that block, each with file:line>
+   SHOULD-FIX: <improvements>
+   QUESTIONS: <what the reviewer could not decide>
+   ```
 
+   Where it can, a reviewer exercises the change — runs the entrypoint, the migration, the request — rather than only reading the diff.
+3. **Count.** PASS when two or three say PASS; otherwise BLOCK.
+4. **Fix the union.** Every MUST-FIX any reviewer raised is fixed, or answered with evidence: one reviewer's catch counts, whatever the vote. Mark each with how many raised it (`2/3`).
+5. **On BLOCK,** change the work and run the panel again with the same question — never reword it to get a PASS. Blocked a second time: stop, and tell the user what blocks it.
 
-## Procedure
-
-1. **Validate scope** — every artifact path under `<runRoot>`; list sufficient to answer question.
-
-2. **Spawn 3 reviewers in parallel** — three sub-agent dispatches with identical prompts (same question, artifact list, constraints), each isolated. Required reviewer output sections (no others): `VERDICT: PASS | BLOCK`, `MUST-FIX:`, `SHOULD-FIX:`, `QUESTIONS:`, `TEST IDEAS:`, `CONFIDENCE: low | med | high`.
-
-3. **Persist outputs** — write `<panelDir>/<panelKey>-reviewer-outputs.md` with a header (run root, panel key, question, artifacts) and each reviewer output verbatim, separated.
-
-4. **Consolidate** — parse each reviewer output for its `VERDICT:` line and count PASS votes. Overall verdict = PASS if pass_count ≥ 2; otherwise BLOCK. Deduplicate `MUST-FIX:` and `SHOULD-FIX:` items and annotate each item with `(N/3 reviewers)`.
-
-```bash
-# count PASS/BLOCK from combined outputs
-pass_count=$(grep -o "VERDICT: PASS" panel/run123-reviewer-outputs.md | wc -l)
-block_count=$(grep -o "VERDICT: BLOCK" panel/run123-reviewer-outputs.md | wc -l)
-verdict=$([ "$pass_count" -ge 2 ] && echo PASS || echo BLOCK)
-
-# emit a minimal JSON summary using jq (install jq if needed)
-jq -n --arg panel_key "run123-panel" --arg verdict "$verdict" --argjson pass_count $pass_count --argjson block_count $block_count '{panel_key:$panel_key, verdict:$verdict, pass_count:$pass_count, block_count:$block_count}' > panel/run123-summary.json
-```
-
-5. **Write report** — create `<panelDir>/<panelKey>.md` from [panel-report.template.md](./panel-report.template.md), referencing the generated summary. Minimal structure:
-
-- Title: Panel `<panelKey>` — Verdict: `PASS | BLOCK` (pass_count/block_count)
-- Highlights: top deduplicated `MUST-FIX` and `SHOULD-FIX` items
-- Evidence: paths to reviewer outputs and `panel/run123-summary.json`
-
-6. **Print summary** — overall verdict + vote tally + report path.
-
-7. **Log (⛔ hard gate)** — call the **observability-logging** skill with `panel_key`, `verdict`, `pass_count`, `block_count`, `must_fix`, `should_fix`, `reviewer_model`, `weighted`, `attempt`, `tracker_issue`, `artifacts_count`, `report_path` for verification.
-
-## Notes
-
-- On BLOCK: change underlying work; re-run; do not re-word question.
-- After 3 consecutive BLOCKs on the same panel key: create a dispute record per **team-lead-reference** § Dispute Protocol.
-- Model selection: same model for all 3 reviewers. See **team-lead-reference** for model routing.
-- Weighted consensus variant (domain-expertise weighting): see [REFERENCE.md](./REFERENCE.md).
-
+Report the verdict, the tally, and each MUST-FIX with what was done about it.

@@ -401,8 +401,8 @@ function buildDlqMarkdownEntry(
 
 /** The heading a ledger starts with: `init` no longer installs the files empty, so the first entry creates them. */
 const LEDGER_TITLE: Record<string, string> = {
-  'AGENT-FAILURES.md': '# Agent Failures\n\nDelegations that failed for good: the dead-letter queue. Format: the **team-lead-reference** skill.\n',
-  'DISPUTES.md': '# Disputes\n\nDisagreements review could not settle, for a person to decide. Format: the **team-lead-reference** skill.\n',
+  'AGENT-FAILURES.md': '# Agent Failures\n\nConvoy tasks that failed for good, written by the convoy engine; `npx opencastle convoy dashboard` shows each with its run.\n',
+  'DISPUTES.md': '# Disputes\n\nConvoy reviews that could not settle on a verdict, written by the convoy engine for a person to decide.\n',
 }
 
 function appendLedger(repoRoot: string, file: string, marker: string, entry: string): void {

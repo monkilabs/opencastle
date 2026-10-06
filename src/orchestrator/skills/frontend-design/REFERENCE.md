@@ -11,4 +11,3 @@ Frontend Design REFERENCE: the principles behind each dimension of a design.
 | Layout | Asymmetry, overlap, diagonal flow, grid-breaking. Consistent spacing tokens — no ad-hoc values. Holds at mobile/tablet/desktop. |
 | Atmosphere | Gradient meshes, noise textures, geometric patterns, layered transparencies, dramatic shadows, each only where it serves the direction. |
 
-Link lessons and PRs that change foundational tokens to the **project-consistency** skill guidance.

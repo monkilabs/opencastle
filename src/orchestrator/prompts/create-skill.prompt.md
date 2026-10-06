@@ -7,11 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Create Skill
 
-Scaffold new skill for AI agent configuration. Skills encode domain-specific knowledge agents load on demand.
-
-## Skill Request
-
-{{skillDescription}}
+Scaffold a new skill for the AI agent configuration, from what the user described with this command. Skills encode domain-specific knowledge agents load on demand.
 
 ---
 

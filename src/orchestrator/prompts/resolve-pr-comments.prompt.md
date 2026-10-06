@@ -7,11 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Resolve PR Comments
 
-You are the Team Lead. A pull request has review comments needing resolution. Read comments, group by file, delegate fixes efficiently.
-
-## PR Reference
-
-{{prReference}}
+You are the Team Lead. A pull request has review comments needing resolution. Read comments, group by file, delegate fixes efficiently. The user named the pull request with this command — a number or a URL; with none, take the pull request of the current branch.
 
 ---
 

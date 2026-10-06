@@ -25,6 +25,8 @@ Resolve skills (slots, direct) via `.opencastle/agents/skill-matrix.json`.
 7. **Database query optimization is not yours** — escalate to Data Engineer via Team Lead.
 8. Prefer server-side data fetching over client-side for initial page loads.
 9. Bundle size high with no obvious offender → `vite-bundle-analyzer` or Next.js `--analyze`.
+10. **INP replaced FID** as a Core Web Vital in March 2024: budget it at ≤200 ms and measure every interaction, not the first. Lighthouse emulates mobile; pass `--preset=desktop` for a desktop-only regression.
+11. **Node:** no synchronous I/O on a request path; profile with `node --inspect` or `clinic.js`. React: the DevTools Profiler or `<Profiler onRender>`.
 
 ## Verification
 
@@ -41,6 +43,3 @@ Architecture rewrites · database query optimization · infrastructure and CDN c
 3. **Verification** — profiling results, Lighthouse scores, build analysis
 4. **Trade-offs** — DX or functionality costs
 5. **Further Opportunities** — optimizations identified but not implemented
-
-End with the standard closing items from the project instructions: observability
-logged, discovered issues, lessons applied.

@@ -1,30 +1,33 @@
 ---
 name: api-patterns
-description: "Patterns for Server Actions, route handlers with schema validation, and calls to external REST APIs. Use when adding an endpoint or Server Action, or wiring an external API."
+description: "Conventions for HTTP endpoints, server actions and calls to external APIs: the contract, input validation, error shapes, status codes, versioning, pagination, retries and caching. Use when adding or changing an endpoint or server action, or wiring an external API."
 ---
 
 # API Patterns
 
-Project-specific config: `.opencastle/stack/api-config.md`, when the project has one.
+The project's endpoints and where they live: `.opencastle/stack/api-config.md` when it has one, and the skill bound to the **framework** slot. Match what the existing endpoints do; where they disagree, follow the majority and say so, rather than add a third way.
 
-## Architecture
+## Contract first
 
-| Layer | Use for |
-|-------|---------|
-| **Server Actions** (preferred) | mutations, form submissions, data writes, auth |
-| **Route Handlers** (`route.ts`) | analytics, autocomplete, external integrations |
-| **Proxy layer** | IP rate limiting, fingerprinting, bot detection |
+Decide the request, the response, the status codes and the error cases before you write the handler. Writing the handler first is how inconsistent APIs happen.
 
-Route files live at `app/api/<name>/route.ts` or `app/<segment>/route.ts`.
+- **Validate** every input with a schema at the top of the handler (Zod, Pydantic, the framework's validator): 400 or 422 on failure, naming the field.
+- **One error shape**, such as `{ "error": { "code": "VALIDATION_ERROR", "message": "...", "details": [...] } }`, with no stack trace or query in it. The status says what happened: 400, 401, 403, 404, 409, 422, 429, 500.
+- **Lists are paginated**, with a cursor when the data changes under the reader, and `limit` capped on the server.
+- **Changes are additive.** Add fields; never remove or rename one a client may use without a new version and a deprecation period.
 
-## Rules
+## Writes and side effects
 
-- Validate every input with Zod on the server at the top of the handler; 400 on parse failure.
-- Response envelope: `{ "data": ..., "meta": { "total": 42, "page": 1 } }`
-- Error shape: `{ "error": { "code": "VALIDATION_ERROR", "message": "...", "details": [...] } }` — never leak stack traces. Status codes: 400, 401, 403, 404, 422, 429, 500.
-- RESTful nouns, versioned: `/api/v1/places/:slug`. Add fields only — never remove or rename; deprecation headers before removal.
-- Pagination: cursor-based preferred; params `limit`, `cursor`, `sort`, `order`.
-- Retry external API calls twice with linear backoff (500 ms × attempt).
-- Rate-limit public endpoints; set `Cache-Control` and `ETag`/`If-None-Match`.
+- A mutation a client may retry is idempotent: an idempotency key, or an upsert on a natural key.
+- Authorization is checked on the server for every call (**security-hardening**).
 
-Smoke-test a new route with `curl -fsS "http://localhost:3000/api/<name>?query=test"`.
+## External APIs
+
+- A timeout on every call. Retry only what is safe to repeat, at most twice, with backoff.
+- Map their errors to your error shape, and log the upstream detail on the server.
+
+## Limits and caching
+
+Rate-limit public endpoints. Set `Cache-Control`, and an `ETag` on responses clients poll.
+
+Smoke-test a new endpoint against the dev server with `curl -fsS` before you call it done.

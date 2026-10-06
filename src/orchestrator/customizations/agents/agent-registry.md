@@ -1,7 +1,7 @@
 ````markdown
 # Agent Registry
 
-Project-specific agent tiers and scope examples referenced by the `team-lead-reference` skill.
+Which agent is for what, and on which tier. The Team Lead routes each task by it.
 
 <!-- Populated by `opencastle init` based on project structure. -->
 
@@ -26,10 +26,10 @@ model — it knows which ones your account can reach and what they cost today.
 | **Writer** | Economy | UI copy, error messages, docs, roadmaps, meta tags, structured data |
 | **Reviewer** | Economy | Fast review after every delegation |
 
-## Deepen-Plan Scope Examples
+## Research Scopes
 
 <!-- Customize these paths to match your project structure.
-     When running the Deepen-Plan protocol, split research by domain: -->
+     For a large plan, the Team Lead first sends one Researcher per area: -->
 
 ```
 Researcher A: "Research database/backend aspects of [feature]"

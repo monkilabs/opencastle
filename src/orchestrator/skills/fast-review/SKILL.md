@@ -1,85 +1,48 @@
 ---
 name: fast-review
-description: "Mandatory single-reviewer PASS/FAIL gate on delegated work, and the retry and escalation ladder every skill follows. Use after a delegation returns, before accepting its output."
+description: "One independent reviewer checks a change against its acceptance criteria and answers PASS or FAIL before it is accepted. Use before accepting delegated work, before delivering a change, or when someone asks for a review."
 ---
 
-# Skill: Fast Review
+# Fast Review
 
-## Contract
+A change is reviewed by someone who did not write it: one reviewer — a sub-agent dispatched as the **Reviewer** — who sees only what it needs.
 
-| Rule | Detail |
-|------|--------|
-| Trigger | After **every** delegation — no exceptions |
-| Reviewer | Single sub-agent; Economy tier (Standard for premium/security work) |
-| Verdict | PASS or FAIL with structured feedback |
-| Retry & escalation | The Handle Verdict table below, the one ladder every skill refers to |
+## When to skip it
 
-## Procedure
+No reviewer for research with no code change, a docs-only change, or ≤10 lines across ≤2 files with the project's tests, lint and build passing — **except** auth or middleware, migrations, access policies, security headers or CSP, environment variable schemas, and CI/CD config, which are reviewed even for one line. A review never replaces tests, lint and build: run those first.
 
-### 1 — Collect Context
+## Review
 
-Issue + acceptance criteria, file diff, file partition, deterministic results (lint/test/build), agent self-report.
+Give the reviewer the acceptance criteria, the diff, the files the change was allowed to touch, and the results of the tests, lint and build — not the conversation or the delegation prompt: it judges the result, not the intent.
 
-### 2 — Spawn Reviewer
+```text
+You review a change. Be concise and specific.
 
-One sub-agent, dispatched as the Reviewer. Context = acceptance criteria, diff, partition, deterministic results **only** — no session history, no delegation prompt.
+Task: <title>. Acceptance criteria: <list>
+Files it may change: <paths>
+Diff: <diff>
+Tests / lint / build: <passed or failed>
+Previous FAIL, on a retry: <its feedback>
 
-```
-Agent: Reviewer
-Review against these acceptance criteria:
-[criteria]
-Diff:
-[diff]
-Deterministic gates: lint ✅ test ✅ build ✅
-```
+Check: the criteria are met · only the allowed files changed · nothing regressed ·
+errors are surfaced, not swallowed · the types are sound · no secret or injection
+vector · the edge cases are handled.
 
-Full reviewer prompt template: [REFERENCE.md](REFERENCE.md).
-
-### 3 — Parse Verdict
-
-```
 VERDICT: PASS | FAIL
 ISSUES:
-- [severity:critical|major|minor] Description
-FEEDBACK: Actionable feedback.
-CONFIDENCE: low | medium | high
+- [critical|major|minor] <description, file:line>
+FEEDBACK: <what to change>
 ```
 
-- **PASS** — no critical/major issues (minor noted, non-blocking).
-- **FAIL** — any critical/major issue, or output format mismatch.
+PASS: no critical or major issue; minor ones are noted, not blocking. FAIL: any critical or major issue, or an answer not in that shape.
 
-**Auto-PASS** (skip reviewer): pure research/no code changes; docs-only `.md` changes; ≤10 lines across ≤2 non-sensitive files with all deterministic gates passing.
+## After a FAIL
 
-> **Sensitive override:** Auth/middleware, DB migrations, RLS policies, security headers, CSP, env var schemas, CI/CD config always require review — even 1-line changes.
+| What happened | What to do |
+|---|---|
+| FAIL, the first or second time | Fix it, or send it back to its author with the feedback ("retry N of 2"), and review again |
+| FAIL a third time | A panel of three (**panel-majority-vote**) |
+| The panel blocks it, or the reviewers disagree on what is right | Stop, and tell the user what blocks it, with each side's evidence |
+| The agent crashes, times out or returns nothing usable, twice | Stop and tell the user; do not try a third time |
 
-### 4 — Handle Verdict
-
-| Outcome | Action |
-|---------|--------|
-| PASS | Log review; continue |
-| FAIL 1–2 | Log; re-delegate same agent with the reviewer's feedback: "Retry N/2 — address listed issues" |
-| FAIL 3 | Log `escalated: true`; load **panel-majority-vote** skill |
-| Panel BLOCK ×3 | Dispute in `.opencastle/DISPUTES.md` (see **team-lead-reference** § Dispute Protocol) |
-| Tool/runtime failure ×2 (crash, timeout, empty or off-topic output) | Entry in `.opencastle/AGENT-FAILURES.md` (see **team-lead-reference** § Dead Letter Queue Format) |
-
-## Logging
-
-> **⛔ HARD GATE — Log the review before proceeding.**
-
-```sh
-npx opencastle log --type review --tracker_issue PRJ-42 --agent Developer \
-  --verdict pass --attempt 1 --issues_critical 0 --issues_major 0 --issues_minor 2 \
-  --confidence high --escalated false --duration_sec 45
-```
-
-## Integration & Overnight Mode
-
-`on-post-delegate` Gate 5 (after deterministic Gates 1–4), ~5–15% token overhead. Overnight: upgrade one tier, checkpoint before panel.
-
-## Anti-Patterns
-
-- **Panel as fast review** — wastes ~3× tokens.
-- **Reviewer sees delegation prompt** — evaluate against acceptance criteria only.
-- **Ignoring minor issues** — track; 3+ recurrences → ticket.
-- **Force-accepting FAIL** — retry or escalate.
-- **Skipping deterministic checks** — does NOT replace lint/test/build.
+A panel costs three reviews: it is not a fast review. Never accept a FAIL without fixing it or asking.

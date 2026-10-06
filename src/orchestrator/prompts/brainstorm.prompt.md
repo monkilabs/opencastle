@@ -7,11 +7,7 @@ agent: 'Team Lead (OpenCastle)'
 
 # Brainstorm
 
-You are the Team Lead. Before planning or writing any code, run structured brainstorm to explore the request below. Goal: **surface assumptions, alternative approaches, trade-offs** before locking in a plan.
-
-## Request
-
-{{request}}
+You are the Team Lead. Before planning or writing any code, run a structured brainstorm on the request the user gave with this command. Goal: **surface assumptions, alternative approaches and trade-offs** before locking in a plan.
 
 ---
 
@@ -83,11 +79,11 @@ If request involves building 2+ pages or UI sections, define design direction du
 - **Content tone:** formal/casual, active/passive, target audience voice
 - **Key terminology:** terms that could be said multiple ways — pick one (e.g., "projects" not "portfolio")
 
-Include this in Brainstorm Report so planning phase can inject into convoy foundation tasks.
+Include this in the Brainstorm Report, so the plan starts from it.
 
 ### 6. Output
 
-Summarize the brainstorm as **Brainstorm Report** — becomes input for planning/decomposition phase:
+Summarize the brainstorm as a **Brainstorm Report**, the input for planning:
 
 ```markdown
 ## Brainstorm Report: [Title]
@@ -120,18 +116,17 @@ Summarize the brainstorm as **Brainstorm Report** — becomes input for planning
 
 ## When to Skip Brainstorming
 
-Not every task needs brainstorm. Skip this prompt; go directly to `implement-feature` or `quick-refinement` when:
+Not every task needs a brainstorm. Skip it and go straight to `/oc:implement-feature` (or `/oc:bug-fix`) when:
 
 - The task is a well-defined bug with clear reproduction steps
 - The task is a simple config change or docs update
 - Technical approach is obvious and unambiguous
 - The scope is a single file or component with no design decisions
-- The task is well-understood and can be expressed as a convoy spec directly → use `implement-feature`, which writes the spec
 
 ## After Brainstorming
 
 Once the brainstorm is complete and the user confirms (or you're confident in the approach):
 
-1. **Transition to planning** — use the brainstorm report as input for `implement-feature`, which writes a convoy spec for all project work, whatever its size, for the user to run with `npx opencastle convoy run .opencastle/convoys/<name>.convoy.yml` (the convoy engine is experimental)
-2. **Preserve context** — include the brainstorm report in delegation prompts so agents understand *why* an approach was chosen
-3. **Reference in tracker** — link the brainstorm findings in the tracker issue description
+1. **Hand it on** — the report is the input for `/oc:implement-feature`, which builds it in this session; or, for work to split into parallel tasks and run unattended, `/oc:convoy` (experimental)
+2. **Preserve context** — include the report in delegation prompts, so agents know *why* an approach was chosen
+3. **Reference in tracker** — when the work has a tracker issue, link the findings in it

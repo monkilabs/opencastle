@@ -22,10 +22,9 @@ To change what the assistants are told, edit here — not the generated files.
 | `lock.json`, `manifest.json` | What is installed and what every assistant is given. Written by `sync`; commit both |
 
 Created when there is something to put in them: `AGENT-FAILURES.md` and
-`DISPUTES.md` (a delegation that failed for good, and a disagreement for a
-person to decide), `project/decisions.md` and `project/roadmap.md`, and the
-agent-memory files. `logs/`, the convoy database and worktrees are local and
-gitignored.
+`DISPUTES.md` (a convoy task that failed for good, and a convoy review for a
+person to decide), and `project/decisions.md` and `project/roadmap.md`. `logs/`,
+the convoy database and worktrees are local and gitignored.
 
 ## The team's own sources
 

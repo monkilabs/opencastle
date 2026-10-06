@@ -37,7 +37,7 @@ const pages = [
     description: 'Ready-to-use prompt templates for the Team Lead agent. Brainstorm ideas, implement features, fix bugs, resolve PR comments, and generate task specs.',
     icon: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
     sidebarIcon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-    badge: '14 prompts',
+    badge: '7 prompts',
   },
   {
     href: '/docs/agent-plugins',
@@ -247,7 +247,7 @@ const pages = [
                     <span class="quickstart__option-letter">A</span>
                     <div>
                       <p class="quickstart__option-title">In your assistant&rsquo;s chat <span class="quickstart__option-badge">recommended</span></p>
-                      <p class="quickstart__desc">Ask the <strong>Team Lead</strong> for a feature, a fix, or a refinement. It scores the work, delegates a small task to a specialist agent in the same session, and writes larger work up as a convoy spec for you to run (option B).</p>
+                      <p class="quickstart__desc">Ask the <strong>Team Lead</strong> for a feature, a fix or a refinement. It does a change in one area itself, and splits work across areas into tasks for specialist agents, in the same session. Work you want run unattended as parallel tasks is a convoy (option B).</p>
                       <div class="quickstart__panels" data-panel-group="step5a">
                         <div class="quickstart__panel quickstart__panel--active" data-ide="vscode" role="tabpanel">
                           <p class="quickstart__desc">In Copilot Chat pick the <strong>Team Lead (OpenCastle)</strong> agent and describe what you want built.</p>
@@ -271,7 +271,7 @@ const pages = [
                           <p class="quickstart__desc">Ask it to act as the Team Lead and describe what you want built &mdash; GEMINI.md tells it where the Team Lead&rsquo;s definition is.</p>
                         </div>
                       </div>
-                      <p class="quickstart__desc">For common jobs a prompt gives it a fixed procedure &mdash; brainstorm, bug-fix, implement-feature and more; bug-fix and implement-feature end in a convoy spec for you to run. <a href="/docs/prompts#how-to-use">How each assistant runs them</a>.</p>
+                      <p class="quickstart__desc">For common jobs a prompt gives it a fixed procedure &mdash; brainstorm, bug-fix, implement-feature and more; all of them work in your session, except convoy, which hands the work to the convoy planner. <a href="/docs/prompts#how-to-use">How each assistant runs them</a>.</p>
                     </div>
                   </div>
 

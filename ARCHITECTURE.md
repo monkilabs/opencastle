@@ -67,17 +67,16 @@ Defined once in [`src/cli/tiers.ts`](src/cli/tiers.ts); agent frontmatter carrie
 
 ## Execution Modes
 
-The Team Lead takes one of three paths, depending on the task:
+Work runs in one of two ways:
 
 | Mode | When | Mechanism | Parallelism |
 |------|------|-----------|-------------|
-| **Compact** | Score ≤2, single subtask | Direct sub-agent delegation | Sequential |
-| **Convoy** | Score 3+ or multi-task | `.convoy.yml` spec → ConvoyEngine | Parallel (DAG-based) |
-| **Utility** | `create-skill`, `brainstorm`, `quick-refinement` | Direct delegation, no convoy | Sequential |
+| **In session** | Every prompt but `convoy` | The Team Lead does a change in one area itself, and splits work across areas into tasks for specialist sub-agents | Tasks that share no file run together |
+| **Convoy** | `/oc:convoy`, or `npx opencastle convoy` | The planner writes a `.convoy.yml` spec; the person starts the run; ConvoyEngine runs each task in its own worktree | Parallel (DAG-based) |
 
-**Compact mode** handles small, focused tasks synchronously within a single conversation. The Team Lead delegates to one specialist at a time, reviews the output, and moves on.
+**In session** is the default: the work happens in the conversation, reviewed and delivered as one pull request.
 
-**Convoy mode** runs complex, multi-step work through the experimental convoy engine. See [Convoy Architecture](#convoy-architecture) below.
+**Convoy** runs work unattended through the experimental convoy engine. Only the `convoy` prompt hands work to it. See [Convoy Architecture](#convoy-architecture) below.
 
 ---
 
@@ -116,9 +115,9 @@ src/orchestrator/
 └── customizations/  # Templates scaffolded into a project's .opencastle/
 ```
 
-**Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `react-development`, `security-hardening`, `testing-workflow`, `observability-logging`.
+**Skills** are on-demand knowledge modules loaded by agents when entering a specific domain. Examples: `security-hardening`, `testing-workflow`, `api-patterns`, `self-improvement`.
 
-**Always loaded** are the instructions: OpenCastle's two (`general`, `ai-optimization`),
+**Always loaded** are the instructions: OpenCastle's one (`general`),
 the team's own (`.opencastle/instructions/`), and the project's facts —
 `.opencastle/project.instructions.md`, which `init` writes from the code — compiled as
 the `project-context` instruction ([`layers.ts`](src/cli/layers.ts)), without its
@@ -259,14 +258,14 @@ cycle is an error.
 
 | Template | Flow |
 |----------|------|
-| `feature-implementation` | DB → Query → UI → Tests |
-| `bug-fix` | Triage → RCA → Fix → Verify |
-| `data-pipeline` | Scrape → Convert → Enrich → Import |
-| `security-audit` | Scope → Automate → Review → Remediate |
-| `performance-optimization` | Measure → Analyze → Optimize → Verify |
-| `schema-changes` | CMS model modifications and queries |
-| `database-migration` | Migrations, access policies, rollback |
-| `refactoring` | Safe refactoring with behavior preservation |
+| `database-migration` | Plan → migrate → types → integrate → verify policies |
+| `schema-changes` | CMS model changes, then the queries and pages that use them |
+| `data-pipeline` | Crawl → process → validate → import |
+| `performance-optimization` | Measure → find the bottleneck → optimize → measure again |
+| `refactoring` | Baseline → close coverage gaps → refactor → verify |
+| `security-audit` | Scope → automated checks → review → panel → fix |
+
+Feature work and bug fixes have prompts of their own (`implement-feature`, `bug-fix`), not templates.
 
 Each template ends with the shared delivery phase
 ([`shared-delivery-phase.md`](src/orchestrator/agent-workflows/shared-delivery-phase.md)):
@@ -322,8 +321,9 @@ graph LR
 planning session is read-only and runs on the run's runtime. Where the runtime
 maps tiers to models, the writing steps run on the standard tier's model and the
 checking steps on the economy tier's ([`plan.ts`](src/cli/plan.ts)). The prompts
-are the seven pipeline templates in
-[`src/orchestrator/prompts/`](src/orchestrator/prompts/).
+are the seven `convoy-*` templates in
+[`src/cli/convoy/prompts/`](src/cli/convoy/prompts/), beside the engine: only
+the planner runs them, so they are not compiled into any assistant.
 
 Planning was the slowest part of a run, and most of a planning session was the
 model thinking, not reading code. Three things keep it short:
@@ -339,21 +339,21 @@ model thinking, not reading code. Three things keep it short:
 - **Steps that do not wait for each other start together**, and the answer
   that decides stops the one not needed. The steps are below.
 
-1. **Sizing.** `assess-complexity` sizes the request on the economy model. At
+1. **Sizing.** `convoy-assess` sizes the request on the economy model. At
    the same time a plan is written straight from the request, and a PRD is
    written. A change sized `low`, with no split into groups, keeps that plan and
    stops the PRD: no PRD (two sessions to wait for, three with `--yes`).
    Otherwise the plan from the request is stopped and the PRD kept.
-2. **PRD, for larger work.** `generate-prd` writes `.opencastle/prds/<name>.prd.md`,
-   and `validate-prd` reviews it. When how to plan it is already known, the
+2. **PRD, for larger work.** `convoy-prd` writes `.opencastle/prds/<name>.prd.md`,
+   and `convoy-prd-review` reviews it. When how to plan it is already known, the
    plan is written from the PRD while it is reviewed; a PRD that fails review
-   stops that plan, gets up to two `fix-prd` rounds, and is planned again from
+   stops that plan, gets up to two `convoy-prd-fix` rounds, and is planned again from
    the fixed text. The request's sizing is reused, unless it recommended
    groups: then the PRD is sized again, beside its review, so the groups can
    name its phases. `convoy plan --prd <file>` starts here, with a PRD you
    edited, and sizes it beside its review; that sizing is cached beside the PRD
    and reused only for the same text.
-3. **The plan.** `generate-convoy` answers with a JSON task plan. When the
+3. **The plan.** `convoy-plan` answers with a JSON task plan. When the
    sizing splits a large PRD into groups, each group is planned at the same time
    and the plans are joined into one spec. An unreadable answer is asked for
    once more.
@@ -364,11 +364,11 @@ model thinking, not reading code. Three things keep it short:
    the agent that writes the code writes its tests. Then the spec is validated
    (ids, dependencies, cycles), paths must be relative, and no two tasks that
    can run at once may claim the same file.
-5. **Fixes only when a check fails.** Up to two `fix-convoy` rounds. Overlaps
+5. **Fixes only when a check fails.** Up to two `convoy-plan-fix` rounds. Overlaps
    still left are sequenced: the later task waits for the earlier.
 
-With `--yes` nobody reads the plan, so `validate-convoy` reviews it once, and
-one `fix-convoy` round applies its issues if the result still passes the
+With `--yes` nobody reads the plan, so `convoy-plan-review` reviews it once, and
+one `convoy-plan-fix` round applies its issues if the result still passes the
 checks. The plan is printed as a table, with what planning spent, before
 `Run it? [Y/n]`. A closed stdin is a no.
 
@@ -658,13 +658,12 @@ defaults are held to the rules a supply-chain review would apply:
 
 ## Observability
 
-Agents append sessions, delegations, reviews, panels and disputes to
-`.opencastle/logs/events.ndjson` with `opencastle log`, which checks every record
-against the schema in [LOG-SCHEMA.md](src/orchestrator/skills/observability-logging/LOG-SCHEMA.md)
-and refuses one that does not match. Convoy events go to `.opencastle/convoy.db`
-and `.opencastle/logs/convoys/<convoy-id>.ndjson`
-([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The Observability dashboard
-shows both; see [Read model and dashboard](#read-model-and-dashboard).
+Convoy runs log themselves: every event goes to `.opencastle/convoy.db` and
+`.opencastle/logs/convoys/<convoy-id>.ndjson`, with a `session` event per task
+it finishes ([TELEMETRY.md](src/cli/convoy/TELEMETRY.md)). The Observability
+dashboard shows them; see [Read model and dashboard](#read-model-and-dashboard).
+Work outside a convoy is not logged: agents were once told to log every session
+by hand, and the record never came out consistent enough to rely on.
 
 ---
 
