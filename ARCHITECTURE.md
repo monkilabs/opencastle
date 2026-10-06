@@ -541,8 +541,8 @@ The Observability dashboard is four files in
 script, and an icon), with no build step, served by
 [`dashboard.ts`](src/cli/dashboard.ts) on 127.0.0.1 with four JSON endpoints:
 the runs with the overview, one run with its tasks and what its events and side
-tables add, a run's events after a cursor, and the agent sessions — the
-`opencastle log` records and the engine's own `session` events, each labelled.
+tables add, a run's events after a cursor, and the agent sessions, from the
+engine's own `session` events.
 It answers only GET and HEAD, only for a local Host header, and serves no file
 but its own four. The page refreshes the run list every 10 seconds and a live
 run every 2, reading only the events after its cursor. A run started on a

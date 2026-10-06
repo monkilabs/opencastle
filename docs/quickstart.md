@@ -1,25 +1,20 @@
-# Quickstart
+# Get started
 
-Five minutes, start to finish. You need Node.js 22.5 or newer and a git
-repository.
+Ten minutes, from install to a first change made with it. You need Node.js 22.5
+or newer and a git repository.
 
-## 1. Run it
+## 1. Install it
 
 ```bash
 cd your-project
 npx opencastle init
 ```
 
-It reads the repository before asking anything: which assistants already have
-config, which framework and database you use, which test runner. Then it shows
-what it found and asks once.
+It reads the repository before asking anything — which assistants already have
+config, the stack and its versions, the commands, routes and models — then shows
+what it found and asks once:
 
 ```
-  🏰 OpenCastle v1.0.0
-  Compiles your AI assistant config for every assistant you use
-
-  Scanning repository…
-
   Found assistant config:
     • Claude Code (CLAUDE.md)
 
@@ -30,31 +25,18 @@ what it found and asks once.
     nextjs, supabase, vitest, chrome-devtools
 
   Set this up? [Y/n]
-  Configuring project...
   ✓ Populated 3 config files
-  → Renamed stack/database-config.md → stack/supabase-config.md
-  → Removed 6 unused template(s)
-  ✓ Created 114 files
-  ✓ Created .gitignore with OpenCastle entries
+  ✓ Created 69 files
   ✓ Merged into your existing CLAUDE.md
     your content is above the managed block and is never overwritten
-
-  Next steps:
-  1. Type /oc: in Claude Code for OpenCastle's commands — /oc:bootstrap-customizations first on an existing codebase
-  2. Commit what this wrote, .opencastle/ included — teammates get the same setup on clone
-  3. opencastle ci — fail a pull request whose generated config no longer matches
-
-  Also used by your team? opencastle init --customize
-  compiles the same config for VS Code, Cursor, OpenCode, Windsurf, Codex CLI, Antigravity
 ```
 
 `--yes` skips the question; `--customize` lets you pick the assistants and
-tools by hand.
+integrations by hand.
 
-If you already had a `CLAUDE.md`, your content stays exactly where it is and
-the generated config goes into a marked block below it. The same holds for
-`.cursorrules`, `AGENTS.md`, `.github/copilot-instructions.md` and the other
-root files:
+Your own writing in `CLAUDE.md`, `.cursorrules`, `AGENTS.md` and the other root
+files stays where it is. The generated part goes into a marked block below it,
+which every sync rewrites:
 
 ```markdown
 # Acme Web
@@ -66,215 +48,114 @@ Use pnpm, never npm. Deploy via `make ship`.
 <!-- <<< OpenCastle managed <<< -->
 ```
 
-Everything above that marker is yours. Everything inside it is regenerated.
+A file of yours inside a directory OpenCastle generates, such as
+`.cursor/rules/team.mdc`, is different: `init` names it, and the next sync
+removes it. Move it to `.opencastle/instructions/` and it compiles for every
+assistant instead.
 
-A file of yours inside a directory OpenCastle generates is different: that
-directory is compiled output, so `init` names the file and the next `sync`
-removes it.
+## 2. Fill in what the code cannot say
 
+`init` wrote the project's facts to `.opencastle/project.instructions.md`, and
+every assistant loads them before each task. What it could not read — the
+architecture, production URLs, conventions — each file lists at its end under
+"Still to describe". Have an agent fill those in, once:
+
+- **Claude Code, Copilot Chat:** type `/oc:bootstrap-customizations`.
+- **Cursor, Windsurf, OpenCode, Codex, Antigravity:** ask for "the
+  bootstrap-customizations prompt".
+
+It reads the code, corrects what `init` got wrong, writes the rest, and runs
+`npx opencastle sync` so every assistant gets it.
+
+## 3. Make a change with it
+
+```text
+/oc:implement-feature Add tags to notes, and reject a note without a title
 ```
-  ⚠  1 file of yours is in a directory OpenCastle generates:
 
-     .cursor/rules/team.mdc
+The Team Lead reads the request and the project's context, makes a change in
+one area itself, and splits one across the API, the UI and the data into tasks
+for the specialist agents. It writes the tests with the change, runs your lint,
+tests and build, has an agent that did not write it review it, and opens a pull
+request. `/oc:bug-fix` reproduces a bug before it fixes it; `/oc:brainstorm`
+explores before anything is planned.
 
-     The next sync removes it; until then sync --check reports it.
-     To keep it, move it into .opencastle/ (instructions/, skills/<name>/ or agents/),
-     and the next sync compiles it for every assistant.
-```
+What is different from a hand-written `CLAUDE.md`:
 
-Moving `.cursor/rules/team.mdc` to `.opencastle/instructions/team.md` and
-running `opencastle sync` compiles it into every assistant's instructions. Here
-that includes `CLAUDE.md`, which Cursor also applies to every conversation, so
-Cursor reads it from there, once; in a project without Claude Code, Codex or
-OpenCode it goes back to `.cursor/rules/`.
+- **The project's facts, from the code.** Exact versions, the commands CI runs,
+  routes, models and migrations, environment variable names — not a summary
+  someone wrote once.
+- **Skills that load only when a task needs them**, for your stack's own tools,
+  and agents to delegate to, each with its scope.
+- **MCP servers, pinned and audited**, configured in each assistant's own format.
+- **One source for every assistant** on the team, checked on every pull request.
 
-## 2. See where you stand
+## 4. See where you stand
 
 ```bash
-opencastle
+npx opencastle
 ```
 
-This is the one command worth remembering. It reports what is installed, whether
-the generated files are still current, which assistants are configured but not
-being compiled, and the single next command to run. Right after `init`:
+The one command worth remembering: what is installed, whether the generated
+files are current, and the single next command to run. `npx opencastle doctor`
+goes deeper, and audits every MCP server.
 
-```
-  🏰 OpenCastle v1.0.0
-
-  ✓ 1 target in sync
-    ✓ claude-code    up to date
-
-  Everything is current. Run opencastle doctor for a deeper check.
-```
-
-The README shows [what it says when something has drifted](../README.md#everyday-use).
-
-## 3. Add your team's other assistants
-
-The point of the tool is that one source feeds every assistant. If your team also
-uses Cursor and Copilot:
+## 5. Add your team's other assistants
 
 ```bash
-opencastle init --customize
+npx opencastle init --customize
 ```
 
-On a project that already has OpenCastle it asks first:
+Answer **y** to re-initialize, tick the extra assistants, and accept the
+detected stack. Each assistant gets its own format from the same source.
 
-```
-  OpenCastle already installed (v1.0.0). Re-initialize? [y/N]
-```
-
-Answer **y**, tick the extra assistants (the ones you already compile are
-selected), and accept the detected stack in the questions that follow. Each
-assistant gets its native format from the same source — Cursor's `.mdc` rule
-files with `alwaysApply` and its skills as Agent Skills in `.agents/skills/`,
-Windsurf's `.md` rules with a `trigger` enum, Copilot's `.github/` layout. The
-[README](../README.md#supported-assistants) lists what each one gets.
-
-## 4. Keep it honest in CI
+## 6. Keep it honest in CI
 
 ```bash
 npm i -D opencastle && npx opencastle ci
 ```
 
-```
-  ✓ Wrote .github/workflows/opencastle.yml
-  Commit it; the next pull request gets the check and a summary of what it changes.
-```
+That writes `.github/workflows/opencastle.yml`. On every pull request it runs
+`sync --check` — which fails when a generated file no longer matches its source,
+because someone edited it by hand or upgraded without recompiling — and adds a
+summary of what the change does to every assistant. Commit the generated config,
+like a lockfile: a teammate who clones the repository gets working rules without
+running anything.
 
-The workflow checks out the repository, installs your dependencies (so
-baselines resolve and the check runs the OpenCastle version your lockfile pins),
-runs `opencastle sync --check`, and on a pull request adds `opencastle review`'s
-summary of what the change does to every assistant. Without OpenCastle in
-`devDependencies`, `ci` pins the version that compiled the project instead and
-says so.
-
-`sync --check` compiles to a scratch directory and compares. It writes nothing,
-and exits non-zero when a generated file no longer matches its source — someone
-edited `.cursor/rules/general.mdc` by hand, added a file under a generated
-directory, or upgraded without recompiling. Without this, drift is invisible: a
-stale rule file still loads fine.
-
-On GitHub Actions the same step also annotates each drifted file in the pull
-request, with that file's own fix, and writes a table to the run's summary page.
-On another CI, run `npx opencastle sync --check` with OpenCastle as a
-devDependency; you get the plain report and the exit code.
-
-## For a team
-
-When the setup is shared — by several people, or several repositories — three
-commands do most of the work.
-
-To send changes to what the assistants are given to the right reviewers, rewrite
-the workflow from step 4 with owners:
+## 7. Upgrade
 
 ```bash
-opencastle ci --owners @acme/platform --force
+npm i -D opencastle@latest   # or run npx opencastle@latest, without a devDependency
+npx opencastle sync
 ```
 
-```
-  ✓ Wrote .github/workflows/opencastle.yml
-  ✓ Added @acme/platform as owners of the lock and the team config in .github/CODEOWNERS
-  Commit it; the next pull request gets the check and a summary of what it changes.
-```
+`sync` recompiles and names every file it changes or removes. Read the diff,
+and commit it. A project compiled by a newer version than the one you run is
+refused rather than downgraded.
 
-To share one standard across repositories, put it in a baseline package:
-
-```bash
-opencastle baseline init acme-baseline --name @acme/opencastle-baseline
-```
-
-```
-  ✓ Created the baseline @acme/opencastle-baseline in acme-baseline/
-  It is an Agent Plugin too: skills/ and mcp.json are portable; the rest of the layer is in dev.opencastle/
-  Next: edit it, run npx opencastle baseline check acme-baseline, then publish it.
-  Repositories adopt it with npm i -D @acme/opencastle-baseline and "extends": ["@acme/opencastle-baseline"]
-```
-
-Because the package is also an [Agent Plugin](https://www.opencastle.dev/docs/agent-plugins/),
-assistants that read Agent Plugins can install it as it is. Publish it, add it
-to each repository with `npm i -D @acme/opencastle-baseline`, and extend it:
-
-```jsonc
-// .opencastle/config.json
-{ "extends": ["@acme/opencastle-baseline"] }
-```
-
-To try a baseline before publishing it, name it by a relative path instead.
-Relative paths resolve from `.opencastle/`, so a `baseline/` directory at the
-project root is `"../baseline"`.
-
-`opencastle sync` compiles it into every assistant and writes
-`.opencastle/lock.json`. Commit `.opencastle/config.json`,
-`.opencastle/lock.json` and your package lockfile.
-
-A new teammate runs:
-
-```bash
-opencastle explain
-```
-
-It shows what their assistant is given, where each piece comes from, and which
-environment variables and sign-ins they still need. The full guide, including
-the policy a baseline can set: [opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/).
+From 1.0 or earlier, commands move into the `/oc:` namespace. From 0.35 or
+earlier, `sync` also repairs the `.gitignore` block, the manifest and root files
+written without markers, keeping backups as `*.opencastle-backup`. Either way it
+is one `npx opencastle sync`.
 
 ## Where things live
 
-| Path | Yours or ours |
-|------|---------------|
-| `.opencastle/` | **Yours.** Project context, stack notes, lessons, the team config, and the team's own instructions, skills, agents, prompts and workflows. `sync` compiles from it and keeps your edits, apart from the three files in the next row. |
-| `.opencastle/lock.json`, `.opencastle/manifest.json`, `.opencastle/LESSONS-LEARNED.md` | Ours. Rewritten by every `sync`; `LESSONS-LEARNED.md` is the index of `.opencastle/lessons/`. |
-| Your text around the managed block in `CLAUDE.md`, `.cursorrules`, `AGENTS.md` and the other root files | **Yours.** Kept byte for byte. |
-| The managed block itself | Ours. Regenerated on every sync. |
-| Generated directories, such as `.claude/agents/`, `.claude/skills/`, `.github/agents/`, `.github/instructions/`, `.cursor/rules/` and `.agents/skills/` (`opencastle explain` lists each assistant's) | Ours. Regenerated on every sync; a file you add to one is removed by the next sync. |
-| `.claude/commands/` outside `oc/`, `.github/prompts/` files not starting `oc.`, and the rest of `.claude/` and `.github/` (`settings.json`, `workflows/`, …) | **Yours.** Never touched. Compiled commands are typed as `/oc:bug-fix`, so a command you write beside them keeps its name. |
-| MCP config files (`.mcp.json`, `.vscode/mcp.json`, `.cursor/mcp.json`, …) | Shared. OpenCastle updates only its own entries; servers you add stay. |
+| Path | Whose |
+|------|-------|
+| `.opencastle/` | **Yours**: the project's facts, lessons, the team config, and your own instructions, skills, agents, prompts and workflows. `sync` compiles from it. |
+| `.opencastle/lock.json`, `manifest.json`, `LESSONS-LEARNED.md` | Ours, rewritten by `sync`. Commit them. |
+| Your text around the managed block in a root file | **Yours**, kept byte for byte. |
+| The managed block, and generated directories such as `.claude/skills/` or `.cursor/rules/` | Ours, rewritten by every sync. |
+| `.claude/commands/` outside `oc/`, `.github/prompts/` files not starting `oc.`, the rest of `.claude/` and `.github/` | **Yours**, never touched. |
+| MCP config files (`.mcp.json`, `.vscode/mcp.json`, …) | Shared: only OpenCastle's own entries are updated. |
 
-To change what the assistants are told, edit `.opencastle/`, not the generated
-files. `sync --check` exists to tell you when someone forgets: it reports files
-edited in place, files never generated, and files added by hand under a
-generated directory.
+To change what the assistants are told, edit `.opencastle/`, never the
+generated files.
 
-**Commit all of it.** Generated config is committed like a lockfile: a teammate
-who clones the repo gets working rules without running anything, and
-`sync --check` has something to check. Only `.env` and run artefacts under
-`.opencastle/` are gitignored.
+## Next
 
-## Adding a tool later
-
-```bash
-opencastle add supabase
-opencastle add --list      # see what's available
-```
-
-That updates the stored stack and recompiles, so the new integration's skills and
-MCP config reach every target.
-
-Everyday commands are in the [README](../README.md#everyday-use); every command
-and flag is in the [CLI reference](https://www.opencastle.dev/docs/cli/).
-
-## Upgrading from 1.0 or earlier
-
-Commands are namespaced: `/bug-fix` is now `/oc:bug-fix`, `/implement-feature`
-is `/oc:implement-feature`, and so on, in Claude Code and in Copilot Chat. A
-team's own prompts compile under the same prefix. Run `opencastle sync` once: it
-moves the commands into the namespace and removes the un-namespaced copies an
-earlier release wrote, recognising them by their names and the banner they
-carry. A command you wrote yourself stays.
-
-## Upgrading from 0.35 or earlier
-
-Run `opencastle sync`. It repairs the three things older versions recorded
-differently, and prints what it did:
-
-- The `.gitignore` block used to hide every generated file, including the root
-  instruction file. `sync` rewrites it so the compiled output can be committed,
-  and keeps the old block in `.gitignore.opencastle-backup`.
-- The manifest used to file `CLAUDE.md` (and the other root files) as wholly
-  generated. Until that is repaired, `remove --all` had licence to delete a file
-  you write in.
-- Root files generated by an older release carry no markers. `sync` recognises
-  them and replaces them with a managed block, keeping the previous contents as
-  `CLAUDE.md.opencastle-backup` in case you had appended anything.
-
-`opencastle doctor` reports the first two if you would rather look before acting.
+- **A team, or many repositories:** baselines, policy, the lock and reviews —
+  [opencastle.dev/docs/teams](https://www.opencastle.dev/docs/teams/).
+- **Something not working:** [troubleshooting](https://www.opencastle.dev/docs/troubleshooting/).
+- **Every command and flag:** [CLI reference](https://www.opencastle.dev/docs/cli/).
+- **How it fits together:** [concepts](https://www.opencastle.dev/docs/concepts/).

@@ -5,7 +5,8 @@ const title = 'OpenCastle for Teams — OpenCastle';
 const description = 'Share one AI assistant standard across every repository: baselines your repositories extend, a policy for the MCP servers agents may start, a lock file that records what every assistant is given, and a review of what each change does.';
 
 const overviewSections = [
-  { id: 'problem', label: 'The Problem' },
+  { id: 'problem', label: 'Why' },
+  { id: 'one-repo', label: 'One Repository' },
   { id: 'layers', label: 'Layers' },
 ];
 const walkthroughSections = [
@@ -25,6 +26,7 @@ const adoptionSections = [
 
 const sectionIcons: Record<string, string> = {
   problem: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  'one-repo': `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
   layers: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
   example: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>`,
   config: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
@@ -209,35 +211,12 @@ const explainOutput = `$ npx opencastle explain
     → Linear: your assistant opens a browser to sign in the first time it starts the server
   …`;
 
-const doctorOutput = `$ npx opencastle doctor
-  …
-  ✓ Team sources  extends @acme/opencastle-baseline@1.5.0; team content: 2 skills, 3 instructions; 3 team MCP server(s); MCP allowlist in force
-  ✓ Always-loaded context  ~2.8k tokens (instructions ~613, skill and agent index ~2.2k); budget 12.0k (@acme/opencastle-baseline)
-  ! Team instructions match this repository  skills/deploy-runbook runs "npm run deploy:prod", which package.json does not define; skills/deploy-runbook names \`src/deploy/config.ts\`, which does not exist
-  ✓ OpenCastle version  1.0.0, the version that compiled this project
-  …
-
-$ npx opencastle sync --check
-
-  ✓ 221 generated files match their sources across 4 targets.`;
-
 const refusedOutput = `  ✗ The team's sources have 2 problem(s); nothing was compiled.
 
     ✗ .opencastle/config.json: defines MCP server "scratchpad", which @acme/opencastle-baseline does not allow
       → add it to policy.mcp.allow in @acme/opencastle-baseline, or remove it
     ✗ .opencastle/config.json: MCP server "scratchpad" runs scratchpad-mcp without an exact version — every machine runs whatever was published last
       → pin it as scratchpad-mcp@x.y.z (@acme/opencastle-baseline requires pinned servers)`;
-
-const handAddedOutput = `$ npx opencastle sync --check
-
-  ✗ 1 MCP config(s) have a server only a person can fix.
-
-  Needs a person (no command will change these)
-    ! .mcp.json (claude-code)
-      my-tool: not on the MCP allowlist of @acme/opencastle-baseline
-      → fix my-tool by hand in .mcp.json
-
-  Fix: by hand — see above, then run opencastle doctor`;
 
 const reviewOutput = `### OpenCastle — what this change does to the AI assistants
 
@@ -504,24 +483,32 @@ $ npx opencastle baseline check opencastle-baseline
 
         <!-- ═══════════ The problem ═══════════ -->
         <section class="docs-section" id="problem">
-          <h3 class="section-title">The Problem</h3>
+          <h3 class="section-title">Why</h3>
           <p>
-            A team runs several assistants side by side, and each reads its own format.
-            Without one source, nobody reviews what the agents are told, nobody notices
-            when one repository's rules drift from another's, and nobody can say which
-            MCP servers — code that runs with every developer's credentials — the agents
-            actually start.
-          </p>
-          <p>
-            OpenCastle compiles one source into the native format of seven assistants.
-            For teams it adds four things:
+            A team runs several assistants side by side, each reading its own format. Without one source,
+            nobody reviews what the agents are told, nobody notices when a repository drifts, and nobody can
+            say which MCP servers — code that runs with every developer's credentials — the agents start.
+            OpenCastle compiles one source into all of them, and adds what a team needs around it:
           </p>
           <ul class="docs-list">
-            <li><strong>Baselines</strong> — your organisation's instructions, skills, agents, MCP servers and policy in an npm package that every repository extends. Your package manager fetches and pins it; your upgrade bot rolls it out.</li>
-            <li><strong>Policy</strong> — which MCP servers may run, which hosts remote ones may reach, whether they must be pinned, which items no repository may drop, and how much context may load before a task. It only tightens.</li>
+            <li><strong>Baselines</strong> — the organisation's instructions, skills, agents, MCP servers and policy, in an npm package every repository extends, pinned by its lockfile.</li>
+            <li><strong>Policy</strong> — which MCP servers may run and reach which hosts, exact versions, what no repository may drop, and how much loads before a task. It only tightens.</li>
             <li><strong>The lock</strong> — <code>.opencastle/lock.json</code>, one reviewable record of what every assistant is given, checked in CI.</li>
-            <li><strong>Seven commands</strong> — <code>explain</code> for onboarding, <code>review</code> for pull requests, <code>ci</code> to wire it up, <code>baseline</code> and <code>plugin</code> to publish a standard, <code>promote</code> to make what one person's assistant learned the team's, <code>fleet</code> to see where it has landed.</li>
+            <li><strong>Team commands</strong> — <code>explain</code> for onboarding, <code>review</code> for pull requests, <code>ci</code> to wire it up, <code>baseline</code> and <code>plugin</code> to publish a standard, <code>promote</code> to share what one assistant learned, <code>fleet</code> to see where it has landed.</li>
           </ul>
+        </section>
+
+        <!-- ═══════════ One repository ═══════════ -->
+        <section class="docs-section" id="one-repo">
+          <h3 class="section-title">One Repository, One Team</h3>
+          <p>Most teams start here, and need no baseline.</p>
+          <ol class="steps">
+            <li><strong>Put the team's own rules in <code>.opencastle/</code>.</strong> Short rules every task needs in <code>instructions/</code>, deeper knowledge in <code>skills/&lt;name&gt;/SKILL.md</code>, procedures in <code>prompts/</code>. <code>npx opencastle sync</code> compiles them for every assistant anyone on the team uses.</li>
+            <li><strong>Commit it all</strong> — <code>.opencastle/</code>, the generated files and the lock. A teammate who clones the repository has the same setup without running anything.</li>
+            <li><strong>Check it on every pull request.</strong> <code>npm i -D opencastle &amp;&amp; npx opencastle ci --owners @your-team</code> writes the workflow, and asks the owners to review any change to what the assistants are given.</li>
+            <li><strong>Onboard with one command.</strong> A new teammate runs <code>npx opencastle explain</code>: what their assistant is given, and which environment variables and sign-ins they still need.</li>
+          </ol>
+          <p>When a second repository wants the same rules, move them into a <a class="docs-link" href="#rollout">baseline</a>.</p>
         </section>
 
         <!-- ═══════════ Layers ═══════════ -->
@@ -575,26 +562,18 @@ $ npx opencastle baseline check opencastle-baseline
             <code>.opencastle/</code> — stack notes, lessons, the manifest — is not part of it.
           </p>
           <p>
-            A baseline that is an <a href="/docs/agent-plugins">Agent Plugin</a> — one with a
-            <code>plugin.json</code> at its root, as <code>baseline init</code> creates — keeps its skills in
-            the plugin's <code>skills/</code>, servers any assistant can start as they are in
-            <code>mcp.json</code>, and everything else, <code>config.json</code> included, in
-            <code>dev.opencastle/</code>. Assistants that read Agent Plugins can then install it as it is. Any
-            Agent Plugin on npm can be extended the same way, with no OpenCastle declaration. A baseline laid out
-            the earlier way, with the layer's directories at its root, still works.
+            A baseline <code>baseline init</code> creates is also an <a href="/docs/agent-plugins">Agent Plugin</a>:
+            skills in <code>skills/</code>, portable servers in <code>mcp.json</code>, everything else in
+            <code>dev.opencastle/</code>, so assistants that read Agent Plugins can install it as it is. Any Agent
+            Plugin on npm can be extended the same way.
           </p>
           <p>
             Items are named by kind and name: <code>skills/deploy-runbook</code>,
             <code>instructions/security</code>, <code>agents/reviewer</code>. An item with the
-            same name as one below replaces it whole — a skill's directory is not merged file by
-            file. <code>exclude</code> removes an item from below. <code>sync</code> fills in
-            what each assistant's format needs: an instruction that does not set <code>applyTo</code>
-            is given <code>{"applyTo: '**'"}</code>, so Copilot loads it everywhere as the other assistants
-            do. Line endings are normalised and OS files (<code>.DS_Store</code>, <code>Thumbs.db</code>) are skipped,
-            so the lock comes out the same on every machine. A link to somewhere outside both the layer and the
-            project is not followed, with a warning saying so. A
-            skill or agent with no <code>description</code> compiles with a warning: no
-            assistant can tell when to load a skill that does not describe itself.
+            same name as one below replaces it whole; <code>exclude</code> removes one from below,
+            and takes <code>*</code> — <code>skills/*</code> leaves out every skill below. A skill or
+            agent with no <code>description</code> compiles with a warning: no assistant can tell
+            when to load it.
           </p>
           <div class="key-insight">
             <p><strong>Policy runs the other way.</strong> Content from a higher layer wins; rules from a lower layer hold. A repository can add to its baseline's policy and make it stricter, but nothing it writes loosens what the baseline set.</p>
@@ -638,59 +617,14 @@ $ npx opencastle baseline check opencastle-baseline
           </p>
           <pre><code>{syncOutput}</code></pre>
 
-          <h4 class="arch-subheading">3. Each assistant gets its own spelling</h4>
-          <p>
-            The variable is written once, as <code>{'${ACME_DOCS_TOKEN}'}</code>. There is no syntax every
-            assistant expands, so each receives its own:
-          </p>
-          <div class="comparison-table-wrap">
-            <table class="comparison-table">
-              <thead><tr><th>Assistant</th><th>File</th><th>The header it receives</th></tr></thead>
-              <tbody>
-                <tr><td>Claude Code</td><td><code>.mcp.json</code></td><td><code>{'Bearer ${ACME_DOCS_TOKEN}'}</code></td></tr>
-                <tr><td>Cursor, Windsurf (Devin Desktop)</td><td><code>.cursor/mcp.json</code>, <code>.devin/mcp_config.json</code></td><td><code>{'Bearer ${env:ACME_DOCS_TOKEN}'}</code></td></tr>
-                <tr><td>OpenCode</td><td><code>opencode.json</code></td><td><code>{'Bearer {env:ACME_DOCS_TOKEN}'}</code></td></tr>
-                <tr><td>VS Code</td><td><code>.vscode/mcp.json</code></td><td><code>{'Bearer ${input:ACME_DOCS_TOKEN}'}</code> — a password input VS Code asks for once and keeps</td></tr>
-                <tr><td>Codex CLI</td><td><code>.codex/config.toml</code></td><td>None written as text: Codex expands no variables, so the server gets <code>bearer_token_env_var = "ACME_DOCS_TOKEN"</code> and Codex sends the header itself</td></tr>
-                <tr><td>Antigravity</td><td><code>.agents/mcp_config.json</code></td><td>Written as <code>{'Bearer ${ACME_DOCS_TOKEN}'}</code>, which Antigravity sends as text — it expands no variables, so <code>doctor</code> says to set the header in your own <code>~/.gemini/config/mcp_config.json</code></td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p>
-            For <code>acme-db</code>, whose <code>env</code> only passes <code>ACME_DB_URL</code> through,
-            VS Code gets <code>{'"envFile": "${workspaceFolder}/.env"'}</code> instead of a prompt. Editor
-            variables are not environment variables: VS Code and Cursor get <code>{'${workspaceFolder}'}</code> and
-            <code>{'${userHome}'}</code> as written; every other assistant gets <code>.</code> and its own
-            spelling of <code>HOME</code>.
-          </p>
-
-          <h4 class="arch-subheading">4. What a new teammate sees: explain</h4>
+          <h4 class="arch-subheading">3. What a new teammate sees: explain</h4>
           <p>
             Someone joining the team runs one command to learn what their assistant is given here and
             what they still have to do:
           </p>
           <pre><code>{explainOutput}</code></pre>
 
-          <h4 class="arch-subheading">5. What CI checks: doctor and sync --check</h4>
-          <pre><code>{doctorOutput}</code></pre>
-          <p>
-            The warning is <code>doctor</code> reading the team's own content: the deploy skill tells
-            every agent to run a script and read a file that do not exist in this repository, and an agent
-            would follow it.
-          </p>
-          <p>
-            Now suppose someone adds a server called <code>scratchpad</code>, launched as
-            <code>npx -y scratchpad-mcp</code>, to <em>shop</em>'s <code>mcpServers</code>. The baseline
-            does not allow it and requires exact versions, so <code>sync</code> refuses and writes nothing:
-          </p>
-          <pre><code>{refusedOutput}</code></pre>
-          <p>
-            <code>sync --check</code> and <code>doctor</code> fail with the same two problems. A server
-            added by hand to an MCP config is held to the same policy:
-          </p>
-          <pre><code>{handAddedOutput}</code></pre>
-
-          <h4 class="arch-subheading">6. What a reviewer sees: review</h4>
+          <h4 class="arch-subheading">4. What a reviewer sees: review</h4>
           <p>
             A pull request moves the baseline from 1.4.0 to 1.5.0 — which adds an instruction, changes
             a skill and allows Sentry — and in the same change <em>shop</em> bumps its database server and
@@ -698,13 +632,6 @@ $ npx opencastle baseline check opencastle-baseline
             <code>opencastle review</code> writes this to the job summary instead:
           </p>
           <pre><code>{reviewOutput}</code></pre>
-
-          <h4 class="arch-subheading">7. Across repositories: fleet</h4>
-          <p>
-            Acme's platform team checks where the new version has landed, from the locks committed in
-            each checkout:
-          </p>
-          <pre><code>{fleetOutput}</code></pre>
         </section>
 
         <div class="section-divider">
@@ -784,11 +711,32 @@ $ npx opencastle baseline check opencastle-baseline
               </tbody>
             </table>
           </div>
+          <h4 class="arch-subheading">Variables</h4>
           <p>
-            <strong>Variables.</strong> Write every variable as <code>{'${NAME}'}</code> in <code>env</code>,
-            <code>headers</code>, <code>args</code> or <code>url</code>; <code>{'${env:NAME}'}</code> and
-            <code>{'{env:NAME}'}</code> are read as the same thing. Keep the values in <code>.env</code> or
-            your shell. <code>explain</code> lists every variable the servers read and whether you have set it.
+            Write a variable once, as <code>{'${NAME}'}</code>, in <code>env</code>, <code>headers</code>,
+            <code>args</code> or <code>url</code>, and keep its value in <code>.env</code> or your shell;
+            <code>explain</code> lists the ones you have not set. No syntax works in every assistant, so each gets its
+            own spelling — here the worked example's <code>internal-docs</code> header:
+          </p>
+          <div class="comparison-table-wrap">
+            <table class="comparison-table">
+              <thead><tr><th>Assistant</th><th>File</th><th>The header it receives</th></tr></thead>
+              <tbody>
+                <tr><td>Claude Code</td><td><code>.mcp.json</code></td><td><code>{'Bearer ${ACME_DOCS_TOKEN}'}</code></td></tr>
+                <tr><td>Cursor, Windsurf (Devin Desktop)</td><td><code>.cursor/mcp.json</code>, <code>.devin/mcp_config.json</code></td><td><code>{'Bearer ${env:ACME_DOCS_TOKEN}'}</code></td></tr>
+                <tr><td>OpenCode</td><td><code>opencode.json</code></td><td><code>{'Bearer {env:ACME_DOCS_TOKEN}'}</code></td></tr>
+                <tr><td>VS Code</td><td><code>.vscode/mcp.json</code></td><td><code>{'Bearer ${input:ACME_DOCS_TOKEN}'}</code> — a password input VS Code asks for once and keeps</td></tr>
+                <tr><td>Codex CLI</td><td><code>.codex/config.toml</code></td><td>None written as text: Codex expands no variables, so the server gets <code>bearer_token_env_var = "ACME_DOCS_TOKEN"</code> and Codex sends the header itself</td></tr>
+                <tr><td>Antigravity</td><td><code>.agents/mcp_config.json</code></td><td>Written as <code>{'Bearer ${ACME_DOCS_TOKEN}'}</code>, which Antigravity sends as text — it expands no variables, so <code>doctor</code> says to set the header in your own <code>~/.gemini/config/mcp_config.json</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            For <code>acme-db</code>, whose <code>env</code> only passes <code>ACME_DB_URL</code> through,
+            VS Code gets <code>{'"envFile": "${workspaceFolder}/.env"'}</code> instead of a prompt. Editor
+            variables are not environment variables: VS Code and Cursor get <code>{'${workspaceFolder}'}</code> and
+            <code>{'${userHome}'}</code> as written; every other assistant gets <code>.</code> and its own
+            spelling of <code>HOME</code>.
           </p>
         </section>
 
@@ -848,9 +796,13 @@ $ npx opencastle baseline check opencastle-baseline
             <code>sync --check</code> and <code>doctor</code> fail with the same message; <code>review</code>
             and <code>explain</code> refuse, because there is nothing coherent to describe.
           </p>
-          <div class="key-insight">
-            <p><strong>Why some servers are left out rather than refused:</strong> your team chose the policy, and an integration's skill is still useful without its server. A server a layer defines against its own rules, or rules below it, is a mistake someone made in the config, so it stops the build. A layer above that refuses it is opting out, so the server is left out — as <code>exclude: ["mcpServers/&lt;name&gt;"]</code> does explicitly.</p>
-          </div>
+          <h4 class="arch-subheading">When a source breaks the policy</h4>
+          <p>
+            Suppose <em>shop</em> adds a server called <code>scratchpad</code>, launched as <code>npx -y scratchpad-mcp</code>.
+            The baseline does not allow it and requires exact versions, so <code>sync</code> refuses and writes nothing;
+            <code>sync --check</code> and <code>doctor</code> fail with the same problems:
+          </p>
+          <pre><code>{refusedOutput}</code></pre>
         </section>
 
         <!-- ═══════════ Lock ═══════════ -->
@@ -910,7 +862,7 @@ $ npx opencastle baseline check opencastle-baseline
             each add one merge cleanly; <code>.opencastle/LESSONS-LEARNED.md</code> is the index agents read first,
             rebuilt by <code>sync</code> and checked by <code>sync --check</code>. A lesson can cite the code it is
             about with <code>--cite</code>. <code>doctor</code> then names any lesson whose cited file has changed or gone
-            since it was verified, and the fix — <code>lesson verify</code> when it still holds, <code>lesson archive</code>
+            since it was verified, and the fix — <code>lesson verify</code> when it still holds, <code>lesson archive &lt;id&gt; --into &lt;file&gt;</code>
             when it has been merged into a skill — so a stale lesson does not keep steering agents.
           </p>
           <p>
@@ -945,7 +897,7 @@ $ npx opencastle baseline check opencastle-baseline
           <h4 class="arch-subheading">explain</h4>
           <pre><code>npx opencastle explain [--all] [--json]</code></pre>
           <p>
-            What every assistant here is given, and what you still have to set up. Step 4 of the
+            What every assistant here is given, and what you still have to set up. Step 3 of the
             <a class="docs-link" href="#example">worked example</a> is a run; the options are in the
             <a class="docs-link" href="/docs/cli#explain">CLI reference</a>.
           </p>
@@ -954,7 +906,7 @@ $ npx opencastle baseline check opencastle-baseline
           <pre><code>npx opencastle review [--base &lt;ref&gt;] [--markdown] [--json]</code></pre>
           <p>
             Says in sentences what a change does to every assistant, and marks with ⚠️ what deserves a careful
-            look; step 6 is a run. It explains rather than gates: whatever the change, it exits 0, and
+            look; step 4 of the worked example is a run. It explains rather than gates: whatever the change, it exits 0, and
             <code>sync --check</code> is the gate. What gets ⚠️, and the few cases where it cannot compare:
             <a class="docs-link" href="/docs/cli#review">CLI reference</a>.
           </p>
@@ -976,7 +928,7 @@ $ npx opencastle baseline check opencastle-baseline
           <h4 class="arch-subheading">baseline</h4>
           <pre><code>npx opencastle baseline &lt;init|check&gt; [dir] [--name &lt;pkg&gt;] [--json]</code></pre>
           <p>
-            <code>init</code> scaffolds a baseline that is also an Agent Plugin, laid out like the package in step 1;
+            <code>init</code> scaffolds a baseline that is also an Agent Plugin, laid out like the package in step 1 of the worked example;
             <code>check</code> validates it the way every repository extending it will, and fails — exit 1 — on any of
             the problems listed in the <a class="docs-link" href="/docs/cli#baseline">CLI reference</a>.
           </p>
@@ -1004,9 +956,10 @@ $ npx opencastle baseline check opencastle-baseline
           <pre><code>npx opencastle fleet &lt;dir...&gt; [--json]</code></pre>
           <p>
             Reads the committed lock of each directory you give it — nothing is installed or fetched — and shows which
-            versions each repository runs and which MCP servers launch differently; step 7 is a run. Which directories
+            versions each repository runs and which MCP servers launch differently. Which directories
             it skips: <a class="docs-link" href="/docs/cli#fleet">CLI reference</a>.
           </p>
+          <pre><code>{fleetOutput}</code></pre>
 
           <h4 class="arch-subheading">doctor and sync in a team</h4>
           <p>
@@ -1065,6 +1018,25 @@ $ npx opencastle baseline check opencastle-baseline
               is behind and which servers run at different versions.
             </li>
           </ol>
+
+          <h4 class="arch-subheading">An organisation, then a team</h4>
+          <p>
+            A baseline can extend another. The platform team publishes <code>@acme/opencastle-baseline</code>; the
+            payments team publishes <code>@acme/payments-baseline</code>, which extends it and adds its own skills
+            and servers; a payments repository extends only the second. Policy still only tightens: a server must be
+            on every layer's allowlist, so the payments baseline can narrow the organisation's list but never widen it.
+            Keep each layer's always-loaded instructions short — the repository loads all of them.
+          </p>
+
+          <h4 class="arch-subheading">A monorepo</h4>
+          <p>
+            One <code>.opencastle/</code> at the root, compiled once. Put what each app needs in a skill whose
+            <code>description</code> names the app — <em>"Conventions for apps/checkout: …"</em> — because every
+            assistant loads a skill only when the task needs it. An instruction with
+            <code>{'applyTo: "apps/checkout/**"'}</code> is scoped only in Copilot, Windsurf, and Cursor on its own;
+            Claude Code, Codex, OpenCode and Antigravity have one root file, so there it loads before every task,
+            and Cursor reads that file too when one of them is selected.
+          </p>
         </section>
 
         <!-- ═══════════ Limits ═══════════ -->
@@ -1082,7 +1054,7 @@ $ npx opencastle baseline check opencastle-baseline
             <li><strong>Dead references are checked narrowly.</strong> Scripts named as <code>npm run</code> (or <code>pnpm</code>, <code>yarn</code>, <code>bun run</code>) are checked in all team content; backticked paths only in the repository's own content, and only under a top-level directory that exists.</li>
           </ul>
           <p>
-            What is still open, and why: <a class="docs-link" href="https://github.com/monkilabs/opencastle/blob/main/docs/teams.md" target="_blank" rel="noopener noreferrer">docs/teams.md</a>.
+            What is still open, and why: <a class="docs-link" href="https://github.com/monkilabs/opencastle/blob/main/docs/plans/2026-10-03-teams-design.md" target="_blank" rel="noopener noreferrer">the design notes</a>.
           </p>
         </section>
       </main>
