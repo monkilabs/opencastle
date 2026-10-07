@@ -15,6 +15,6 @@ The project's own instructions win: the Project Context loaded with these, the r
 - **Fail visibly** — surface errors; never swallow an exception.
 - **Comments say why**, not what.
 - **Git.** Never push to `main`: every change goes through a branch and a pull request (**git-workflow**).
-- **Lessons.** Read `.opencastle/LESSONS-LEARNED.md` before you start, and open the lessons that match your task. When a retry taught you something the next agent should know, record it (**self-improvement**).
+- **Memory: the team's or the user's.** Read `.opencastle/LESSONS-LEARNED.md` before you start, and open the lessons that match your task. What you confirm that is true for anyone working in this repository, record as a lesson the moment you confirm it: a fix after a failure, a convention or decision the code does not show, a tool's or service's quirk, a correction the user gives about the code (**self-improvement**). What is about the user (their preferences, role, habits, machine) stays in your own memory. Never both.
 
 <!-- End of Coding Standards -->

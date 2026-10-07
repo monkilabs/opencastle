@@ -36,4 +36,4 @@ Implement the change the user gave with this command — a feature, a roadmap it
 
 - Commit on a feature branch and open a pull request; never push to `main` (**git-workflow**). Link the tracker issue when there is one.
 - Report what changed (files), how you verified it, what is still open, and anything you noticed outside the task, with its file and line.
-- A retry that taught you something the next agent should know: record it (**self-improvement**).
+- Something you confirmed that is true for anyone working here, such as a fix after a failure or a convention the code does not show: record it as a lesson (**self-improvement**).

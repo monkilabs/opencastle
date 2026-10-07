@@ -42,18 +42,6 @@ const sectionIcons: Record<string, string> = {
 /* The output below is real: it comes from a project that extends a baseline,
    run with the release this page documents. Every line left out is marked "…". */
 
-/* From a run of this release; the memory directory's path is shortened. */
-const promoteOutput = `$ npx opencastle promote memory
-
-  🏰 Promote memory
-
-  Claude Code from ~/.claude/projects/-Users-ana-src-shop/memory
-  ✓ Wrote .opencastle/lessons/2026-10-03-every-migration-ships-with-its-rollback.md
-  - user-role.md: about you, not the project
-
-  Each is category general, severity medium: set them, add --cite where a lesson is about code,
-  and delete any that are yours alone. The pull request that commits them is where the team agrees.`;
-
 const lessonFile = `---
 id: "2026-10-03-every-migration-ships-with-its-rollback"
 title: "Every migration ships with its rollback"
@@ -62,7 +50,6 @@ severity: "high"
 added: "2026-10-03"
 citations:
   - "db/migrations/"
-source: "claude-code-memory:migrations.md#d552ad03f7a3"
 ---
 
 Every migration in db/migrations/ ships with a down file.
@@ -844,20 +831,29 @@ $ npx opencastle baseline check opencastle-baseline
         <section class="docs-section" id="memory">
           <h3 class="section-title">Team Memory</h3>
           <p>
-            What agents learn on a project — a command that fails, a convention written down nowhere else —
-            is worth more to the team than to the session that learned it. OpenCastle keeps it in three places,
-            from the narrowest to the widest, and moves it up on purpose, never on its own.
+            What agents learn on a project, a command that fails or a convention written down nowhere else, is
+            worth more to the team than to the session that learned it. Not all of it is the team's, though, and
+            OpenCastle keeps three scopes apart.
           </p>
           <div class="comparison-table-wrap">
             <table class="comparison-table">
               <thead><tr><th>Scope</th><th>Where it lives</th><th>Who it reaches</th><th>Moves up with</th></tr></thead>
               <tbody>
-                <tr><td>Personal</td><td>Your assistant's own: Claude Code's auto memory, VS Code's repository memory, Codex's memories, <code>~/.claude/skills</code>, <code>~/.agents/skills</code></td><td>You, on one machine</td><td><code>opencastle promote memory</code>, <code>promote skill</code></td></tr>
-                <tr><td>Team</td><td><code>.opencastle/lessons/</code> and <code>.opencastle/skills/</code>, committed</td><td>Every assistant of everyone in the repository</td><td><code>promote skill --to &lt;baseline&gt;</code>; the <strong>self-improvement</strong> skill graduates mature lessons into skills and instructions</td></tr>
-                <tr><td>Organisation</td><td>A baseline — an <a href="/docs/agent-plugins">Agent Plugin</a> every repository extends</td><td>Every repository</td><td>—</td></tr>
+                <tr><td>Personal</td><td>Your assistant's own memory on your machine, and your own skills in <code>~/.claude/skills</code> or <code>~/.agents/skills</code></td><td>You</td><td>What agents learn about you stays here. A skill you wrote: <code>promote skill</code></td></tr>
+                <tr><td>Team</td><td>Lessons in <code>.opencastle/lessons/</code>, and <code>.opencastle/skills/</code>, committed</td><td>Every assistant of everyone in the repository, once the pull request is merged</td><td>A lesson that holds in every repository graduates into the baseline's skill; <code>promote skill --to &lt;baseline&gt;</code></td></tr>
+                <tr><td>Organisation</td><td>A baseline: an <a href="/docs/agent-plugins">Agent Plugin</a> every repository extends</td><td>Every repository, and any assistant that installs the plugin</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
+          <p>
+            <strong>Agents sort it as they learn it.</strong> The instructions every agent loads say what belongs to
+            whom. Something it has confirmed that is true for anyone working in the repository, such as a fix after a
+            failure, a convention or decision the code does not show, a tool's quirk, or a correction the user gives
+            about the code, becomes a lesson at once. What is about the user, their preferences, role, habits and
+            machine, stays in the agent's own memory, and never both. The lesson is committed with the change, so the
+            team reviews it in the same pull request, and nobody has to go through anyone's memory afterwards. The
+            full rule, with examples, is in the <strong>self-improvement</strong> skill.
+          </p>
           <p>
             <strong>Lessons</strong> are one file each, written by <code>opencastle lesson</code>, so two branches that
             each add one merge cleanly; <code>.opencastle/LESSONS-LEARNED.md</code> is the index agents read first,
@@ -865,24 +861,18 @@ $ npx opencastle baseline check opencastle-baseline
             about with <code>--cite</code>. <code>doctor</code> then names any lesson whose cited file has changed or gone
             since it was verified, and the fix — <code>lesson verify</code> when it still holds, <code>lesson archive &lt;id&gt; --into &lt;file&gt;</code>
             when it has been merged into a skill — so a stale lesson does not keep steering agents. A lesson every
-            repository needs belongs in the baseline's skill: once that version is installed, <code>--into skills/&lt;name&gt;</code>
-            records it.
+            repository needs belongs in the baseline's skill: once the version carrying it is installed,
+            <code>--into skills/&lt;name&gt;</code> records it.
           </p>
-          <p>
-            <strong>Promotion</strong> is how knowledge leaves one laptop. <code>promote skill</code> copies a skill you
-            wrote for your own assistant into the team's sources, after checking it against the Agent Skills spec and
-            for credentials. <code>promote memory</code> turns what Claude Code, VS Code or Codex remembered about this repository into lessons, and
-            plain <code>npx opencastle</code> says how many memories on your machine the team has not got yet:
-          </p>
-          <pre><code>{promoteOutput}</code></pre>
-          <p>
-            Corrections and project notes become lessons; memories about you, ones holding a credential, and ones
-            already promoted are left out, and your home directory is written as <code>~</code>. Before you commit,
-            set the category and severity, and cite the code — by hand under <code>citations:</code>, as here, or
-            with <code>opencastle lesson verify &lt;id&gt; --cite db/migrations/</code>, which also records the date
-            it was verified:
-          </p>
+          <p>A lesson as an agent writes it, citing the code it is about:</p>
           <pre><code>{lessonFile}</code></pre>
+          <p>
+            <strong>Skills</strong> leave one laptop with <code>promote skill</code>: it copies a skill you wrote for
+            your own assistant into the team's sources, after checking it against the Agent Skills spec and for
+            credentials. For what an assistant remembered before these instructions, <code>promote memory</code> turns
+            Claude Code's, VS Code's or Codex's memory of the repository into lessons, and plain
+            <code>npx opencastle</code> says how many are left.
+          </p>
           <p>
             Nothing is shared until it is committed. The pull request that commits a promoted skill or lesson is where
             the team agrees with it — and, with a CODEOWNERS line for <code>/.opencastle/lessons/</code>, which
