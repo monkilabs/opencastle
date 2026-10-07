@@ -35,8 +35,9 @@ const HELP = `
                       the cited files hold now, so doctor stops reporting them
                       as changed. --cite replaces its citations.
   archive <id>        Mark a lesson merged into a skill or instruction file,
-                      named with --into. It stays on record and leaves the
-                      list agents read.
+                      named with --into: a path in this project, or an item
+                      such as skills/deploy-runbook that a baseline gives it.
+                      It stays on record and leaves the list agents read.
 
   Options:
     --title <text>           Short descriptive title
@@ -238,24 +239,59 @@ async function verify(dir: string, projectRoot: string, p: Parsed): Promise<void
   console.log(`${lesson.id}: verified ${updated.verified}`)
 }
 
-async function archive(dir: string, projectRoot: string, p: Parsed): Promise<void> {
+/**
+ * The layer that gives this project an item named `kind/name`, if one does.
+ *
+ * A lesson true in every repository belongs in the organisation's baseline,
+ * which lives in another checkout and reaches this one as a package: no path
+ * in this project names it, but the item is there once that version is
+ * installed, so it is looked up the way sync finds it.
+ */
+async function layerProviding(pkgRoot: string, projectRoot: string, ref: string): Promise<string | null> {
+  try {
+    const { readManifest } = await import('./manifest.js')
+    const { resolveSources } = await import('./layers.js')
+    const { resolveStack } = await import('./stack-config.js')
+    const manifest = await readManifest(projectRoot)
+    if (!manifest) return null
+    const resolved = resolveSources({ pkgRoot, projectRoot, stack: resolveStack(manifest), repoInfo: manifest.repoInfo })
+    return resolved.items.get(ref)?.layer ?? null
+  } catch {
+    return null
+  }
+}
+
+const ITEM_REF = /^(skills|instructions|agents|prompts|workflows)\/[^/\\]+$/
+
+async function archive(pkgRoot: string, dir: string, projectRoot: string, p: Parsed): Promise<void> {
   const [ref] = p.positional
   const into = p.values.get('--into')
   if (!ref) fail('archive needs the id of a lesson, e.g. npx opencastle lesson archive 2026-10-02-always-quote-shell-variables --into <file>')
   if (!into) fail('archive needs --into <file>: the skill or instruction file the lesson was merged into')
+  const where = into.replace(/^\.\//, '')
+  let from: string | null = null
   const problem = citationProblem(projectRoot, into)
-  if (problem) fail(`--into: ${problem}`)
+  if (problem) {
+    from = ITEM_REF.test(where) ? await layerProviding(pkgRoot, projectRoot, where) : null
+    if (!from) {
+      fail(
+        ITEM_REF.test(where)
+          ? `--into: ${where} is neither a file in this project nor an item any layer gives it — install the baseline version that has it, then archive`
+          : `--into: ${problem}`,
+      )
+    }
+  }
   if (!p.dryRun) reindex(dir)
   const { lessons } = readLessons(dir)
   const lesson = findLesson(lessons, ref)
   if (!lesson) fail(`no lesson ${ref} in .opencastle/${LESSONS_DIR}/`)
-  await writeLessonFile(dir, { ...lesson, status: 'archived', mergedInto: into.replace(/^\.\//, '') }, lesson.file, p.dryRun)
+  await writeLessonFile(dir, { ...lesson, status: 'archived', mergedInto: where }, lesson.file, p.dryRun)
   if (p.dryRun) return
   reindex(dir)
-  console.log(`${lesson.id}: archived, merged into ${into}`)
+  console.log(`${lesson.id}: archived, merged into ${where}${from && from !== 'project' ? ` from ${from}` : ''}`)
 }
 
-export default async function lesson({ args }: CliContext): Promise<void> {
+export default async function lesson({ pkgRoot, args }: CliContext): Promise<void> {
   if (args.includes('--help') || args.includes('-h')) {
     console.log(HELP)
     return
@@ -274,5 +310,5 @@ export default async function lesson({ args }: CliContext): Promise<void> {
   }
   if (sub === 'add') return add(dir, projectRoot, p)
   if (sub === 'verify') return verify(dir, projectRoot, p)
-  return archive(dir, projectRoot, p)
+  return archive(pkgRoot, dir, projectRoot, p)
 }

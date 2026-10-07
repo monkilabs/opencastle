@@ -364,7 +364,7 @@ const commands = [
     category: 'teams',
     name: 'promote',
     summary: 'Make a skill or memory from your own assistant the team\'s',
-    description: 'Moves a skill one developer wrote for their own assistant, or what Claude Code remembered on one laptop, into the team\'s sources — this repository\'s <code>.opencastle/</code> or a baseline — where the next <code>sync</code> compiles it into every assistant. It lands as a change in your working tree, for a pull request.',
+    description: 'Moves a skill one developer wrote for their own assistant, or what an assistant remembered on one laptop, into the team\'s sources — this repository\'s <code>.opencastle/</code> or a baseline — where the next <code>sync</code> compiles it into every assistant. It lands as a change in your working tree, for a pull request.',
     usage: 'npx opencastle promote <skill|memory> [name|path] [options]',
     options: [
       { flag: '--to <dir>', desc: 'skill: a baseline or Agent Plugin directory to put it in' },
@@ -375,7 +375,13 @@ const commands = [
     ],
     details: [
       { heading: 'skill', content: `<p>Finds the skill by name in <code>~/.claude/skills</code>, <code>~/.agents/skills</code>, <code>~/.codex/skills</code>, <code>~/.cursor/skills</code> or <code>~/.copilot/skills</code>, or takes a path. It is checked against the Agent Skills spec — a name that does not match its directory is refused, as assistants that follow the spec skip it — and every file is scanned for credentials. Then it is copied, with its scripts and references, to <code>.opencastle/skills/&lt;name&gt;/</code>, or with <code>--to</code> into a baseline's <code>skills/</code>.</p>` },
-      { heading: 'memory', content: `<p>Reads Claude Code's auto memory for this repository — <code>~/.claude/projects/&lt;repository&gt;/memory/</code> (under <code>$CLAUDE_CONFIG_DIR</code> if you set it), or wherever <code>autoMemoryDirectory</code> points — and writes each correction (<code>feedback</code>), project note, and memory with no type as a lesson in <code>.opencastle/lessons/</code>. Memories of any other type (those about you, for one), ones that hold a credential, and ones already promoted are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
+      { heading: 'memory', content: `<p>Reads what the assistants on this machine remember about this repository and writes it as lessons in <code>.opencastle/lessons/</code>:</p>
+<ul>
+  <li><strong>Claude Code</strong> — its auto memory, <code>~/.claude/projects/&lt;repository&gt;/memory/</code> (under <code>$CLAUDE_CONFIG_DIR</code> if you set it), or wherever <code>autoMemoryDirectory</code> points. Corrections (<code>feedback</code>), project notes and memories with no type; the rest, such as memories about you, are left out.</li>
+  <li><strong>VS Code</strong> (GitHub Copilot Chat) — the repository memory its agents keep for this folder, in VS Code's workspace storage, stable and Insiders. One lesson per memory file. Your user memory is about you, and is left out.</li>
+  <li><strong>Codex</strong> — the blocks of <code>$CODEX_HOME/memories/MEMORY.md</code> whose directory is this repository: their reusable knowledge and failures, not the user preferences or the session list.</li>
+</ul>
+<p>Cursor keeps its memories on its own servers, and Copilot Memory lives on GitHub, so neither can be read. Memories that hold a credential, and ones already promoted, are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new. Plain <code>npx opencastle</code> says how many memories on this machine are not lessons yet. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle promote skill deploy-runbook', desc: 'Your skill, in every teammate\'s assistant after the next sync' },
@@ -396,12 +402,12 @@ npx opencastle lesson archive <id> --into <file>`,
       { flag: '--title, --category, --severity, --problem', desc: 'add: required. Severity is high, medium or low; npx opencastle lesson --help lists the categories' },
       { flag: '--wrong, --correct, --why', desc: 'add: what was tried, what works, and the root cause' },
       { flag: '--cite <path[:line]>', desc: 'The code the lesson is about; repeat for more. On verify, replaces the citations' },
-      { flag: '--into <file>', desc: 'archive: the skill or instruction file the lesson now lives in' },
+      { flag: '--into <file>', desc: 'archive: the skill or instruction file the lesson now lives in, or an item such as skills/deploy-runbook that a baseline gives this repository' },
       { flag: '--dry-run', desc: 'Print what would be written, and write nothing' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'verify and archive', content: `<p><code>verify</code> says a lesson still holds: it stamps today\'s date and what the cited files hold now, so <code>doctor</code> stops reporting them. <code>archive</code> marks a lesson merged into the file <code>--into</code> names; it stays on record and leaves the list agents read. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
+      { heading: 'verify and archive', content: `<p><code>verify</code> says a lesson still holds: it stamps today\'s date and what the cited files hold now, so <code>doctor</code> stops reporting them. <code>archive</code> marks a lesson merged into the file <code>--into</code> names; it stays on record and leaves the list agents read. A lesson every repository needs goes into the baseline's skill: once the baseline version carrying it is installed, <code>--into skills/&lt;name&gt;</code> names that skill. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle lesson verify 2026-10-02-always-quote-shell-variables', desc: 'It still holds' },

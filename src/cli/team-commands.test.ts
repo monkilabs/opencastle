@@ -3,7 +3,7 @@
  * teammate and a CI job drive them — against a baseline installed where npm
  * would install it.
  */
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -68,6 +68,19 @@ describe.skipIf(!built)('a repository extending a baseline', () => {
   })
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('archives a lesson into a skill the baseline gives the repository, and refuses one nothing gives it', () => {
+    const add = run(dir, ['lesson', '--title', 'Escape user input in SQL', '--category', 'database', '--severity', 'high', '--problem', 'A raw string reached the query'])
+    expect(add.code, add.out).toBe(0)
+    const id = readdirSync(join(dir, '.opencastle', 'lessons'))[0].replace(/\.md$/, '')
+    const missing = run(dir, ['lesson', 'archive', id, '--into', 'skills/no-such-skill'])
+    expect(missing.code).toBe(1)
+    expect(missing.out).toContain('neither a file in this project nor an item any layer gives it')
+    const done = run(dir, ['lesson', 'archive', id, '--into', 'skills/secure-coding'])
+    expect(done.code, done.out).toBe(0)
+    expect(done.out).toContain('merged into skills/secure-coding from @acme/base')
+    expect(readFileSync(join(dir, '.opencastle', 'LESSONS-LEARNED.md'), 'utf8')).toContain('**Escape user input in SQL** → `skills/secure-coding`')
   })
 
   it("compiles the baseline and the project's own server, writes the lock, and checks clean", () => {

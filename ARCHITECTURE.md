@@ -682,7 +682,7 @@ by hand, and the record never came out consistent enough to rely on.
 | `ci` | Write a GitHub Actions workflow running `sync --check` and `review`, and optionally CODEOWNERS lines |
 | `baseline` | Scaffold (`init`) or validate (`check`) a baseline package — one that `init` creates is also an Agent Plugin |
 | `plugin` | Check an Agent Plugin, build Claude Code's files from it (`build`), write marketplace files for a directory of them (`index`) |
-| `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or Claude Code's auto memory for this repository into lessons (`memory`) |
+| `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or what Claude Code, VS Code and Codex remember about this repository into lessons (`memory`, read by `memory-sources.ts`) |
 | `fleet` | OpenCastle and baseline versions, and MCP server spread, across many repositories' locks |
 | `convoy` | Experimental: plan multi-step work and run it with agents in parallel |
 

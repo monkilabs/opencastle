@@ -97,7 +97,8 @@ npx opencastle
 ```
 
 The one command worth remembering: what is installed, whether the generated
-files are current, and the single next command to run. `npx opencastle doctor`
+files are current, the single next command to run, and how many of your
+assistant's memories the team has not got yet. `npx opencastle doctor`
 goes deeper, and audits every MCP server.
 
 ## 5. Add your team's other assistants

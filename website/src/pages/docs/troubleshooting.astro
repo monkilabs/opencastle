@@ -78,6 +78,7 @@ const sections = [
     <h3 class="section-title">Lessons</h3>
     <ul class="docs-list">
       <li><strong><code>doctor</code>: a lesson cites code that has changed.</strong> Read the lesson against the code. Still true: <code>npx opencastle lesson verify &lt;id&gt;</code>, with <code>--cite &lt;new path&gt;</code> if the code moved. No longer true, or now in a skill: <code>npx opencastle lesson archive &lt;id&gt; --into &lt;file&gt;</code>.</li>
+      <li><strong><code>promote memory</code> finds no memory.</strong> It reads Claude Code's, VS Code's (Copilot Chat) and Codex's, once one of them has saved a memory about this repository; Codex's is off until you turn memories on. Cursor keeps its memories on its servers and Copilot Memory lives on GitHub, so neither can be read: ask the assistant to write what it learned with <code>npx opencastle lesson</code> instead.</li>
       <li><strong><code>doctor</code>: the lessons index is large.</strong> Every agent reads it before every task. Move the lessons that keep coming up into the skill or instruction file they are about, and archive them there.</li>
       <li><strong>A lesson is refused.</strong> It names a category or severity that does not exist — <code>.opencastle/LESSONS-LEARNED.md</code> lists them — or it would commit something that looks like a credential.</li>
     </ul>
