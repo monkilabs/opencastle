@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto'
-import { execFileSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
-import { parse as parseYaml } from 'yaml'
 import { checkSkill } from './agent-plugin.js'
 import { LESSONS_DIR, newLessonId, readLessons, renderLesson, syncLessons, today, type Lesson } from './lessons.js'
+import { readMemoryDir, readRepositoryMemory, type MemorySource } from './memory-sources.js'
 import { scanForSecrets } from './secret-scan.js'
 import { getOrchestratorRoot } from './copy.js'
 import { c } from './prompt.js'
@@ -16,8 +15,8 @@ import type { CliContext } from './types.js'
  *
  * Knowledge starts personal. A developer writes a skill for their own
  * assistant, or the assistant remembers a correction it was given — Claude
- * Code's auto memory keeps those on one machine, in one person's home
- * directory, and no teammate's agent ever sees them. Productboard's Spark
+ * Code, VS Code and Codex keep those on one machine, in one person's home
+ * directory, and no teammate's agent ever sees them (memory-sources.ts). Productboard's Spark
  * draws the same line between personal and workspace skills, and makes the
  * step between them an explicit promotion after the author has tried it.
  *
@@ -42,11 +41,15 @@ const HELP = `
                       spec and for credentials, then copied to
                       .opencastle/skills/<name>/ — or with --to, into a
                       baseline or Agent Plugin every repository extends.
-  memory              What Claude Code's auto memory learned in this
-                      repository — each correction (feedback) and project note
-                      — written as lessons in .opencastle/lessons/. Memories
-                      about you, credentials, and ones already promoted are
-                      left out; your home directory is written as ~.
+  memory              What your assistant remembered about this repository,
+                      written as lessons in .opencastle/lessons/: Claude
+                      Code's auto memory (corrections and project notes),
+                      VS Code's repository memory (Copilot Chat), and the
+                      Codex memories whose directory is this repository.
+                      Memories about you, credentials, and ones already
+                      promoted are left out; your home directory is written
+                      as ~. Cursor keeps its memories on its servers and
+                      Copilot Memory lives on GitHub; neither can be read.
 
   Options:
     --to <dir>      skill: a baseline or Agent Plugin directory to put it in
@@ -211,98 +214,28 @@ function promoteSkill(pkgRoot: string, args: string[], dryRun: boolean): void {
 
 // ── memory ────────────────────────────────────────────────────
 
-/** The directory Claude Code's settings point auto memory at, if any of them does. */
-function configuredMemoryDir(projectRoot: string, configDir: string): string | null {
-  for (const file of [
-    join(projectRoot, '.claude', 'settings.local.json'),
-    join(projectRoot, '.claude', 'settings.json'),
-    join(configDir, 'settings.json'),
-  ]) {
-    try {
-      const value = (JSON.parse(readFileSync(file, 'utf8')) as { autoMemoryDirectory?: unknown }).autoMemoryDirectory
-      if (typeof value === 'string' && value) return value.replace(/^~(?=\/|$)/, home())
-    } catch {
-      // Absent or unreadable: the next one, or the default.
-    }
-  }
-  return null
-}
-
-/**
- * Where Claude Code keeps this repository's auto memory:
- * `<config>/projects/<repository path, every other character a hyphen>/memory/`.
- * Every worktree of one repository shares it, so the path is the main
- * checkout's, which git names as the common directory's parent.
- */
-export function claudeMemoryDir(projectRoot: string): string {
-  const configDir = process.env.CLAUDE_CONFIG_DIR || join(home(), '.claude')
-  const configured = configuredMemoryDir(projectRoot, configDir)
-  if (configured) return configured
-  let repo = projectRoot
-  try {
-    const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
-      cwd: projectRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim()
-    repo = basename(common) === '.git' ? dirname(common) : projectRoot
-  } catch {
-    repo = projectRoot
-  }
-  const slug = process.env.CLAUDE_CODE_PROJECT_DIR_NAME || repo.replace(/[^A-Za-z0-9]/g, '-')
-  return join(configDir, 'projects', slug, 'memory')
-}
-
-interface Memory {
-  file: string
-  name: string
-  description?: string
-  type?: string
-  body: string
-}
-
-function readMemories(dir: string): Memory[] {
-  const out: Memory[] = []
-  for (const file of readdirSync(dir).sort()) {
-    if (!file.endsWith('.md') || file === 'MEMORY.md') continue
-    const abs = join(dir, file)
-    if (!statSync(abs).isFile()) continue
-    const text = readFileSync(abs, 'utf8').replace(/^\uFEFF/, '')
-    const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text)
-    let meta: Record<string, unknown> = {}
-    try {
-      meta = m ? ((parseYaml(m[1]) ?? {}) as Record<string, unknown>) : {}
-    } catch {
-      meta = {}
-    }
-    const nested = meta.metadata && typeof meta.metadata === 'object' ? (meta.metadata as Record<string, unknown>) : {}
-    const type = typeof meta.type === 'string' ? meta.type : typeof nested.type === 'string' ? nested.type : undefined
-    out.push({
-      file,
-      name: typeof meta.name === 'string' ? meta.name : file.replace(/\.md$/, ''),
-      description: typeof meta.description === 'string' ? meta.description : undefined,
-      type,
-      body: (m ? m[2] : text).trim(),
-    })
-  }
-  return out
-}
-
-/** A title for a memory: its description, else its name read as words. */
-function titleOf(memory: Memory): string {
-  const raw = memory.description ?? memory.name.replace(/[-_]+/g, ' ')
-  const one = raw.replace(/[\r\n]+/g, ' ').trim()
-  return one.charAt(0).toUpperCase() + one.slice(1)
-}
+export { claudeMemoryDir } from './memory-sources.js'
 
 function promoteMemory(args: string[], dryRun: boolean): void {
   const projectRoot = projectRootFrom(process.cwd())
   const customizations = join(projectRoot, '.opencastle')
   if (!existsSync(customizations)) fail('no .opencastle/ here — run npx opencastle init first')
   const from = flag(args, '--from')
-  const dir = from ? resolve(process.cwd(), from.replace(/^~(?=\/|$)/, home())) : claudeMemoryDir(projectRoot)
-  if (!existsSync(dir)) {
-    fail(`no memory at ${tilde(dir)} — Claude Code keeps it there once it has saved one for this repository; --from <dir> reads another`)
+  let sources: MemorySource[]
+  if (from) {
+    const dir = resolve(process.cwd(), from.replace(/^~(?=\/|$)/, home()))
+    if (!existsSync(dir)) fail(`no memory at ${tilde(dir)}`)
+    sources = [readMemoryDir(dir, 'Memory')]
+  } else {
+    const found = readRepositoryMemory(projectRoot)
+    sources = found.sources
+    if (sources.length === 0) {
+      fail(
+        `no memory at ${tilde(found.looked[0])}, in VS Code's storage for this folder, or in ${tilde(dirname(found.looked[found.looked.length - 1]))}/memories — ` +
+          'each assistant writes it once it has saved one for this repository; --from <dir> reads another. ' +
+          'Cursor keeps its memories on its servers and Copilot Memory lives on GitHub, so neither can be read here.',
+      )
+    }
   }
 
   syncLessons(customizations)
@@ -310,58 +243,45 @@ function promoteMemory(args: string[], dryRun: boolean): void {
   const promoted = new Set(lessons.map((l) => l.source).filter((s): s is string => Boolean(s)))
   const taken = new Set(lessons.map((l) => l.id))
   const written: string[] = []
-  const skipped: Array<[string, string]> = []
-  const h = home()
 
-  for (const memory of readMemories(dir)) {
-    if (memory.type && !['feedback', 'project'].includes(memory.type)) {
-      skipped.push([memory.file, memory.type === 'user' ? 'about you, not the project' : `a ${memory.type} memory`])
-      continue
+  console.log(`\n  🏰 ${c.bold('Promote memory')}`)
+  for (const source of sources) {
+    const wrote: string[] = []
+    const skipped = [...source.skipped]
+    for (const memory of source.candidates) {
+      if (promoted.has(memory.source)) {
+        skipped.push([memory.label, 'already a lesson'])
+        continue
+      }
+      promoted.add(memory.source)
+      const id = newLessonId(memory.title, today(), taken)
+      taken.add(id)
+      const lesson: Omit<Lesson, 'file'> = {
+        id,
+        title: memory.title,
+        category: 'general',
+        severity: 'medium',
+        added: today(),
+        citations: [],
+        status: 'active',
+        source: memory.source,
+        body: memory.body,
+      }
+      wrote.push(`${LESSONS_DIR}/${id}.md`)
+      if (!dryRun) {
+        mkdirSync(join(customizations, LESSONS_DIR), { recursive: true })
+        writeFileSync(join(customizations, LESSONS_DIR, `${id}.md`), renderLesson(lesson))
+      }
     }
-    if (!memory.body) {
-      skipped.push([memory.file, 'empty'])
-      continue
-    }
-    const digest = createHash('sha256').update(memory.body).digest('hex').slice(0, 12)
-    const source = `claude-code-memory:${memory.file}#${digest}`
-    if (promoted.has(source)) {
-      skipped.push([memory.file, 'already a lesson'])
-      continue
-    }
-    // A memory names paths on its author's machine; the team's copy says ~.
-    const body = memory.body.split(h).join('~')
-    const scan = scanForSecrets(body, memory.file)
-    if (!scan.clean) {
-      skipped.push([memory.file, `holds what looks like a ${scan.findings[0].pattern} (line ${scan.findings[0].line})`])
-      continue
-    }
-    const title = titleOf(memory)
-    const id = newLessonId(title, today(), taken)
-    taken.add(id)
-    const lesson: Omit<Lesson, 'file'> = {
-      id,
-      title,
-      category: 'general',
-      severity: 'medium',
-      added: today(),
-      citations: [],
-      status: 'active',
-      source,
-      body,
-    }
-    written.push(`${LESSONS_DIR}/${id}.md`)
-    if (!dryRun) {
-      mkdirSync(join(customizations, LESSONS_DIR), { recursive: true })
-      writeFileSync(join(customizations, LESSONS_DIR, `${id}.md`), renderLesson(lesson))
-    }
+    written.push(...wrote)
+    console.log(`\n  ${c.bold(source.assistant)} ${c.dim(`from ${tilde(source.where)}`)}`)
+    for (const w of wrote) console.log(`  ${c.green(dryRun ? '+' : '✓')} ${dryRun ? 'Would write' : 'Wrote'} .opencastle/${w}`)
+    for (const [file, why] of skipped) console.log(`  ${c.dim(`- ${file}: ${why}`)}`)
   }
   if (!dryRun && written.length > 0) syncLessons(customizations)
 
-  console.log(`\n  🏰 ${c.bold('Promote memory')} ${c.dim(`from ${tilde(dir)}`)}\n`)
-  if (written.length === 0) console.log(`  ${c.dim('Nothing new to promote.')}`)
-  for (const w of written) console.log(`  ${c.green(dryRun ? '+' : '✓')} ${dryRun ? 'Would write' : 'Wrote'} .opencastle/${w}`)
-  for (const [file, why] of skipped) console.log(`  ${c.dim(`- ${file}: ${why}`)}`)
-  if (written.length > 0 && !dryRun) {
+  if (written.length === 0) console.log(`\n  ${c.dim('Nothing new to promote.')}\n`)
+  else if (!dryRun) {
     console.log(
       `\n  ${c.dim('Each is category general, severity medium: set them, add --cite where a lesson is about code,')}` +
         `\n  ${c.dim('and delete any that are yours alone. The pull request that commits them is where the team agrees.')}\n`,

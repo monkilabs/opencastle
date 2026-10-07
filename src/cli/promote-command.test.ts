@@ -5,6 +5,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { pathToFileURL } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { claudeMemoryDir } from './promote.js'
@@ -31,7 +32,14 @@ describe.skipIf(!built)('opencastle promote', () => {
   let home: string
   let config: string
   let project: string
-  const env = (): NodeJS.ProcessEnv => ({ ...process.env, HOME: home, CLAUDE_CONFIG_DIR: config })
+  // Every assistant's memory store is the test's own: none of this machine's is read.
+  const env = (): NodeJS.ProcessEnv => ({
+    ...process.env,
+    HOME: home,
+    CLAUDE_CONFIG_DIR: config,
+    VSCODE_APPDATA: join(home, 'vscode'),
+    CODEX_HOME: join(home, '.codex'),
+  })
   const run = (cwd: string, ...args: string[]) => {
     const r = spawnSync('node', [cli, ...args], { cwd, encoding: 'utf8', env: env() })
     // eslint-disable-next-line no-control-regex
@@ -169,10 +177,104 @@ describe.skipIf(!built)('opencastle promote', () => {
       expect(out.stdout).toContain('from ~/my-memory')
     })
 
-    it('says where it looked when there is none', () => {
+    it('says where it looked when there is none, and why Cursor and Copilot Memory are not among them', () => {
       const out = run(project, 'promote', 'memory')
       expect(out.status).toBe(1)
       expect(out.stderr).toMatch(/no memory at ~\/\.claude\/projects\/.*\/memory/)
+      expect(out.stderr).toContain('Cursor keeps its memories on its servers')
+    })
+
+    it('reads VS Code’s repository memory for this folder, and no other folder’s or the user’s', () => {
+      const storage = join(home, 'vscode', 'Code', 'User', 'workspaceStorage')
+      write(join(storage, 'a1b2c3'), {
+        'workspace.json': JSON.stringify({ folder: pathToFileURL(project).href }),
+        'GitHub.copilot-chat/memory-tool/memories/repo/build.md': '# Build with pnpm\n\n- `pnpm build`, never `npm run build`: the lockfile is pnpm’s.\n',
+        'GitHub.copilot-chat/memory-tool/memories/c2Vzc2lvbg==/scratch.md': '# This conversation only\n',
+      })
+      write(join(storage, 'ffffff'), {
+        'workspace.json': JSON.stringify({ folder: pathToFileURL(join(root, 'other')).href }),
+        'GitHub.copilot-chat/memory-tool/memories/repo/other.md': '# Another repository\n',
+      })
+      write(join(home, 'vscode', 'Code', 'User', 'globalStorage', 'github.copilot-chat', 'memory-tool', 'memories'), {
+        'me.md': '# I like short answers\n',
+      })
+      const out = run(project, 'promote', 'memory')
+      expect(out.status, out.stderr).toBe(0)
+      expect(out.stdout).toMatch(/VS Code from .*a1b2c3/)
+      const files = readdirSync(join(project, '.opencastle', 'lessons'))
+      expect(files).toHaveLength(1)
+      const text = readFileSync(join(project, '.opencastle', 'lessons', files[0]), 'utf8')
+      expect(text).toContain('title: "Build with pnpm"')
+      expect(text).toContain('`pnpm build`, never `npm run build`')
+      expect(text).not.toContain('# Build with pnpm')
+      expect(text).toMatch(/source: "vscode-memory:build\.md#[0-9a-f]{12}"/)
+      expect(run(project, 'promote', 'memory').stdout).toContain('build.md: already a lesson')
+    })
+
+    it('takes from Codex only the blocks whose directory is this repository, and only what the team can use', () => {
+      write(join(home, '.codex', 'memories'), {
+        'MEMORY.md': [
+          '# Task Group: app test runs',
+          '',
+          `scope: running the app's tests`,
+          `applies_to: cwd=${project}/src; reuse_rule=safe while the test runner is vitest`,
+          '',
+          '## Task 1: ran the tests, passed',
+          '',
+          '### rollout_summary_files',
+          '',
+          `- rollout_summaries/2026-10-01-ab12-tests.md (cwd=${project}, rollout_path=${home}/.codex/sessions/x.jsonl)`,
+          '',
+          '## User preferences',
+          '',
+          '- the user asked for terse answers [Task 1]',
+          '',
+          '## Reusable knowledge',
+          '',
+          '- Run `npx vitest run --pool=forks`; threads hang on the native module [Task 1]',
+          '',
+          '## Failures and how to do differently',
+          '',
+          '- `npm test` without a build fails on missing dist/ -> build first [Task 1]',
+          '',
+          '# Task Group: another repository',
+          '',
+          'scope: elsewhere',
+          'applies_to: cwd=/srv/elsewhere; reuse_rule=never here',
+          '',
+          '## Reusable knowledge',
+          '',
+          '- Not this repository',
+          '',
+        ].join('\n'),
+      })
+      const out = run(project, 'promote', 'memory')
+      expect(out.status, out.stderr).toBe(0)
+      expect(out.stdout).toMatch(/Codex from ~\/\.codex\/memories\/MEMORY\.md/)
+      const files = readdirSync(join(project, '.opencastle', 'lessons'))
+      expect(files).toHaveLength(1)
+      const text = readFileSync(join(project, '.opencastle', 'lessons', files[0]), 'utf8')
+      expect(text).toContain('title: "App test runs"')
+      expect(text).toContain('## Reusable knowledge')
+      expect(text).toContain('threads hang on the native module')
+      expect(text).toContain('## Failures and how to do differently')
+      expect(text).not.toContain('terse answers')
+      expect(text).not.toContain('rollout_summary_files')
+      expect(text).not.toContain('[Task 1]')
+      expect(text).not.toContain('Not this repository')
+      expect(text).toMatch(/source: "codex-memory:app test runs#[0-9a-f]{12}"/)
+    })
+
+    it('the status screen says how much this machine has not shared, until it is promoted', () => {
+      write(memoryDir(), { 'a.md': memory('quote-paths', 'feedback', 'Quote paths with spaces.') })
+      const before = run(project)
+      expect(before.stdout).toContain('1 memory on this machine the team has not got yet (Claude Code 1)')
+      expect(before.stdout).toContain('npx opencastle promote memory')
+      expect(before.stdout).toContain('Everything is current')
+      expect(JSON.parse(run(project, '--json').stdout).unsharedMemories).toEqual([{ assistant: 'Claude Code', count: 1 }])
+      expect(run(project, 'promote', 'memory').status).toBe(0)
+      const after = run(project)
+      expect(after.stdout).not.toContain('the team has not got yet')
     })
   })
 })
