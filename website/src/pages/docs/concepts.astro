@@ -78,7 +78,7 @@ const sections = [
 
   <section class="docs-section" id="lessons">
     <h3 class="section-title">Lessons</h3>
-    <p>When a retry teaches an agent something the next one should know — a command that fails, a tool's quirk, a convention written down nowhere — it records a lesson: one file in <code>.opencastle/lessons/</code>, citing the code it is about. Agents read the index, <code>.opencastle/LESSONS-LEARNED.md</code>, before they start. <code>doctor</code> names a lesson whose cited code has changed, and warns when the index grows past about 2,000 tokens; a lesson that has proven itself graduates into the skill it is about. <code>npx opencastle promote memory</code> turns what your own assistant remembered about the repository, in Claude Code, VS Code or Codex, into lessons for the team, and plain <code>npx opencastle</code> says how many it has not shared yet.</p>
+    <p>When an agent confirms something true for anyone working in the repository — a command that fails, a tool's quirk, a convention written down nowhere — it records a lesson: one file in <code>.opencastle/lessons/</code>, citing the code it is about. Agents read the index, <code>.opencastle/LESSONS-LEARNED.md</code>, before they start. <code>doctor</code> names a lesson whose cited code has changed, and warns when the index grows past about 2,000 tokens; a lesson that has proven itself graduates into the skill it is about. Memory has three scopes, kept apart: personal (what your own assistant remembers about you, on your machine), team (lessons in the repository) and organisation (skills in the baseline). The instructions tell agents which is which as they learn something, so nobody sorts memories afterwards. For what an assistant remembered before that, <code>npx opencastle promote memory</code> turns Claude Code's, VS Code's or Codex's memory of the repository into lessons, and plain <code>npx opencastle</code> says how many are left.</p>
   </section>
 
   <section class="docs-section" id="convoy">
@@ -108,7 +108,7 @@ const sections = [
           <tr><td>Tier</td><td>premium, standard or economy: the kind of model an agent's work wants.</td></tr>
           <tr><td>Prompt, command</td><td>A ready procedure: <code>/oc:&lt;name&gt;</code> in Claude Code and Copilot Chat, asked for by name elsewhere.</td></tr>
           <tr><td>Workflow template</td><td>The steps of a recurring kind of work, ending with delivery.</td></tr>
-          <tr><td>Lesson</td><td>Something an agent learned the hard way, one file each, citing code.</td></tr>
+          <tr><td>Lesson</td><td>Something true for anyone working in the repository, recorded by an agent when it confirmed it, one file each, citing code: the team's memory.</td></tr>
           <tr><td>Convoy</td><td>A planned set of tasks run in parallel by the experimental engine.</td></tr>
         </tbody>
       </table>

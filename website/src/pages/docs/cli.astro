@@ -394,7 +394,7 @@ const commands = [
     category: 'teams',
     name: 'lesson',
     summary: 'Record, verify or archive a lesson',
-    description: 'Agents run it, from their instructions, when they learn something the hard way: one file per lesson in <code>.opencastle/lessons/</code>, and the index they read first, <code>.opencastle/LESSONS-LEARNED.md</code>, rewritten. You run <code>verify</code> and <code>archive</code> when <code>doctor</code> names a lesson whose cited code has changed. It is left out of <code>--help</code> for that reason.',
+    description: 'Agents run it, from their instructions, when they confirm something true for anyone working in the repository: one file per lesson in <code>.opencastle/lessons/</code>, and the index they read first, <code>.opencastle/LESSONS-LEARNED.md</code>, rewritten. You run <code>verify</code> and <code>archive</code> when <code>doctor</code> names a lesson whose cited code has changed. It is left out of <code>--help</code> for that reason.',
     usage: `npx opencastle lesson [add] --title <text> --category <cat> --severity <level> --problem <text> [options]
 npx opencastle lesson verify <id> [--cite <path[:line]>]...
 npx opencastle lesson archive <id> --into <file>`,
