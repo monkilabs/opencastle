@@ -3,9 +3,17 @@ import '../../styles/global.css';
 import dashboardShot from '../../images/dashboard-snapshot.png';
 
 const title = 'Use Cases — OpenCastle';
-const description = 'Real convoy runs, end to end: plan and run a feature from one sentence, and write a spec, stop its run and resume it. Each with the time and cost it took.';
+const description = 'When to use a convoy instead of Claude Code /batch or Copilot CLI /fleet, and real convoy runs, end to end: plan and run a feature from one sentence, and write a spec, stop its run and resume it. Each with the time and cost it took.';
 
 const recipes = [
+  {
+    id: 'when-to-use',
+    title: 'Convoy, /batch or /fleet?',
+    steps: [
+      { id: 'compare-side-by-side', label: 'Side by side' },
+      { id: 'compare-which', label: 'Which to use' },
+    ],
+  },
   {
     id: 'plan-and-run',
     title: 'Plan and run a feature',
@@ -90,14 +98,65 @@ const recipes = [
 
       <main class="docs-main">
         <p class="docs-subtitle">
-          Two convoy recipes, each run end to end on a small Node.js notes API: two source files, four
-          tests, a <code>CLAUDE.md</code>, and Claude Code as the agent runtime. The output is what the CLI
+          When a convoy is the right tool, and two convoy recipes, each run end to end on a small Node.js notes
+          API: two source files, four tests, a <code>CLAUDE.md</code>, and Claude Code as the agent runtime. The output is what the CLI
           printed in real runs, trimmed where marked with <code>…</code>.
         </p>
         <div class="recipe-tip">
           <strong>Experimental:</strong> the convoy engine (<code>opencastle convoy</code>) is experimental
           and may change. Every command and flag is on the <a href="/docs/cli#convoy">CLI page</a>.
         </div>
+
+        <!-- ═══════════════ Convoy, /batch or /fleet ═══════════════ -->
+        <article class="recipe" id="when-to-use">
+          <h2 class="recipe__title">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><polyline points="7 8 3 12 7 16"/><polyline points="17 8 21 12 17 16"/></svg>
+            Convoy, /batch or /fleet?
+          </h2>
+
+          <section class="recipe-section" id="compare-side-by-side">
+            <h3 class="recipe-section__heading">Side by side</h3>
+            <p class="recipe-section__body">
+              Claude Code's <code>/batch</code> and Copilot CLI's <code>/fleet</code> also run several agents at once,
+              inside a session. A convoy runs from the terminal, outside any session. Where the three differ, as each
+              tool's documentation describes it in October 2026:
+            </p>
+            <table class="recipe-table">
+              <thead>
+                <tr><th></th><th><a href="https://code.claude.com/docs/en/commands">Claude Code <code>/batch</code></a></th><th><a href="https://docs.github.com/en/copilot/concepts/agents/copilot-cli/fleet">Copilot CLI <code>/fleet</code></a></th><th>Convoy</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Tasks that depend on each other</td><td>No; 5 to 30 independent units</td><td>Yes, managed by the main agent</td><td>Yes, written into the plan; a task starts when the ones it waits for are done</td></tr>
+                <tr><td>The plan</td><td>Shown once for your approval</td><td>Decided by the main agent during the session; it can start from a plan you accepted</td><td>Checked in code and saved as a YAML spec you can edit, write yourself and run again</td></tr>
+                <tr><td>Isolation</td><td>A git worktree per unit</td><td>Not documented</td><td>A git worktree per task; tasks that share files never run at the same time</td></tr>
+                <tr><td>Review and checks</td><td>Each unit runs its tests</td><td>Not documented</td><td>A read-only review per task, except a small change outside sensitive paths; your checks run once on the merged result</td></tr>
+                <tr><td>The result</td><td>Each unit publishes its own change</td><td>Not documented</td><td>One branch, each task merged onto it in turn</td></tr>
+                <tr><td>An interrupted run</td><td>Not documented</td><td>Not documented</td><td><code>opencastle convoy resume</code> carries on from <code>.opencastle/convoy.db</code></td></tr>
+                <tr><td>Models</td><td>Not documented</td><td>A low-cost model by default, or the custom agent you name with <code>@</code></td><td>Each agent's tier on Claude Code, with reviews on the economy tier</td></tr>
+                <tr><td>Agent runtime</td><td>Claude Code</td><td>Copilot CLI</td><td>Claude Code, Copilot, Cursor, OpenCode or Codex</td></tr>
+              </tbody>
+            </table>
+            <p class="recipe-section__body">
+              <em>Not documented</em> means the tool's page does not say, not that the tool cannot do it.
+            </p>
+          </section>
+
+          <section class="recipe-section" id="compare-which">
+            <h3 class="recipe-section__heading">Which to use</h3>
+            <ul class="recipe-section__list">
+              <li><strong><code>/batch</code></strong> for a mechanical change across many files, where every piece looks
+                alike and none needs another: a rename, a codemod, a move from JavaScript to TypeScript.</li>
+              <li><strong><code>/fleet</code></strong> when you work in Copilot CLI and want a change with several parts
+                done faster in the session you are in, while you watch. GitHub notes it does not help a request that is
+                sequential by nature.</li>
+              <li><strong>A convoy</strong> for a feature split across the API, the UI and the data, where order matters
+                and you want one branch to review. Also for work you want to leave running, resume after a stop, and see
+                the time and cost of, or run on Cursor, OpenCode or Codex.</li>
+              <li><strong>None of them</strong> for most everyday changes. <code>/oc:implement-feature</code> keeps the work
+                in your session, and the Team Lead hands off only what spans several areas.</li>
+            </ul>
+          </section>
+        </article>
 
         <!-- ═══════════════ Recipe 1 ═══════════════ -->
         <article class="recipe" id="plan-and-run">
