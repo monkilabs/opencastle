@@ -259,17 +259,17 @@ const sectionIcons: Record<string, string> = {
                   <td><a href="https://code.claude.com/docs/en/commands" class="docs-link" target="_blank" rel="noopener noreferrer">Claude Code <code>/batch</code></a></td>
                   <td>5 to 30 independent units, approved once</td>
                   <td>a background subagent per unit, each in a worktree</td>
-                  <td>none documented; each unit runs its tests</td>
+                  <td>each unit runs its tests and publishes its own change</td>
                 </tr>
                 <tr>
                   <td><a href="https://docs.github.com/en/copilot/concepts/agents/copilot-cli/fleet" class="docs-link" target="_blank" rel="noopener noreferrer">Copilot CLI <code>/fleet</code></a></td>
                   <td>subtasks with dependencies, managed by the main agent</td>
                   <td>subagents, each with its own context window</td>
-                  <td>the cloud agent opens a draft pull request, and can resolve conflicts and re-run the checks (<a href="https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/use-cloud-agent-on-github" class="docs-link" target="_blank" rel="noopener noreferrer">docs</a>)</td>
+                  <td>not documented</td>
                 </tr>
                 <tr>
                   <td><a href="https://kiro.dev/docs/custom-agents/subagents/" class="docs-link" target="_blank" rel="noopener noreferrer">Kiro</a></td>
-                  <td>requirements, design and <code>tasks.md</code>; the task graph runs in waves</td>
+                  <td>a task graph planned up front; independent tasks run in parallel</td>
                   <td>subagents sharing one workspace</td>
                   <td>pull requests, never merged automatically (<a href="https://kiro.dev/docs/web/autonomous-mode/" class="docs-link" target="_blank" rel="noopener noreferrer">docs</a>)</td>
                 </tr>
@@ -292,7 +292,7 @@ const sectionIcons: Record<string, string> = {
               <li><strong>Observable</strong> — an event log per run and a read-only dashboard, <code>opencastle convoy dashboard</code></li>
             </ul>
           </div>
-          <p>Real runs, with their time and cost, are in <a href="/docs/use-cases" class="docs-link">Use cases</a>.</p>
+          <p>When to choose a convoy over <code>/batch</code> or <code>/fleet</code>, and real runs with their time and cost: <a href="/docs/use-cases" class="docs-link">Use cases</a>.</p>
         </section>
 
         <!-- ═══════════════════════════════════════ -->
