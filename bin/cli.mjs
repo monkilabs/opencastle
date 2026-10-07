@@ -115,7 +115,7 @@ process.on('warning', (warning) => {
 })
 
 const HELP = `
-  🏰 opencastle — compile your AI assistant config for every assistant
+  🏰 opencastle — your team's AI setup and memory, in every teammate's assistant
 
   Usage:
     npx opencastle <command> [options]

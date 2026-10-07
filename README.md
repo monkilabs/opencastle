@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Write your AI config once. Every assistant. Every teammate.</strong>
+  <strong>Your team's AI setup and memory, in every teammate's assistant.</strong>
 </p>
 
 <p align="center">
@@ -25,15 +25,21 @@
 
 ---
 
-Your team's AI assistant config is scattered across seven formats. Someone wrote
-`CLAUDE.md`. Someone else keeps `.cursor/rules/`. Copilot reads
-`.github/copilot-instructions.md`. They say almost the same thing, and they
-drift apart the moment anyone edits one of them.
+Every AI coding assistant now remembers what it learns: the build that needs a
+flag, the convention nobody wrote down, the staging API that rate-limits. It
+remembers on one laptop. A new teammate's assistant starts from nothing, and the
+next person to hit the same problem pays for it again.
 
-OpenCastle compiles one source into all of them, and tells you when they fall
-out of sync. It starts that source from your code: the stack with its versions,
-the commands, the routes and the models, so your assistant knows the project on
-its first task.
+OpenCastle makes it the team's. Instructions, skills and agents live in the
+repository and compile for the assistant your company uses. What agents remember
+about the project becomes a lesson when the agent stops, reviewed in the pull
+request with the work, and every teammate's assistant loads it before its next
+task. What they remember about you stays yours. Across repositories, the
+organisation's standard is an [Agent Plugin](https://agent-plugins.org) every
+repository extends.
+
+It starts from your code: the stack with its versions, the commands, the routes
+and the models, so the assistant knows the project on its first task.
 
 <br>
 
@@ -85,19 +91,26 @@ command and flag: [opencastle.dev/docs/cli](https://www.opencastle.dev/docs/cli/
 
 ## Built for teams
 
-Everyone keeps the assistant they like; the team keeps one reviewed source.
+A new teammate clones the repository, and their assistant starts where a
+senior's is.
 
+- **Shared memory, apart from personal.** Agents save what they learn as they
+  always do. When an agent stops, a hook in Claude Code or VS Code turns what is
+  about the project into a lesson in `.opencastle/lessons/`, and leaves what is
+  about the person. Lessons go into the pull request with the work, cite the
+  code they are about, and `doctor` names one whose code has changed.
+- **Loaded without asking.** Claude Code, Copilot, Cursor and Windsurf load the
+  team's lessons before every task on their own.
 - **One standard, many repositories.** A baseline is an npm package with the
   organisation's instructions, skills, agents, MCP servers and policy, which
-  every repository `extends`. It is also an [Agent Plugin](https://agent-plugins.org).
+  every repository `extends`. It is also an [Agent Plugin](https://agent-plugins.org),
+  and a lesson every repository needs graduates into its skills.
 - **Policy only tightens.** Which MCP servers may run, which hosts they reach,
   exact versions, what no repository may drop, how much context loads before a
   task. A repository can tighten it, never relax it.
 - **A lock you can review.** `sync` writes `.opencastle/lock.json`, and
   `npx opencastle review` says on the pull request what a change does to every
   assistant, marking with ⚠️ what deserves a careful look.
-- **Team memory.** Lessons agents record cite the code they are about, and
-  `doctor` names one whose code has changed.
 
 ```bash
 npx opencastle explain                     # what a new teammate's assistant gets, and what to set up
@@ -123,7 +136,8 @@ Layers, every config field, policy, the lock and a rollout recipe:
 | **Codex CLI** | `AGENTS.md`, `.codex/` | `.agents/skills/` | `.codex/config.toml` (trusted projects only) |
 | **Antigravity** | `GEMINI.md` (points to `AGENTS.md` when Codex or OpenCode is also selected), `.agents/` | `.agents/skills/` | `.agents/mcp_config.json` |
 
-Each target gets its assistant's native format. In Claude Code and Copilot Chat
+Most teams use one of these; each gets its native format, so switching
+providers keeps the setup and the memory. In Claude Code and Copilot Chat
 the prompts are slash commands under `/oc:`, beside your own; the others get
 them as files you ask for by name.
 
