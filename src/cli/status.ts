@@ -1,4 +1,4 @@
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { existsSync, statSync } from 'node:fs'
 import { readdir, stat } from 'node:fs/promises'
 import { readManifest } from './manifest.js'
@@ -21,8 +21,7 @@ import type { CliContext, IdeAdapter, Manifest } from './types.js'
 const STATUS_HELP = `
   opencastle
 
-  Show what is installed, whether generated files are current, what to run next,
-  and how many of your assistant's memories the team has not got yet.
+  Show what is installed, whether generated files are current, and what to run next.
 
   Options:
     --json          Machine-readable output
@@ -54,8 +53,6 @@ export interface StatusReport {
   nextReason?: string
   /** The baselines the committed lock records, as `name version`. */
   baselines?: string[]
-  /** Memories this machine's assistants keep about the repository that no lesson holds yet. */
-  unsharedMemories?: Array<{ assistant: string; count: number }>
 }
 
 /** Newest mtime under a directory tree, or 0 when absent. */
@@ -337,23 +334,10 @@ export async function buildStatusReport(pkgRoot: string, projectRoot: string): P
     baselines = []
   }
 
-  // What this person's assistants learned here and the team has not seen.
-  // Not a fault, so it never becomes the next command: it only says so.
-  let unsharedMemories: Array<{ assistant: string; count: number }> = []
-  try {
-    const { readLessons } = await import('./lessons.js')
-    const { unsharedMemory } = await import('./memory-sources.js')
-    const { lessons } = readLessons(join(projectRoot, '.opencastle'))
-    unsharedMemories = unsharedMemory(projectRoot, new Set(lessons.map((l) => l.source).filter((s): s is string => Boolean(s))))
-  } catch {
-    unsharedMemories = []
-  }
-
   return {
     installed: true,
     missingRequired,
     ...(baselines.length > 0 && { baselines }),
-    ...(unsharedMemories.length > 0 && { unsharedMemories }),
     version: manifest.version,
     ides: adapters.map((a) => a.ide),
     targets,
@@ -418,16 +402,6 @@ function render(report: StatusReport): void {
     console.log(`  ${c.dim('Not compiled:')} ${report.unmanaged.join(', ')}`)
   }
 
-  const unshared = report.unsharedMemories ?? []
-  if (unshared.length > 0) {
-    const n = unshared.reduce((sum, u) => sum + u.count, 0)
-    console.log('')
-    console.log(
-      `  ${c.dim('Memory')}  ${n} ${n === 1 ? 'memory' : 'memories'} on this machine the team has not got yet ` +
-        c.dim(`(${unshared.map((u) => `${u.assistant} ${u.count}`).join(', ')})`),
-    )
-    console.log(`          ${c.cyan('npx opencastle promote memory')} ${c.dim(n === 1 ? 'makes it a lesson for everyone' : 'makes them lessons for everyone')}`)
-  }
 
   console.log('')
   if (report.nextCommand) {

@@ -1,4 +1,5 @@
 import { createSingleFileAdapter } from './single-file-base.js'
+import { compileTeamMemory } from '../memory-hooks.js'
 import { CLAUDE_COMMANDS_DIR, legacyClaudeCommands } from '../command-namespace.js'
 
 /**
@@ -24,7 +25,7 @@ import { CLAUDE_COMMANDS_DIR, legacyClaudeCommands } from '../command-namespace.
 
 export const IDE_ID = 'claude-code'
 
-const { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs } = createSingleFileAdapter({
+const base = createSingleFileAdapter({
   rootFile: 'CLAUDE.md',
   dotDir: '.claude',
   mcpConfigPath: '.mcp.json',
@@ -39,4 +40,16 @@ const { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs } = 
   listsSkillsAndAgents: true,
 })
 
-export { install, update, getManagedPaths, getDoctorChecks, getLegacyOutputs }
+export const { getManagedPaths, getDoctorChecks, getLegacyOutputs } = base
+
+export async function install(...args: Parameters<typeof base.install>): ReturnType<typeof base.install> {
+  const results = await base.install(...args)
+  compileTeamMemory(args[0], args[1], IDE_ID)
+  return results
+}
+
+export async function update(...args: Parameters<typeof base.update>): ReturnType<typeof base.update> {
+  const results = await base.update(...args)
+  compileTeamMemory(args[0], args[1], IDE_ID)
+  return results
+}

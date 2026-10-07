@@ -5,6 +5,8 @@ import { readManifest } from './manifest.js'
 import { removeDirIfExists } from './copy.js'
 import { removeGitignoreBlock, predictGitignoreStrip, LOCAL_DIRS } from './gitignore.js'
 import { confirm, select, closePrompts, c } from './prompt.js'
+import { memoryHookPaths, stripMemoryHooks } from './memory-hooks.js'
+import { LESSON_RULES } from './lessons-rules.js'
 import { stripManagedBlockFromFile, predictStripFile } from './managed-block.js'
 import { resolveManagedPaths, ownerOf, removeOwnedFiles } from './managed-paths.js'
 import { stripManagedMcpServers, getMcpConfigRelPath, willKeepSomethingAfterStrip, retireLegacyMcpConfig, LEGACY_MCP_CONFIGS } from './mcp.js'
@@ -248,9 +250,14 @@ export default async function remove({ args }: CliContext): Promise<void> {
 
   console.log(`\n  🏰 ${c.bold('OpenCastle remove')}\n`)
 
+  // The memory hook runs OpenCastle, which this is the step before uninstalling,
+  // so it goes in both modes; the lessons rules are text, and stay with the files.
+  const hookPaths = memoryHookPaths(projectRoot)
+  const lessonRulePaths = Object.values(LESSON_RULES).map((r) => r.path).filter((p) => existsSync(resolve(projectRoot, p)))
   if (mode === 'keep-files') {
     console.log('  Will remove:')
     console.log(`    ${c.dim('.opencastle/manifest.json')}`)
+    for (const p of hookPaths) console.log(`    ${c.dim(`the memory hook in ${p}`)}`)
     console.log('\n  Every generated file stays exactly where it is.')
     console.log(`  Afterwards: ${c.bold('npm uninstall opencastle')}\n`)
   } else {
@@ -267,6 +274,8 @@ export default async function remove({ args }: CliContext): Promise<void> {
       `    ${c.yellow('→')} ${c.dim('.opencastle/')} ${c.yellow(`moved to ${relative(projectRoot, parkedDirFor(projectRoot))}/ — your conventions and lessons`)}`,
     )
     if (hasLegacy) console.log(`    ${c.red('-')} ${c.dim('.opencastle.json')}`)
+    for (const p of hookPaths) console.log(`    ${c.red('-')} ${c.dim(`the memory hook in ${p}`)}`)
+    for (const p of lessonRulePaths) console.log(`    ${c.red('-')} ${c.dim(p)}`)
 
     // Co-owned files are only *sometimes* kept: one holding nothing but our
     // block is deleted. Announcing "your own writing stays" over a file about to
@@ -329,6 +338,7 @@ export default async function remove({ args }: CliContext): Promise<void> {
     // `readManifest`, so dropping only the new path left the project still
     // reporting as installed under a heading that said otherwise.
     if (hasLegacy) await unlink(legacyManifestPath).catch(() => {})
+    stripMemoryHooks(projectRoot)
     console.log(`\n  ${c.green('✓')} Files are now standalone.`)
     console.log(`  You can uninstall: ${c.bold('npm uninstall opencastle')}\n`)
     closePrompts()
@@ -398,6 +408,18 @@ export default async function remove({ args }: CliContext): Promise<void> {
       else if (legacy === 'stripped') stripped++
       else if (legacy === 'unreadable') unreadable.push(legacyRel)
     }
+  }
+
+  for (const p of stripMemoryHooks(projectRoot)) {
+    if (existsSync(resolve(projectRoot, p))) stripped++
+    else removed++
+    parents.add(dirname(resolve(projectRoot, p)))
+  }
+  for (const p of lessonRulePaths) {
+    if (!existsSync(resolve(projectRoot, p))) continue
+    await unlink(resolve(projectRoot, p))
+    removed++
+    parents.add(dirname(resolve(projectRoot, p)))
   }
 
   // The containers our own directories lived in. `.claude/agents/`, `skills/`

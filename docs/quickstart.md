@@ -147,8 +147,9 @@ is one `npx opencastle sync`.
 | `.opencastle/lock.json`, `manifest.json`, `LESSONS-LEARNED.md` | Ours, rewritten by `sync`. Commit them. |
 | Your text around the managed block in a root file | **Yours**, kept byte for byte. |
 | The managed block, and generated directories such as `.claude/skills/` or `.cursor/rules/` | Ours, rewritten by every sync. |
+| The lessons each assistant loads (`.claude/rules/opencastle-lessons.md`, `.github/instructions/opencastle-lessons.instructions.md`, …) and `.github/hooks/opencastle.json` | Ours, rewritten from the lessons and by every sync. Commit them. |
 | `.claude/commands/` outside `oc/`, `.github/prompts/` files not starting `oc.`, the rest of `.claude/` and `.github/` | **Yours**, never touched. |
-| MCP config files (`.mcp.json`, `.vscode/mcp.json`, …) | Shared: only OpenCastle's own entries are updated. |
+| MCP config files (`.mcp.json`, `.vscode/mcp.json`, …) and `.claude/settings.json` | Shared: only OpenCastle's own entries are updated — its MCP servers, and its memory hook. |
 
 To change what the assistants are told, edit `.opencastle/`, never the
 generated files.

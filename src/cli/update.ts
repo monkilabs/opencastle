@@ -32,6 +32,8 @@ import { buildLock, writeLock, readLock, LOCK_REL, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
 import { parseMcpConfigText } from './mcp-file.js'
+import { writeLessonRules } from './lessons-rules.js'
+import { memoryHooksDrift } from './memory-hooks.js'
 import { syncLessons, LESSONS_DIR, LESSONS_INDEX } from './lessons.js'
 
 /** The config that replaced a legacy one, for the sentence that reports it. */
@@ -558,6 +560,7 @@ export default async function update({
   }
 
   // ── Update each IDE ─────────────────────────────────────────────
+  const hooksBefore = memoryHooksDrift(projectRoot, ides, pkg.version)
   // Generated config that exists but will not parse. Filled from two places —
   // the adapters' own scaffold step and the rebuild pass below — and reported
   // once at the end, because the user needs the filename either way.
@@ -722,6 +725,13 @@ export default async function update({
   // but compiled all the same, and `sync --check` holds it to its sources.
   const lessons = syncLessons(resolve(projectRoot, '.opencastle'))
 
+  // ── The team's memory ───────────────────────────────────────────
+  // Each target's compile wrote the lessons it loads and its memory hook;
+  // what changed is the difference from before the targets ran. The lessons
+  // rules follow the index just rebuilt above.
+  writeLessonRules(projectRoot, ides)
+  const hooksAfter = memoryHooksDrift(projectRoot, ides, pkg.version)
+
   // ── Update manifest ─────────────────────────────────────────────
   const before = manifestMeaning(manifest as unknown as Record<string, unknown>)
   manifest.version = pkg.version
@@ -783,6 +793,13 @@ export default async function update({
   }
   if (lessons.index === 'updated' && lessons.migrated === 0 && !lessons.backup) {
     console.log(`  ${c.green('✓')} Updated .opencastle/${LESSONS_INDEX} from .opencastle/${LESSONS_DIR}/`)
+  }
+  for (const before of hooksBefore) {
+    if (hooksAfter.some((a) => a.path === before.path)) continue
+    console.log(`  ${c.green('✓')} ${before.detail.includes('missing') || before.detail.startsWith('has no') ? 'Added' : 'Updated'} the memory hook in ${before.path}`)
+  }
+  for (const after of hooksAfter.filter((a) => a.unreadable)) {
+    console.log(`  ${c.yellow('!')} ${after.path} is not valid JSON, so the memory hook was not added — fix it and run sync again`)
   }
   for (const problem of lessons.problems) {
     console.log(`  ${c.yellow('!')} Left .opencastle/${problem.split(' ')[0]} out of the lessons index — ${problem.slice(problem.indexOf(' ') + 1)}`)

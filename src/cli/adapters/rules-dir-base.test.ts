@@ -267,7 +267,9 @@ describe('frontmatter dialects differ per IDE', () => {
     it('leaves the instructions to CLAUDE.md, so they load once', async () => {
       await cursor.install(pkgRoot, projectRoot, stack('claude-code'))
       expect(existsSync(join(rules(), 'general.mdc'))).toBe(false)
-      expect(readdirSync(rules()).filter((f) => f.endsWith('.mdc'))).toEqual([])
+      // Only the team's lessons: Cursor reads CLAUDE.md, not .claude/rules/,
+      // so this is the one place they reach it.
+      expect(readdirSync(rules()).filter((f) => f.endsWith('.mdc'))).toEqual(['opencastle-lessons.mdc'])
       // Agents are still Cursor's own.
       expect(existsSync(join(rules(), 'agents', 'developer.mdc'))).toBe(true)
       expect(readFileSync(join(projectRoot, '.cursorrules'), 'utf8')).toContain('instructions are in `CLAUDE.md`, which Cursor also applies')

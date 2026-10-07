@@ -3,7 +3,8 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync
 import { homedir } from 'node:os'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { checkSkill } from './agent-plugin.js'
-import { LESSONS_DIR, newLessonId, readLessons, renderLesson, syncLessons, today, type Lesson } from './lessons.js'
+import { LESSONS_DIR, newLessonId, readLessons, renderLesson, today, type Lesson } from './lessons.js'
+import { refreshLessons } from './lessons-rules.js'
 import { readMemoryDir, readRepositoryMemory, type MemorySource } from './memory-sources.js'
 import { scanForSecrets } from './secret-scan.js'
 import { getOrchestratorRoot } from './copy.js'
@@ -56,6 +57,8 @@ const HELP = `
     --from <dir>    memory: read memory files from this directory instead
     --force         skill: replace a team skill with the same name
     --dry-run       Say what would be written, and write nothing
+    --json          memory: one line of JSON and exit 0, as the assistants'
+                    memory hooks run it
     --help, -h      Show this help
 `
 
@@ -217,20 +220,29 @@ function promoteSkill(pkgRoot: string, args: string[], dryRun: boolean): void {
 export { claudeMemoryDir } from './memory-sources.js'
 
 function promoteMemory(args: string[], dryRun: boolean): void {
+  // --json is how the assistants' hooks run it: one line of JSON, no prose,
+  // and exit 0 whatever happens, because a hook's exit code means something to
+  // the assistant (on Stop, 2 tells the agent to keep going) and a session
+  // ending is no time to report a missing memory directory.
+  const json = args.includes('--json')
+  const stop = (message: string): void => {
+    if (!json) fail(message)
+    console.log(JSON.stringify({ shared: [], left: [], note: message }))
+  }
   const projectRoot = projectRootFrom(process.cwd())
   const customizations = join(projectRoot, '.opencastle')
-  if (!existsSync(customizations)) fail('no .opencastle/ here — run npx opencastle init first')
+  if (!existsSync(customizations)) return stop('no .opencastle/ here — run npx opencastle init first')
   const from = flag(args, '--from')
   let sources: MemorySource[]
   if (from) {
     const dir = resolve(process.cwd(), from.replace(/^~(?=\/|$)/, home()))
-    if (!existsSync(dir)) fail(`no memory at ${tilde(dir)}`)
+    if (!existsSync(dir)) return stop(`no memory at ${tilde(dir)}`)
     sources = [readMemoryDir(dir, 'Memory')]
   } else {
     const found = readRepositoryMemory(projectRoot)
     sources = found.sources
     if (sources.length === 0) {
-      fail(
+      return stop(
         `no memory at ${tilde(found.looked[0])}, in VS Code's storage for this folder, or in ${tilde(dirname(found.looked[found.looked.length - 1]))}/memories — ` +
           'each assistant writes it once it has saved one for this repository; --from <dir> reads another. ' +
           'Cursor keeps its memories on its servers and Copilot Memory lives on GitHub, so neither can be read here.',
@@ -238,13 +250,15 @@ function promoteMemory(args: string[], dryRun: boolean): void {
     }
   }
 
-  syncLessons(customizations)
+  refreshLessons(customizations)
   const { lessons } = readLessons(customizations)
   const promoted = new Set(lessons.map((l) => l.source).filter((s): s is string => Boolean(s)))
   const taken = new Set(lessons.map((l) => l.id))
   const written: string[] = []
+  const shared: Array<{ assistant: string; lesson: string }> = []
+  const left: Array<{ assistant: string; memory: string; why: string }> = []
 
-  console.log(`\n  🏰 ${c.bold('Promote memory')}`)
+  if (!json) console.log(`\n  🏰 ${c.bold('Promote memory')}`)
   for (const source of sources) {
     const wrote: string[] = []
     const skipped = [...source.skipped]
@@ -274,17 +288,24 @@ function promoteMemory(args: string[], dryRun: boolean): void {
       }
     }
     written.push(...wrote)
+    shared.push(...wrote.map((w) => ({ assistant: source.assistant, lesson: `.opencastle/${w}` })))
+    left.push(...skipped.filter(([, why]) => why !== 'already a lesson').map(([memory, why]) => ({ assistant: source.assistant, memory, why })))
+    if (json) continue
     console.log(`\n  ${c.bold(source.assistant)} ${c.dim(`from ${tilde(source.where)}`)}`)
     for (const w of wrote) console.log(`  ${c.green(dryRun ? '+' : '✓')} ${dryRun ? 'Would write' : 'Wrote'} .opencastle/${w}`)
     for (const [file, why] of skipped) console.log(`  ${c.dim(`- ${file}: ${why}`)}`)
   }
-  if (!dryRun && written.length > 0) syncLessons(customizations)
+  if (!dryRun && written.length > 0) refreshLessons(customizations)
 
+  if (json) {
+    console.log(JSON.stringify({ shared, left }))
+    return
+  }
   if (written.length === 0) console.log(`\n  ${c.dim('Nothing new to promote.')}\n`)
   else if (!dryRun) {
     console.log(
-      `\n  ${c.dim('Each is category general, severity medium: set them, add --cite where a lesson is about code,')}` +
-        `\n  ${c.dim('and delete any that are yours alone. The pull request that commits them is where the team agrees.')}\n`,
+      `\n  ${c.dim('Each is category general, severity medium: set them, and add --cite where a lesson is about code.')}` +
+        `\n  ${c.dim('The pull request that commits them is where the team agrees.')}\n`,
     )
   } else {
     console.log('')
@@ -299,7 +320,12 @@ export default async function promote({ pkgRoot, args }: CliContext): Promise<vo
     return
   }
   const dryRun = rest.includes('--dry-run')
-  if (sub === 'skill') promoteSkill(pkgRoot, rest, dryRun)
-  else promoteMemory(rest, dryRun)
+  if (sub === 'skill') return promoteSkill(pkgRoot, rest, dryRun)
+  if (!rest.includes('--json')) return promoteMemory(rest, dryRun)
+  try {
+    promoteMemory(rest, dryRun)
+  } catch (err) {
+    console.log(JSON.stringify({ shared: [], left: [], note: (err as Error).message }))
+  }
 }
 

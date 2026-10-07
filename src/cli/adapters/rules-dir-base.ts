@@ -1,3 +1,5 @@
+import { compileTeamMemory } from '../memory-hooks.js'
+import { isLessonRule } from '../lessons-rules.js'
 import { resolve, join, basename, dirname } from 'node:path'
 import { mkdir, writeFile, readdir, readFile, unlink, rename } from 'node:fs/promises'
 import { existsSync, readdirSync, realpathSync, rmdirSync } from 'node:fs'
@@ -293,7 +295,9 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     repoInfo?: RepoInfo,
     source?: CompileSource,
   ): Promise<CopyResults> {
-    return withSource(pkgRoot, stack, source, (src) => installFrom(src, projectRoot, stack, repoInfo))
+    const results = await withSource(pkgRoot, stack, source, (src) => installFrom(src, projectRoot, stack, repoInfo))
+    compileTeamMemory(pkgRoot, projectRoot, config.ideId)
+    return results
   }
 
   async function installFrom(
@@ -338,7 +342,12 @@ export function createRulesDirAdapter(config: RulesDirConfig): RulesDirAdapter {
     _repoInfo?: RepoInfo,
     source?: CompileSource,
   ): Promise<CopyResults> {
-    return withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot, stack))
+    const results = await withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot, stack))
+    compileTeamMemory(pkgRoot, projectRoot, config.ideId)
+    // The sweep took the lessons rule with the rest of the directory, and it
+    // is back: not a file this sync removed.
+    if (results.deleted) results.deleted = results.deleted.filter((rel) => !isLessonRule(rel))
+    return results
   }
 
   async function updateFrom(src: CompileSource, projectRoot: string, stack: StackConfig | undefined): Promise<CopyResults> {

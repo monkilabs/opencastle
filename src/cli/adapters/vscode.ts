@@ -4,6 +4,8 @@ import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { writeManagedBlock, recordMerge } from '../managed-block.js'
 import { mergeCopyResults, copyDir } from '../copy.js'
 import { scaffoldMcpConfigInto } from '../mcp.js'
+import { compileTeamMemory } from '../memory-hooks.js'
+import { isLessonRule } from '../lessons-rules.js'
 import { getAgentTransform } from '../stack-config.js'
 import { withSource, type CompileSource } from '../layers.js'
 import type { CopyResults, CopyDirOptions, DoctorCheck, ManagedPaths, RepoInfo, StackConfig } from '../types.js'
@@ -117,7 +119,9 @@ export async function install(
   repoInfo?: RepoInfo,
   source?: CompileSource,
 ): Promise<CopyResults> {
-  return withSource(pkgRoot, stack, source, (src) => installFrom(src, projectRoot, stack, repoInfo))
+  const results = await withSource(pkgRoot, stack, source, (src) => installFrom(src, projectRoot, stack, repoInfo))
+  compileTeamMemory(pkgRoot, projectRoot, IDE_ID)
+  return results
 }
 
 async function installFrom(
@@ -173,7 +177,12 @@ export async function update(
   _repoInfo?: RepoInfo,
   source?: CompileSource,
 ): Promise<CopyResults> {
-  return withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot, stack))
+  const results = await withSource(pkgRoot, stack, source, (src) => updateFrom(src, projectRoot, stack))
+  compileTeamMemory(pkgRoot, projectRoot, IDE_ID)
+  // The sweep took the lessons rule with the rest of the directory, and it is
+  // back: not a file this sync removed.
+  if (results.deleted) results.deleted = results.deleted.filter((rel) => !isLessonRule(rel))
+  return results
 }
 
 async function updateFrom(src: CompileSource, projectRoot: string, stack: StackConfig | undefined): Promise<CopyResults> {

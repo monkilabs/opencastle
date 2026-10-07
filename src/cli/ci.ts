@@ -94,6 +94,27 @@ function findUp(start: string, names: string[], stop: string): string | null {
  * `extraPaths`: directories outside the project the check depends on — a
  * baseline kept elsewhere in the repository, whose change must run it too.
  */
+/**
+ * How to run OpenCastle in this project from a workflow or a hook. The
+ * project's own copy when it has one: then every laptop and CI run the version
+ * its lockfile pins, and nobody's global install decides the output. Otherwise
+ * the release that compiled the project.
+ */
+export function opencastleRunner(projectRoot: string, cliVersion: string, pm?: PackageManager): string {
+  let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> } = {}
+  try {
+    pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
+  } catch {
+    pkg = {}
+  }
+  if (!(pkg.devDependencies?.opencastle ?? pkg.dependencies?.opencastle)) return `npx -y opencastle@${cliVersion}`
+  const manager = pm ?? (() => {
+    const root = findUp(projectRoot, ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb', 'bun.lock'], repoRootOf(projectRoot))
+    return root ? packageManagerOf(root) : 'npm'
+  })()
+  return manager === 'pnpm' ? 'pnpm exec opencastle' : manager === 'yarn' ? 'yarn opencastle' : 'npx --no opencastle'
+}
+
 export function planCi(projectRoot: string, cliVersion: string, owners?: string, extraPaths: string[] = []): Plan {
   const repoRoot = repoRootOf(projectRoot)
   const prefix = (git(projectRoot, ['rev-parse', '--show-prefix']) ?? '').replace(/\/$/, '')
@@ -104,22 +125,8 @@ export function planCi(projectRoot: string, cliVersion: string, owners?: string,
     (existsSync(join(projectRoot, 'package.json')) ? projectRoot : null)
   const pm = installRoot ? packageManagerOf(installRoot) : 'npm'
 
-  let pkg: { dependencies?: Record<string, string>; devDependencies?: Record<string, string> } = {}
-  try {
-    pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'))
-  } catch {
-    pkg = {}
-  }
-  // The project's own copy when it has one: then every laptop and CI run the
-  // version its lockfile pins, and nobody's global install decides the output.
-  const pinned = Boolean(pkg.devDependencies?.opencastle ?? pkg.dependencies?.opencastle)
-  const run = pinned
-    ? pm === 'pnpm'
-      ? 'pnpm exec opencastle'
-      : pm === 'yarn'
-        ? 'yarn opencastle'
-        : 'npx --no opencastle'
-    : `npx -y opencastle@${cliVersion}`
+  const run = opencastleRunner(projectRoot, cliVersion, pm)
+  const pinned = !run.startsWith('npx -y ')
 
   const install: string[] = []
   let installRel = ''

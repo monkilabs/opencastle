@@ -19,9 +19,9 @@ import {
   newLessonId,
   readLessons,
   renderLesson,
-  syncLessons,
   today,
 } from '../lessons.js'
+import { refreshLessons } from '../lessons-rules.js'
 
 export interface ReportedLesson {
   taskId: string
@@ -124,6 +124,6 @@ export function recordLessons(
   }
   // Also moves an old single-file log into lesson files, which is why the
   // commit takes the whole folder and not only the files written here.
-  if (written.length > 0) syncLessons(customizationsDir)
+  if (written.length > 0) refreshLessons(customizationsDir)
   return written
 }

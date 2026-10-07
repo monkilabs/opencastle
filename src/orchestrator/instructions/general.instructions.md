@@ -15,6 +15,6 @@ The project's own instructions win: the Project Context loaded with these, the r
 - **Fail visibly** — surface errors; never swallow an exception.
 - **Comments say why**, not what.
 - **Git.** Never push to `main`: every change goes through a branch and a pull request (**git-workflow**).
-- **Memory: the team's or the user's.** Read `.opencastle/LESSONS-LEARNED.md` before you start, and open the lessons that match your task. What you confirm that is true for anyone working in this repository, record as a lesson the moment you confirm it: a fix after a failure, a convention or decision the code does not show, a tool's or service's quirk, a correction the user gives about the code (**self-improvement**). What is about the user (their preferences, role, habits, machine) stays in your own memory. Never both.
+- **Memory: the team's or the user's.** The team's lessons load with these instructions (if they did not, read `.opencastle/LESSONS-LEARNED.md`); open the ones that touch your task. Save what you learn in your own memory, as you normally do: in Claude Code and VS Code, OpenCastle shares what is about the project with the team when the session ends, and leaves what is about the user. So save what is about the user (their preferences, role, habits, machine) as about the user. In any other assistant, record what you confirm about the project as a lesson (**self-improvement**).
 
 <!-- End of Coding Standards -->

@@ -85,7 +85,7 @@ const COMMAND_FLAGS = {
   ci: ['--owners', '--force', '--dry-run'],
   baseline: ['--name', '--json'],
   plugin: ['--check', '--name', '--owner', '--json'],
-  promote: ['--to', '--from', '--force', '--dry-run'],
+  promote: ['--to', '--from', '--force', '--dry-run', '--json'],
   fleet: ['--json'],
 }
 

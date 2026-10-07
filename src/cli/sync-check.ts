@@ -7,6 +7,8 @@ import { detectRepoInfo, mergeStackIntoRepoInfo } from './detect.js'
 import { getMcpConfigRelPath, expectedTeamEntries, containerKeyFor } from './mcp.js'
 import { parseMcpConfigText } from './mcp-file.js'
 import { lessonsIndexDrift, LESSONS_INDEX } from './lessons.js'
+import { isLessonRule, lessonRulesDrift } from './lessons-rules.js'
+import { memoryHooksDrift } from './memory-hooks.js'
 import { resolveStack, getIncludedMcpServers } from './stack-config.js'
 import { auditMcpConfig, describeFindingUnder, remedyFor, isFailure, type TeamAuditContext } from './mcp-audit.js'
 import { resolveSources, materialize, hasErrors, cliVersionOf, type CompileSource } from './layers.js'
@@ -63,7 +65,7 @@ export interface Drift {
    * parse, a baseline that is not installed, a policy the sources break. The
    * comparison cannot run until it is fixed, and `sync` refuses to compile.
    */
-  origin?: 'mcp' | 'team' | 'version'
+  origin?: 'mcp' | 'team' | 'version' | 'memory'
   /** The classifier's own words, so the checker and `doctor` cannot diverge. */
   detail?: string
   /** What resolves it, per entry — these do not share a remedy. */
@@ -215,6 +217,9 @@ function comparePath(
       // A file the target shares the directory with someone over — their own
       // prompt beside ours in `.github/prompts/` — is not drift.
       if (owns && !owns(shown)) continue
+      // The lessons rule sits among compiled rules but is derived from the
+      // lessons, and checked against them below.
+      if (isLessonRule(shown)) continue
       drift.push({ ide, path: shown, kind: 'extra' })
     }
     return checked
@@ -661,6 +666,19 @@ async function compareProject(
     if (why) drift.push({ ide: 'all', path: `.opencastle/${LESSONS_INDEX}`, kind: 'outdated', detail: why, fix: 'npx opencastle sync' })
   }
 
+  // The team's memory: the lessons rule each assistant loads, derived from the
+  // lessons like the index, and the hook that shares what agents remember.
+  for (const d of lessonRulesDrift(projectRoot, ides)) {
+    drift.push({ ide: d.ide, path: d.path, kind: 'outdated', detail: d.detail, fix: 'npx opencastle sync', origin: 'memory' })
+  }
+  for (const d of memoryHooksDrift(projectRoot, ides, cliVersionOf(pkgRoot))) {
+    drift.push(
+      d.unreadable
+        ? { ide: d.ide, path: d.path, kind: 'unreducible', detail: d.detail, fix: 'fix the JSON, then run npx opencastle sync; this one needs a person', origin: 'memory' }
+        : { ide: d.ide, path: d.path, kind: 'outdated', detail: d.detail, fix: 'npx opencastle sync', origin: 'memory' },
+    )
+  }
+
   // A manifest that parses but names no target this release knows is not a
   // clean project — `sync` exits 1 on it. Reporting "0 generated files match
   // their sources across 0 targets" is an assertion that cannot fail, and it
@@ -723,11 +741,14 @@ function render(report: CheckReport): void {
   // `.opencastle/lessons/` and stale until `sync` runs. It was filed under "MCP
   // servers sync would change", which it has nothing to do with.
   const lessonsIndex = `.opencastle/${LESSONS_INDEX}`
+  // The lessons each assistant loads follow the index; the memory hook is
+  // neither a source nor an MCP server, and says so.
   const lockDrift = [
     ...[...changed, ...missing].filter((d) => d.path === LOCK_REL),
-    ...outdated.filter((d) => d.path === lessonsIndex),
+    ...outdated.filter((d) => d.path === lessonsIndex || isLessonRule(d.path)),
   ]
-  const outdatedMcp = outdated.filter((d) => d.path !== lessonsIndex)
+  const hookDrift = outdated.filter((d) => d.origin === 'memory' && !isLessonRule(d.path))
+  const outdatedMcp = outdated.filter((d) => d.path !== lessonsIndex && d.origin !== 'memory')
   const changedFiles = changed.filter((d) => d.path !== LOCK_REL)
   const missingFiles = missing.filter((d) => d.path !== LOCK_REL)
   if (lockDrift.length > 0) {
@@ -748,6 +769,12 @@ function render(report: CheckReport): void {
   if (extra.length > 0) {
     console.log(`  ${c.bold('Not produced by any source')} ${c.dim('(removed on the next sync)')}`)
     for (const d of extra) console.log(`    ${c.red('+')} ${d.path} ${c.dim(`(${d.ide}${d.detail ? ` — ${d.detail}` : ''})`)}`)
+    console.log('')
+  }
+
+  if (hookDrift.length > 0) {
+    console.log(`  ${c.bold('The memory hook')} ${c.dim('(it shares what agents remember about the project when a session ends)')}`)
+    for (const d of hookDrift) console.log(`    ${c.yellow('~')} ${d.path} ${c.dim(`(${d.detail})`)}`)
     console.log('')
   }
 

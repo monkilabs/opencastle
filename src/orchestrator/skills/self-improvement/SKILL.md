@@ -1,27 +1,28 @@
 ---
 name: self-improvement
-description: "Keeps the team's memory: decides whether what you learned belongs to the team or to the user, records the team's as lessons in .opencastle/lessons/ with npx opencastle lesson, and re-verifies and graduates them. Use when you confirm something true for anyone working in the repository (a fix after a failure, a convention, a decision, a quirk, a correction about the code), before work past lessons may cover, when doctor reports a lesson's cited code changed, or when the lessons index grows long."
+description: "Keeps the team's memory: where what you learned goes (your memory, shared with the team when it is about the project, or a lesson in .opencastle/lessons/), and how lessons are cited, re-verified and graduated. Use when you confirm something true for anyone working in the repository (a fix after a failure, a convention, a decision, a quirk, a correction about the code), when you touch a lesson copied from memory, when doctor reports a lesson's cited code changed, or when the lessons index grows long."
 ---
 
 # Self-Improvement
 
-Lessons are the team's memory. A lesson is a file in `.opencastle/lessons/`, committed with the change you made, so the team reviews it in that pull request; `.opencastle/LESSONS-LEARNED.md` is the index every agent reads first, rewritten from those files by every sync — never edit it by hand.
+Lessons are the team's memory. A lesson is a file in `.opencastle/lessons/`, committed with the change you made, so the team reviews it in that pull request. `.opencastle/LESSONS-LEARNED.md` is the index, and Claude Code, VS Code, Cursor and Windsurf load a copy of it before every task; both are rewritten from the lesson files — never edit them by hand.
 
 ## The team's or the user's
 
-Decide when you learn it, not later. Nobody sorts memories afterwards.
+Decide when you learn it, by how you save it. Nobody sorts memories afterwards.
 
-| It is about | Where it goes | For example |
-|-------------|---------------|-------------|
-| The project: true for anyone working in this repository | A lesson, as soon as you have confirmed it | `pnpm build` fails without `CI=1` set; every migration ships with a down file; the staging API allows 10 requests a second; the user says "we never use default exports" |
-| The user: true for them, wherever they work | Your own memory, never a lesson | They want short answers; they use fish; their role; their editor; paths on their machine |
-| Every repository in the organisation | A lesson here, whose problem says it holds in every repository; it graduates into the baseline's skill (below) | The company's deploy pipeline needs a manual approval; an internal service's API contract |
-| This task only | Nowhere | A one-off workaround; a guess you have not confirmed |
+In Claude Code and VS Code, save it in your own memory as you normally do. When the session ends, OpenCastle copies what is about the project into a lesson, and leaves what is about the user. In any other assistant, record what is about the project as a lesson yourself (below).
 
-- Confirmed means the fix worked, the code shows it, or the user said so. A suspicion is not a lesson.
-- A correction from the user: about the code or the project, a lesson; about how they want you to work with them, your memory.
-- One place only. Never save the same thing as a lesson and in your own memory.
-- When unsure whether a teammate's agent would need it, ask: would it have saved them time on this repository? Yes: a lesson.
+| It is about | Save it as | For example |
+|-------------|------------|-------------|
+| The project: true for anyone working in this repository | About the project (a correction, a project note, a pointer to where something lives) | `pnpm build` fails without `CI=1` set; every migration ships with a down file; the staging API allows 10 requests a second; the user says "we never use default exports" |
+| The user: true for them, wherever they work | About the user. It stays theirs and never becomes a lesson | They want short answers; they use fish; their role; their editor; paths on their machine |
+| Every repository in the organisation | About the project, saying it holds in every repository; it graduates into the baseline's skill (below) | The company's deploy pipeline needs a manual approval; an internal service's API contract |
+| This task only | Nothing | A one-off workaround; a guess you have not confirmed |
+
+- Confirmed means the fix worked, the code shows it, or the user said so. A suspicion is not worth saving.
+- A correction from the user: about the code or the project, it is about the project; about how they want you to work with them, it is about the user.
+- A lesson copied from memory is category `general`, severity `medium`, and cites nothing. When your task touches one, set them in its file, and cite the code with `npx opencastle lesson verify <id> --cite <path>`.
 
 ## Record a lesson
 

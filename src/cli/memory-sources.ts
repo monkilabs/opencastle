@@ -208,8 +208,9 @@ function readMemoryFiles(dir: string): MemoryFile[] {
 function fromMemoryFiles(dir: string, prefix: string, skipped: Array<[string, string]>): MemoryCandidate[] {
   const out: MemoryCandidate[] = []
   for (const memory of readMemoryFiles(dir)) {
-    // Corrections and project notes are the team's; the rest are about one person.
-    if (memory.type && !['feedback', 'project'].includes(memory.type)) {
+    // Corrections, project notes and pointers to where things live are the
+    // team's; a `user` memory is about one person, and stays theirs.
+    if (memory.type && !['feedback', 'project', 'reference'].includes(memory.type)) {
       skipped.push([memory.file, memory.type === 'user' ? 'about you, not the project' : `a ${memory.type} memory`])
       continue
     }

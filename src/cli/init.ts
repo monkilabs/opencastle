@@ -20,6 +20,8 @@ import { stripManagedBlock, stripManagedBlockFromFile } from './managed-block.js
 import { resolveManagedPaths, declaredManagedPaths, ownerOf, removeOwnedFiles } from './managed-paths.js'
 import { noteUnreadable, whyLeftAlone } from './unreadable-report.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars } from './layers.js'
+import { writeLessonRules } from './lessons-rules.js'
+import { memoryHooksDrift } from './memory-hooks.js'
 import { buildLock, writeLock, priorTeam } from './lock.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
@@ -718,8 +720,16 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   const envVars = requiredEnvVars(resolved, stack, combinedRepoInfo)
   const gitignoreResult = await updateGitignore(projectRoot)
 
+  // ── The team's memory ───────────────────────────────────────────
+  // Each target's compile wrote the lessons it loads and its memory hook.
+  writeLessonRules(projectRoot, ides)
+  const unreadableHook = memoryHooksDrift(projectRoot, ides, pkg.version).find((h) => h.unreadable)
+
   // ── Summary ─────────────────────────────────────────────────────
   console.log(`  ${c.green('✓')} Created ${c.bold(String(totalCreated))} files`)
+  if (unreadableHook) {
+    console.log(`  ${c.yellow('!')} ${unreadableHook.path} is not valid JSON, so the memory hook was not added — fix it and run npx opencastle sync`)
+  }
   for (const { ide, message } of failedTargets) {
     console.log(`  ${c.red('✗')} ${IDE_LABELS[ide as IdeChoice] ?? ide} could not be installed:`)
     console.log(`     ${c.dim(message)}`)

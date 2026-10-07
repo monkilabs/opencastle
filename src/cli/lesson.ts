@@ -1,6 +1,7 @@
 import { stat, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname } from 'node:path'
 import type { CliContext } from './types.js'
+import { refreshLessons } from './lessons-rules.js'
 import { scanForSecrets } from './secret-scan.js'
 import {
   LESSON_CATEGORIES,
@@ -16,7 +17,6 @@ import {
   newLessonId,
   readLessons,
   renderLesson,
-  syncLessons,
   today,
   type Lesson,
 } from './lessons.js'
@@ -166,7 +166,7 @@ async function writeLessonFile(dir: string, lesson: Omit<Lesson, 'file'>, file: 
 
 /** Rewrite the index, after moving anything still in the old single file. */
 function reindex(dir: string): void {
-  const outcome = syncLessons(dir)
+  const outcome = refreshLessons(dir)
   if (outcome.migrated > 0) {
     console.log(
       `  Moved ${outcome.migrated} lesson(s) from ${LESSONS_INDEX} into .opencastle/${LESSONS_DIR}/` +
