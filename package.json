@@ -2,7 +2,7 @@
   "name": "opencastle",
   "version": "1.0.0",
   "type": "module",
-  "description": "Write your AI config once, for every assistant and every teammate: compiles instructions, agents, skills, commands and MCP servers for Claude Code, Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity, shared across your team's repositories.",
+  "description": "Your team's AI setup and memory, in every teammate's assistant: shared instructions, skills, agents, MCP servers and lessons, reviewed in pull requests and extended across repositories, for Claude Code, Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity.",
   "bin": {
     "opencastle": "bin/cli.mjs"
   },

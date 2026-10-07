@@ -88,6 +88,10 @@ What is different from a hand-written `CLAUDE.md`:
 - **Skills that load only when a task needs them**, for your stack's own tools,
   and agents to delegate to, each with its scope.
 - **MCP servers, pinned and audited**, configured in each assistant's own format.
+- **Memory the team shares.** What agents remember about the project becomes a
+  lesson when the agent stops, in Claude Code and VS Code, reviewed in the pull
+  request with the work; what they remember about you stays yours. Every
+  teammate's assistant loads the lessons before its next task.
 - **One source for every assistant** on the team, checked on every pull request.
 
 ## 4. See where you stand

@@ -473,12 +473,12 @@ describe('website matches the shipped CLI', () => {
   })
 })
 
-describe('the pitch leads with the compiler', () => {
+describe('the pitch leads with shared memory', () => {
   it('says what the tool does before listing what is inside', () => {
-    const compiles = readme.search(/compiles one source/i)
+    const does = readme.search(/OpenCastle makes it the team's/i)
     const inside = readme.indexOf('## What gets compiled')
-    expect(compiles).toBeGreaterThan(-1)
-    expect(compiles).toBeLessThan(inside)
+    expect(does).toBeGreaterThan(-1)
+    expect(does).toBeLessThan(inside)
   })
 
   it('marks the convoy engine experimental wherever it is introduced', () => {

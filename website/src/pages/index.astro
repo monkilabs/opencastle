@@ -64,6 +64,12 @@ const features = [
 
 const teamPoints = [
   {
+    icon: 'brain',
+    title: 'Shared memory, apart from personal',
+    description:
+      'Agents save what they learn as they always do. When an agent stops, a hook in Claude Code or VS Code turns what is about the project into a lesson, reviewed in the pull request with the work, and leaves what is about the person. Claude Code, Copilot, Cursor and Windsurf load the lessons before every task on their own.',
+  },
+  {
     icon: 'layers',
     title: 'One standard, every repository',
     description:
@@ -82,16 +88,10 @@ const teamPoints = [
       '.opencastle/lock.json records which layers ran at which versions, where every skill and instruction came from, and every MCP server. With CODEOWNERS on it, every change it records goes to its owners.',
   },
   {
-    icon: 'review',
-    title: 'Review the meaning, not the diff',
-    description:
-      'opencastle review turns dozens of regenerated files into sentences in the summary of the pull request’s check, and marks with ⚠️ what deserves a careful look: a new MCP server, a widened allowlist, a new always-loaded instruction.',
-  },
-  {
     icon: 'pr',
-    title: 'Drift shows up on the pull request',
+    title: 'Everything shows up on the pull request',
     description:
-      'Someone hand-edits a generated rule, or upgrades without recompiling. On GitHub Actions, sync --check annotates each drifted file with its own fix and writes a summary to the run page.',
+      'sync --check annotates each hand-edited or stale file with its own fix, and opencastle review turns dozens of regenerated files into sentences, marking with ⚠️ what deserves a careful look: a new MCP server, a widened allowlist, a new always-loaded instruction.',
   },
   {
     icon: 'audit',
@@ -301,22 +301,22 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenCastle — One AI Config for Every Assistant and Every Teammate</title>
+    <title>OpenCastle — Your Team's AI Setup and Memory, in Every Teammate's Assistant</title>
     <meta
       name="description"
-      content="Open-source CLI that compiles one AI assistant config — instructions, agents, skills, commands and MCP servers — into Claude Code, GitHub Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity, shares it across your team's repositories, and checks it on every pull request."
+      content="Open-source CLI that gives every teammate's AI assistant the team's instructions, skills, agents and memory: what agents learn about the project becomes a reviewed lesson every assistant loads. For Claude Code, GitHub Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity, shared across your repositories and checked on every pull request."
     />
     <meta name="theme-color" content="#0a0a0f" />
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://www.opencastle.dev/" />
-    <meta property="og:title" content="OpenCastle — One AI Config for Every Assistant and Every Teammate" />
-    <meta property="og:description" content="Open-source CLI that compiles one AI assistant config — instructions, agents, skills, commands and MCP servers — into Claude Code, GitHub Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity, shares it across your team's repositories, and checks it on every pull request." />
+    <meta property="og:title" content="OpenCastle — Your Team's AI Setup and Memory, in Every Teammate's Assistant" />
+    <meta property="og:description" content="Open-source CLI that gives every teammate's AI assistant the team's instructions, skills, agents and memory: what agents learn about the project becomes a reviewed lesson every assistant loads. For Claude Code, GitHub Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity, shared across your repositories and checked on every pull request." />
     <meta property="og:image" content="https://www.opencastle.dev/og-image.png" />
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="OpenCastle — One AI Config for Every Assistant and Every Teammate" />
-    <meta name="twitter:description" content="Open-source CLI that compiles one AI assistant config — instructions, agents, skills, commands and MCP servers — into Claude Code, GitHub Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity, shares it across your team's repositories, and checks it on every pull request." />
+    <meta name="twitter:title" content="OpenCastle — Your Team's AI Setup and Memory, in Every Teammate's Assistant" />
+    <meta name="twitter:description" content="Open-source CLI that gives every teammate's AI assistant the team's instructions, skills, agents and memory: what agents learn about the project becomes a reviewed lesson every assistant loads. For Claude Code, GitHub Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity, shared across your repositories and checked on every pull request." />
     <meta name="twitter:image" content="https://www.opencastle.dev/og-image.png" />
     <!-- Canonical -->
     <link rel="canonical" href="https://www.opencastle.dev/" />
@@ -395,19 +395,19 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         </div>
         <span class="hero__badge">Open Source · MIT Licensed</span>
         <h1 class="hero__title">
-          Write your AI config once.
+          What your team's AI learned,
           <br />
-          <span class="hero__title-gradient">Every&nbsp;assistant. Every&nbsp;teammate.</span>
+          <span class="hero__title-gradient">in every teammate's assistant.</span>
         </h1>
         <p class="hero__description">
-          Your team's assistant config is scattered across seven formats —
-          <code>CLAUDE.md</code>, <code>.cursor/rules</code>,
-          <code>copilot-instructions.md</code> — saying almost the same thing and
-          drifting apart. OpenCastle compiles one source into all of them for
-          <b>Claude Code</b>, <b>Copilot</b>, <b>Cursor</b>, <b>Windsurf</b>,
-          <b>OpenCode</b>, <b>Codex</b>, and <b>Antigravity</b>, shares it across
-          your team's repositories, and tells you when they fall out of sync — on
-          the pull request, where the team will see it.
+          Every assistant now remembers what it learns, on one laptop. OpenCastle
+          makes it the team's: instructions, skills and agents in the repository,
+          and what agents remember about the project turned into lessons when the
+          agent stops, reviewed in the pull request with the work. A new
+          teammate's assistant starts where a senior's is. It works with the
+          assistant your company uses: <b>Claude Code</b>, <b>Copilot</b>,
+          <b>Cursor</b>, <b>Windsurf</b>, <b>OpenCode</b>, <b>Codex</b> or
+          <b>Antigravity</b>, and moves with you if you switch.
         </p>
         <div class="hero__actions">
           <a
@@ -437,12 +437,13 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
       <div class="container">
         <span class="section__label">Built for teams</span>
         <h2 class="section__title">
-          Everyone keeps their assistant. The team keeps one source.
+          A new teammate's assistant starts where a senior's is.
         </h2>
         <p class="section__subtitle">
-          Assistant config is part of your engineering standard, so it gets what
-          the rest of the standard gets: one reviewed source shared across your
-          repositories, a policy, a CI check, and a record of every change.
+          What the assistants know is part of your engineering standard, so it
+          gets what the rest of the standard gets: one reviewed source shared
+          across your repositories, a memory the team keeps, a policy, a CI check,
+          and a record of every change.
         </p>
         <div class="features-grid">
           {teamPoints.map((f) => (

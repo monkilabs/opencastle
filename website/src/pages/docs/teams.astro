@@ -839,7 +839,7 @@ $ npx opencastle baseline check opencastle-baseline
             <table class="comparison-table">
               <thead><tr><th>Scope</th><th>Where it lives</th><th>Who it reaches</th><th>Moves up with</th></tr></thead>
               <tbody>
-                <tr><td>Personal</td><td>Your assistant's own memory on your machine, and your own skills in <code>~/.claude/skills</code> or <code>~/.agents/skills</code></td><td>You</td><td>What it remembers about the project becomes a lesson when the session ends; what it remembers about you stays. A skill you wrote: <code>promote skill</code></td></tr>
+                <tr><td>Personal</td><td>Your assistant's own memory on your machine, and your own skills in <code>~/.claude/skills</code> or <code>~/.agents/skills</code></td><td>You</td><td>What it remembers about the project becomes a lesson when the agent stops; what it remembers about you stays. A skill you wrote: <code>promote skill</code></td></tr>
                 <tr><td>Team</td><td>Lessons in <code>.opencastle/lessons/</code>, and <code>.opencastle/skills/</code>, committed</td><td>Every assistant of everyone in the repository, once the pull request is merged</td><td>A lesson that holds in every repository graduates into the baseline's skill; <code>promote skill --to &lt;baseline&gt;</code></td></tr>
                 <tr><td>Organisation</td><td>A baseline: an <a href="/docs/agent-plugins">Agent Plugin</a> every repository extends</td><td>Every repository, and any assistant that installs the plugin</td><td>—</td></tr>
               </tbody>
