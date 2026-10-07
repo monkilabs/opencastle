@@ -839,20 +839,31 @@ $ npx opencastle baseline check opencastle-baseline
             <table class="comparison-table">
               <thead><tr><th>Scope</th><th>Where it lives</th><th>Who it reaches</th><th>Moves up with</th></tr></thead>
               <tbody>
-                <tr><td>Personal</td><td>Your assistant's own memory on your machine, and your own skills in <code>~/.claude/skills</code> or <code>~/.agents/skills</code></td><td>You</td><td>What agents learn about you stays here. A skill you wrote: <code>promote skill</code></td></tr>
+                <tr><td>Personal</td><td>Your assistant's own memory on your machine, and your own skills in <code>~/.claude/skills</code> or <code>~/.agents/skills</code></td><td>You</td><td>What it remembers about the project becomes a lesson when the session ends; what it remembers about you stays. A skill you wrote: <code>promote skill</code></td></tr>
                 <tr><td>Team</td><td>Lessons in <code>.opencastle/lessons/</code>, and <code>.opencastle/skills/</code>, committed</td><td>Every assistant of everyone in the repository, once the pull request is merged</td><td>A lesson that holds in every repository graduates into the baseline's skill; <code>promote skill --to &lt;baseline&gt;</code></td></tr>
                 <tr><td>Organisation</td><td>A baseline: an <a href="/docs/agent-plugins">Agent Plugin</a> every repository extends</td><td>Every repository, and any assistant that installs the plugin</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
           <p>
-            <strong>Agents sort it as they learn it.</strong> The instructions every agent loads say what belongs to
-            whom. Something it has confirmed that is true for anyone working in the repository, such as a fix after a
-            failure, a convention or decision the code does not show, a tool's quirk, or a correction the user gives
-            about the code, becomes a lesson at once. What is about the user, their preferences, role, habits and
-            machine, stays in the agent's own memory, and never both. The lesson is committed with the change, so the
-            team reviews it in the same pull request, and nobody has to go through anyone's memory afterwards. The
-            full rule, with examples, is in the <strong>self-improvement</strong> skill.
+            <strong>Agents remember as they always do; the assistant shares it.</strong> Asking agents to write a
+            second record never worked: on the one project that tried it in earnest, agents wrote 25 lessons in 794
+            pull requests, while Claude Code saved 72 memories of its own, nearly all about the project. So agents
+            keep saving to their own memory, labelled as about the project or about the user, and the assistant runs
+            OpenCastle when they stop: Claude Code on <code>SessionEnd</code>, from the project's
+            <code>.claude/settings.json</code>, and VS Code on <code>Stop</code>, from
+            <code>.github/hooks/opencastle.json</code>. The hook runs <code>promote memory --json</code>: what is
+            about the project (corrections, project notes, pointers to where things live) becomes a lesson, and what
+            is about the user stays theirs. The lessons land in the working tree, so they go into the pull request with
+            the work, and the team reviews them there. Nobody runs a command or sorts anything.
+          </p>
+          <p>
+            <strong>Every assistant loads the lessons on its own.</strong> Claude Code reads
+            <code>.claude/rules/opencastle-lessons.md</code>, VS Code
+            <code>.github/instructions/opencastle-lessons.instructions.md</code>, Cursor and Windsurf an always-on rule:
+            the active lessons, titles and paths, rewritten whenever a lesson is written. Codex, OpenCode and
+            Antigravity have one root file, so their agents read the index by instruction, and record a lesson
+            themselves, as the <strong>self-improvement</strong> skill describes.
           </p>
           <p>
             <strong>Lessons</strong> are one file each, written by <code>opencastle lesson</code>, so two branches that
@@ -864,14 +875,19 @@ $ npx opencastle baseline check opencastle-baseline
             repository needs belongs in the baseline's skill: once the version carrying it is installed,
             <code>--into skills/&lt;name&gt;</code> records it.
           </p>
-          <p>A lesson as an agent writes it, citing the code it is about:</p>
+          <p>A lesson, once someone has set its category and cited the code it is about:</p>
           <pre><code>{lessonFile}</code></pre>
           <p>
             <strong>Skills</strong> leave one laptop with <code>promote skill</code>: it copies a skill you wrote for
             your own assistant into the team's sources, after checking it against the Agent Skills spec and for
-            credentials. For what an assistant remembered before these instructions, <code>promote memory</code> turns
-            Claude Code's, VS Code's or Codex's memory of the repository into lessons, and plain
-            <code>npx opencastle</code> says how many are left.
+            credentials. Codex's memories have no hook to share them: <code>npx opencastle promote memory</code>
+            turns them into lessons when you run it, as the hooks do for Claude Code's and VS Code's.
+          </p>
+          <p>
+            <strong>Limits.</strong> Hooks run only in a folder the assistant trusts, and VS Code's are a preview it
+            turns on by default (<code>chat.useHooks</code>). Cursor keeps its memories on its servers and Copilot
+            Memory lives on GitHub, so neither can be read. A lesson the hook writes at the end of a session is
+            uncommitted until the next commit.
           </p>
           <p>
             Nothing is shared until it is committed. The pull request that commits a promoted skill or lesson is where

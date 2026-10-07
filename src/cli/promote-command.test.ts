@@ -265,16 +265,49 @@ describe.skipIf(!built)('opencastle promote', () => {
       expect(text).toMatch(/source: "codex-memory:app test runs#[0-9a-f]{12}"/)
     })
 
-    it('the status screen says how much this machine has not shared, until it is promoted', () => {
-      write(memoryDir(), { 'a.md': memory('quote-paths', 'feedback', 'Quote paths with spaces.') })
-      const before = run(project)
-      expect(before.stdout).toContain('1 memory on this machine the team has not got yet (Claude Code 1)')
-      expect(before.stdout).toContain('npx opencastle promote memory')
-      expect(before.stdout).toContain('Everything is current')
-      expect(JSON.parse(run(project, '--json').stdout).unsharedMemories).toEqual([{ assistant: 'Claude Code', count: 1 }])
-      expect(run(project, 'promote', 'memory').status).toBe(0)
-      const after = run(project)
-      expect(after.stdout).not.toContain('the team has not got yet')
+    it('as the hook runs it: shares the project’s memory, keeps the user’s, refreshes what agents load, exits 0', () => {
+      write(memoryDir(), {
+        'build.md': memory('build', 'project', 'Set CI=1 before pnpm build.'),
+        'dashboards.md': memory('dashboards', 'reference', 'Errors are in the Sentry project acme-web.'),
+        'terse.md': memory('terse', 'user', 'Keep answers short.'),
+      })
+      const out = spawnSync('node', [cli, 'promote', 'memory', '--json'], {
+        cwd: project,
+        encoding: 'utf8',
+        env: env(),
+        input: '{"hook_event_name":"SessionEnd","reason":"exit"}',
+      })
+      expect(out.status).toBe(0)
+      const report = JSON.parse(out.stdout) as { shared: Array<{ lesson: string }>; left: Array<{ memory: string; why: string }> }
+      expect(report.shared).toHaveLength(2)
+      expect(report.left).toEqual([{ assistant: 'Claude Code', memory: 'terse.md', why: 'about you, not the project' }])
+      const rule = readFileSync(join(project, '.claude', 'rules', 'opencastle-lessons.md'), 'utf8')
+      expect(rule).toContain('**Build**')
+      expect(rule).toContain('**Dashboards**')
+      expect(rule).not.toContain('Terse')
+      expect(run(project, 'sync', '--check').status).toBe(0)
+
+      const again = spawnSync('node', [cli, 'promote', 'memory', '--json'], { cwd: project, encoding: 'utf8', env: env(), input: '{}' })
+      expect(JSON.parse(again.stdout).shared).toEqual([])
+
+      const nowhere = spawnSync('node', [cli, 'promote', 'memory', '--json'], { cwd: root, encoding: 'utf8', env: env(), input: '{}' })
+      expect(nowhere.status).toBe(0)
+      expect(JSON.parse(nowhere.stdout).note).toContain('no .opencastle/ here')
+    })
+
+    it('init adds the memory hook beside the project’s own settings, and sync --check holds it', () => {
+      const settings = JSON.parse(readFileSync(join(project, '.claude', 'settings.json'), 'utf8')) as { hooks: { SessionEnd: Array<{ hooks: Array<{ command: string; timeout: number }> }> } }
+      const ours = settings.hooks.SessionEnd.flatMap((g) => g.hooks).find((h) => h.command.includes('promote memory --json'))
+      expect(ours?.timeout).toBe(30)
+      writeFileSync(join(project, '.claude', 'settings.json'), JSON.stringify({ permissions: { allow: ['Bash(npm test)'] } }))
+      const check = run(project, 'sync', '--check')
+      expect(check.status).toBe(1)
+      expect(check.stdout + check.stderr).toContain('.claude/settings.json')
+      expect(run(project, 'sync', '--yes').status).toBe(0)
+      const merged = JSON.parse(readFileSync(join(project, '.claude', 'settings.json'), 'utf8')) as { permissions: unknown; hooks: unknown }
+      expect(merged.permissions).toEqual({ allow: ['Bash(npm test)'] })
+      expect(JSON.stringify(merged.hooks)).toContain('promote memory --json')
+      expect(run(project, 'sync', '--check').status).toBe(0)
     })
   })
 })

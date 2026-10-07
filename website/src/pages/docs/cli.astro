@@ -377,16 +377,18 @@ const commands = [
       { heading: 'skill', content: `<p>Finds the skill by name in <code>~/.claude/skills</code>, <code>~/.agents/skills</code>, <code>~/.codex/skills</code>, <code>~/.cursor/skills</code> or <code>~/.copilot/skills</code>, or takes a path. It is checked against the Agent Skills spec — a name that does not match its directory is refused, as assistants that follow the spec skip it — and every file is scanned for credentials. Then it is copied, with its scripts and references, to <code>.opencastle/skills/&lt;name&gt;/</code>, or with <code>--to</code> into a baseline's <code>skills/</code>.</p>` },
       { heading: 'memory', content: `<p>Reads what the assistants on this machine remember about this repository and writes it as lessons in <code>.opencastle/lessons/</code>:</p>
 <ul>
-  <li><strong>Claude Code</strong> — its auto memory, <code>~/.claude/projects/&lt;repository&gt;/memory/</code> (under <code>$CLAUDE_CONFIG_DIR</code> if you set it), or wherever <code>autoMemoryDirectory</code> points. Corrections (<code>feedback</code>), project notes and memories with no type; the rest, such as memories about you, are left out.</li>
+  <li><strong>Claude Code</strong> — its auto memory, <code>~/.claude/projects/&lt;repository&gt;/memory/</code> (under <code>$CLAUDE_CONFIG_DIR</code> if you set it), or wherever <code>autoMemoryDirectory</code> points. Corrections (<code>feedback</code>), project notes, pointers to where things live (<code>reference</code>) and memories with no type; memories about you (<code>user</code>) are left out.</li>
   <li><strong>VS Code</strong> (GitHub Copilot Chat) — the repository memory its agents keep for this folder, in VS Code's workspace storage, stable and Insiders. One lesson per memory file. Your user memory is about you, and is left out.</li>
   <li><strong>Codex</strong> — the blocks of <code>$CODEX_HOME/memories/MEMORY.md</code> whose directory is this repository: their reusable knowledge and failures, not the user preferences or the session list.</li>
 </ul>
-<p>Cursor keeps its memories on its own servers, and Copilot Memory lives on GitHub, so neither can be read. Memories that hold a credential, and ones already promoted, are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new. Plain <code>npx opencastle</code> says how many memories on this machine are not lessons yet. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
+<p>Cursor keeps its memories on its own servers, and Copilot Memory lives on GitHub, so neither can be read. Memories that hold a credential, and ones already promoted, are left out, and paths in your home directory are written as <code>~</code>. Each lesson records which memory it came from, so running it again adds only what is new.</p>
+<p>You rarely run it yourself. <code>init</code> and <code>sync</code> add a hook that runs <code>promote memory --json</code> when an agent stops: on <code>SessionEnd</code> in Claude Code's <code>.claude/settings.json</code>, beside any hooks of yours, and on <code>Stop</code> in VS Code's <code>.github/hooks/opencastle.json</code>. <code>--json</code> prints one line of JSON and always exits 0, as a hook needs. <code>sync --check</code> fails when the hook is missing, and <code>remove</code> takes it back. How lessons reach the team: <a href="/docs/teams#memory">Team Memory</a>.</p>` },
     ],
     examples: [
       { cmd: 'npx opencastle promote skill deploy-runbook', desc: 'Your skill, in every teammate\'s assistant after the next sync' },
       { cmd: 'npx opencastle promote skill deploy-runbook --to ../ai-standard', desc: 'Into the baseline every repository extends' },
       { cmd: 'npx opencastle promote memory --dry-run', desc: 'See which of your assistant\'s memories would become lessons' },
+      { cmd: 'npx opencastle promote memory --json', desc: 'What the memory hook runs: one line of JSON, exit 0' },
     ],
   },
   {
