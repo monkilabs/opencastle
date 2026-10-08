@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "gitlab",
+  "description": "GitLab skill and MCP server for AI coding assistants: Merge requests, pipelines and stacked MRs via GitLab's MCP server.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#gitlab",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "team",
+    "source-control"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "GitLab",
+      "category": "team",
+      "subCategory": "source-control",
+      "authType": "oauth",
+      "officialDocs": "https://docs.gitlab.com/user/model_context_protocol/mcp_server/"
+    }
+  }
+}

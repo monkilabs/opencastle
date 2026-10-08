@@ -5,7 +5,7 @@ import type { CompileSource } from './layers.js';
 
 export type IdeChoice = 'vscode' | 'cursor' | 'claude-code' | 'opencode' | 'windsurf' | 'codex' | 'antigravity';
 export type TechTool = 'sanity' | 'contentful' | 'strapi' | 'supabase' | 'convex' | 'vercel' | 'nx' | 'chrome-devtools' | 'nextjs' | 'astro' | 'netlify' | 'turborepo' | 'prisma' | 'cypress' | 'playwright' | 'vitest' | 'figma' | 'resend' | 'stripe' | 'sentry' | 'drizzle' | 'cloudflare' | 'coolify' | 'expo' | 'hetzner';
-export type TeamTool = 'linear' | 'jira' | 'trello' | 'notion' | 'slack' | 'teams';
+export type TeamTool = 'linear' | 'jira' | 'trello' | 'notion' | 'slack' | 'teams' | 'github' | 'gitlab';
 
 export interface StackConfig {
   ides: IdeChoice[];
@@ -134,6 +134,8 @@ export interface RepoInfo {
   pm?: string[];
   notifications?: string[];
   services?: string[];
+  /** Where the repository is hosted, `github` or `gitlab`: from its remotes, package metadata and files only a host reads. */
+  codeHosts?: string[];
   mcpConfig?: boolean;
   configFiles?: string[];
 }

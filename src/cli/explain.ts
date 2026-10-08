@@ -91,8 +91,14 @@ async function build(pkgRoot: string, projectRoot: string): Promise<ExplainRepor
     })
   }
   for (const [key, s] of Object.entries(lock.mcp)) {
+    // A server that takes a token elsewhere signs in with OAuth in some targets.
+    const plugin = s.from.startsWith('plugin:') ? PLUGINS[s.from.slice(7)] : undefined
+    const oauthIn = (plugin?.tokenAuth?.oauthTargets ?? []).filter((t) => ides.includes(t))
     if (s.auth === 'oauth') {
       setup.push({ server: key, need: 'sign-in', ok: true, how: 'your assistant opens a browser to sign in the first time it starts the server' })
+    } else if (oauthIn.length > 0) {
+      const where = oauthIn.map((t) => IDE_LABELS[t]).join(', ')
+      setup.push({ server: key, need: 'sign-in', ok: true, how: `${where} opens a browser to sign in the first time it starts the server` })
     }
   }
   // Codex loads a project's `.codex/config.toml` only once the user has

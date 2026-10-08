@@ -219,6 +219,19 @@ describe('stack-config: getRequiredMcpEnvVars', () => {
       ])
     )
   })
+
+  it('asks for the GitHub token only when a target cannot sign in with OAuth', () => {
+    // GitHub's server completes OAuth in VS Code alone; the rest send the token.
+    const github = (ides: StackConfig['ides']) =>
+      getRequiredMcpEnvVars({ ides, techTools: [], teamTools: ['github'] }).map((v) => v.envVar)
+    expect(github(['vscode'])).toEqual([])
+    expect(github(['vscode', 'claude-code'])).toEqual(['GITHUB_PERSONAL_ACCESS_TOKEN'])
+    expect(github(['cursor'])).toEqual(['GITHUB_PERSONAL_ACCESS_TOKEN'])
+  })
+
+  it('asks for no GitLab token — GitLab’s server signs in with OAuth', () => {
+    expect(getRequiredMcpEnvVars({ ides: ['claude-code'], techTools: [], teamTools: ['gitlab'] })).toEqual([])
+  })
 })
 
 describe('stack-config: getAgentToolInjections', () => {

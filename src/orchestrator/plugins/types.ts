@@ -1,3 +1,5 @@
+import type { IdeChoice } from '../../cli/types.js';
+
 /**
  * Configuration for a tool plugin.
  * Single source of truth for tool metadata used by init, adapters, and agents.
@@ -13,7 +15,7 @@ export interface PluginConfig {
   category: 'tech' | 'team';
 
   /** Sub-category for grouping */
-  subCategory: 'cms' | 'database' | 'deployment' | 'framework' | 'codebase-tool' | 'task-management' | 'knowledge-management' | 'notifications' | 'testing' | 'e2e-testing' | 'design' | 'email' | 'payments' | 'observability';
+  subCategory: 'cms' | 'database' | 'deployment' | 'framework' | 'codebase-tool' | 'task-management' | 'knowledge-management' | 'notifications' | 'source-control' | 'testing' | 'e2e-testing' | 'design' | 'email' | 'payments' | 'observability';
 
   /** Label shown in the `npx opencastle init` multiselect */
   label: string;
@@ -54,6 +56,20 @@ export interface PluginConfig {
 
   /** VS Code input prompts required by this plugin's MCP config (e.g. tenant ID) */
   mcpInputs?: McpInput[];
+
+  /**
+   * For a remote server that only some clients can sign in to with OAuth.
+   *
+   * GitHub's completes OAuth in VS Code and in no other target: Claude Code,
+   * Cursor, Windsurf, OpenCode and Codex must send a personal access token. The
+   * targets in `oauthTargets` get `mcpConfig` alone and need no token; every
+   * other target also sends `headers`, each value a `${NAME}` reference to one
+   * of `envVars`, written in that target's own spelling.
+   */
+  tokenAuth?: {
+    oauthTargets: IdeChoice[];
+    headers: Record<string, string>;
+  };
 
   /**
    * What earlier releases generated for this server, newest first.

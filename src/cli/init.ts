@@ -51,6 +51,7 @@ const CATEGORY_STEPS: Array<{ title: string; subCategories: string[]; target: 't
   { title: 'Build Tools', subCategories: ['codebase-tool'], target: 'tech' },
   { title: 'More Tools', subCategories: ['design', 'email', 'payments', 'observability', 'knowledge-management'], target: 'tech' },
   { title: 'Project Management', subCategories: ['task-management'], target: 'team' },
+  { title: 'Code Hosting', subCategories: ['source-control'], target: 'team' },
   { title: 'Notifications', subCategories: ['notifications'], target: 'team' },
 ]
 
