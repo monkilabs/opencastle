@@ -74,6 +74,46 @@ describe('isEnvVarSatisfied', () => {
 });
 
 /**
+ * `source-control` arrived with GitHub and GitLab, after every existing
+ * project's matrix was written, and `sync` only filled slots a matrix had —
+ * so adding GitHub bound its skill to no agent.
+ */
+describe('a slot a release added', () => {
+  const withGithub: StackConfig = { ides: ['vscode'], techTools: [], teamTools: ['github'] };
+  const slotsOf = (data: SkillMatrixData, agent: string) => data.agents[agent].slots;
+  // A matrix as releases before the slot wrote it.
+  const makeOld = (): SkillMatrixData => ({
+    ...makeTemplate(),
+    agents: {
+      'Team Lead (OpenCastle)': { slots: ['task-management'], directSkills: [] },
+      'DevOps & Release': { slots: ['deployment'], directSkills: [] },
+      Developer: { slots: ['framework'], directSkills: [] },
+    },
+  });
+
+  it('reaches an existing matrix once a selected integration fills it, with the agents it belongs to', () => {
+    const data: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(makeOld()), withGithub));
+    expect(data.bindings['source-control'].entries).toEqual([{ name: 'GitHub', skill: 'github-platform' }]);
+    expect(data.bindings['source-control'].description).toBeTruthy();
+    expect(slotsOf(data, 'Team Lead (OpenCastle)')).toContain('source-control');
+    expect(slotsOf(data, 'DevOps & Release')).toContain('source-control');
+    expect(slotsOf(data, 'Developer')).not.toContain('source-control');
+  });
+
+  it('is not added for a stack that does not use it', () => {
+    const data: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(makeOld()), { ides: ['vscode'], techTools: [], teamTools: [] }));
+    expect(data.bindings['source-control']).toBeUndefined();
+  });
+
+  it('is the team’s once it exists: an agent they took it from does not get it back', () => {
+    const first: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(makeOld()), withGithub));
+    first.agents['DevOps & Release'].slots = first.agents['DevOps & Release'].slots.filter((s) => s !== 'source-control');
+    const again: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(first), withGithub));
+    expect(slotsOf(again, 'DevOps & Release')).not.toContain('source-control');
+  });
+});
+
+/**
  * VS Code starts a server with the `envFile` its entry names. A project that
  * keeps each server's secrets in its own file was told they were not set.
  */

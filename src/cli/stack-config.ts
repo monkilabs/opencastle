@@ -1,4 +1,5 @@
-import { resolve, relative } from 'node:path';
+import { dirname, resolve, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import type { TechTool, TeamTool, StackConfig, CopyDirOptions, RepoInfo } from './types.js';
@@ -455,6 +456,23 @@ const PLUGIN_SKILL_NAMES = new Set(
     .filter((s): s is string => Boolean(s)),
 );
 
+/**
+ * The matrix this package ships, read once: where a slot a release adds is
+ * described and which agents it belongs to.
+ */
+let shipped: SkillMatrixData | null | undefined;
+function shippedMatrix(): SkillMatrixData | null {
+  if (shipped === undefined) {
+    const file = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'orchestrator', 'customizations', 'agents', 'skill-matrix.json');
+    try {
+      shipped = JSON.parse(readFileSync(file, 'utf8')) as SkillMatrixData;
+    } catch {
+      shipped = null;
+    }
+  }
+  return shipped;
+}
+
 export function updateSkillMatrixContent(content: string, stack: StackConfig): string {
   let data: SkillMatrixData;
   try {
@@ -480,6 +498,21 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
         return { name: plugin.name, skill: plugin.skillName };
       })
       .filter((e): e is SkillMatrixEntry => e !== null);
+
+    // A slot a release added — `source-control`, for GitHub and GitLab — is in
+    // no matrix written before it, and the matrix is the project's, so nothing
+    // else adds it: the integration's skill reached no agent. Once a selected
+    // integration fills it, add it with the agents the shipped matrix gives it
+    // to. Only then: from there the slot exists, and what the team does with
+    // it is theirs.
+    const template = shippedMatrix();
+    if (!data.bindings[slotName] && entries.length > 0 && template?.bindings[slotName]) {
+      data.bindings[slotName] = { entries: [], description: template.bindings[slotName].description };
+      for (const [agent, { slots }] of Object.entries(template.agents)) {
+        const theirs = data.agents?.[agent];
+        if (slots.includes(slotName) && theirs && !theirs.slots.includes(slotName)) theirs.slots.push(slotName);
+      }
+    }
 
     if (data.bindings[slotName]) {
       // Merge, not replace. `skill-matrix.md` told users "to switch tech, update
