@@ -473,6 +473,58 @@ function shippedMatrix(): SkillMatrixData | null {
   return shipped;
 }
 
+/**
+ * Agents a release merged into another, under the names older matrices still
+ * hold them by: the 19 agents became 13, and the Team Lead took its suffix
+ * before that. Session Guard went with the logging regime it policed.
+ */
+export const RETIRED_AGENTS: Readonly<Record<string, string | null>> = {
+  'Team Lead': 'Team Lead (OpenCastle)',
+  Copywriter: 'Writer',
+  'SEO Specialist': 'Writer',
+  'Documentation Writer': 'Writer',
+  'API Designer': 'Developer',
+  'DevOps Expert': 'DevOps & Release',
+  'Release Manager': 'DevOps & Release',
+  'Data Expert': 'Data Engineer',
+  'Database Engineer': 'Data Engineer',
+  'Session Guard': null,
+};
+
+/** Skills a release removed with nothing of the same name after it. An agent told to load one finds nothing. */
+export const RETIRED_SKILLS: ReadonlySet<string> = new Set([
+  'agent-hooks', 'agent-memory', 'backbone-scaffolding', 'code-commenting', 'context-map', 'decomposition',
+  'documentation-standards', 'memory-merger', 'nextjs-patterns', 'observability-logging', 'orchestration-protocols',
+  'performance-optimization', 'project-consistency', 'react-development', 'session-checkpoints', 'task-management',
+  'team-lead-reference',
+]);
+
+/**
+ * Bring a matrix's agents to the current roster.
+ *
+ * The matrix is the project's, so a merge of agents never reached one written
+ * before it: every such project kept eight agents that no longer exist, and
+ * the three that replaced them — Data Engineer, DevOps & Release, Writer —
+ * had no entry and resolved no skills. A retired agent's slots and skills move
+ * to its successor; a current agent the matrix lacks gets the shipped entry;
+ * a skill that no longer exists is dropped. Agents the team added are theirs.
+ */
+function migrateAgents(data: SkillMatrixData, template: SkillMatrixData | null): void {
+  const agents = (data.agents ??= {});
+  const fresh = (name: string) => structuredClone(template?.agents[name] ?? { slots: [], directSkills: [] });
+  for (const [old, now] of Object.entries(RETIRED_AGENTS)) {
+    const was = agents[old];
+    if (!was) continue;
+    delete agents[old];
+    if (!now) continue;
+    const into = (agents[now] ??= fresh(now));
+    for (const slot of was.slots ?? []) if (!into.slots.includes(slot)) into.slots.push(slot);
+    for (const skill of was.directSkills ?? []) if (!into.directSkills.includes(skill)) into.directSkills.push(skill);
+  }
+  for (const name of Object.keys(template?.agents ?? {})) agents[name] ??= fresh(name);
+  for (const agent of Object.values(agents)) agent.directSkills = (agent.directSkills ?? []).filter((s) => !RETIRED_SKILLS.has(s));
+}
+
 export function updateSkillMatrixContent(content: string, stack: StackConfig): string {
   let data: SkillMatrixData;
   try {
@@ -483,6 +535,8 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
     throw new UnreadableConfigError('.opencastle/agents/skill-matrix.json');
   }
   const allTools = [...stack.techTools, ...stack.teamTools] as string[];
+  const template = shippedMatrix();
+  migrateAgents(data, template);
 
   for (const [subCategory, slotName] of Object.entries(SUBCATEGORY_TO_SLOT)) {
     // Find ALL selected tools matching this subcategory (not just the first)
@@ -505,7 +559,6 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
     // integration fills it, add it with the agents the shipped matrix gives it
     // to. Only then: from there the slot exists, and what the team does with
     // it is theirs.
-    const template = shippedMatrix();
     if (!data.bindings[slotName] && entries.length > 0 && template?.bindings[slotName]) {
       data.bindings[slotName] = { entries: [], description: template.bindings[slotName].description };
       for (const [agent, { slots }] of Object.entries(template.agents)) {

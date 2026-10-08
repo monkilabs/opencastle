@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { updateSkillMatrixContent, isEnvVarSatisfied, getExcludedCoreSkills, isPreselected, envFileTextFor } from './stack-config.js';
+import { join, resolve } from 'node:path';
+import { updateSkillMatrixContent, isEnvVarSatisfied, getExcludedCoreSkills, isPreselected, envFileTextFor, RETIRED_AGENTS, RETIRED_SKILLS } from './stack-config.js';
+import { PLUGINS } from '../orchestrator/plugins/index.js';
 import type { StackConfig } from './types.js';
 import type { SkillMatrixData } from './stack-config.js';
 
@@ -110,6 +111,52 @@ describe('a slot a release added', () => {
     first.agents['DevOps & Release'].slots = first.agents['DevOps & Release'].slots.filter((s) => s !== 'source-control');
     const again: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(first), withGithub));
     expect(slotsOf(again, 'DevOps & Release')).not.toContain('source-control');
+  });
+});
+
+/**
+ * Nineteen agents became thirteen, and no matrix written before that was told:
+ * each kept eight agents that no longer exist, and the three that replaced
+ * them resolved no skills.
+ */
+describe('a matrix from before the agents merged', () => {
+  const none: StackConfig = { ides: ['vscode'], techTools: [], teamTools: [] };
+  const old = (): SkillMatrixData => ({
+    ...makeTemplate(),
+    agents: {
+      'Team Lead': { slots: ['task-management'], directSkills: ['validation-gates', 'team-lead-reference'] },
+      'DevOps Expert': { slots: ['deployment'], directSkills: ['validation-gates', 'documentation-standards'] },
+      'Release Manager': { slots: ['codebase-tool', 'deployment'], directSkills: ['validation-gates'] },
+      'Session Guard': { slots: [], directSkills: ['observability-logging'] },
+      'Our Release Bot': { slots: ['deployment'], directSkills: ['our-runbook'] },
+    },
+  });
+
+  it('moves each retired agent to its successor, adds the current ones, and drops skills that are gone', () => {
+    const data: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(old()), none));
+    for (const retired of Object.keys(RETIRED_AGENTS)) expect(data.agents[retired], retired).toBeUndefined();
+    expect(data.agents['DevOps & Release'].slots).toEqual(expect.arrayContaining(['deployment', 'codebase-tool']));
+    expect(data.agents['DevOps & Release'].directSkills).not.toContain('documentation-standards');
+    expect(data.agents['Team Lead (OpenCastle)'].directSkills).toEqual(expect.arrayContaining(['validation-gates', 'fast-review']));
+    expect(data.agents['Team Lead (OpenCastle)'].directSkills).not.toContain('team-lead-reference');
+    for (const current of ['Writer', 'Data Engineer', 'Developer']) expect(data.agents[current], current).toBeDefined();
+    // The team's own agent, and its own skill, stay as they were.
+    expect(data.agents['Our Release Bot']).toEqual({ slots: ['deployment'], directSkills: ['our-runbook'] });
+  });
+
+  it('changes nothing the second time', () => {
+    const once = updateSkillMatrixContent(JSON.stringify(old()), none);
+    expect(updateSkillMatrixContent(once, none)).toBe(once);
+  });
+
+  it('retires no skill that ships today', () => {
+    const shipped = new Set([
+      ...readdirSync(resolve(import.meta.dirname, '..', 'orchestrator', 'skills')),
+      ...Object.values(PLUGINS).map((p) => p.skillName).filter(Boolean),
+    ]);
+    expect([...RETIRED_SKILLS].filter((s) => shipped.has(s))).toEqual([]);
+    const matrix = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'orchestrator', 'customizations', 'agents', 'skill-matrix.json'), 'utf8')) as SkillMatrixData;
+    for (const now of Object.values(RETIRED_AGENTS)) if (now) expect(matrix.agents[now], now).toBeDefined();
   });
 });
 
