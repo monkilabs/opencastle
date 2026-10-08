@@ -155,8 +155,13 @@ const PATH_SPAN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@/-]*\/[A-Za-z0-9_.@/-]*[A-Za-z0
  */
 export function checkReferences(state: TeamState, projectRoot: string): HealthResult {
   let scripts: Record<string, string> | null = null
+  const dependencies = new Set<string>()
   try {
-    scripts = (JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as { scripts?: Record<string, string> }).scripts ?? {}
+    const pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8')) as Record<string, Record<string, string> | undefined>
+    scripts = pkg.scripts ?? {}
+    for (const field of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+      for (const name of Object.keys(pkg[field] ?? {})) dependencies.add(name)
+    }
   } catch {
     scripts = null
   }
@@ -189,7 +194,11 @@ export function checkReferences(state: TeamState, projectRoot: string): HealthRe
         // a reference.
         const top = resolve(projectRoot, first)
         if (!existsSync(top) || !statSync(top).isDirectory()) continue
-        if (!existsSync(resolve(projectRoot, path))) dead.push(`${ref} names \`${path}\`, which does not exist`)
+        if (existsSync(resolve(projectRoot, path))) continue
+        // A dependency's name and a subpath with no extension is an import —
+        // `convex/react` beside a Convex project's own `convex/` directory.
+        if (dependencies.has(first) && !/\.[A-Za-z0-9]+$/.test(path)) continue
+        dead.push(`${ref} names \`${path}\`, which does not exist`)
       }
     }
   }

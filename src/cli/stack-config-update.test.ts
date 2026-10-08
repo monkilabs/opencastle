@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { updateSkillMatrixContent, isEnvVarSatisfied, getExcludedCoreSkills, isPreselected } from './stack-config.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { updateSkillMatrixContent, isEnvVarSatisfied, getExcludedCoreSkills, isPreselected, envFileTextFor, RETIRED_AGENTS, RETIRED_SKILLS } from './stack-config.js';
+import { PLUGINS } from '../orchestrator/plugins/index.js';
 import type { StackConfig } from './types.js';
 import type { SkillMatrixData } from './stack-config.js';
 
@@ -67,6 +71,123 @@ describe('isEnvVarSatisfied', () => {
     expect(set('OC_TEST_TOKEN=""')).toBe(false);
     expect(set("OC_TEST_TOKEN=''  # fill me")).toBe(false);
     expect(set('OC_TEST_TOKEN=   # fill me')).toBe(false);
+  });
+});
+
+/**
+ * `source-control` arrived with GitHub and GitLab, after every existing
+ * project's matrix was written, and `sync` only filled slots a matrix had —
+ * so adding GitHub bound its skill to no agent.
+ */
+describe('a slot a release added', () => {
+  const withGithub: StackConfig = { ides: ['vscode'], techTools: [], teamTools: ['github'] };
+  const slotsOf = (data: SkillMatrixData, agent: string) => data.agents[agent].slots;
+  // A matrix as releases before the slot wrote it.
+  const makeOld = (): SkillMatrixData => ({
+    ...makeTemplate(),
+    agents: {
+      'Team Lead (OpenCastle)': { slots: ['task-management'], directSkills: [] },
+      'DevOps & Release': { slots: ['deployment'], directSkills: [] },
+      Developer: { slots: ['framework'], directSkills: [] },
+    },
+  });
+
+  it('reaches an existing matrix once a selected integration fills it, with the agents it belongs to', () => {
+    const data: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(makeOld()), withGithub));
+    expect(data.bindings['source-control'].entries).toEqual([{ name: 'GitHub', skill: 'github-platform' }]);
+    expect(data.bindings['source-control'].description).toBeTruthy();
+    expect(slotsOf(data, 'Team Lead (OpenCastle)')).toContain('source-control');
+    expect(slotsOf(data, 'DevOps & Release')).toContain('source-control');
+    expect(slotsOf(data, 'Developer')).not.toContain('source-control');
+  });
+
+  it('is not added for a stack that does not use it', () => {
+    const data: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(makeOld()), { ides: ['vscode'], techTools: [], teamTools: [] }));
+    expect(data.bindings['source-control']).toBeUndefined();
+  });
+
+  it('is the team’s once it exists: an agent they took it from does not get it back', () => {
+    const first: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(makeOld()), withGithub));
+    first.agents['DevOps & Release'].slots = first.agents['DevOps & Release'].slots.filter((s) => s !== 'source-control');
+    const again: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(first), withGithub));
+    expect(slotsOf(again, 'DevOps & Release')).not.toContain('source-control');
+  });
+});
+
+/**
+ * Nineteen agents became thirteen, and no matrix written before that was told:
+ * each kept eight agents that no longer exist, and the three that replaced
+ * them resolved no skills.
+ */
+describe('a matrix from before the agents merged', () => {
+  const none: StackConfig = { ides: ['vscode'], techTools: [], teamTools: [] };
+  const old = (): SkillMatrixData => ({
+    ...makeTemplate(),
+    agents: {
+      'Team Lead': { slots: ['task-management'], directSkills: ['validation-gates', 'team-lead-reference'] },
+      'DevOps Expert': { slots: ['deployment'], directSkills: ['validation-gates', 'documentation-standards'] },
+      'Release Manager': { slots: ['codebase-tool', 'deployment'], directSkills: ['validation-gates'] },
+      'Session Guard': { slots: [], directSkills: ['observability-logging'] },
+      'Our Release Bot': { slots: ['deployment'], directSkills: ['our-runbook'] },
+    },
+  });
+
+  it('moves each retired agent to its successor, adds the current ones, and drops skills that are gone', () => {
+    const data: SkillMatrixData = JSON.parse(updateSkillMatrixContent(JSON.stringify(old()), none));
+    for (const retired of Object.keys(RETIRED_AGENTS)) expect(data.agents[retired], retired).toBeUndefined();
+    expect(data.agents['DevOps & Release'].slots).toEqual(expect.arrayContaining(['deployment', 'codebase-tool']));
+    expect(data.agents['DevOps & Release'].directSkills).not.toContain('documentation-standards');
+    expect(data.agents['Team Lead (OpenCastle)'].directSkills).toEqual(expect.arrayContaining(['validation-gates', 'fast-review']));
+    expect(data.agents['Team Lead (OpenCastle)'].directSkills).not.toContain('team-lead-reference');
+    for (const current of ['Writer', 'Data Engineer', 'Developer']) expect(data.agents[current], current).toBeDefined();
+    // The team's own agent, and its own skill, stay as they were.
+    expect(data.agents['Our Release Bot']).toEqual({ slots: ['deployment'], directSkills: ['our-runbook'] });
+  });
+
+  it('changes nothing the second time', () => {
+    const once = updateSkillMatrixContent(JSON.stringify(old()), none);
+    expect(updateSkillMatrixContent(once, none)).toBe(once);
+  });
+
+  it('retires no skill that ships today', () => {
+    const shipped = new Set([
+      ...readdirSync(resolve(import.meta.dirname, '..', 'orchestrator', 'skills')),
+      ...Object.values(PLUGINS).map((p) => p.skillName).filter(Boolean),
+    ]);
+    expect([...RETIRED_SKILLS].filter((s) => shipped.has(s))).toEqual([]);
+    const matrix = JSON.parse(readFileSync(resolve(import.meta.dirname, '..', 'orchestrator', 'customizations', 'agents', 'skill-matrix.json'), 'utf8')) as SkillMatrixData;
+    for (const now of Object.values(RETIRED_AGENTS)) if (now) expect(matrix.agents[now], now).toBeDefined();
+  });
+});
+
+/**
+ * VS Code starts a server with the `envFile` its entry names. A project that
+ * keeps each server's secrets in its own file was told they were not set.
+ */
+describe('envFileTextFor', () => {
+  let dir = '';
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('reads .env and the env file a server’s VS Code entry names', () => {
+    dir = mkdtempSync(join(tmpdir(), 'oc-envfile-'));
+    mkdirSync(join(dir, '.vscode'));
+    mkdirSync(join(dir, '.env.d'));
+    writeFileSync(join(dir, '.env'), 'SHARED_TOKEN=a\n');
+    writeFileSync(join(dir, '.env.d', 'mcp-resend.env'), 'OC_TEST_RESEND_KEY=re_x\n');
+    writeFileSync(join(dir, '.vscode', 'mcp.json'), JSON.stringify({
+      servers: { Resend: { type: 'stdio', command: 'npx', args: ['-y', 'resend-mcp@2.24.0'], envFile: '${workspaceFolder}/.env.d/mcp-resend.env' } },
+    }));
+
+    expect(isEnvVarSatisfied('OC_TEST_RESEND_KEY', envFileTextFor(dir, 'Resend'))).toBe(true);
+    expect(isEnvVarSatisfied('SHARED_TOKEN', envFileTextFor(dir, 'Resend'))).toBe(true);
+    // Another server does not read Resend's file.
+    expect(isEnvVarSatisfied('OC_TEST_RESEND_KEY', envFileTextFor(dir, 'Linear'))).toBe(false);
+  });
+
+  it('reads .env alone when there is no VS Code config', () => {
+    dir = mkdtempSync(join(tmpdir(), 'oc-envfile-'));
+    writeFileSync(join(dir, '.env'), 'SHARED_TOKEN=a\n');
+    expect(isEnvVarSatisfied('SHARED_TOKEN', envFileTextFor(dir, 'Resend'))).toBe(true);
   });
 });
 

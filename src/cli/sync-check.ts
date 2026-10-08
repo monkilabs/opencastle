@@ -183,6 +183,11 @@ function comparePath(
       const f = join(fresh, rel)
       const a = join(actual, rel)
       const shown = `${managedPath.replace(/\/$/, '')}/${rel}`
+      // The compile runs in an empty directory with no lessons, so its lessons
+      // rule says there are none. The rule is held to the project's lessons
+      // below, like the index; compared here, every project with a lesson
+      // drifted after every sync.
+      if (isLessonRule(shown)) continue
       checked++
       if (!existsSync(a)) {
         drift.push({ ide, path: shown, kind: 'missing' })

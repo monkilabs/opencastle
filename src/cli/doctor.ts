@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { readdir, readFile } from 'node:fs/promises';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readManifest } from './manifest.js';
-import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied, getIncludedMcpServers } from './stack-config.js';
+import { getRequiredMcpEnvVars, resolveStack, isEnvVarSatisfied, getIncludedMcpServers, envFileTextFor } from './stack-config.js';
 import { IDE_ADAPTERS, VALID_IDES } from './adapters/index.js';
 import { resolveManagedPaths, ROOT_INSTRUCTION_FILES } from './managed-paths.js';
 import {
@@ -304,8 +304,7 @@ async function checkMcpEnvVars(
   if (required.length === 0) {
     return { ok: true, label: 'MCP environment variables', detail: 'No env vars required' };
   }
-  const envFile = await readFile(resolve(projectRoot, '.env'), 'utf8').catch(() => '');
-  const missing = required.filter((r) => !isEnvVarSatisfied(r.envVar, envFile));
+  const missing = required.filter((r) => !isEnvVarSatisfied(r.envVar, envFileTextFor(projectRoot, r.server)));
   if (missing.length > 0) {
     const names = missing.map((m) => m.envVar).join(', ');
     return {
@@ -323,7 +322,9 @@ async function checkDotEnv(projectRoot: string, manifest: Manifest | null): Prom
   const envPath = resolve(projectRoot, '.env');
   if (!existsSync(envPath)) {
     if (manifest?.stack) {
-      const required = getRequiredMcpEnvVars(resolveStack(manifest), manifest.repoInfo);
+      // Not when every secret is already where its server reads it.
+      const required = getRequiredMcpEnvVars(resolveStack(manifest), manifest.repoInfo)
+        .filter((r) => !isEnvVarSatisfied(r.envVar, envFileTextFor(projectRoot, r.server)));
       if (required.length > 0) {
         return { ok: true, label: '.env file', detail: 'Not found — consider creating one for MCP secrets', warning: true };
       }

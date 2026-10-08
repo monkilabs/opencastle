@@ -1,6 +1,7 @@
-import { resolve, relative } from 'node:path';
+import { dirname, resolve, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { TechTool, TeamTool, StackConfig, CopyDirOptions, RepoInfo } from './types.js';
 import { isLegacyStack, migrateStackConfig, UnreadableConfigError } from './types.js';
 import {
@@ -13,6 +14,7 @@ import {
   getSelectedSkillNames,
 } from '../orchestrator/plugins/index.js';
 import type {} from '../orchestrator/plugins/types.js';
+import { parseMcpConfigText } from './mcp-file.js';
 
 // ── Tool registries (derived from plugins) ────────────────────
 
@@ -103,6 +105,33 @@ export function isEnvVarSatisfied(envVar: string, envFileContents: string): bool
     if (value && value !== '""' && value !== "''") return true
   }
   return false
+}
+
+/**
+ * The env files a server reads, as one text: the project's `.env`, and the
+ * `envFile` its VS Code entry names.
+ *
+ * A team that keeps each server's secrets apart — `.env.d/mcp-resend.env` —
+ * was told by `doctor`, `explain` and `sync` that the key was not set, because
+ * they read only `.env`, while VS Code started the server with it.
+ */
+export function envFileTextFor(projectRoot: string, server: string): string {
+  const read = (rel: string): string => {
+    try {
+      return readFileSync(resolve(projectRoot, rel), 'utf8')
+    } catch {
+      return ''
+    }
+  }
+  let named = ''
+  try {
+    const config = parseMcpConfigText(read('.vscode/mcp.json'), '.vscode/mcp.json') as { servers?: Record<string, { envFile?: unknown }> }
+    const envFile = config.servers?.[server]?.envFile
+    if (typeof envFile === 'string' && envFile.startsWith('${workspaceFolder}')) named = read(`.${envFile.slice('${workspaceFolder}'.length)}`)
+  } catch {
+    // No VS Code config, or one with comments: `.env` is still read.
+  }
+  return `${read('.env')}\n${named}`
 }
 
 export function resolveStack(manifest: {
@@ -427,6 +456,75 @@ const PLUGIN_SKILL_NAMES = new Set(
     .filter((s): s is string => Boolean(s)),
 );
 
+/**
+ * The matrix this package ships, read once: where a slot a release adds is
+ * described and which agents it belongs to.
+ */
+let shipped: SkillMatrixData | null | undefined;
+function shippedMatrix(): SkillMatrixData | null {
+  if (shipped === undefined) {
+    const file = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'orchestrator', 'customizations', 'agents', 'skill-matrix.json');
+    try {
+      shipped = JSON.parse(readFileSync(file, 'utf8')) as SkillMatrixData;
+    } catch {
+      shipped = null;
+    }
+  }
+  return shipped;
+}
+
+/**
+ * Agents a release merged into another, under the names older matrices still
+ * hold them by: the 19 agents became 13, and the Team Lead took its suffix
+ * before that. Session Guard went with the logging regime it policed.
+ */
+export const RETIRED_AGENTS: Readonly<Record<string, string | null>> = {
+  'Team Lead': 'Team Lead (OpenCastle)',
+  Copywriter: 'Writer',
+  'SEO Specialist': 'Writer',
+  'Documentation Writer': 'Writer',
+  'API Designer': 'Developer',
+  'DevOps Expert': 'DevOps & Release',
+  'Release Manager': 'DevOps & Release',
+  'Data Expert': 'Data Engineer',
+  'Database Engineer': 'Data Engineer',
+  'Session Guard': null,
+};
+
+/** Skills a release removed with nothing of the same name after it. An agent told to load one finds nothing. */
+export const RETIRED_SKILLS: ReadonlySet<string> = new Set([
+  'agent-hooks', 'agent-memory', 'backbone-scaffolding', 'code-commenting', 'context-map', 'decomposition',
+  'documentation-standards', 'memory-merger', 'nextjs-patterns', 'observability-logging', 'orchestration-protocols',
+  'performance-optimization', 'project-consistency', 'react-development', 'session-checkpoints', 'task-management',
+  'team-lead-reference',
+]);
+
+/**
+ * Bring a matrix's agents to the current roster.
+ *
+ * The matrix is the project's, so a merge of agents never reached one written
+ * before it: every such project kept eight agents that no longer exist, and
+ * the three that replaced them — Data Engineer, DevOps & Release, Writer —
+ * had no entry and resolved no skills. A retired agent's slots and skills move
+ * to its successor; a current agent the matrix lacks gets the shipped entry;
+ * a skill that no longer exists is dropped. Agents the team added are theirs.
+ */
+function migrateAgents(data: SkillMatrixData, template: SkillMatrixData | null): void {
+  const agents = (data.agents ??= {});
+  const fresh = (name: string) => structuredClone(template?.agents[name] ?? { slots: [], directSkills: [] });
+  for (const [old, now] of Object.entries(RETIRED_AGENTS)) {
+    const was = agents[old];
+    if (!was) continue;
+    delete agents[old];
+    if (!now) continue;
+    const into = (agents[now] ??= fresh(now));
+    for (const slot of was.slots ?? []) if (!into.slots.includes(slot)) into.slots.push(slot);
+    for (const skill of was.directSkills ?? []) if (!into.directSkills.includes(skill)) into.directSkills.push(skill);
+  }
+  for (const name of Object.keys(template?.agents ?? {})) agents[name] ??= fresh(name);
+  for (const agent of Object.values(agents)) agent.directSkills = (agent.directSkills ?? []).filter((s) => !RETIRED_SKILLS.has(s));
+}
+
 export function updateSkillMatrixContent(content: string, stack: StackConfig): string {
   let data: SkillMatrixData;
   try {
@@ -437,6 +535,8 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
     throw new UnreadableConfigError('.opencastle/agents/skill-matrix.json');
   }
   const allTools = [...stack.techTools, ...stack.teamTools] as string[];
+  const template = shippedMatrix();
+  migrateAgents(data, template);
 
   for (const [subCategory, slotName] of Object.entries(SUBCATEGORY_TO_SLOT)) {
     // Find ALL selected tools matching this subcategory (not just the first)
@@ -452,6 +552,20 @@ export function updateSkillMatrixContent(content: string, stack: StackConfig): s
         return { name: plugin.name, skill: plugin.skillName };
       })
       .filter((e): e is SkillMatrixEntry => e !== null);
+
+    // A slot a release added — `source-control`, for GitHub and GitLab — is in
+    // no matrix written before it, and the matrix is the project's, so nothing
+    // else adds it: the integration's skill reached no agent. Once a selected
+    // integration fills it, add it with the agents the shipped matrix gives it
+    // to. Only then: from there the slot exists, and what the team does with
+    // it is theirs.
+    if (!data.bindings[slotName] && entries.length > 0 && template?.bindings[slotName]) {
+      data.bindings[slotName] = { entries: [], description: template.bindings[slotName].description };
+      for (const [agent, { slots }] of Object.entries(template.agents)) {
+        const theirs = data.agents?.[agent];
+        if (slots.includes(slotName) && theirs && !theirs.slots.includes(slotName)) theirs.slots.push(slotName);
+      }
+    }
 
     if (data.bindings[slotName]) {
       // Merge, not replace. `skill-matrix.md` told users "to switch tech, update
