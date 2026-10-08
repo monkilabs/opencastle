@@ -1,0 +1,24 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "github",
+  "description": "GitHub skill and MCP server for AI coding assistants: Pull requests, reviews, CI and stacked PRs via GitHub's MCP server.",
+  "homepage": "https://www.opencastle.dev/docs/plugins#github",
+  "repository": "https://github.com/monkilabs/opencastle",
+  "license": "MIT",
+  "keywords": [
+    "team",
+    "source-control"
+  ],
+  "extensions": {
+    "dev.opencastle": {
+      "label": "GitHub",
+      "category": "team",
+      "subCategory": "source-control",
+      "authType": "env-token",
+      "env": [
+        "GITHUB_PERSONAL_ACCESS_TOKEN"
+      ],
+      "officialDocs": "https://github.com/github/github-mcp-server"
+    }
+  }
+}

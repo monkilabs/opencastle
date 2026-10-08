@@ -144,6 +144,28 @@ describe('detected selection', () => {
     expect(selection.teamTools).toEqual([])
     expect(selection.techTools.length).toBeGreaterThan(0)
   })
+
+  it.each([
+    ['github', 'https://github.com/acme/web.git'],
+    ['gitlab', 'git@gitlab.com:acme/web.git'],
+  ])('selects %s when the repository is hosted there', async (host, url) => {
+    mkdirSync(join(dir, '.git'))
+    writeFileSync(join(dir, '.git', 'config'), `[remote "origin"]\n\turl = ${url}\n`)
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x' }))
+
+    const selection = detectSelection(dir, await detectRepoInfo(dir))
+
+    expect(selection.teamTools).toEqual([host])
+    expect(selection.techTools).not.toContain(host)
+  })
+
+  it('selects neither code host for a repository with no sign of one', async () => {
+    mkdirSync(join(dir, '.git'))
+    writeFileSync(join(dir, '.git', 'config'), '[core]\n\tbare = false\n')
+    const selection = detectSelection(dir, await detectRepoInfo(dir))
+    expect(selection.teamTools).not.toContain('github')
+    expect(selection.teamTools).not.toContain('gitlab')
+  })
 })
 
 /**

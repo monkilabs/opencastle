@@ -403,7 +403,7 @@ export default async function update({
         value: p.id,
         selected: oldStack
           ? currentTeam.has(p.id as TeamTool)
-          : isPreselected(p, repoInfo),
+          : isPreselected(p, repoInfo) || detectedTools.has(p.id),
       }))
     )
 

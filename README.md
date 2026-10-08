@@ -153,7 +153,7 @@ Testing, Reviewer, and others), each with a scope and an output contract. Each
 declares a capability *tier* — premium, standard or economy — rather than a
 model name: your assistant picks the model.
 
-**Skills** — 17 domain skills plus 31 tool integrations, loaded only when a task
+**Skills** — 17 domain skills plus 33 tool integrations, loaded only when a task
 needs them. The integrations are chosen during init from what your repository
 uses.
 

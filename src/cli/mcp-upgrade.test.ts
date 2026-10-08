@@ -11,9 +11,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, readFileSync, rmSync, realpathSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { upgradeGeneratedServers, rebuildMcpConfig, scaffoldMcpConfig, teamEntryFor } from './mcp.js'
+import { upgradeGeneratedServers, rebuildMcpConfig, scaffoldMcpConfig, teamEntryFor, getMcpConfigRelPath, containerKeyFor } from './mcp.js'
 import { auditMcpConfig } from './mcp-audit.js'
-import type { StackConfig } from './types.js'
+import { parseMcpConfigText } from './mcp-file.js'
+import type { IdeChoice, StackConfig } from './types.js'
 
 describe('upgradeGeneratedServers', () => {
   it('adds the type Claude Code needs to a remote server we wrote without it', () => {
@@ -156,5 +157,47 @@ describe('rebuildMcpConfig on an install from before the fix', () => {
     for (const entry of Object.values(config.mcpServers) as Array<Record<string, unknown>>) {
       if ('url' in entry) expect(entry.type).toBe('http')
     }
+  })
+})
+
+/**
+ * GitHub's server completes OAuth in VS Code and nowhere else. VS Code gets the
+ * bare URL; every other target sends the token, in its own spelling of "this
+ * environment variable" — a `${NAME}` Cursor or OpenCode does not expand would
+ * reach GitHub as those characters.
+ */
+describe('a remote server only some targets sign in to with OAuth', () => {
+  let root: string
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'mcp-token-auth-')))
+  })
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  const url = 'https://api.githubcopilot.com/mcp/'
+  const written = async (ide: IdeChoice): Promise<unknown> => {
+    const rel = getMcpConfigRelPath(ide)
+    await scaffoldMcpConfig(root, rel, { ides: [ide], techTools: [], teamTools: ['github'] }, undefined, ide)
+    const config = parseMcpConfigText(readFileSync(join(root, rel), 'utf8'), rel)
+    return (config[containerKeyFor(ide)] as Record<string, unknown>).GitHub
+  }
+
+  it.each([
+    ['vscode', { type: 'http', url }],
+    ['claude-code', { type: 'http', url, headers: { Authorization: 'Bearer ${GITHUB_PERSONAL_ACCESS_TOKEN}' } }],
+    ['cursor', { url, headers: { Authorization: 'Bearer ${env:GITHUB_PERSONAL_ACCESS_TOKEN}' } }],
+    ['windsurf', { url, headers: { Authorization: 'Bearer ${env:GITHUB_PERSONAL_ACCESS_TOKEN}' } }],
+    ['opencode', { type: 'remote', url, headers: { Authorization: 'Bearer {env:GITHUB_PERSONAL_ACCESS_TOKEN}' } }],
+    ['codex', { url, bearer_token_env_var: 'GITHUB_PERSONAL_ACCESS_TOKEN' }],
+  ] as const)('%s', async (ide, entry) => {
+    expect(await written(ide)).toEqual(entry)
+  })
+
+  it('writes nothing the audit objects to, and nothing a rebuild changes', async () => {
+    const entry = await written('claude-code')
+    expect(auditMcpConfig({ mcpServers: { GitHub: entry } }, 'claude-code').findings).toEqual([])
+    const stack: StackConfig = { ides: ['claude-code'], techTools: [], teamTools: ['github'] }
+    expect(await rebuildMcpConfig(root, 'claude-code', stack)).toEqual({ upgraded: [], removed: [], teamWritten: [], teamRemoved: [] })
   })
 })

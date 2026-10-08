@@ -233,7 +233,23 @@ export function getIncludedMcpServers(stack: StackConfig, repoInfo?: RepoInfo): 
  */
 export function getRequiredMcpEnvVars(stack: StackConfig, repoInfo?: RepoInfo): McpEnvRequirement[] {
   const included = getIncludedMcpServers(stack, repoInfo);
-  return MCP_ENV_REQUIREMENTS.filter((req) => included.has(req.server));
+  return MCP_ENV_REQUIREMENTS.filter((req) => included.has(req.server) && needsToken(req.server, stack));
+}
+
+/**
+ * Targets that sign in to a server with OAuth, by server key. A project that
+ * compiles only for those never sends the token, and asking for it in `.env`
+ * and in `doctor` would be asking for a secret nothing reads.
+ */
+const OAUTH_TARGETS = new Map(
+  Object.values(PLUGINS)
+    .filter((p) => p.mcpServerKey && p.tokenAuth)
+    .map((p) => [p.mcpServerKey!, p.tokenAuth!.oauthTargets as string[]]),
+);
+
+function needsToken(server: string, stack: StackConfig): boolean {
+  const oauth = OAUTH_TARGETS.get(server);
+  return !oauth || stack.ides.length === 0 || stack.ides.some((ide) => !oauth.includes(ide));
 }
 
 // ── Customization file transforms ─────────────────────────────
@@ -351,6 +367,7 @@ const SUBCATEGORY_TO_SLOT: Record<string, string> = {
   'codebase-tool': 'codebase-tool',
   'task-management': 'task-management',
   'knowledge-management': 'knowledge-management',
+  'source-control': 'source-control',
   testing: 'testing',
   'e2e-testing': 'e2e-testing',
   design: 'design',

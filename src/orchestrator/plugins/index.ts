@@ -12,6 +12,8 @@ import { config as linear } from './linear/config.js';
 import { config as jira } from './jira/config.js';
 import { config as slack } from './slack/config.js';
 import { config as teams } from './teams/config.js';
+import { config as github } from './github/config.js';
+import { config as gitlab } from './gitlab/config.js';
 import { config as chromeDevtools } from './chrome-devtools/config.js';
 import { config as netlify } from './netlify/config.js';
 import { config as turborepo } from './turborepo/config.js';
@@ -66,6 +68,8 @@ export const PLUGINS: Record<string, PluginConfig> = {
   notion,
   slack,
   teams,
+  github,
+  gitlab,
 };
 
 /** Tech tool plugins only. */

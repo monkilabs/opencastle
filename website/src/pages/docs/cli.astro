@@ -45,7 +45,7 @@ const commands = [
     category: 'setup',
     name: 'init',
     summary: 'Set up this project',
-    description: 'Reads the repository, proposes a complete setup, and asks once. Detects which assistants already have config, which framework, database, and test runner the project uses, then compiles the config for every assistant it found.',
+    description: 'Reads the repository, proposes a complete setup, and asks once. Detects which assistants already have config, which framework, database, and test runner the project uses, and whether it is hosted on GitHub or GitLab, then compiles the config for every assistant it found.',
     usage: 'npx opencastle init [options]',
     options: [
       { flag: '--customize, --reconfigure', desc: 'Choose IDEs and integrations manually instead of accepting detection' },

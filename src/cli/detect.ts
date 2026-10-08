@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { readFile, readdir, access } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { IdeChoice, RepoInfo, StackConfig } from './types.js';
@@ -178,6 +178,18 @@ const CICD: DetectionRule[] = [
   { label: 'travis', files: ['.travis.yml'] },
 ];
 
+// Files only a code host reads. Not `.github/` as a whole: VS Code's Copilot
+// files live there too — `copilot-instructions.md`, `agents/`, `prompts/` —
+// and this tool writes them for every VS Code target, hosted anywhere.
+const CODE_HOSTS: DetectionRule[] = [
+  {
+    label: 'github',
+    files: ['.github/dependabot.yml', '.github/dependabot.yaml', '.github/CODEOWNERS', '.github/pull_request_template.md', '.github/PULL_REQUEST_TEMPLATE.md', '.github/FUNDING.yml'],
+    dirs: ['.github/workflows/', '.github/ISSUE_TEMPLATE/', '.github/PULL_REQUEST_TEMPLATE/'],
+  },
+  { label: 'gitlab', files: ['.gitlab-ci.yml'], dirs: ['.gitlab/'] },
+];
+
 const STYLING: DetectionRule[] = [
   { label: 'tailwind', files: ['tailwind.config.js', 'tailwind.config.ts', 'tailwind.config.mjs'] },
   { label: 'sass', files: [] }, // detected via package.json
@@ -249,6 +261,14 @@ export const PACKAGE_DETECTIONS: Record<string, { category: string; label: strin
   '@linear/sdk': { category: 'pm', label: 'linear' },
   '@slack/web-api': { category: 'notifications', label: 'slack' },
   '@slack/bolt': { category: 'notifications', label: 'slack' },
+  // Code hosts (their APIs, and GitHub Actions written in this repository)
+  'octokit': { category: 'codeHosts', label: 'github' },
+  '@octokit/rest': { category: 'codeHosts', label: 'github' },
+  '@octokit/core': { category: 'codeHosts', label: 'github' },
+  '@actions/core': { category: 'codeHosts', label: 'github' },
+  '@actions/github': { category: 'codeHosts', label: 'github' },
+  '@gitbeaker/rest': { category: 'codeHosts', label: 'gitlab' },
+  '@gitbeaker/core': { category: 'codeHosts', label: 'gitlab' },
 };
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -294,6 +314,7 @@ interface RepoInfoInternal {
   services: string[];
   pm: string[];
   notifications: string[];
+  codeHosts: string[];
   mcpConfig?: boolean;
   configFiles: string[];
 }
@@ -316,6 +337,7 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
     services: [],
     pm: [],
     notifications: [],
+    codeHosts: [],
     configFiles: [],
   };
 
@@ -350,7 +372,11 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
     detectCategory(projectRoot, STYLING, info, 'styling'),
     detectCategory(projectRoot, AUTH, info, 'auth'),
     detectCategory(projectRoot, SERVICES, info, 'services'),
+    detectCategory(projectRoot, CODE_HOSTS, info, 'codeHosts'),
   ]);
+
+  // ── 3b. Detect the code host from git remotes ───────────────
+  await detectCodeHosts(projectRoot, info);
 
   // ── 4. Detect from package.json deps ────────────────────────
   await detectFromPackageJson(projectRoot, info);
@@ -411,7 +437,7 @@ export async function detectRepoInfo(projectRoot: string): Promise<RepoInfo> {
   info.configFiles = [...new Set(info.configFiles)];
 
   // Sort arrays for stable output
-  for (const key of ['frameworks', 'databases', 'cms', 'deployment', 'testing', 'cicd', 'styling', 'auth', 'services', 'pm', 'notifications', 'configFiles'] as const) {
+  for (const key of ['frameworks', 'databases', 'cms', 'deployment', 'testing', 'cicd', 'styling', 'auth', 'services', 'pm', 'notifications', 'codeHosts', 'configFiles'] as const) {
     info[key].sort();
   }
 
@@ -445,6 +471,72 @@ async function detectPythonOrGo(root: string, info: RepoInfoInternal): Promise<v
   for (const [re, label] of PYTHON_FRAMEWORKS) if (re.test(text)) addUnique(info.frameworks, label)
 }
 
+/**
+ * Where the repository is hosted, from what names the host outright: its git
+ * remotes, the `repository` in package.json, and a Go module path. The file
+ * rules in CODE_HOSTS cover a checkout with no remote.
+ *
+ * A self-managed GitLab is recognised by `gitlab` in its host name, the usual
+ * convention; one under another name is added with `opencastle add gitlab`.
+ */
+async function detectCodeHosts(root: string, info: RepoInfoInternal): Promise<void> {
+  const urls: string[] = []
+  // Remotes only: a submodule's `url` names where a dependency lives.
+  let remote = false
+  for (const line of (await readGitConfig(root)).split('\n')) {
+    if (/^\s*\[/.test(line)) remote = /^\s*\[remote\s/.test(line)
+    const url = remote ? /^\s*url\s*=\s*(\S+)/.exec(line)?.[1] : undefined
+    if (url) urls.push(url)
+  }
+  try {
+    const repository = (JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')) as { repository?: string | { url?: string } }).repository
+    const url = typeof repository === 'string' ? repository : repository?.url
+    // npm's shorthands: `github:user/repo`, `gitlab:user/repo`, and a bare `user/repo` for GitHub.
+    if (url) urls.push(/^[\w.-]+\/[\w.-]+$/.test(url) ? 'github.com/' + url : url.replace(/^(github|gitlab):/, '$1.com/'))
+  } catch {
+    // No package.json, or not JSON — the other signals still count.
+  }
+  const goModule = /^module\s+(\S+)/m.exec(await readFile(resolve(root, 'go.mod'), 'utf8').catch(() => ''))?.[1]
+  if (goModule) urls.push(goModule)
+  for (const url of urls) {
+    const host = codeHostOf(url)
+    if (host) addUnique(info.codeHosts, host)
+  }
+}
+
+/** `github` or `gitlab` for a URL, scp-style address or module path on one of them. */
+function codeHostOf(url: string): string | null {
+  // https://host/…, ssh://git@host/…, git@host:path and host/path.
+  const host = /^(?:[a-z][a-z0-9+.-]*:\/\/)?(?:[^@/]+@)?([^:/]+)/i.exec(url)?.[1].toLowerCase() ?? ''
+  if (host === 'github.com' || host === 'ssh.github.com') return 'github'
+  if (/(^|[.-])gitlab([.-]|$)/.test(host)) return 'gitlab'
+  return null
+}
+
+/**
+ * The git config of the repository the project is in, following `.git` up
+ * through parent directories, as git does — a package in a monorepo has no
+ * `.git` of its own — and through a `.git` file, which is a worktree or a
+ * submodule.
+ */
+async function readGitConfig(root: string): Promise<string> {
+  let dir = resolve(root)
+  while (!(await fileExists(resolve(dir, '.git')))) {
+    const parent = dirname(dir)
+    if (parent === dir) return ''
+    dir = parent
+  }
+  let gitDir = resolve(dir, '.git')
+  const pointer = /^gitdir:\s*(.+)$/m.exec(await readFile(gitDir, 'utf8').catch(() => ''))
+  if (pointer) {
+    gitDir = resolve(dir, pointer[1].trim())
+    // A worktree keeps its remotes in the main repository's config.
+    const common = (await readFile(resolve(gitDir, 'commondir'), 'utf8').catch(() => '')).trim()
+    if (common) gitDir = resolve(gitDir, common)
+  }
+  return readFile(resolve(gitDir, 'config'), 'utf8').catch(() => '')
+}
+
 async function checkFiles(root: string, files: string[]): Promise<string[]> {
   const found: string[] = [];
   for (const f of files) {
@@ -455,7 +547,7 @@ async function checkFiles(root: string, files: string[]): Promise<string[]> {
   return found;
 }
 
-type CategoryKey = 'frameworks' | 'databases' | 'cms' | 'deployment' | 'testing' | 'cicd' | 'styling' | 'auth' | 'services' | 'pm' | 'notifications';
+type CategoryKey = 'frameworks' | 'databases' | 'cms' | 'deployment' | 'testing' | 'cicd' | 'styling' | 'auth' | 'services' | 'pm' | 'notifications' | 'codeHosts';
 
 async function detectCategory(
   root: string,
@@ -695,6 +787,7 @@ export function buildDetectedToolsSet(repoInfo: RepoInfo): Set<string> {
     ...(repoInfo.services ?? []),
     ...(repoInfo.pm ?? []),
     ...(repoInfo.notifications ?? []),
+    ...(repoInfo.codeHosts ?? []),
   ]);
 }
 
@@ -719,6 +812,7 @@ function cleanEmpty(info: RepoInfoInternal): RepoInfo {
   if (info.services.length > 0) result.services = info.services;
   if (info.pm.length > 0) result.pm = info.pm;
   if (info.notifications.length > 0) result.notifications = info.notifications;
+  if (info.codeHosts.length > 0) result.codeHosts = info.codeHosts;
   if (info.configFiles.length > 0) result.configFiles = info.configFiles;
 
   return result;
@@ -751,6 +845,8 @@ export function mergeStackIntoRepoInfo(info: RepoInfo, stack: StackConfig): Repo
       merged.pm = addUniqueToArray(merged.pm, tool);
     } else if (['slack', 'teams'].includes(tool)) {
       merged.notifications = addUniqueToArray(merged.notifications, tool);
+    } else if (['github', 'gitlab'].includes(tool)) {
+      merged.codeHosts = addUniqueToArray(merged.codeHosts, tool);
     }
   }
 
@@ -790,6 +886,7 @@ export function formatRepoInfo(info: RepoInfo): string {
   if (info.services?.length) lines.push(`Services: ${info.services.join(', ')}`);
   if (info.pm?.length) lines.push(`Project management: ${info.pm.join(', ')}`);
   if (info.notifications?.length) lines.push(`Notifications: ${info.notifications.join(', ')}`);
+  if (info.codeHosts?.length) lines.push(`Code hosting: ${info.codeHosts.join(', ')}`);
   if (info.deployment?.length) lines.push(`Deployment: ${info.deployment.join(', ')}`);
   if (info.testing?.length) lines.push(`Testing: ${info.testing.join(', ')}`);
   if (info.cicd?.length) lines.push(`CI/CD: ${info.cicd.join(', ')}`);

@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import { getIncludedMcpServers } from './stack-config.js';
 import { PLUGINS } from '../orchestrator/plugins/index.js';
 import { UnreadableConfigError } from './types.js';
-import type { McpInput, McpServerConfig, EnvVarRequirement } from '../orchestrator/plugins/types.js';
+import type { McpInput, McpServerConfig, EnvVarRequirement, PluginConfig } from '../orchestrator/plugins/types.js';
 import type { ScaffoldResult, StackConfig, RepoInfo, IdeChoice, CopyResults } from './types.js';
 import type { TeamMcpPlan } from './layers.js';
 import { EDITOR_VARIABLES, type TeamMcpServer } from './team-config.js';
@@ -219,14 +219,20 @@ function transformMcpForIde(
 
 /**
  * One plugin's server as the VS Code–format config, with the env vars other
- * targets need spelled out — they have no `envFile`.
+ * targets need spelled out — they have no `envFile` — and, for a server only
+ * some targets can sign in to with OAuth, the token header the others send.
  */
 function serverFor(
-  plugin: { mcpConfig?: McpServerConfig; envVars: EnvVarRequirement[] },
+  plugin: { mcpConfig?: McpServerConfig; envVars: EnvVarRequirement[]; tokenAuth?: PluginConfig['tokenAuth'] },
   ide: IdeChoice,
   legacyEnv = false,
 ): VsCodeServer {
   const serverConfig = { ...plugin.mcpConfig! } as VsCodeServer;
+  if (plugin.tokenAuth && !plugin.tokenAuth.oauthTargets.includes(ide)) {
+    serverConfig.headers = Object.fromEntries(
+      Object.entries(plugin.tokenAuth.headers).map(([k, v]) => [k, legacyEnv ? v : rewriteRefs(v, ide)]),
+    );
+  }
   if (ide !== 'vscode' && plugin.envVars.length > 0) {
     const envBlock: Record<string, string> = { ...(serverConfig.env ?? {}) };
     for (const ev of plugin.envVars) {
@@ -435,7 +441,7 @@ export function upgradeGeneratedServers(
     // shape and the env-variable spelling of the time.
     const earlier: unknown[] = [];
     const configs = [
-      { mcpConfig: plugin.mcpConfig, envVars: plugin.envVars },
+      { mcpConfig: plugin.mcpConfig, envVars: plugin.envVars, tokenAuth: plugin.tokenAuth },
       ...(plugin.previousMcpConfigs ?? []).map((p) => ({ mcpConfig: p.mcpConfig, envVars: p.envVars })),
     ];
     for (const cfg of configs) {

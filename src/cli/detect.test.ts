@@ -326,6 +326,94 @@ describe('detectRepoInfo — Python and Go', () => {
   })
 })
 
+describe('detectRepoInfo — code hosts', () => {
+  let dir: string
+  beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), 'opencastle-host-')) })
+  afterEach(async () => { await rm(dir, { recursive: true, force: true }) })
+
+  const gitConfig = async (gitDir: string, body: string): Promise<void> => {
+    await mkdir(gitDir, { recursive: true })
+    await writeFile(join(gitDir, 'config'), `[core]\n\tbare = false\n${body}`)
+  }
+
+  it('reads GitHub from an https remote, and a self-managed GitLab from an scp-style one', async () => {
+    await gitConfig(join(dir, '.git'), '[remote "origin"]\n\turl = https://github.com/acme/web.git\n')
+    expect((await detectRepoInfo(dir)).codeHosts).toEqual(['github'])
+    await gitConfig(join(dir, '.git'), '[remote "origin"]\n\turl = git@gitlab.acme.example:web/app.git\n')
+    expect((await detectRepoInfo(dir)).codeHosts).toEqual(['gitlab'])
+  })
+
+  it('ignores a submodule hosted elsewhere', async () => {
+    await gitConfig(join(dir, '.git'), [
+      '[remote "origin"]', '\turl = https://gitlab.com/acme/web.git',
+      '[submodule "vendor/lib"]', '\turl = https://github.com/someone/lib.git', '',
+    ].join('\n'))
+    expect((await detectRepoInfo(dir)).codeHosts).toEqual(['gitlab'])
+  })
+
+  it('follows a worktree to the main repository’s remotes', async () => {
+    const main = join(dir, 'main', '.git')
+    await gitConfig(main, '[remote "origin"]\n\turl = ssh://git@github.com/acme/web.git\n')
+    await mkdir(join(main, 'worktrees', 'feature'), { recursive: true })
+    await writeFile(join(main, 'worktrees', 'feature', 'commondir'), '../..\n')
+    await mkdir(join(dir, 'feature'))
+    await writeFile(join(dir, 'feature', '.git'), `gitdir: ${join(main, 'worktrees', 'feature')}\n`)
+    expect((await detectRepoInfo(join(dir, 'feature'))).codeHosts).toEqual(['github'])
+  })
+
+  it('reads the remote of the repository a monorepo package sits in', async () => {
+    await gitConfig(join(dir, '.git'), '[remote "origin"]\n\turl = https://gitlab.com/acme/platform.git\n')
+    await mkdir(join(dir, 'apps', 'web'), { recursive: true })
+    expect((await detectRepoInfo(join(dir, 'apps', 'web'))).codeHosts).toEqual(['gitlab'])
+  })
+
+  it('falls back to files only a code host reads, without a remote', async () => {
+    await writeFile(join(dir, '.gitlab-ci.yml'), 'test:\n  script: npm test\n')
+    const info = await detectRepoInfo(dir)
+    expect(info.codeHosts).toEqual(['gitlab'])
+    expect(buildDetectedToolsSet(info).has('gitlab')).toBe(true)
+
+    await rm(join(dir, '.gitlab-ci.yml'))
+    await mkdir(join(dir, '.github'))
+    await writeFile(join(dir, '.github', 'dependabot.yml'), 'version: 2\n')
+    expect((await detectRepoInfo(dir)).codeHosts).toEqual(['github'])
+  })
+
+  it('does not read VS Code’s Copilot files as GitHub', async () => {
+    // This tool writes them for every VS Code target, wherever the code is hosted.
+    await mkdir(join(dir, '.github', 'agents'), { recursive: true })
+    await mkdir(join(dir, '.github', 'prompts'))
+    await writeFile(join(dir, '.github', 'copilot-instructions.md'), '# Copilot\n')
+    await writeFile(join(dir, '.github', 'agents', 'developer.agent.md'), '---\n---\n')
+    expect((await detectRepoInfo(dir)).codeHosts).toBeUndefined()
+  })
+
+  it.each([
+    ['github:acme/web', 'github'],
+    ['acme/web', 'github'],
+    ['gitlab:acme/web', 'gitlab'],
+    [{ type: 'git', url: 'git+https://gitlab.com/acme/web.git' }, 'gitlab'],
+    [{ type: 'git', url: 'git+ssh://git@github.com/acme/web.git' }, 'github'],
+  ])('reads %j in package.json as %s', async (repository, host) => {
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'web', repository }))
+    expect((await detectRepoInfo(dir)).codeHosts).toEqual([host])
+  })
+
+  it('reads a Go module path, and an SDK for one host', async () => {
+    await writeFile(join(dir, 'go.mod'), 'module gitlab.com/acme/svc\n\ngo 1.22\n')
+    expect((await detectRepoInfo(dir)).codeHosts).toEqual(['gitlab'])
+    await rm(join(dir, 'go.mod'))
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'bot', dependencies: { '@octokit/rest': '^21.0.0' } }))
+    expect((await detectRepoInfo(dir)).codeHosts).toEqual(['github'])
+  })
+
+  it('finds no host for a repository without a remote', async () => {
+    await gitConfig(join(dir, '.git'), '')
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'web', repository: 'bitbucket:acme/web' }))
+    expect((await detectRepoInfo(dir)).codeHosts).toBeUndefined()
+  })
+})
+
 describe('buildDetectedToolsSet', () => {
   it('maps detection labels to plugin IDs', () => {
     const set = buildDetectedToolsSet({

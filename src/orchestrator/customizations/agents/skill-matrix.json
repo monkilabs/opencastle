@@ -79,6 +79,10 @@
     "notifications": {
       "entries": [],
       "description": "Team messaging, alerts, bot integrations, channel management"
+    },
+    "source-control": {
+      "entries": [],
+      "description": "Pull and merge requests, code review, repository issues, CI status"
     }
   },
   "agents": {
@@ -180,6 +184,7 @@
       "slots": [
         "deployment",
         "observability",
+        "source-control",
         "codebase-tool"
       ],
       "directSkills": [
@@ -198,7 +203,8 @@
     "Team Lead (OpenCastle)": {
       "slots": [
         "task-management",
-        "knowledge-management"
+        "knowledge-management",
+        "source-control"
       ],
       "directSkills": [
         "validation-gates",
