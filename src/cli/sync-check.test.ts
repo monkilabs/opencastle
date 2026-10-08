@@ -14,6 +14,8 @@ import { buildCheckReport } from './sync-check.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
 import { writeManifest as writeManifestOnly } from './manifest.js'
 import { recordLockFor } from './lock.js'
+import { renderLesson } from './lessons.js'
+import { refreshLessons } from './lessons-rules.js'
 import type { Manifest } from './types.js'
 
 /** A compile writes the manifest and the lock; tests that compile by hand do both. */
@@ -63,6 +65,33 @@ describe('drift detection', () => {
     expect(report.installed).toBe(true)
     expect(report.drift).toEqual([])
     expect(report.checked).toBeGreaterThan(0)
+  })
+
+  /**
+   * The fresh compile runs in an empty directory, which has no lessons, so its
+   * lessons rule says "No lessons yet". Every project with a lesson was told its
+   * rule differed from that, after every `sync`: a drift no command could clear.
+   */
+  it('holds the lessons rule to the lessons, not to a compile that has none', async () => {
+    mkdirSync(join(projectRoot, '.opencastle', 'lessons'), { recursive: true })
+    writeFileSync(
+      join(projectRoot, '.opencastle', 'lessons', '2026-10-07-quote-paths.md'),
+      renderLesson({
+        id: '2026-10-07-quote-paths', title: 'Quote paths with spaces', category: 'terminal', severity: 'medium',
+        added: '2026-10-07', citations: [], status: 'active', body: 'Unquoted paths break.',
+      }),
+    )
+    await install()
+    refreshLessons(join(projectRoot, '.opencastle'))
+    const rule = join(projectRoot, '.github', 'instructions', 'opencastle-lessons.instructions.md')
+    expect(readFileSync(rule, 'utf8')).toContain('Quote paths with spaces')
+
+    expect((await buildCheckReport(pkgRoot, projectRoot)).drift).toEqual([])
+
+    // Still held to the lessons: an edit by hand is drift, once, and `sync` clears it.
+    appendFileSync(rule, '- a lesson nobody wrote\n')
+    const drift = (await buildCheckReport(pkgRoot, projectRoot)).drift.filter((d) => d.path.endsWith('opencastle-lessons.instructions.md'))
+    expect(drift.map((d) => d.kind)).toEqual(['outdated'])
   })
 
   it('catches a generated file edited in place', async () => {
