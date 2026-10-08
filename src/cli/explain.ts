@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { parse as parseToml } from 'smol-toml'
 import { readManifest } from './manifest.js'
-import { resolveStack, isEnvVarSatisfied } from './stack-config.js'
+import { resolveStack, isEnvVarSatisfied, envFileTextFor } from './stack-config.js'
 import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars, refuseOlderCli } from './layers.js'
 import { buildLock, type Lock, priorTeam } from './lock.js'
 import { IDE_ADAPTERS } from './adapters/index.js'
@@ -80,13 +80,12 @@ async function build(pkgRoot: string, projectRoot: string): Promise<ExplainRepor
     })
   }
 
-  const envFile = existsSync(resolve(projectRoot, '.env')) ? readFileSync(resolve(projectRoot, '.env'), 'utf8') : ''
   const setup: ExplainReport['setup'] = []
   for (const req of requiredEnvVars(resolved, stack, manifest.repoInfo)) {
     setup.push({
       server: req.server,
       need: req.envVar,
-      ok: isEnvVarSatisfied(req.envVar, envFile),
+      ok: isEnvVarSatisfied(req.envVar, envFileTextFor(projectRoot, req.server)),
       how: req.hint,
     })
   }

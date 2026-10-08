@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { updateSkillMatrixContent, isEnvVarSatisfied, getExcludedCoreSkills, isPreselected } from './stack-config.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { updateSkillMatrixContent, isEnvVarSatisfied, getExcludedCoreSkills, isPreselected, envFileTextFor } from './stack-config.js';
 import type { StackConfig } from './types.js';
 import type { SkillMatrixData } from './stack-config.js';
 
@@ -67,6 +70,37 @@ describe('isEnvVarSatisfied', () => {
     expect(set('OC_TEST_TOKEN=""')).toBe(false);
     expect(set("OC_TEST_TOKEN=''  # fill me")).toBe(false);
     expect(set('OC_TEST_TOKEN=   # fill me')).toBe(false);
+  });
+});
+
+/**
+ * VS Code starts a server with the `envFile` its entry names. A project that
+ * keeps each server's secrets in its own file was told they were not set.
+ */
+describe('envFileTextFor', () => {
+  let dir = '';
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('reads .env and the env file a server’s VS Code entry names', () => {
+    dir = mkdtempSync(join(tmpdir(), 'oc-envfile-'));
+    mkdirSync(join(dir, '.vscode'));
+    mkdirSync(join(dir, '.env.d'));
+    writeFileSync(join(dir, '.env'), 'SHARED_TOKEN=a\n');
+    writeFileSync(join(dir, '.env.d', 'mcp-resend.env'), 'OC_TEST_RESEND_KEY=re_x\n');
+    writeFileSync(join(dir, '.vscode', 'mcp.json'), JSON.stringify({
+      servers: { Resend: { type: 'stdio', command: 'npx', args: ['-y', 'resend-mcp@2.24.0'], envFile: '${workspaceFolder}/.env.d/mcp-resend.env' } },
+    }));
+
+    expect(isEnvVarSatisfied('OC_TEST_RESEND_KEY', envFileTextFor(dir, 'Resend'))).toBe(true);
+    expect(isEnvVarSatisfied('SHARED_TOKEN', envFileTextFor(dir, 'Resend'))).toBe(true);
+    // Another server does not read Resend's file.
+    expect(isEnvVarSatisfied('OC_TEST_RESEND_KEY', envFileTextFor(dir, 'Linear'))).toBe(false);
+  });
+
+  it('reads .env alone when there is no VS Code config', () => {
+    dir = mkdtempSync(join(tmpdir(), 'oc-envfile-'));
+    writeFileSync(join(dir, '.env'), 'SHARED_TOKEN=a\n');
+    expect(isEnvVarSatisfied('SHARED_TOKEN', envFileTextFor(dir, 'Resend'))).toBe(true);
   });
 });
 

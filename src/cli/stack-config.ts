@@ -1,6 +1,6 @@
 import { resolve, relative } from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { TechTool, TeamTool, StackConfig, CopyDirOptions, RepoInfo } from './types.js';
 import { isLegacyStack, migrateStackConfig, UnreadableConfigError } from './types.js';
 import {
@@ -13,6 +13,7 @@ import {
   getSelectedSkillNames,
 } from '../orchestrator/plugins/index.js';
 import type {} from '../orchestrator/plugins/types.js';
+import { parseMcpConfigText } from './mcp-file.js';
 
 // ── Tool registries (derived from plugins) ────────────────────
 
@@ -103,6 +104,33 @@ export function isEnvVarSatisfied(envVar: string, envFileContents: string): bool
     if (value && value !== '""' && value !== "''") return true
   }
   return false
+}
+
+/**
+ * The env files a server reads, as one text: the project's `.env`, and the
+ * `envFile` its VS Code entry names.
+ *
+ * A team that keeps each server's secrets apart — `.env.d/mcp-resend.env` —
+ * was told by `doctor`, `explain` and `sync` that the key was not set, because
+ * they read only `.env`, while VS Code started the server with it.
+ */
+export function envFileTextFor(projectRoot: string, server: string): string {
+  const read = (rel: string): string => {
+    try {
+      return readFileSync(resolve(projectRoot, rel), 'utf8')
+    } catch {
+      return ''
+    }
+  }
+  let named = ''
+  try {
+    const config = parseMcpConfigText(read('.vscode/mcp.json'), '.vscode/mcp.json') as { servers?: Record<string, { envFile?: unknown }> }
+    const envFile = config.servers?.[server]?.envFile
+    if (typeof envFile === 'string' && envFile.startsWith('${workspaceFolder}')) named = read(`.${envFile.slice('${workspaceFolder}'.length)}`)
+  } catch {
+    // No VS Code config, or one with comments: `.env` is still read.
+  }
+  return `${read('.env')}\n${named}`
 }
 
 export function resolveStack(manifest: {

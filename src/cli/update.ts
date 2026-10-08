@@ -11,7 +11,7 @@ import {
   updateSkillMatrixFile,
   resolveStack,
   getCustomizationsTransform,
-  isEnvVarSatisfied, isPreselected } from './stack-config.js'
+  isEnvVarSatisfied, isPreselected, envFileTextFor } from './stack-config.js'
 import { rebuildMcpConfig, getMcpConfigRelPath, retireLegacyMcpConfig, LEGACY_MCP_CONFIGS } from './mcp.js'
 import { updateGitignore, LOCAL_DIRS } from './gitignore.js'
 import { resolveManagedPaths, REQUIRED_CUSTOMIZATIONS } from './managed-paths.js'
@@ -959,8 +959,7 @@ export default async function update({
   // gate, so `opencastle add sentry` never mentioned the token it now needs.
   if (newStack) {
     const envVars = requiredEnvVars(resolved, newStack, repoInfo)
-    const envFile = await readFile(resolve(projectRoot, '.env'), 'utf8').catch(() => '')
-    const missing = envVars.filter(({ envVar }) => !isEnvVarSatisfied(envVar, envFile))
+    const missing = envVars.filter(({ envVar, server }) => !isEnvVarSatisfied(envVar, envFileTextFor(projectRoot, server)))
     if (missing.length > 0) {
       console.log(`\n  ${c.yellow('⚠')}  Environment variables still needed:\n`)
       for (const { envVar, hint } of missing) {
