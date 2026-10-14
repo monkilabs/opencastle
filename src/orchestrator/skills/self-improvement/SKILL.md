@@ -1,6 +1,6 @@
 ---
 name: self-improvement
-description: "Keeps the team's memory: where what you learned goes (your memory, shared with the team when it is about the project, or a lesson in .opencastle/lessons/), and how lessons are cited, re-verified and graduated. Use when you confirm something true for anyone working in the repository (a fix after a failure, a convention, a decision, a quirk, a correction about the code), when you touch a lesson copied from memory, when doctor reports a lesson's cited code changed, or when the lessons index grows long."
+description: "Keeps the team's memory: where what you learned goes (your memory, shared with the team when it is about the project, a lesson in .opencastle/lessons/, or a team skill for a procedure), and how lessons are cited, re-verified and graduated. Use when you confirm something true for anyone working in the repository (a fix after a failure, a convention, a decision, a quirk, a correction about the code), when you work out a procedure no skill covers, when you touch a lesson copied from memory, when doctor reports a lesson's cited code changed, or when the lessons index grows long."
 ---
 
 # Self-Improvement
@@ -17,6 +17,7 @@ In Claude Code and VS Code, save it in your own memory as you normally do. When 
 |-------------|------------|-------------|
 | The project: true for anyone working in this repository | About the project (a correction, a project note, a pointer to where something lives) | `pnpm build` fails without `CI=1` set; every migration ships with a down file; the staging API allows 10 requests a second; the user says "we never use default exports" |
 | The user: true for them, wherever they work | About the user. It stays theirs and never becomes a lesson | They want short answers; they use fish; their role; their editor; paths on their machine |
+| A procedure you had to work out, which no skill covers | A team skill, written in the same change (below) | How to run the end-to-end tests against a local database; the steps to release the mobile app |
 | Every repository in the organisation | About the project, saying it holds in every repository; it graduates into the baseline's skill (below) | The company's deploy pipeline needs a manual approval; an internal service's API contract |
 | This task only | Nothing | A one-off workaround; a guess you have not confirmed |
 
@@ -43,6 +44,14 @@ Search the lessons themselves first — the index has titles only — so you do 
 ```bash
 rg -i "CRON_SECRET" .opencastle/lessons/ || true
 ```
+
+## Write down a procedure
+
+A lesson holds a fact. Steps you had to work out — to run, test, seed or release something in this repository — belong in a team skill, which an agent loads when a task matches. Write it once the steps have worked, in the same change:
+
+1. Look for a skill that already covers it (`npx opencastle explain` lists them) and add to that one if there is.
+2. Otherwise create `.opencastle/skills/<name>/SKILL.md`: `name` is the directory's name, in kebab-case; `description` is one line, what it is for and then "Use when …"; the body is the steps, each with the exact command and how to tell it worked.
+3. Run `npx opencastle sync`, which compiles it for every assistant, and commit the skill with the compiled copies. A lesson that holds the same steps: `npx opencastle lesson archive <id> --into .opencastle/skills/<name>/SKILL.md`.
 
 ## When cited code has changed
 
