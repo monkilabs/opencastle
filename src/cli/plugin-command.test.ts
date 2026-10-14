@@ -33,7 +33,7 @@ describe.skipIf(!built)('opencastle plugin', () => {
     expect(run(dir, 'baseline', 'init', 'base', '--name', '@acme/base').status).toBe(0)
     const out = run(dir, 'plugin', 'check', 'base')
     expect(out.status).toBe(0)
-    expect(out.stdout).toContain('Loads in GitHub Copilot, VS Code, Cursor, Codex and Kiro as it is, and in Claude Code.')
+    expect(out.stdout).toContain('Loads in GitHub Copilot, VS Code, Cursor, Codex, Kiro and Devin as it is, and in Claude Code.')
     expect(readJson(join(dir, 'base', 'plugin.json'))).toMatchObject({ $schema: pluginSchemaUrl(), name: 'acme.base' })
     expect(run(dir, 'baseline', 'check', 'base').status).toBe(0)
   })

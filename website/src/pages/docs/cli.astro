@@ -339,7 +339,7 @@ const commands = [
     category: 'teams',
     name: 'plugin',
     summary: 'Check an Agent Plugin, build Claude Code\'s files, index a marketplace',
-    description: '<a href="/docs/agent-plugins">Agent Plugins 1.0</a> is the open package format for skills and MCP servers: <code>plugin.json</code>, <code>skills/&lt;name&gt;/SKILL.md</code> and <code>mcp.json</code>. GitHub Copilot, VS Code, Cursor, Codex and Kiro install one as it is. <code>plugin</code> checks one, writes the files Claude Code reads instead, and writes the marketplace file each assistant indexes plugins with.',
+    description: '<a href="/docs/agent-plugins">Agent Plugins 1.0</a> is the open package format for skills and MCP servers: <code>plugin.json</code>, <code>skills/&lt;name&gt;/SKILL.md</code> and <code>mcp.json</code>. GitHub Copilot, VS Code, Cursor, Codex, Kiro and Devin install one as it is. <code>plugin</code> checks one, writes the files Claude Code reads instead, and writes the marketplace file each assistant indexes plugins with.',
     usage: 'npx opencastle plugin <check|build|index> [dir] [options]',
     options: [
       { flag: '--check', desc: 'build and index: change nothing; exit 1 if a file is out of date' },

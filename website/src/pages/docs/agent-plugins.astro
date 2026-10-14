@@ -92,7 +92,7 @@ $ npx opencastle plugin build ai-standard
 
 $ npx opencastle plugin check ai-standard
   …
-  ✓ Loads in GitHub Copilot, VS Code, Cursor, Codex and Kiro as it is, and in Claude Code.`;
+  ✓ Loads in GitHub Copilot, VS Code, Cursor, Codex, Kiro and Devin as it is, and in Claude Code.`;
 
 const marketTree = `agent-plugins/
 ├── package.json
@@ -264,7 +264,8 @@ const integrationTree = `src/orchestrator/plugins/supabase/
                 <tr><td>Codex CLI</td><td>Yes</td><td><code>.agents/plugins/marketplace.json</code></td></tr>
                 <tr><td>Kiro</td><td>Yes</td><td>—</td></tr>
                 <tr><td>Claude Code</td><td>Its own manifest, <code>.claude-plugin/plugin.json</code>, and <code>.mcp.json</code> — <code>opencastle plugin build</code> writes both</td><td><code>.claude-plugin/marketplace.json</code></td></tr>
-                <tr><td>Windsurf (Devin Desktop), OpenCode, Antigravity</td><td>Not as plugins — OpenCastle compiles a plugin's skills and servers into their own files</td><td>—</td></tr>
+                <tr><td>Devin (Devin Desktop's default agent, Devin CLI, Devin's cloud agent)</td><td>Yes, <code>plugin.json</code> at the root — or <code>.claude-plugin/plugin.json</code>, which it reads first</td><td>None: it installs a plugin from its repository</td></tr>
+                <tr><td>Windsurf's legacy Cascade agent, OpenCode, Antigravity</td><td>Not as plugins — OpenCastle compiles a plugin's skills and servers into their own files</td><td>—</td></tr>
               </tbody>
             </table>
           </div>
@@ -343,6 +344,11 @@ const integrationTree = `src/orchestrator/plugins/supabase/
             <code>codex plugin marketplace add acme/agent-plugins</code>, or in Cursor under Dashboard → Plugins →
             Team Marketplaces → Import. Run <code>opencastle plugin index --check</code> in CI so a new plugin is never
             missing from the list.
+          </p>
+          <p>
+            Devin reads no marketplace file: it installs a plugin from the repository and folder it lives in —
+            <code>devin plugins install</code> for one developer, or Customize → Plugins in Devin's web app for a whole
+            organisation.
           </p>
         </section>
 

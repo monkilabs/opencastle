@@ -82,9 +82,9 @@ How to use each of these: [the guide](https://www.opencastle.dev/docs/teams/).
   machine-local by design, and a personal skill reaches one assistant.
   `promote` writes them into the team's sources, and the pull request that
   commits them is the review.
-- **A baseline is an Agent Plugin.** Copilot, VS Code, Cursor, Codex and Kiro
-  install one natively; OpenCastle compiles it, with what the standard does not
-  cover, into all seven assistants. The standard leaves Claude Code's manifest
+- **A baseline is an Agent Plugin.** Copilot, VS Code, Cursor, Codex, Kiro and
+  Devin install one natively; OpenCastle compiles it, with what the standard
+  does not cover, into all seven assistants. The standard leaves Claude Code's manifest
   and each marketplace format to the client, so `opencastle plugin` compiles
   and checks those instead of three copies kept by hand.
 - **Skills as Agent Skills, not rules.** Flattened into Cursor or Windsurf rules,

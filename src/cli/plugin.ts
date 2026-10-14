@@ -29,7 +29,7 @@ const HELP = `
 
   Agent Plugins 1.0 is the open package format for skills and MCP servers
   (agent-plugins.org): plugin.json, skills/<name>/SKILL.md and mcp.json.
-  GitHub Copilot, VS Code, Cursor, Codex and Kiro install one as it is.
+  GitHub Copilot, VS Code, Cursor, Codex, Kiro and Devin install one as it is.
 
   check [dir]   Check a plugin the way a conformant client loads it: the
                 manifest, every skill against the Agent Skills spec, every
@@ -221,7 +221,7 @@ function printReport(dir: string, report: PluginReport, claudeStale: string[]): 
   for (const s of claudeStale) console.log(`  ${c.red('✗')} ${s} does not match plugin.json and mcp.json ${c.dim('— run npx opencastle plugin build')}`)
   for (const w of report.warnings) console.log(`  ${c.yellow('!')} ${c.dim(w)}`)
   if (report.errors.length === 0 && claudeStale.length === 0) {
-    console.log(`\n  ${c.green('✓')} Loads in GitHub Copilot, VS Code, Cursor, Codex and Kiro as it is` +
+    console.log(`\n  ${c.green('✓')} Loads in GitHub Copilot, VS Code, Cursor, Codex, Kiro and Devin as it is` +
       (existsSync(join(report.root, '.claude-plugin', 'plugin.json')) ? ', and in Claude Code.\n' : `.\n  ${c.dim('Run npx opencastle plugin build to add the files Claude Code reads.')}\n`))
   } else {
     console.log(`\n  ${c.red(`${report.errors.length + claudeStale.length} problem(s) to fix.`)}\n`)
