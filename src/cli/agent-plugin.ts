@@ -9,8 +9,8 @@ import type { TeamMcpServer } from './team-config.js'
  * Agent Plugins 1.0 (agent-plugins.org, under the Agentic AI Foundation) is a
  * directory with a closed `plugin.json` manifest at its root, Agent Skills in
  * `skills/<name>/SKILL.md`, and MCP servers in `mcp.json`. GitHub Copilot, VS
- * Code, Cursor, Codex and Kiro load it as it is. Anything a client adds lives
- * under a reverse-domain namespace — OpenCastle's is `dev.opencastle`, a
+ * Code, Cursor, Codex, Kiro and Devin load it as it is. Anything a client adds
+ * lives under a reverse-domain namespace — OpenCastle's is `dev.opencastle`, a
  * directory beside `skills/` holding what the standard does not cover yet:
  * instructions, agents, prompts, workflows and the team's policy.
  *

@@ -98,7 +98,9 @@ senior's is.
   always do. When an agent stops, a hook in Claude Code or VS Code turns what is
   about the project into a lesson in `.opencastle/lessons/`, and leaves what is
   about the person. Lessons go into the pull request with the work, cite the
-  code they are about, and `doctor` names one whose code has changed.
+  code they are about, and `doctor` names one whose code has changed. Steps an
+  agent had to work out, such as how to run the tests or release, become a
+  team skill in the same pull request.
 - **Loaded without asking.** Claude Code, Copilot, Cursor and Windsurf load the
   team's lessons before every task on their own.
 - **One standard, many repositories.** A baseline is an npm package with the

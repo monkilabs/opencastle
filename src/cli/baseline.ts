@@ -131,8 +131,8 @@ Our AI assistant standard. It is two things at once:
   assistant its developers use (Claude Code, Cursor, Copilot, OpenCode,
   Windsurf, Codex CLI, Antigravity) and is held to the same policy;
 - an [Agent Plugin](https://agent-plugins.org) — GitHub Copilot, VS Code,
-  Cursor, Codex and Kiro can install its skills and MCP servers as they are,
-  and Claude Code through \`.claude-plugin/\`.
+  Cursor, Codex, Kiro and Devin can install its skills and MCP servers as they
+  are, and Claude Code through \`.claude-plugin/\`.
 
 ## What is in it
 

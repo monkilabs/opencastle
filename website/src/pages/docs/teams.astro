@@ -832,8 +832,10 @@ $ npx opencastle baseline check opencastle-baseline
           <h3 class="section-title">Team Memory</h3>
           <p>
             What agents learn on a project, a command that fails or a convention written down nowhere else, is
-            worth more to the team than to the session that learned it. Not all of it is the team's, though, and
-            OpenCastle keeps three scopes apart.
+            worth more to the team than to the session that learned it, yet every assistant keeps it to one person:
+            Claude Code, Codex and VS Code on your machine, and Devin in its cloud, where memory
+            <a class="docs-link" href="https://docs.devin.ai/product-guides/memory" target="_blank" rel="noopener noreferrer">"is not shared with your teammates or your organization"</a>.
+            Not all of it belongs to the team, though, so OpenCastle keeps three scopes apart.
           </p>
           <div class="comparison-table-wrap">
             <table class="comparison-table">
@@ -864,6 +866,12 @@ $ npx opencastle baseline check opencastle-baseline
             the active lessons, titles and paths, rewritten whenever a lesson is written. Codex, OpenCode and
             Antigravity have one root file, so their agents read the index by instruction, and record a lesson
             themselves, as the <strong>self-improvement</strong> skill describes.
+          </p>
+          <p>
+            <strong>A procedure becomes a team skill.</strong> A lesson holds a fact. Steps an agent had to work out —
+            how to run the end-to-end tests, how to release — go into a skill in <code>.opencastle/skills/</code>,
+            written in the same change and reviewed in the same pull request, so the next agent loads it when a task
+            matches. Every assistant's instructions say so; nobody has to ask for it.
           </p>
           <p>
             <strong>Lessons</strong> are one file each, written by <code>opencastle lesson</code>, so two branches that
