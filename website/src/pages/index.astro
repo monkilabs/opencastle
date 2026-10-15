@@ -4,6 +4,7 @@ import logo from '../images/opencastle-logo.png';
 import illustration from '../images/opencastle-illustration.png';
 import dashboardSnapshot from '../images/dashboard-snapshot.png';
 import { PLUGINS } from '../../../src/orchestrator/plugins/index';
+import { isWorkflowTemplate, workflowPhases } from '../../../src/cli/adapters/workflows';
 
 const DEMO_URL = 'https://www.opencastle.dev/dashboard/';
 
@@ -141,9 +142,9 @@ const standards = [
 ];
 
 /**
- * The workflow templates, read from the files the compiler ships, so a renamed
- * phase or a new template reaches this table without anyone remembering it.
- * shared-delivery-phase.md is the last phase of every template, not one itself.
+ * The workflow templates, read from the files the compiler ships and parsed by
+ * the compiler's own functions, so a renamed phase, a new template or a new
+ * template format reaches this table without anyone remembering it.
  */
 const workflowSources = import.meta.glob('../../../src/orchestrator/agent-workflows/*.md', {
   query: '?raw',
@@ -159,11 +160,9 @@ const workflowOrder = [
   'security-audit',
 ];
 const workflows = Object.entries(workflowSources)
-  .map(([path, text]) => ({
-    name: path.split('/').pop()!.replace(/\.md$/, ''),
-    // "## Phase 2: Foundation (Parallel)" → "Foundation"
-    phases: [...text.matchAll(/^#{2,3} Phase \d+: (.+)$/gm)].map((m) => m[1].replace(/\s*\(.*?\)/g, '').trim()),
-  }))
+  .map(([path, text]) => ({ file: path.split('/').pop()!, text }))
+  .filter(({ file }) => isWorkflowTemplate(file))
+  .map(({ file, text }) => ({ name: file.replace(/\.md$/, ''), phases: workflowPhases(text) }))
   .filter((w) => w.phases.length > 0)
   .sort((a, b) => {
     const rank = (n: string) => (workflowOrder.includes(n) ? workflowOrder.indexOf(n) : workflowOrder.length);

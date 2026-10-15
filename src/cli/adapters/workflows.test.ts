@@ -1,5 +1,35 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { inlineSharedPhase, isWorkflowTemplate, pointAtWorkflows } from './workflows.js'
+import { inlineSharedPhase, isWorkflowTemplate, pointAtWorkflows, workflowPhases } from './workflows.js'
+
+const workflowsDir = resolve(import.meta.dirname, '..', '..', 'orchestrator', 'agent-workflows')
+const homePage = readFileSync(resolve(import.meta.dirname, '..', '..', '..', 'website', 'src', 'pages', 'index.astro'), 'utf8')
+
+// The home page lists every template with its phases. After the templates
+// became numbered lists, its own `## Phase N:` pattern matched nothing and the
+// table shipped with a header and no rows.
+describe('the phases of each workflow template', () => {
+  it('are read from every template', () => {
+    const templates = readdirSync(workflowsDir).filter(isWorkflowTemplate)
+    expect(templates.length).toBeGreaterThan(0)
+    for (const file of templates) {
+      expect(workflowPhases(readFileSync(join(workflowsDir, file), 'utf8')).length, file).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('are the bold names of the numbered steps', () => {
+    expect(workflowPhases('1. **Scope and baseline** (Team Lead). Every file.\n2. **Refactor** (Developer).\n- **Not** a phase\n')).toEqual([
+      'Scope and baseline',
+      'Refactor',
+    ])
+  })
+
+  it('are what the home page lists, through these functions', () => {
+    expect(homePage).toContain('workflowPhases(text)')
+    expect(homePage).toContain('isWorkflowTemplate(file)')
+  })
+})
 
 const TEMPLATE = [
   '# Workflow: Bug Fix',
