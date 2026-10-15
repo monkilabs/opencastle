@@ -20,6 +20,16 @@ export function isWorkflowTemplate(name: string): boolean {
   return name.endsWith('.md') && name !== 'README.md' && name !== SHARED_PHASE_FILE
 }
 
+/**
+ * A template's phases, in order: the bold name that opens each numbered step,
+ * `1. **Scope and baseline** (Team Lead). …` → `Scope and baseline`. The home
+ * page lists them; it read `## Phase N:` headings until the templates became
+ * numbered lists, and then listed none.
+ */
+export function workflowPhases(template: string): string[] {
+  return [...template.matchAll(/^\d+\. \*\*(.+?)\*\*/gm)].map((m) => m[1].trim())
+}
+
 /** The shared phase as compiled from `srcRoot`, or null when no layer provides it. */
 export function readSharedPhase(srcRoot: string): string | null {
   const path = resolve(srcRoot, 'agent-workflows', SHARED_PHASE_FILE)
