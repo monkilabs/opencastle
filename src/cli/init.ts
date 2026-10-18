@@ -297,8 +297,15 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
       return [rel, existsSync(resolve(projectRoot, rel))]
     }),
   )
-  const techTools = selection.techTools
-  const teamTools = selection.teamTools
+  // The compiled agents name their tools in this order. A re-run lists them as
+  // the manifest already does, new ones after, or adding a target re-sorts the
+  // list and rewrites every agent with the same tools.
+  const keepOrder = (next: string[], before: readonly string[] = []): string[] => [
+    ...before.filter((t) => next.includes(t)),
+    ...next.filter((t) => !before.includes(t)),
+  ]
+  const techTools = keepOrder(selection.techTools, isReinit ? existing?.stack?.techTools : undefined)
+  const teamTools = keepOrder(selection.teamTools, isReinit ? existing?.stack?.teamTools : undefined)
 
   const stack: StackConfig = {
     ides: ides as IdeChoice[],
