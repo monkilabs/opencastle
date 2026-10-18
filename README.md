@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>Your team's AI setup and memory, in every teammate's assistant.</strong>
+  <strong>What your team's AI learns stays with the team — in every teammate's assistant, reviewed like code.</strong>
 </p>
 
 <p align="center">
@@ -26,9 +26,12 @@
 ---
 
 Every AI coding assistant now remembers what it learns: the build that needs a
-flag, the convention nobody wrote down, the staging API that rate-limits. It
-remembers on one laptop. A new teammate's assistant starts from nothing, and the
-next person to hit the same problem pays for it again.
+flag, the convention nobody wrote down, the staging API that rate-limits. And
+every one keeps it to one person — Claude Code and Codex on a laptop, Devin and
+Cursor on their servers. On one of our projects Claude Code held 87 memories
+about the code, and not one had reached a teammate. A new teammate's assistant
+starts from nothing, and the next person to hit the same problem pays for it
+again.
 
 OpenCastle makes it the team's. Instructions, skills and agents live in the
 repository and compile for the assistant your company uses. What agents remember
@@ -40,6 +43,13 @@ repository extends.
 
 It starts from your code: the stack with its versions, the commands, the routes
 and the models, so the assistant knows the project on its first task.
+
+**With the tools you have, or on its own.** OpenCastle runs no agent, no
+infrastructure and no search; it is the team's layer under the ones you already
+pay for. It reads each assistant's own memory and writes into each one's own
+format. Devin installs your baseline as a plugin, and platforms such as Linear,
+Sentry or Notion reach every assistant as integrations. On its own it needs one
+repository, git and one assistant: no server, no account.
 
 <br>
 
