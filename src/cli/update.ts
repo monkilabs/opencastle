@@ -29,6 +29,7 @@ import {
   type ResolvedSources,
 } from './layers.js'
 import { buildLock, writeLock, readLock, LOCK_REL, priorTeam } from './lock.js'
+import { adoptForeignSkills, foreignSkills, skillFolders } from './foreign-skills.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
 import { parseMcpConfigText } from './mcp-file.js'
@@ -224,6 +225,21 @@ export default async function update({
       console.error(`    ${c.dim('Syncing would take the whole repository back to the older baseline. Install the dependencies again —')}`)
       console.error(`    ${c.dim('npm install, or your package manager\'s — or pass --allow-downgrade to go back on purpose.')}\n`)
       process.exit(1)
+    }
+
+    // Skills another tool wrote into a folder this compiles: made the team's
+    // before anything is compiled, so this sync writes them for every assistant
+    // instead of sweeping them (foreign-skills.ts).
+    const framework = (await resolveManagedPaths({ ...manifest, ides })).framework
+    const foreign = foreignSkills(projectRoot, skillFolders(framework), new Set(early.items.keys()))
+    if (foreign.length > 0) {
+      const dry = args.includes('--dry-run') || args.includes('--dryRun')
+      if (!dry) adoptForeignSkills(projectRoot, foreign)
+      console.log(
+        `  ${c.green('✓')} ${dry ? 'Would keep' : 'Kept'} ${foreign.length} skill(s) another tool added — ` +
+          `${dry ? 'moving' : 'moved'} into .opencastle/skills/, so every assistant gets ${foreign.length === 1 ? 'it' : 'them'}:`,
+      )
+      for (const s of foreign) console.log(`     ${c.dim(`${s.from} → .opencastle/skills/${s.name}`)}`)
     }
   }
 

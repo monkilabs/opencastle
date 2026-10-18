@@ -51,7 +51,9 @@ Use pnpm, never npm. Deploy via `make ship`.
 A file of yours inside a directory OpenCastle generates, such as
 `.cursor/rules/team.mdc`, is different: `init` names it, and the next sync
 removes it. Move it to `.opencastle/instructions/` and it compiles for every
-assistant instead.
+assistant instead. A skill is kept: one another tool wrote into a compiled
+skills folder, as Devin, Claude Code and Copilot do, is moved into
+`.opencastle/skills/` and compiled for every assistant.
 
 ## 2. Fill in what the code cannot say
 

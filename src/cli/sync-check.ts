@@ -25,6 +25,7 @@ import {
   diagnoseManagedFile,
 } from './managed-block.js'
 import { c } from './prompt.js'
+import { foreignSkills, skillFolders } from './foreign-skills.js'
 import { reportToGitHub, COMPARISON_FAILED } from './github-report.js'
 import type { CliContext, IdeChoice, StackConfig } from './types.js'
 
@@ -64,8 +65,11 @@ export interface Drift {
    * `team` is a problem in the team's own sources — a config that will not
    * parse, a baseline that is not installed, a policy the sources break. The
    * comparison cannot run until it is fixed, and `sync` refuses to compile.
+   *
+   * `foreign` is a skill another tool wrote into a compiled folder, which
+   * `sync` keeps by moving it into the team's sources (foreign-skills.ts).
    */
-  origin?: 'mcp' | 'team' | 'version' | 'memory'
+  origin?: 'mcp' | 'team' | 'version' | 'memory' | 'foreign'
   /** The classifier's own words, so the checker and `doctor` cannot diverge. */
   detail?: string
   /** What resolves it, per entry — these do not share a remedy. */
@@ -379,6 +383,20 @@ async function compareProject(
       }
     } finally {
       rmSync(scratch, { recursive: true, force: true })
+    }
+  }
+
+  // A skill another tool wrote into a compiled folder is not swept: `sync`
+  // makes it the team's (foreign-skills.ts). Still drift, since the other
+  // assistants lack it until then, but it is not "removed on the next sync".
+  {
+    const framework = (await Promise.all(ides.map(async (ide) => (await IDE_ADAPTERS[ide]()).getManagedPaths().framework))).flat()
+    for (const skill of foreignSkills(projectRoot, skillFolders(framework), new Set(resolved.items.keys()))) {
+      for (const d of drift) {
+        if (d.kind !== 'extra' || (d.path !== skill.from && !d.path.startsWith(`${skill.from}/`))) continue
+        d.origin = 'foreign'
+        d.detail = `added by another tool — sync moves it into .opencastle/skills/${skill.name}/`
+      }
     }
   }
 
@@ -771,9 +789,16 @@ function render(report: CheckReport): void {
     for (const d of missingFiles) console.log(`    ${c.red('-')} ${d.path} ${c.dim(`(${d.ide})`)}`)
     console.log('')
   }
-  if (extra.length > 0) {
+  const kept = extra.filter((d) => d.origin === 'foreign')
+  const swept = extra.filter((d) => d.origin !== 'foreign')
+  if (kept.length > 0) {
+    console.log(`  ${c.bold('Skills another tool added')} ${c.dim('(the next sync keeps them: moved into .opencastle/skills/ and compiled for every assistant)')}`)
+    for (const d of kept) console.log(`    ${c.green('+')} ${d.path} ${c.dim(`(${d.ide})`)}`)
+    console.log('')
+  }
+  if (swept.length > 0) {
     console.log(`  ${c.bold('Not produced by any source')} ${c.dim('(removed on the next sync)')}`)
-    for (const d of extra) console.log(`    ${c.red('+')} ${d.path} ${c.dim(`(${d.ide}${d.detail ? ` — ${d.detail}` : ''})`)}`)
+    for (const d of swept) console.log(`    ${c.red('+')} ${d.path} ${c.dim(`(${d.ide}${d.detail ? ` — ${d.detail}` : ''})`)}`)
     console.log('')
   }
 

@@ -23,6 +23,7 @@ import { resolveSources, materialize, hasErrors, formatIssues, requiredEnvVars }
 import { writeLessonRules } from './lessons-rules.js'
 import { memoryHooksDrift } from './memory-hooks.js'
 import { buildLock, writeLock, priorTeam } from './lock.js'
+import { adoptForeignSkills, foreignSkills, skillFolders } from './foreign-skills.js'
 import { parseVersion, compareVersions } from './version-range.js'
 import { COMMAND_NAMESPACE } from './command-namespace.js'
 
@@ -328,7 +329,19 @@ export default async function init({ pkgRoot, args }: CliContext): Promise<void>
   // The team's sources, before anything is written. A repository that already
   // carries `.opencastle/config.json` — a clone of a team project being set up
   // again — must compile to the same standard `sync` holds it to, or refuse.
-  const resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: combinedRepoInfo })
+  let resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: combinedRepoInfo })
+  // Skills another tool already wrote where a target compiles them become the
+  // team's first, so this compile writes them for every assistant instead of
+  // leaving them for the next sync to sweep (foreign-skills.ts).
+  if (!dryRun && !hasErrors(resolved)) {
+    const foreign = foreignSkills(projectRoot, skillFolders((await declaredManagedPaths(ides)).framework), new Set(resolved.items.keys()))
+    if (foreign.length > 0) {
+      adoptForeignSkills(projectRoot, foreign)
+      console.log(`  ${c.green('✓')} Kept ${foreign.length} skill(s) another tool added — moved into .opencastle/skills/, so every assistant gets ${foreign.length === 1 ? 'it' : 'them'}:`)
+      for (const f of foreign) console.log(`     ${c.dim(`${f.from} → .opencastle/skills/${f.name}`)}`)
+      resolved = resolveSources({ pkgRoot, projectRoot, stack, repoInfo: combinedRepoInfo })
+    }
+  }
   if (hasErrors(resolved)) {
     const errors = resolved.issues.filter((i) => i.level === 'error')
     console.error(`\n  ${c.red('✗')} The team's sources have ${errors.length} problem(s); nothing was written.\n`)
