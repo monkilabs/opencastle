@@ -2,7 +2,7 @@
   "name": "opencastle",
   "version": "1.0.0",
   "type": "module",
-  "description": "Your team's AI setup and memory, in every teammate's assistant: shared instructions, skills, agents, MCP servers and lessons, reviewed in pull requests and extended across repositories, for Claude Code, Copilot, Cursor, Windsurf, OpenCode, Codex and Antigravity.",
+  "description": "What your team's AI learns stays with the team: lessons from what agents remember, reviewed in pull requests and loaded by every teammate's assistant, beside shared instructions, skills, agents and MCP servers. Works with Claude Code, Copilot, Cursor, Windsurf, OpenCode, Codex, Antigravity and Devin, or on its own.",
   "bin": {
     "opencastle": "bin/cli.mjs"
   },
