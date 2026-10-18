@@ -857,7 +857,9 @@ $ npx opencastle baseline check opencastle-baseline
             <code>.github/hooks/opencastle.json</code>. The hook runs <code>promote memory --json</code>: what is
             about the project (corrections, project notes, pointers to where things live) becomes a lesson, and what
             is about the user stays theirs. The lessons land in the working tree, so they go into the pull request with
-            the work, and the team reviews them there. Nobody runs a command or sorts anything.
+            the work, and the team reviews them there. Nobody runs a command or sorts anything. The hook is written for
+            the assistants the project compiles for, so <code>doctor</code> warns when another assistant keeps memories
+            about the project: a team set up for VS Code that works in Claude Code would otherwise share nothing.
           </p>
           <p>
             <strong>Every assistant loads the lessons on its own.</strong> Claude Code reads

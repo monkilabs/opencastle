@@ -3,6 +3,8 @@ import { dirname, join } from 'node:path'
 import { opencastleRunner } from './ci.js'
 import { cliVersionOf } from './layers.js'
 import { writeLessonRules } from './lessons-rules.js'
+import { readLessons } from './lessons.js'
+import { unsharedMemory } from './memory-sources.js'
 
 /**
  * The team's memory, shared by the assistant's own hook.
@@ -174,6 +176,54 @@ export function memoryHooksDrift(
 export function compileTeamMemory(pkgRoot: string, projectRoot: string, ide: string): HookWrite[] {
   writeLessonRules(projectRoot, [ide])
   return writeMemoryHooks(projectRoot, [ide], cliVersionOf(pkgRoot))
+}
+
+/** The target each memory reader's assistant is compiled as. */
+const MEMORY_TARGET: Readonly<Record<string, string>> = { 'Claude Code': 'claude-code', 'VS Code': 'vscode', Codex: 'codex' }
+
+/**
+ * Memory an assistant keeps about the project when the project is not
+ * compiled for that assistant.
+ *
+ * The hook that shares memory is written for the assistants a project compiles
+ * for, and teams pick those once, at `init`. One project compiled for VS Code
+ * while its people worked in Claude Code: in the eleven days after the hooks
+ * shipped, Claude Code saved 34 memories about it, and not one became a lesson.
+ * The memories on this machine show which assistant is really in use, so
+ * `doctor` names the one the project is missing.
+ */
+export function checkMemoryReach(
+  projectRoot: string,
+  ides: readonly string[],
+): { ok: boolean; warning?: boolean; label: string; detail: string; fix?: string } {
+  const label = 'Team memory'
+  let outside: Array<{ assistant: string; count: number }>
+  try {
+    const { lessons } = readLessons(join(projectRoot, '.opencastle'))
+    const promoted = new Set(lessons.map((l) => l.source).filter((s): s is string => Boolean(s)))
+    outside = unsharedMemory(projectRoot, promoted).filter((u) => !ides.includes(MEMORY_TARGET[u.assistant] ?? u.assistant))
+  } catch {
+    return { ok: true, label, detail: 'could not read what the assistants on this machine remember' }
+  }
+  if (outside.length > 0) {
+    const kept = outside.map((u) => `${u.assistant} keeps ${u.count} ${u.count === 1 ? 'memory' : 'memories'}`).join(', and ')
+    const names = outside.map((u) => u.assistant)
+    return {
+      ok: true,
+      warning: true,
+      label,
+      detail:
+        `${kept} about this project that the team does not have. The project is not compiled for ${names.join(' or ')}, ` +
+        `so ${names.length === 1 ? 'its' : 'their'} agents load none of the lessons, and no hook shares what they remember`,
+      fix: `npx opencastle init --customize, and choose ${names.join(' and ')} as well`,
+    }
+  }
+  const sharing = ides.filter((i) => i === 'claude-code' || i === 'vscode').map((i) => (i === 'claude-code' ? 'Claude Code' : 'VS Code'))
+  return {
+    ok: true,
+    label,
+    detail: sharing.length > 0 ? `shared when an agent stops in ${sharing.join(' or ')}` : 'agents record lessons by instruction',
+  }
 }
 
 /** The files that hold an OpenCastle memory hook now. */

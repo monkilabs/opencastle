@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { renderLesson } from './lessons.js'
+import { readMemoryDir } from './memory-sources.js'
 import {
   CLAUDE_SETTINGS,
   VSCODE_HOOK_FILE,
+  checkMemoryReach,
   memoryHookCommand,
   memoryHookPaths,
   memoryHooksDrift,
@@ -98,5 +101,61 @@ describe('memory hooks', () => {
     writeMemoryHooks(dir, ['claude-code'], '1.8.0')
     stripMemoryHooks(dir)
     expect(existsSync(join(dir, CLAUDE_SETTINGS))).toBe(false)
+  })
+})
+
+describe('the memory of an assistant the project is not compiled for', () => {
+  let dir: string
+  let home: string
+  const memoryDir = (): string => join(home, '.claude', 'projects', 'oc-reach', 'memory')
+  const remember = (file: string, type: string, body: string): void => {
+    mkdirSync(memoryDir(), { recursive: true })
+    writeFileSync(join(memoryDir(), file), `---\nname: ${file}\ndescription: ${body}\ntype: ${type}\n---\n\n${body}\n`)
+  }
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'oc-memory-reach-'))
+    home = mkdtempSync(join(tmpdir(), 'oc-memory-reach-home-'))
+    mkdirSync(join(dir, '.opencastle', 'lessons'), { recursive: true })
+    vi.stubEnv('HOME', home)
+    vi.stubEnv('CLAUDE_CONFIG_DIR', join(home, '.claude'))
+    vi.stubEnv('CLAUDE_CODE_PROJECT_DIR_NAME', 'oc-reach')
+    vi.stubEnv('CODEX_HOME', join(home, '.codex'))
+    vi.stubEnv('VSCODE_APPDATA', join(home, 'vscode'))
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    rmSync(dir, { recursive: true, force: true })
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  it('is named, with the remedy, when the team works in an assistant it does not compile for', () => {
+    remember('build.md', 'project', 'pnpm build needs CI=1')
+    remember('tests.md', 'feedback', 'Run the e2e tests against the local database')
+    remember('me.md', 'user', 'Prefers short answers')
+    const check = checkMemoryReach(dir, ['vscode'])
+    expect(check).toMatchObject({ ok: true, warning: true, label: 'Team memory' })
+    expect(check.detail).toContain('Claude Code keeps 2 memories about this project that the team does not have')
+    expect(check.detail).toContain('not compiled for Claude Code')
+    expect(check.fix).toBe('npx opencastle init --customize, and choose Claude Code as well')
+  })
+
+  it('is fine when the project compiles for that assistant, whose hook shares it', () => {
+    remember('build.md', 'project', 'pnpm build needs CI=1')
+    expect(checkMemoryReach(dir, ['claude-code', 'vscode'])).toEqual({
+      ok: true,
+      label: 'Team memory',
+      detail: 'shared when an agent stops in Claude Code or VS Code',
+    })
+  })
+
+  it('does not count a memory already shared as a lesson', () => {
+    remember('build.md', 'project', 'pnpm build needs CI=1')
+    const [memory] = readMemoryDir(memoryDir(), 'Claude Code').candidates
+    writeFileSync(
+      join(dir, '.opencastle', 'lessons', '2026-10-18-build.md'),
+      renderLesson({ id: '2026-10-18-build', title: memory.title, category: 'general', severity: 'medium', added: '2026-10-18', citations: [], status: 'active', body: memory.body, source: memory.source }),
+    )
+    expect(checkMemoryReach(dir, ['codex'])).toEqual({ ok: true, label: 'Team memory', detail: 'agents record lessons by instruction' })
   })
 })

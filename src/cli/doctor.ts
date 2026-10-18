@@ -18,6 +18,7 @@ import { UnreadableConfigError } from './types.js';
 import { checkMcpSupplyChain } from './mcp-audit.js';
 import { parseMcpConfigText } from './mcp-file.js';
 import { checkLessons } from './lessons.js';
+import { checkMemoryReach } from './memory-hooks.js';
 import {
   teamStateFor,
   teamAuditContext,
@@ -581,6 +582,10 @@ const DOCTOR_HELP = `
   it extends resolve, how much context every assistant loads up front, and
   whether the team's instructions still name scripts and paths that exist.
 
+  It also says when an assistant the project is not compiled for keeps
+  memories about it that the team does not have: that assistant has no hook
+  to share them and loads none of the lessons.
+
   Options:
     --help, -h      Show this help
 `
@@ -996,6 +1001,7 @@ export async function runSharedChecks(
     await checkTornBlocks(projectRoot, manifest),
     checkRootFileClassification(manifest),
     checkLessons(projectRoot),
+    ...(manifest ? [checkMemoryReach(projectRoot, manifest.ides ?? (manifest.ide ? [manifest.ide] : []))] : []),
     ...team,
   ];
 
