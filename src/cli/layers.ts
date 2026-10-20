@@ -630,6 +630,17 @@ function loadPluginLayer(
   const configFile = `${id}/${EXTENSION_NAMESPACE}/${LAYER_CONFIG_FILE}`
   const { config, issues } = readLayerConfig(extensionRoot, configFile)
   ctx.issues.push(...issues)
+  // Beside plugin.json is where a plain baseline keeps its config, and not
+  // where an Agent Plugin does: a policy written there was read by nothing, and
+  // `baseline check` called the package ready to publish.
+  if (existsSync(join(root, LAYER_CONFIG_FILE))) {
+    ctx.issues.push({
+      level: 'warning',
+      where: `${id}/${LAYER_CONFIG_FILE}`,
+      message: `is not read: an Agent Plugin keeps OpenCastle's config in ${EXTENSION_NAMESPACE}/${LAYER_CONFIG_FILE}, so its policy and servers do not apply`,
+      fix: `move what it says into ${configFile}`,
+    })
+  }
   const servers: Record<string, TeamMcpServer> = { ...(config.mcpServers ?? {}) }
   const serverWhere: Record<string, string> = {}
   const pluginPath = posix(relative(ctx.projectRoot, seenAt))

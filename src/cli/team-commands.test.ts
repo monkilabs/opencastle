@@ -299,6 +299,16 @@ describe.skipIf(!built)('a baseline package', () => {
     expect(check.out).toMatch(/dev\.opencastle\/config\.json: policy\.contextBudget is 100 tokens, but a repository extending this baseline starts at ~\d+/)
   })
 
+  it('warns that a config.json beside plugin.json is not read, so its policy does not apply', () => {
+    run(dir, ['baseline', 'init', 'base', '--name', '@acme/base'])
+    writeFileSync(join(dir, 'base', 'config.json'), JSON.stringify({ policy: { mcp: { allow: ['nothing'] } } }))
+    const check = run(dir, ['baseline', 'check', 'base'])
+    // eslint-disable-next-line no-control-regex
+    const out = check.out.replace(/\x1b\[[0-9;]*m/g, '')
+    expect(out).toContain('base/config.json: is not read: an Agent Plugin keeps OpenCastle\'s config in dev.opencastle/config.json')
+    expect(out).toContain('move what it says into base/dev.opencastle/config.json')
+  })
+
   it('fails one whose layer sits outside the package, as every consumer would', () => {
     run(dir, ['baseline', 'init', 'base', '--name', '@acme/base'])
     const path = join(dir, 'base', 'package.json')
