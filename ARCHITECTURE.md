@@ -82,11 +82,11 @@ Work runs in one of two ways:
 
 ## Agents
 
-13 specialist agents, each with a defined scope, output contract, and file partition boundary.
+13 agents, the Team Lead and 12 specialists, each with a defined scope, output contract, and file partition boundary.
 
 | Agent | Domain |
 |-------|--------|
-| Team Lead | Orchestration — never writes code |
+| Team Lead | Plans work across areas, delegates it to specialists and checks each result; makes a one-area change itself |
 | Architect | Strategic architecture decisions, ADRs, system design |
 | Security Expert | Auth, authorization, access policies, security headers, input validation |
 | Developer | Pages, components, routing, API routes and their contracts, server logic |
@@ -251,6 +251,13 @@ cycle is an error.
   own content, that no longer exist; and a CLI older than the release that
   compiled the project, which `sync` refuses to downgrade without
   `--allow-downgrade` and `sync --check` reports instead of comparing.
+- **Skills another tool added** ([`foreign-skills.ts`](src/cli/foreign-skills.ts)).
+  Assistants write skills themselves, into folders OpenCastle compiles: Devin
+  into `.agents/skills/`, Claude Code and Copilot into their own. A skill there
+  that no source produces, that the lock does not record, and that carries no
+  OpenCastle marker is another tool's: `sync` and `init` copy it into
+  `.opencastle/skills/`, so it compiles for every assistant instead of being
+  removed, and `sync --check` lists it under "Skills another tool added".
 
 ---
 
@@ -279,13 +286,16 @@ wherever an assistant reads it; the phase is never installed on its own.
 
 | Gate | Method |
 |------|--------|
-| **Deterministic** | Lint, type-check, unit tests, build verification |
-| **Fast review** | Mandatory single-reviewer sub-agent after every delegation, with automatic retry and escalation |
-| **Panel review** | 3 isolated reviewer sub-agents, 2/3 majority wins (high-stakes or escalation) |
-| **Structured disputes** | Formal dispute records when automated resolution is exhausted — packages both perspectives for human decision |
-| **Browser testing** | Chrome DevTools MCP at project-defined responsive breakpoints |
-| **Secret scan** | Post-execution scan for leaked credentials (API keys, tokens, passwords) |
-| **Blast radius** | Detects risky file patterns (migrations, auth changes, RLS policies) |
+| **Secrets** | No token, key, password or connection string in the diff, the logs or the output: gitleaks when installed, otherwise a read of the diff |
+| **Deterministic** | The project's own tests, lint and build, with zero errors |
+| **Size** | Over 500 changed lines, 10 files or 2 projects: check the change has not drifted beyond its task, and split it if it can be split |
+| **New dependencies** | The package manager's audit at high severity, and the package's maintenance, licence and overlap with one already used |
+| **Browser testing** | UI changes only: every breakpoint the project uses, with no console errors |
+| **Fast review** | One reviewer sub-agent that did not write the change; a FAIL goes back with its feedback twice, and a third goes to the panel |
+| **Panel review** | 3 isolated reviewer sub-agents, 2/3 majority wins, and every must-fix any of them raises is fixed (auth, payments, migrations, deleting data) |
+| **Regression** | The whole test suite of every project that uses what changed |
+| **Smoke test** | A finished feature, walked end to end from a clean build |
+| **A person decides** | A review that stays blocked stops the work: the user gets what blocks it, with each side's evidence. A convoy records it in `.opencastle/DISPUTES.md` |
 
 These are the gates the Team Lead follows in a session (the `validation-gates`
 skill). The convoy engine runs its own; see [Gates](#gates).
@@ -567,8 +577,8 @@ Workers run on one of five runtimes ([`src/cli/run/adapters/`](src/cli/run/adapt
 | `opencode` | `opencode run` | OpenCode |
 | `codex` | `codex exec` | Codex CLI |
 
-Windsurf and Antigravity have no command-line agent, so they are compile targets
-only. `resolveAdapter` picks the runtime: `--adapter`, then the spec's `adapter`,
+OpenCastle has no runtime adapter for Windsurf (Devin Desktop) or Antigravity,
+so they are compile targets only. `resolveAdapter` picks the runtime: `--adapter`, then the spec's `adapter`,
 then the assistants in `.opencastle/manifest.json` in order, then the first of
 `claude`, `codex`, `cursor`, `opencode` and `copilot` found on PATH. A runtime
 named by flag or spec that is not installed is an error, never a switch to
@@ -675,14 +685,14 @@ by hand, and the record never came out consistent enough to rely on.
 | `init` | Set up the project from detected stack and existing assistant config |
 | `sync` | Recompile every configured target from source |
 | `add <pack>` | Adopt an integration and recompile |
-| `doctor` | Diagnose configuration problems |
+| `doctor` | Diagnose configuration problems, and warn when an assistant the project is not compiled for keeps memories about it the team does not have (`checkMemoryReach` in `memory-hooks.ts`) |
 | `remove` | Remove OpenCastle, keeping or deleting generated files |
 | `explain` | What every assistant here is given, where each piece comes from, and what you still need to set up |
 | `review` | What a change does to the assistants, compared with the lock at a base ref |
 | `ci` | Write a GitHub Actions workflow running `sync --check` and `review`, and optionally CODEOWNERS lines |
 | `baseline` | Scaffold (`init`) or validate (`check`) a baseline package — one that `init` creates is also an Agent Plugin |
 | `plugin` | Check an Agent Plugin, build Claude Code's files from it (`build`), write marketplace files for a directory of them (`index`) |
-| `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or what Claude Code, VS Code and Codex remember about this repository into lessons (`memory`, read by `memory-sources.ts`). Each compile adds a hook that runs it when an agent stops (`memory-hooks.ts`), and the lessons rule each assistant loads (`lessons-rules.ts`) |
+| `promote` | Copy a personal skill into the team's sources or a baseline (`skill`), or what Claude Code, VS Code and Codex remember about this repository into lessons (`memory`, read by `memory-sources.ts`). Compiling for Claude Code or VS Code adds a hook that runs it when an agent stops (`memory-hooks.ts`). Claude Code, VS Code, Cursor and Windsurf get a lessons rule they load on their own (`lessons-rules.ts`); Codex, OpenCode and Antigravity read the index by instruction |
 | `fleet` | OpenCastle and baseline versions, and MCP server spread, across many repositories' locks |
 | `convoy` | Experimental: plan multi-step work and run it with agents in parallel |
 
@@ -691,5 +701,6 @@ drifted file and a table to `$GITHUB_STEP_SUMMARY`
 ([`github-report.ts`](src/cli/github-report.ts)), and `review` appends its
 Markdown to the same summary; elsewhere their output is unchanged.
 
-`log` and `lesson` also exist but are invoked by agents from generated
-instructions rather than by people, so they are not listed in help.
+`lesson` also exists but is invoked by agents from generated instructions
+rather than by people, so it is not listed in help; `update` is kept as the old
+name of `sync`.

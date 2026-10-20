@@ -145,7 +145,7 @@ Create a branch from `main` using this convention:
 | `src/orchestrator/` | Agent definitions, workflows, skills and integrations |
 | `tools/` | The dashboard demo exporter, and the scripts behind the demo video and the social image |
 | `website/` | Project website and docs |
-| `docs/` | Quickstart and the teams design notes |
+| `docs/` | Quickstart, and design plans in `docs/plans/` |
 | `scripts/` | Repository tooling: claim verification, MCP pin checks, plugin packing |
 
 ## Getting Help

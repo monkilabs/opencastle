@@ -32,7 +32,7 @@ const sections = [
     <p>Three kinds of path, and who owns each:</p>
     <ul class="docs-list">
       <li><strong>Yours:</strong> <code>.opencastle/</code>, and your own writing in a root file such as <code>CLAUDE.md</code> — above or below its <em>managed block</em>, the marked part every sync rewrites.</li>
-      <li><strong>Generated:</strong> the managed blocks, and whole directories such as <code>.claude/skills/</code> or <code>.cursor/rules/</code>. A file you add to one is removed by the next sync; put it in <code>.opencastle/</code> instead and it compiles for every assistant.</li>
+      <li><strong>Generated:</strong> the managed blocks, and whole directories such as <code>.claude/agents/</code> or <code>.cursor/rules/</code>. A file you add to one is removed by the next sync, except a skill, which sync moves into <code>.opencastle/skills/</code>. Put anything else in <code>.opencastle/</code> instead and it compiles for every assistant.</li>
       <li><strong>Shared:</strong> MCP config files. OpenCastle updates its own servers and leaves yours.</li>
     </ul>
     <p>Generated config is committed, like a lockfile: a teammate who clones the repository has working rules without running anything.</p>
@@ -57,7 +57,7 @@ const sections = [
 
   <section class="docs-section" id="integrations">
     <h3 class="section-title">Integrations</h3>
-    <p>An integration is a tool OpenCastle knows: Next.js, Supabase, Stripe, Playwright, Linear and others. <code>init</code> adds the ones your repository uses, and <code>npx opencastle add &lt;name&gt;</code> adds one later. Each brings a skill with that tool's version-specific details and, where the tool has one, an MCP server — pinned to an exact version, and written in each assistant's own config format with its own spelling for environment variables. <a class="docs-link" href="/docs/plugins/">Every integration</a>.</p>
+    <p>An integration is a tool OpenCastle knows: Next.js, Supabase, Stripe, Playwright, Linear and others. <code>init</code> adds the ones your repository uses, and <code>npx opencastle add &lt;name&gt;</code> adds one later. Each brings a skill with that tool's version-specific details and, where the tool has one, an MCP server — the vendor's remote server, or a package pinned to an exact version — written in each assistant's own config format with its own spelling for environment variables. <a class="docs-link" href="/docs/plugins/">Every integration</a>.</p>
   </section>
 
   <section class="docs-section" id="layers">

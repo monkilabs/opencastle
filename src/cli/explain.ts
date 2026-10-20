@@ -33,7 +33,8 @@ const HELP = `
   set up — environment variables and sign-ins for the MCP servers.
 
   Options:
-    --all          List OpenCastle's own skills and agents too, not only the team's
+    --all          List OpenCastle's own skills, agents, commands and workflows
+                   too, not only the team's
     --json         Machine-readable output
     --help, -h     Show this help
 `

@@ -129,7 +129,7 @@ const recipes = [
                 <tr><td>Tasks that depend on each other</td><td>No; 5 to 30 independent units</td><td>Yes, managed by the main agent</td><td>Yes, written into the plan; a task starts when the ones it waits for are done</td></tr>
                 <tr><td>The plan</td><td>Shown once for your approval</td><td>Decided by the main agent during the session; it can start from a plan you accepted</td><td>Checked in code and saved as a YAML spec you can edit, write yourself and run again</td></tr>
                 <tr><td>Isolation</td><td>A git worktree per unit</td><td>Not documented</td><td>A git worktree per task; tasks that share files never run at the same time</td></tr>
-                <tr><td>Review and checks</td><td>Each unit runs its tests</td><td>Not documented</td><td>A read-only review per task, except a small change outside sensitive paths; your checks run once on the merged result</td></tr>
+                <tr><td>Review and checks</td><td>Each unit runs its tests</td><td>Not documented</td><td>A read-only review per task, except a small change outside sensitive paths (planned tasks: by complexity); your checks run once on the merged result</td></tr>
                 <tr><td>The result</td><td>Each unit publishes its own change</td><td>Not documented</td><td>One branch, each task merged onto it in turn</td></tr>
                 <tr><td>An interrupted run</td><td>Not documented</td><td>Not documented</td><td><code>opencastle convoy resume</code> carries on from <code>.opencastle/convoy.db</code></td></tr>
                 <tr><td>Models</td><td>Not documented</td><td>A low-cost model by default, or the custom agent you name with <code>@</code></td><td>Each agent's tier on Claude Code, with reviews on the economy tier</td></tr>
@@ -252,8 +252,8 @@ $ git commit -m "Add OpenCastle"</code></pre>
   with tests." --yes</code></pre>
             </div>
             <div class="recipe-output">
-              <pre><code>  opencastle convoy — planning, read-only
-  Runtime: Claude Code — configured by opencastle init
+              <pre><code>  npx opencastle convoy — planning, read-only
+  Runtime: Claude Code — configured by npx opencastle init
 
   ✓ Sized low — planned straight from the request, without a PRD
   ✓ 2 tasks planned
@@ -283,7 +283,7 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <div class="recipe-output">
               <pre><code>  Run it? [Y/n] n
 
-  Not started. To run it later: opencastle convoy run .opencastle/convoys/&lt;name&gt;.convoy.yml</code></pre>
+  Not started. To run it later: npx opencastle convoy run .opencastle/convoys/&lt;name&gt;.convoy.yml</code></pre>
             </div>
             <div class="recipe-tip">
               <strong>Tip:</strong> <code>--dry-run</code> plans and writes the spec, then stops. The spec is plain
@@ -297,10 +297,10 @@ $ git commit -m "Add OpenCastle"</code></pre>
             <h3 class="recipe-section__heading">Step 3: The run</h3>
             <p class="recipe-section__body">
               Each task starts as soon as the tasks it depends on are done, in a worktree of its own. When its
-              agent finishes, the work is committed there, gets one read-only review — a change of at most 10
-              lines in 2 files passes without one, unless it touches a sensitive path — and is merged onto the
-              run's branch. Here the second task waits for the first, because they change the same files. The
-              test suite ran once, at the end, on the merged result.
+              agent finishes, the work is committed there, gets the review its complexity sets — usually one
+              read-only review, a panel of three for the largest — and is merged onto the run's branch. Here
+              the second task waits for the first, because they change the same files. The test suite ran
+              once, at the end, on the merged result.
             </p>
             <div class="recipe-output">
               <pre><code>  Convoy: Notes pagination delete — 2 tasks
@@ -379,7 +379,7 @@ $ git merge convoy/notes-pagination-delete</code></pre>
     2/2 done
     Branch convoy/notes-pagination-delete
 
-  Next: opencastle convoy "&lt;task&gt;"
+  Next: npx opencastle convoy "&lt;task&gt;"
   every task is done; start another</code></pre>
             </div>
           </section>
@@ -420,7 +420,8 @@ $ git merge convoy/notes-pagination-delete</code></pre>
               <div class="recipe-troubleshooting__item">
                 <p class="recipe-troubleshooting__problem">A task failed</p>
                 <p class="recipe-troubleshooting__solution">
-                  A failed attempt runs once more by default, told why the first failed. If it fails again, the
+                  A failed attempt runs again, told why it failed: once in a spec you write, up to twice for
+                  most planned tasks, as their complexity sets. If it runs out of retries, the
                   tasks that depend on it are skipped and the rest carry on. The summary lists each task that is
                   not done with its reason, and the dashboard shows the end of its output. Fix the cause, then
                   <code>npx opencastle convoy resume</code>.
@@ -545,11 +546,11 @@ tasks:
     export  developer  –               src/export.js, test/export.test.js
     routes  developer  search, export  src/server.js, test/server.test.js
 
-  Runtime Claude Code — configured by opencastle init
+  Runtime Claude Code — configured by npx opencastle init
   Branch  convoy/search-export
   Gates   npm test (once, after the tasks)
 
-  Dry run — nothing started, nothing recorded. To run it: opencastle convoy run search.convoy.yml</code></pre>
+  Dry run — nothing started, nothing recorded. To run it: npx opencastle convoy run search.convoy.yml</code></pre>
             </div>
           </section>
 
@@ -562,7 +563,7 @@ tasks:
             </div>
             <div class="recipe-output">
               <pre><code>  Convoy: Notes search and export — 3 tasks
-  Runtime: Claude Code — configured by opencastle init
+  Runtime: Claude Code — configured by npx opencastle init
   Models: by agent tier — premium opus, standard sonnet, economy haiku (and reviews)
   Live view: http://127.0.0.1:4300
 
@@ -599,7 +600,7 @@ tasks:
     Review: git diff main...convoy/search-export
     Merge:  git merge convoy/search-export
   Log: .opencastle/logs/convoys/convoy-1791044097553.ndjson
-  Resume with: opencastle convoy resume</code></pre>
+  Resume with: npx opencastle convoy resume</code></pre>
             </div>
             <p class="recipe-section__body">
               The two finished tasks are already merged onto the branch, and your checkout is as it was. A
@@ -622,7 +623,7 @@ tasks:
     2/3 done, 1 pending
     Branch convoy/search-export
 
-  Next: opencastle convoy resume
+  Next: npx opencastle convoy resume
   runs what is not done — failed, interrupted and skipped tasks — and keeps the rest</code></pre>
             </div>
             <p class="recipe-section__body"><code>--dry-run</code> lists what resuming would run, and starts nothing:</p>

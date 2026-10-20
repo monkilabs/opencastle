@@ -162,7 +162,8 @@ const categories = [
           OpenCastle has {integrationCount} integrations. Each one adds a skill, an MCP server where
           the tool has one, and the tools its agents may call — and each is an
           <a href="/docs/agent-plugins">Agent Plugin 1.0</a> directory, with its skill in
-          <code>skills/&lt;name&gt;/SKILL.md</code> and its server in <code>mcp.json</code>.
+          <code>skills/&lt;name&gt;/SKILL.md</code> and its server in <code>mcp.json</code> where it can be
+          shared (Teams' needs your tenant ID).
           <code>init</code> adds the ones it detects; <code>opencastle add &lt;name&gt;</code> adds another.
           Select a category from the sidebar or browse them all below.
         </p>
@@ -176,7 +177,7 @@ const categories = [
         </div>
         <div class="callout">
           <strong>Where tokens go.</strong> VS Code reads them from <code>.env</code> in the project
-          root. Claude Code, Cursor, Windsurf, OpenCode, Codex and Antigravity read them from the
+          root. Claude Code, Cursor, Windsurf (Devin Desktop), OpenCode, Codex and Antigravity read them from the
           environment they were started in — export them in your shell, or load <code>.env</code>
           with a tool such as direnv, before you start the assistant. <code>opencastle explain</code>
           lists the ones your project's MCP servers still need.
@@ -360,7 +361,7 @@ const categories = [
 
           <div class="plugin-card" id="expo">
             <h3 class="plugin-card__name"><Fragment set:html={icons.expo} /> Expo</h3>
-            <p class="plugin-card__desc">React Native framework with EAS builds, OTA updates, and simulator automation.</p>
+            <p class="plugin-card__desc">React Native framework with EAS builds and OTA updates.</p>
             <table class="plugin-table">
               <thead><tr><th>Auth Type</th><th>MCP Package</th><th>Official Docs</th></tr></thead>
               <tbody><tr>
@@ -683,7 +684,7 @@ TRELLO_TOKEN="your-token-here"</code></pre>
             </div>
             <div class="callout callout--warning">
               <strong>Every other assistant needs a token:</strong> <code>GITHUB_PERSONAL_ACCESS_TOKEN</code><br />
-              GitHub's server accepts OAuth only from VS Code. For Claude Code, Cursor, Windsurf,
+              GitHub's server accepts OAuth only from VS Code. For Claude Code, Cursor, Windsurf (Devin Desktop),
               OpenCode and Codex, <code>init</code> writes the same URL with an
               <code>Authorization: Bearer</code> header that reads the token from the environment.
               Create a fine-grained token at github.com &rarr; Settings &rarr; Developer settings &rarr;
