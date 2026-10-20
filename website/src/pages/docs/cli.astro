@@ -58,7 +58,7 @@ const commands = [
       { heading: 'What it does', content: `<ol>
         <li><strong>Finds your assistants</strong> — any of <code>CLAUDE.md</code> or <code>.claude/</code>, <code>.cursorrules</code> or <code>.cursor/rules</code>, <code>.github/copilot-instructions.md</code>, <code>.windsurfrules</code> or <code>.windsurf/rules</code>, <code>GEMINI.md</code>, <code>.codex</code>, or <code>opencode.json</code> makes that assistant a compile target. <code>AGENTS.md</code> counts, as Codex CLI, only when none of those is present.</li>
         <li><strong>Scans the stack</strong> — frameworks, databases, CMSes, deployment targets, test runners, monorepo tools — and writes what it read into <code>.opencastle/</code>: versions, commands, routes, models, migrations, environment variable names. JavaScript and TypeScript projects are read from <code>package.json</code>; Python ones from <code>pyproject.toml</code> or <code>requirements.txt</code> (FastAPI, Django, Flask), Go ones from <code>go.mod</code> (Gin, Echo, chi, Fiber); a Makefile, justfile or <code>scripts/</code> adds its commands to any of them. A Python or Go service with no web interface gets no TypeScript or web-interface rules, and no browser to test with.</li>
-        <li><strong>Shows the plan and asks once</strong> — then compiles agents, skills, instructions, and MCP config for each target. On a project that is already set up it asks <code>Re-initialize? [y/N]</code> first.</li>
+        <li><strong>Shows the plan and asks once</strong> — then compiles agents, skills, instructions, and MCP config for each target. On a project that is already set up it asks <code>Re-initialize? [y/N]</code> first. A re-run keeps the order the manifest lists its tools in, new ones after, so adding an assistant with <code>init --customize</code> does not rewrite the agents already compiled.</li>
         <li><strong>Leaves your writing alone</strong> — what you wrote in <code>CLAUDE.md</code>, <code>.cursorrules</code> and the other root files stays above a managed block. A file of yours inside a directory OpenCastle generates (<code>.cursor/rules/</code>, <code>.claude/agents/</code>, <code>.agents/skills/</code>, …) is named in the summary and removed by the next <code>sync</code>; move it into <code>.opencastle/</code> and it is compiled for every assistant. A skill another tool wrote there — Devin, Claude Code or Copilot creating one — is kept instead: <code>init</code> and <code>sync</code> move it into <code>.opencastle/skills/</code> for you.</li>
       </ol>` },
     ],
@@ -86,10 +86,10 @@ const commands = [
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
-      { heading: 'What is preserved', content: `<p><code>.opencastle/</code> is never overwritten, nor your text around the managed block in a root file. Generated directories are rewritten whole, so a file of yours placed in one is removed; keep it in <code>.opencastle/</code>. An MCP server entry you edited stays as you left it; one still exactly as an earlier release wrote it is updated to the current default, and named.</p>` },
+      { heading: 'What is preserved', content: `<p><code>.opencastle/</code> is never overwritten, nor your text around the managed block in a root file. Generated directories are rewritten whole, so a file of yours placed in one is removed; keep it in <code>.opencastle/</code>. The exception is a skill another tool wrote — a <code>&lt;name&gt;/SKILL.md</code> folder in a compiled skills directory that no source produces, the lock does not record, and that carries no OpenCastle marker: <code>sync</code> copies it into <code>.opencastle/skills/&lt;name&gt;/</code> and compiles it for every assistant (<code>--dry-run</code> says <em>Would keep</em>). An MCP server entry you edited stays as you left it; one still exactly as an earlier release wrote it is updated to the current default, and named.</p>` },
       { heading: 'Team sources and the lock', content: `<p><code>sync</code> writes <code>.opencastle/lock.json</code>, the record of what every assistant is given; commit it. When <code>.opencastle/config.json</code> exists, it is resolved first — baselines, the project's own content, MCP servers, policy — and any error, such as a baseline that is not installed or a server the policy refuses, means nothing is written. See <a href="/docs/teams">OpenCastle for Teams</a>.</p>
 <p>A project compiled by a newer OpenCastle than the one you run is refused, and so is an installed baseline older than the one the lock records (run <code>npm install</code>). <code>--allow-downgrade</code> goes back on purpose.</p>` },
-      { heading: 'sync --check', content: `<p>Compiles to a scratch directory and compares, writing nothing. It fails when a generated file was edited by hand or not recompiled, when the lock is missing or stale, when the team's sources do not resolve or break the policy, and on any MCP problem <code>doctor</code> fails on. On GitHub Actions it annotates each drifted file with its fix and writes a table to the job summary; <code>--json</code> leaves the annotations out.</p>
+      { heading: 'sync --check', content: `<p>Compiles to a scratch directory and compares, writing nothing. It fails when a generated file was edited by hand or not recompiled, when the lock is missing or stale, when the team's sources do not resolve or break the policy, when the memory hook is missing or out of date, and on any MCP problem <code>doctor</code> fails on. A skill another tool added to a compiled folder is listed under <em>Skills another tool added</em>, not <em>Not produced by any source</em>, because the next <code>sync</code> keeps it; it still fails the check until <code>sync</code> runs, since the other assistants do not have it yet. On GitHub Actions it annotates each drifted file with its fix and writes a table to the job summary; <code>--json</code> leaves the annotations out.</p>
 <p><a href="#ci"><code>opencastle ci</code></a> writes the GitHub Actions workflow. On any other CI, install dependencies, with <code>opencastle</code> as a devDependency, and run <code>npx opencastle sync --check</code>.</p>` },
       { heading: 'Previously called update', content: `<p><code>opencastle update</code> still works.</p>` },
     ],
@@ -156,7 +156,7 @@ const commands = [
     description: 'Asks whether to keep the generated files — making them standalone so you can uninstall the package — or delete everything it created. Always previews before touching anything.',
     usage: 'npx opencastle remove [options]',
     options: [
-      { flag: '--keep-files', desc: 'Keep generated files; drop only the manifest' },
+      { flag: '--keep-files', desc: 'Keep generated files; drop the manifest and the memory hooks' },
       { flag: '--all', desc: 'Delete every generated file' },
       { flag: '--dry-run', desc: 'Preview without changing anything' },
       { flag: '--yes', desc: 'Skip the confirmation' },
@@ -218,7 +218,7 @@ const commands = [
     <tr><td>Codex CLI</td><td><code>codex</code></td><td><code>codex</code></td></tr>
   </tbody>
 </table>
-<p>Windsurf and Antigravity have no command-line agent; a project set up only for them runs on the first agent CLI found on PATH, or the one <code>--adapter</code> names.</p>` },
+<p>OpenCastle has no runtime adapter for Windsurf (Devin Desktop) or Antigravity, so they are compile targets only; a project set up only for them runs on the first agent CLI found on PATH, or the one <code>--adapter</code> names.</p>` },
       { heading: 'Models', content: `<p>A task with no <code>model</code> in its spec runs on its agent's capability tier. Claude Code maps premium, standard and economy to its own <code>opus</code>, <code>sonnet</code> and <code>haiku</code> aliases; reviews run on economy, and the planner writes on standard and checks on economy. The other runtimes run on their own default model. A <code>model</code> in the spec, on a task or under <code>defaults</code>, always wins.</p>` },
       { heading: 'Experimental', content: `<p>This namespace may change or be removed. The compiler does not depend on it. How it works inside is in <a href="https://github.com/monkilabs/opencastle/blob/main/ARCHITECTURE.md#convoy-architecture">ARCHITECTURE.md</a>.</p>` },
     ],
@@ -371,6 +371,7 @@ const commands = [
       { flag: '--from <dir>', desc: 'memory: read memory files from this directory instead' },
       { flag: '--force', desc: 'skill: replace a team skill with the same name' },
       { flag: '--dry-run', desc: 'Say what would be written, and write nothing' },
+      { flag: '--json', desc: 'memory: one line of JSON, and exit 0 whatever happens — what the memory hook runs' },
       { flag: '--help, -h', desc: 'Show help' },
     ],
     details: [
@@ -405,6 +406,7 @@ npx opencastle lesson archive <id> --into <file>`,
       { flag: '--wrong, --correct, --why', desc: 'add: what was tried, what works, and the root cause' },
       { flag: '--cite <path[:line]>', desc: 'The code the lesson is about; repeat for more. On verify, replaces the citations' },
       { flag: '--into <file>', desc: 'archive: the skill or instruction file the lesson now lives in, or an item such as skills/deploy-runbook that a baseline gives this repository' },
+      { flag: '--customizations-dir <p>', desc: 'Use this .opencastle directory instead of finding one' },
       { flag: '--dry-run', desc: 'Print what would be written, and write nothing' },
       { flag: '--help, -h', desc: 'Show help' },
     ],

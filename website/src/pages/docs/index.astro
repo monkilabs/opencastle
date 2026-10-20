@@ -3,7 +3,7 @@ import '../../styles/global.css';
 import { PLUGINS } from '../../../../src/orchestrator/plugins/index';
 
 const title = 'Docs — OpenCastle';
-const description = 'OpenCastle documentation: compile one AI assistant config for every assistant, share it across your repositories, and check it on every pull request.';
+const description = "What your team's AI learns stays with the team. OpenCastle documentation: instructions, skills and lessons in every teammate's assistant, shared across your repositories and checked on every pull request.";
 const integrationCount = Object.keys(PLUGINS).length;
 
 const pages = [
@@ -300,7 +300,7 @@ const pages = [
                       <div class="quickstart__substeps">
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">1</span>
-                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add tags to notes, and reject a note without a title"</code>. Planning changes no code: it sizes the request, writes a PRD first only when the work is not small, writes a spec to <code class="quickstart__code">.opencastle/convoys/</code>, shows the plan as a table, and asks <em>&ldquo;Run it? [Y/n]&rdquo;</em>. Answer <em>n</em> to edit the spec first and run it later with <code class="quickstart__code">npx opencastle convoy run</code>.</p>
+                          <p class="quickstart__desc"><strong>Plan:</strong> <code class="quickstart__code">npx opencastle convoy "Add tags to notes, and reject a note without a title"</code>. Planning changes no code: it sizes the request, writes a PRD first only when the work is not small, writes a spec to <code class="quickstart__code">.opencastle/convoys/</code>, shows the plan as a table, and asks <em>&ldquo;Run it? [Y/n]&rdquo;</em>. Answer <em>n</em> to edit the spec first and run it later with the command it prints: <code class="quickstart__code">npx opencastle convoy run .opencastle/convoys/&lt;spec&gt;.yml</code>.</p>
                         </div>
                         <div class="quickstart__substep">
                           <span class="quickstart__substep-num">2</span>
@@ -387,7 +387,7 @@ const pages = [
               <span class="quickstart__num">&bull;</span>
               <div>
                 <p class="quickstart__label">Upgrade</p>
-                <p class="quickstart__desc"><code class="quickstart__code">npm i -D opencastle@latest</code>, then <code class="quickstart__code">npx opencastle sync</code>: it names every file it changes or removes. Read the diff and commit it. Something not working? <a href="/docs/troubleshooting">Troubleshooting</a>.</p>
+                <p class="quickstart__desc"><code class="quickstart__code">npm i -D opencastle@latest</code>, then <code class="quickstart__code">npx opencastle sync</code>: it names each file it removes and counts the ones it changes; <code class="quickstart__code">git diff</code> shows them all. Read the diff and commit it. Something not working? <a href="/docs/troubleshooting">Troubleshooting</a>.</p>
               </div>
             </div>
             <div class="quickstart__step">

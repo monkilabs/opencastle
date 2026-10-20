@@ -29,7 +29,7 @@ const features = [
     icon: 'orchestrator',
     title: 'Team Lead Orchestrator',
     description:
-      'A single coordinator that analyzes, decomposes, delegates, and verifies work across specialist agents — its instructions leave every code change to them.',
+      'A single coordinator that splits work spanning several areas into tasks for specialist agents, checks each result and has the whole change reviewed. A change in one area it makes itself.',
   },
   {
     icon: 'agents',
@@ -59,7 +59,7 @@ const features = [
     icon: 'brain',
     title: 'Self-Improvement',
     description:
-      'Agents record what they learn from retries and failures — one file per lesson, citing the code it is about when there is some — and doctor flags a lesson when a file it cites changes. Mature lessons are merged into skills and instructions, then archived.',
+      'What agents learn about the project becomes a lesson, written by the memory hook in Claude Code and VS Code and by the agent elsewhere — one file per lesson, citing the code it is about when there is some — and doctor flags a lesson when a file it cites changes. Mature lessons are merged into skills and instructions, then archived.',
   },
 ];
 
@@ -119,7 +119,7 @@ const standards = [
     icon: 'workflows',
     title: 'AGENTS.md',
     description:
-      'Codex CLI and OpenCode read AGENTS.md, and Antigravity reads it beside GEMINI.md. Claude Code gets the same content in CLAUDE.md; Copilot, Cursor and Windsurf get it as their own instruction and rule files.',
+      'Codex CLI and OpenCode read AGENTS.md, and Antigravity reads it through GEMINI.md when one of them is set up. Claude Code gets the same content in CLAUDE.md; Copilot and Windsurf get their own instruction and rule files, and Cursor reads CLAUDE.md or AGENTS.md when one is written.',
   },
   {
     icon: 'orchestrator',
@@ -562,8 +562,9 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
         </h2>
         <p class="section__subtitle">
           Specialist agents, each with its own capability tier and skills, working in the files
-          its task is assigned. The Team Lead scores each task's complexity to decide how it
-          runs: one agent for a small change, a convoy for more.
+          its task is assigned. The Team Lead makes a change in one area itself and hands work
+          that spans areas to the specialists, in your session. Work you want run unattended, in
+          parallel, is a convoy.
         </p>
         <div class="agents-grid">
           {agents.map((a) => (
@@ -983,7 +984,7 @@ const githubIconSvg = `<svg width="16" height="16" viewBox="0 0 16 16" fill="cur
           </div>
           <div class="stat">
             <div class="stat__value">7</div>
-            <div class="stat__label">IDE Adapters</div>
+            <div class="stat__label">Assistants</div>
           </div>
           <div class="stat">
             <div class="stat__value">{skillCount}</div>

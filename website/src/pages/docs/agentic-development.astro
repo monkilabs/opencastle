@@ -179,7 +179,7 @@ const sectionIcons: Record<string, string> = {
           <p>Key orchestration principles:</p>
           <ul class="docs-list">
             <li><strong>Task decomposition</strong> — break work into the smallest meaningful, independently verifiable units</li>
-            <li><strong>File partitioning</strong> — parallel agents never touch the same files, eliminating merge conflicts</li>
+            <li><strong>File partitioning</strong> — parallel tasks are given separate files, so merges rarely conflict; a conflict re-runs the task on top of the merged work</li>
             <li><strong>Dependency ordering</strong> — tasks are phased so dependent work waits for prerequisites</li>
             <li><strong>Independent verification</strong> — every output is reviewed before being accepted</li>
           </ul>
@@ -286,7 +286,7 @@ const sectionIcons: Record<string, string> = {
           <h4 class="arch-subheading">Where the convoy engine fits</h4>
           <div class="highlight-box">
             <ul class="highlight-box__list">
-              <li><strong>One source, every assistant</strong> — <code>npx opencastle init</code> compiles agents, skills and MCP config for Claude Code, Copilot, Cursor, Windsurf, Codex CLI, OpenCode and Antigravity; the convoy engine runs those same agents</li>
+              <li><strong>One source, every assistant</strong> — <code>npx opencastle init</code> compiles agents, skills and MCP config for Claude Code, Copilot, Cursor, Windsurf (Devin Desktop), Codex CLI, OpenCode and Antigravity; the convoy engine runs those same agents</li>
               <li><strong>The runtime you have</strong> — it drives the CLI for the assistant init set up: Claude Code, Copilot, Cursor, OpenCode or Codex</li>
               <li><strong>Nothing to host</strong> — state is one SQLite file in <code>.opencastle/</code>; a stopped run resumes with <code>opencastle convoy resume</code></li>
               <li><strong>Observable</strong> — an event log per run and a read-only dashboard, <code>opencastle convoy dashboard</code></li>

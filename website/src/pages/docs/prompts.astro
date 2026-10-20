@@ -2,7 +2,7 @@
 import '../../styles/global.css';
 
 const title = 'Prompt Templates — OpenCastle';
-const description = 'The 7 prompts OpenCastle compiles for every assistant: brainstorm, implement a feature, fix a bug, resolve PR comments, plan a convoy and set up a project — and the steps the convoy planner runs. Where each assistant keeps them and how to run one.';
+const description = 'The 7 prompts OpenCastle compiles for every assistant: brainstorm, implement a feature, fix a bug, resolve PR comments, plan a convoy, set up a project and create a skill — and the steps the convoy planner runs. Where each assistant keeps them and how to run one.';
 
 /* ---------- Sidebar category icons ---------- */
 const categoryIcons: Record<string, string> = {
@@ -82,15 +82,15 @@ const prompts = [
     name: 'Resolve PR Comments',
     summary: 'Resolve GitHub PR review comments by reading them, grouping by file, and applying fixes systematically.',
     agent: 'Team Lead (OpenCastle)',
-    input: 'the pull request number or URL',
+    input: 'the pull request number or URL (default: the current branch\'s)',
     details: [
       { heading: 'When to use', content: `<p>When a pull request has review comments that need to be addressed. Reads, groups, and resolves comments systematically rather than ad-hoc. It reads the comments with the <code>gh</code> CLI, so <code>gh</code> must be signed in.</p>` },
       { heading: 'What it does', content: `<ol>
         <li><strong>Gather PR comments</strong> — reads all review comments from GitHub</li>
         <li><strong>Group by file</strong> — organises comments into file-level batches</li>
         <li><strong>Classify</strong> — marks each as must-fix, should-fix, or discussion</li>
-        <li><strong>Delegate fixes</strong> — sends batches to appropriate specialist agents</li>
-        <li><strong>Verify and push</strong> — confirms lint/tests pass, then pushes to the branch</li>
+        <li><strong>Delegate fixes</strong> — sends batches to appropriate specialist agents, shared types and utilities first, never two agents on one file</li>
+        <li><strong>Verify and push</strong> — a secret scan, lint, tests and build, a check that only the commented files changed, and a mandatory fast review; then it commits and pushes to the same branch. Discussion comments are summarised for you, not fixed</li>
       </ol>` },
     ],
   },
@@ -160,7 +160,7 @@ const prompts = [
     category: 'pipeline',
     step: true,
     name: '3. Review the PRD',
-    summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Runs beside the plan from the PRD, or beside a second sizing when the work is split into groups; a PRD that fails is fixed and planned again. Answers VALID or INVALID with the issues.',
+    summary: 'Checks that the PRD has every required section and is consistent enough to plan from. Runs beside the plan from the PRD, or beside a second sizing when the work is split into groups; a PRD that fails is fixed and planned again. Answers with a JSON verdict: valid, or the issues to fix.',
     agent: 'Reviewer',
     input: 'the PRD',
     details: [],
@@ -190,7 +190,7 @@ const prompts = [
     category: 'pipeline',
     step: true,
     name: '6. Review the plan',
-    summary: 'Reviews a plan that will run without a person reading it first (--yes): tasks that run in parallel on the same files, missing dependencies, and missing or redundant tasks. Answers VALID or INVALID.',
+    summary: 'Reviews a plan that will run without a person reading it first (--yes): tasks that run in parallel on the same files, missing dependencies, and missing or redundant tasks. Answers with a JSON verdict: valid, or the issues to fix.',
     agent: 'Reviewer',
     input: 'the convoy spec',
     details: [],
@@ -216,6 +216,27 @@ const assistants = [
   { name: 'OpenCode', path: '.opencode/prompts/<name>.md', run: 'Ask for it by name' },
   { name: 'Codex CLI', path: '.codex/prompts/<name>.md', run: 'Ask for it by name' },
   { name: 'Antigravity', path: '.agents/prompts/<name>.md', run: 'Ask for it by name' },
+];
+
+/* ---------- Workflow templates ---------- */
+const workflows = [
+  { id: 'database-migration', name: 'Database Migration', for: 'Schema, access-policy and data migrations: plan, migrate, regenerate the types, integrate, verify every role' },
+  { id: 'schema-changes', name: 'CMS Schema Changes', for: 'Content-model changes, and the queries and pages that use them' },
+  { id: 'data-pipeline', name: 'Data Pipeline', for: 'Crawl, process, validate and import data, a test batch first' },
+  { id: 'performance-optimization', name: 'Performance Optimization', for: 'Measure, find the bottleneck, optimize, measure again; a change stays only if it helps' },
+  { id: 'refactoring', name: 'Refactoring', for: 'Changing code without changing behaviour: tests for what it does first, a panel for large or security-sensitive changes' },
+  { id: 'security-audit', name: 'Security Audit', for: 'A security review, a panel on the findings, and fixing what it finds' },
+];
+
+/* ---------- Where each assistant keeps the workflow templates ---------- */
+const workflowPaths = [
+  { name: 'Claude Code', path: '.claude/commands/oc/workflow-<name>.md' },
+  { name: 'VS Code (GitHub Copilot)', path: '.github/agent-workflows/<name>.md' },
+  { name: 'Cursor', path: '.cursor/rules/agent-workflows/<name>.mdc' },
+  { name: 'Windsurf (Devin Desktop)', path: '.windsurf/rules/agent-workflows/<name>.md' },
+  { name: 'OpenCode', path: '.opencode/workflows/<name>.md' },
+  { name: 'Codex CLI', path: '.codex/workflows/<name>.md' },
+  { name: 'Antigravity', path: '.agents/workflows/<name>.md' },
 ];
 ---
 
@@ -274,6 +295,12 @@ const assistants = [
               How to use
             </a>
           </li>
+          <li>
+            <a class="docs-sidebar__link docs-sidebar__cmd" href="#workflows" data-prompt="workflows">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+              Workflow templates
+            </a>
+          </li>
           {prompts.map(prompt => (
             <li>
               <a class="docs-sidebar__link docs-sidebar__cmd" href={`#${prompt.id}`} data-prompt={prompt.id}>
@@ -289,8 +316,8 @@ const assistants = [
         <p class="docs-subtitle">
           OpenCastle compiles 7 prompts for every assistant in your project. In Claude Code and VS Code
           Copilot Chat each one is a slash command under one namespace — <code>/oc:bug-fix</code> — so it
-          never collides with a command of your own. Each tells your assistant to act as the Team Lead; in
-          Copilot Chat it also selects that agent. All of them work in your session, except
+          never collides with a command of your own. Each is written for the Team Lead; in Copilot Chat it
+          also selects that agent. All of them work in your session, except
           <a href="#convoy">Convoy</a>, which hands the work to the experimental convoy engine. The planner's
           own steps are listed at the end: the CLI runs them, and they are not commands.
         </p>
@@ -321,6 +348,44 @@ const assistants = [
             <code>/oc:workflow-&lt;name&gt;</code> in Claude Code, and an <code>agent-workflows/</code> or
             <code>workflows/</code> directory for the other assistants.
           </p>
+
+          <h2 class="docs-category__title usage-block__sub" id="workflows">Workflow templates</h2>
+          <p class="usage-note">
+            For recurring kinds of work that need more than a prompt: the steps, which agent does each,
+            and what to check. The Team Lead follows one when a task matches it; in Claude Code each is
+            also a command. Every template ends with the same delivery phase, compiled into it.
+          </p>
+          <div class="usage-table-wrap">
+            <table class="usage-table">
+              <thead>
+                <tr><th>Template</th><th>For</th><th>Claude Code</th></tr>
+              </thead>
+              <tbody>
+                {workflows.map(w => (
+                  <tr>
+                    <td>{w.name}</td>
+                    <td>{w.for}</td>
+                    <td><code>/oc:workflow-{w.id}</code></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div class="usage-table-wrap usage-table-wrap--spaced">
+            <table class="usage-table">
+              <thead>
+                <tr><th>Assistant</th><th>Where the workflow templates are</th></tr>
+              </thead>
+              <tbody>
+                {workflowPaths.map(a => (
+                  <tr>
+                    <td>{a.name}</td>
+                    <td><code>{a.path}</code></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         {categories.map(cat => (
@@ -604,6 +669,13 @@ const assistants = [
       .usage-table code {
         font-size: 0.75rem;
         white-space: nowrap;
+      }
+      .usage-block__sub {
+        margin-top: 32px;
+        scroll-margin-top: 72px;
+      }
+      .usage-table-wrap--spaced {
+        margin-top: 16px;
       }
       .usage-note,
       .docs-category__intro :global(p) {

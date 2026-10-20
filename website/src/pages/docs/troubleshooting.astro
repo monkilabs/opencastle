@@ -50,7 +50,7 @@ const sections = [
       <li><strong><code>This project was compiled by OpenCastle X; this is Y</code>.</strong> You are running an older OpenCastle than the one that compiled the project, and compiling would take every teammate's files back. Run <code>npx opencastle@X</code>, or add OpenCastle to <code>devDependencies</code> so everyone runs one version. <code>--allow-downgrade</code> goes back on purpose.</li>
       <li><strong>A baseline is older than the one the lock records.</strong> Your <code>node_modules</code> predates a bump. Run <code>npm install</code> (or your package manager's), then sync.</li>
       <li><strong>A baseline cannot be found.</strong> An npm baseline must be installed: add it to <code>devDependencies</code>, and in CI install the dependencies before OpenCastle runs. A path in <code>extends</code> resolves from <code>.opencastle/</code>, so a <code>baseline/</code> directory at the project root is <code>"../baseline"</code>.</li>
-      <li><strong>Upgrading.</strong> <code>npm i -D opencastle@latest</code>, then <code>npx opencastle sync</code>; it names every file it changes or removes. Commit the result.</li>
+      <li><strong>Upgrading.</strong> <code>npm i -D opencastle@latest</code>, then <code>npx opencastle sync</code>; it names each file it removes and counts the ones it changes, and <code>git diff</code> shows them all. Commit the result.</li>
     </ul>
   </section>
 
@@ -60,7 +60,7 @@ const sections = [
       <li><strong>A server fails to start or to authenticate.</strong> It usually needs an environment variable. <code>npx opencastle explain</code> lists the ones you have not set, and which server needs each. Set them in your shell, or in <code>.env</code> at the project root — never in a committed file; <code>init</code> will not write into a <code>.env</code> the repository commits.</li>
       <li><strong>VS Code asks for a token.</strong> A token inside a remote server's header is a password input VS Code asks for once and keeps. A server's environment variables come from <code>.env</code>.</li>
       <li><strong>Codex does not load the servers.</strong> Codex reads <code>.codex/config.toml</code> only in a project you have marked as trusted. Trust the project when Codex asks.</li>
-      <li><strong>A server asks you to sign in in a browser.</strong> Expected for servers that use OAuth (Linear, Notion, Sentry and others): the first time it starts, then never again.</li>
+      <li><strong>A server asks you to sign in in a browser.</strong> Expected for servers that use OAuth (Linear, Notion, Supabase, Vercel and others): the first time it starts, then never again.</li>
     </ul>
   </section>
 
@@ -78,11 +78,11 @@ const sections = [
     <h3 class="section-title">Lessons</h3>
     <ul class="docs-list">
       <li><strong><code>doctor</code>: an assistant keeps memories the team does not have.</strong> The project is not compiled for the assistant its people work in — set up for VS Code, say, and used with Claude Code — so that assistant has no hook to share what it remembers and loads none of the lessons. Run <code>npx opencastle init --customize</code> and choose it as well.</li>
-      <li><strong>What the agents remembered never becomes a lesson.</strong> The memory hook is written only for the assistants the project compiles for, and runs only in a folder the assistant trusts: accept Claude Code's or VS Code's workspace trust prompt. In VS Code, hooks are a preview feature, on unless <code>chat.useHooks</code> is off. Check the hook is there with <code>npx opencastle sync --check</code>, and run <code>npx opencastle promote memory</code> to see what it would share. Memories saved as about you are never shared, by design.</li>
+      <li><strong>What the agents remembered never becomes a lesson.</strong> The memory hook is written only for the assistants the project compiles for, and runs only in a folder the assistant trusts: accept Claude Code's or VS Code's workspace trust prompt. In VS Code, hooks are a preview feature, on unless <code>chat.useHooks</code> is off. Check the hook is there with <code>npx opencastle sync --check</code>, and run <code>npx opencastle promote memory --dry-run</code> to see what it would share. Memories saved as about you are never shared, by design.</li>
       <li><strong><code>doctor</code>: a lesson cites code that has changed.</strong> Read the lesson against the code. Still true: <code>npx opencastle lesson verify &lt;id&gt;</code>, with <code>--cite &lt;new path&gt;</code> if the code moved. No longer true, or now in a skill: <code>npx opencastle lesson archive &lt;id&gt; --into &lt;file&gt;</code>.</li>
       <li><strong><code>promote memory</code> finds no memory.</strong> It reads Claude Code's, VS Code's (Copilot Chat) and Codex's, once one of them has saved a memory about this repository; Codex's is off until you turn memories on. Cursor keeps its memories on its servers and Copilot Memory lives on GitHub, so neither can be read: ask the assistant to write what it learned with <code>npx opencastle lesson</code> instead.</li>
       <li><strong><code>doctor</code>: the lessons index is large.</strong> Every agent reads it before every task. Move the lessons that keep coming up into the skill or instruction file they are about, and archive them there.</li>
-      <li><strong>A lesson is refused.</strong> It names a category or severity that does not exist — <code>.opencastle/LESSONS-LEARNED.md</code> lists them — or it would commit something that looks like a credential.</li>
+      <li><strong>A lesson is refused.</strong> It names a category or severity that does not exist — <code>.opencastle/LESSONS-LEARNED.md</code> lists them — cites a file that does not exist (paths are relative to the project root), or would commit something that looks like a credential.</li>
     </ul>
   </section>
 

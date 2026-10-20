@@ -33,7 +33,7 @@ const REMOVE_HELP = `
   files (so they become standalone) or delete everything.
 
   Options:
-    --keep-files    Keep generated files; only drop the manifest
+    --keep-files    Keep generated files; drop the manifest and the memory hooks
     --all           Delete every generated file
     --dry-run       Preview without changing anything
     --yes           Skip the confirmation prompt
