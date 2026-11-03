@@ -1,5 +1,5 @@
 /**
- * `interrupted` is a run stopped by SIGINT or SIGTERM: its running tasks went
+ * `interrupted` is a run stopped by SIGINT, SIGTERM or SIGHUP: its running tasks went
  * back to pending, and `convoy resume` carries on from there.
  */
 export type ConvoyStatus = 'pending' | 'running' | 'done' | 'failed' | 'gate-failed' | 'hook-failed' | 'interrupted'
@@ -98,6 +98,12 @@ export interface TaskRecord {
   retry_note?: string | null
   /** A worker branch kept because its work could not be merged. */
   branch?: string | null
+  /**
+   * The worker commit that merged into the convoy branch, written the moment
+   * the merge lands. From then on the task is done, whatever happens before
+   * its row says so.
+   */
+  merged_commit?: string | null
 }
 
 export interface WorkerRecord {
@@ -305,6 +311,8 @@ export type ConvoyEventType =
         cost_usd?: number | null
         estimated?: boolean
         model?: string | null
+        /** Its work had merged before the run could record it done (see `markMergedDone`). */
+        recovered?: boolean
       }
     }
   | { type: 'task_failed'; data?: { reason: string; message?: string; worker_id?: string; gate?: string; hook?: string; exit_code?: number } }

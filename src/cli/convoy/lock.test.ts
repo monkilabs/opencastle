@@ -78,12 +78,73 @@ describe('engine lock', () => {
   })
 
   it('throws EngineAlreadyRunningError when lock is held by a live process', () => {
+    // The parent: a live process on this host that is not this one.
     const now = new Date().toISOString()
     db.prepare(
       'INSERT INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
-    ).run(process.pid, hostname(), now, now)
+    ).run(process.ppid, hostname(), now, now)
 
     expect(() => acquireEngineLock(db, dbPath)).toThrow(EngineAlreadyRunningError)
+  })
+
+  it('says when a refused lock frees itself, so nobody deletes the row by hand', () => {
+    const now = new Date().toISOString()
+    db.prepare(
+      'INSERT INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
+    ).run(process.ppid, hostname(), now, now)
+
+    expect(() => acquireEngineLock(db, dbPath)).toThrow(/frees itself 30 s after that process's last heartbeat/)
+  })
+
+  describe('a pid that is alive on this host, which containers reuse', () => {
+    const hourAgo = (): string => new Date(Date.now() - 3_600_000).toISOString()
+
+    it('takes over when the heartbeat is older than 30 s: the pid now belongs to another process', () => {
+      const old = new Date(Date.now() - 31_000).toISOString()
+      db.prepare(
+        'INSERT INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
+      ).run(process.ppid, hostname(), hourAgo(), old)
+
+      const lock = acquireEngineLock(db, dbPath)
+      const row = db.prepare('SELECT pid FROM engine_lock WHERE id = 1').get() as { pid: number }
+      expect(row.pid).toBe(process.pid)
+      lock.release()
+    })
+
+    it('takes over a row with this process\'s own pid that an earlier process wrote', () => {
+      // A container restarted and gave this process the pid its last run had.
+      // The refusal was "Another opencastle process … is already running".
+      db.prepare(
+        'INSERT INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
+      ).run(process.pid, hostname(), hourAgo(), hourAgo())
+
+      const lock = acquireEngineLock(db, dbPath)
+      const row = db.prepare('SELECT pid, started_at FROM engine_lock WHERE id = 1').get() as { pid: number; started_at: string }
+      expect(row.pid).toBe(process.pid)
+      expect(Date.now() - Date.parse(row.started_at)).toBeLessThan(60_000)
+      lock.release()
+    })
+
+    it('takes over an earlier process\'s row with this pid at once, however fresh its heartbeat', () => {
+      // The restart came within 30 s of the last heartbeat.
+      const now = new Date().toISOString()
+      db.prepare(
+        'INSERT INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
+      ).run(process.pid, hostname(), hourAgo(), now)
+
+      const lock = acquireEngineLock(db, dbPath)
+      lock.release()
+    })
+
+    it('refuses a second lock while this process holds the first, and takes over once its heartbeat is 30 s old', () => {
+      const first = acquireEngineLock(db, dbPath)
+      expect(() => acquireEngineLock(db, dbPath)).toThrow(EngineAlreadyRunningError)
+
+      db.prepare('UPDATE engine_lock SET last_heartbeat = ? WHERE id = 1').run(new Date(Date.now() - 31_000).toISOString())
+      const second = acquireEngineLock(db, dbPath)
+      second.release()
+      first.release()
+    })
   })
 
   it('takes over when hostname differs (treated as stale regardless of PID)', () => {
@@ -181,7 +242,7 @@ describe('engine lock', () => {
     const now = new Date().toISOString()
     db.prepare(
       'INSERT INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
-    ).run(process.pid, hostname(), now, now)
+    ).run(process.ppid, hostname(), now, now)
     expect(isLockStale(db)).toBe(false)
   })
 

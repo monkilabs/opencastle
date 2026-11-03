@@ -21,7 +21,7 @@ import {
   BranchInUseError,
   type WorktreeManager,
 } from './worktree.js'
-import { createMergeQueue, MergeConflictError, type MergeQueue } from './merge.js'
+import { createMergeQueue, MergeConflictError, type MergeQueue, type MergeResult } from './merge.js'
 import { collectFindings, recordLessons, LESSON_PATHS, type ReportedIssue, type ReportedLesson } from './findings.js'
 import type {
   TaskRecord, ConvoyStatus, ConvoyTaskStatus, GuardConfig, CircuitBreakerConfig, TaskStep, Hook,
@@ -87,7 +87,7 @@ export interface ConvoyEngineOptions {
   repoRoot?: string
   /** Aborting it stops the run the way Ctrl+C does. */
   signal?: AbortSignal
-  /** Stop the run on SIGINT/SIGTERM (default true). */
+  /** Stop the run on SIGINT, SIGTERM or SIGHUP (default true). */
   handleSignals?: boolean
   /** Where progress is printed (default stdout). */
   output?: ProgressStream
@@ -104,6 +104,8 @@ export interface ConvoyEngineOptions {
   _convoyWorktreeDir?: string | null
   /** Replaces the default reviewer (tests). */
   _reviewRunner?: ReviewRunner
+  /** How long an interrupted run waits for its tasks to wind down (tests; default 10 s). */
+  _interruptGraceMs?: number
 }
 
 export interface ConvoyResult {
@@ -548,7 +550,7 @@ function usageOf(result: ExecuteResult, promptText: string, fallbackModel: strin
 interface RunControl {
   /** No new task starts: a task failed under `on_failure: stop`, or a stop rule fired. */
   stopDispatch: boolean
-  /** Set by SIGINT/SIGTERM or the abort signal. */
+  /** Set by SIGINT, SIGTERM, SIGHUP or the abort signal. */
   interrupted: string | null
   /** Resolves when the run is interrupted, so waits can be cut short. */
   interruptedPromise: Promise<void>
@@ -608,6 +610,7 @@ interface RunContext {
   reviewRunner: ReviewRunner
   progress: Progress
   ctl: RunControl
+  interruptGraceMs: number
 }
 
 // ── Core convoy execution ─────────────────────────────────────────────────────
@@ -1613,9 +1616,11 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     // ── Merge ───────────────────────────────────────────────────────────────
     const workerBranch = workerBranchName(workerId)
     const nothingToMerge = changes !== null && changedFiles.length === 0
+    const finalOutput = redactSecrets(result.output).text
     if (!nothingToMerge) {
+      let merged: MergeResult
       try {
-        await mergeQueue.merge(wt, workerBranch, branch)
+        merged = await mergeQueue.merge(wt, workerBranch, branch)
       } catch (err) {
         const fresh = store.getTask(rec.id, convoyId) ?? rec
         if (err instanceof MergeConflictError) {
@@ -1653,6 +1658,18 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
           failureType: 'merge-failed',
         })
       }
+      // The work is on the convoy branch: from here the task is done, however
+      // its run ends. Recorded before anything else is awaited, because what
+      // follows takes time (removing a worktree that holds node_modules) and
+      // can throw (saving artifacts). A run killed, interrupted or crashed in
+      // that window used to leave the task running, and resume ran work
+      // already merged a second time.
+      store.updateTaskStatus(rec.id, convoyId, 'running', {
+        merged_commit: merged.commit,
+        output: finalOutput,
+        exit_code: result.exitCode,
+        contract_result: JSON.stringify(contractResult),
+      })
       events.emit('task_merged', { branch, files: changedFiles.length }, { convoy_id: convoyId, task_id: rec.id })
     }
     await cleanup()
@@ -1744,7 +1761,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     store.withTransaction(() => {
       store.updateTaskStatus(rec.id, convoyId, 'done', {
         finished_at: now(),
-        output: redactSecrets(result.output).text,
+        output: finalOutput,
         exit_code: result.exitCode,
         contract_result: JSON.stringify(contractResult),
         branch: null,
@@ -1855,7 +1872,7 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
 
   let graceTimer: ReturnType<typeof setTimeout> | undefined
   const graceExpired = ctl.interruptedPromise.then(
-    () => new Promise<'grace'>(res => { graceTimer = setTimeout(() => res('grace'), INTERRUPT_GRACE_MS) }),
+    () => new Promise<'grace'>(res => { graceTimer = setTimeout(() => res('grace'), ctx.interruptGraceMs) }),
   )
 
   try {
@@ -1871,7 +1888,11 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
               const msg = (err as Error)?.message ?? String(err)
               try {
                 const row = store.getTask(t.id, convoyId)
-                if (row && (row.status === 'running' || row.status === 'assigned' || row.status === 'pending')) {
+                if (row?.merged_commit && row.status !== 'done') {
+                  // It threw after its work merged: the work stands.
+                  markMergedDone(store, events, convoyId, row)
+                  progress.line(`  ${c.green('✓')} ${c.bold(`[${t.id}]`)} merged ${c.dim(`(an engine error after the merge: ${firstLine(msg)})`)}`)
+                } else if (row && (row.status === 'running' || row.status === 'assigned' || row.status === 'pending')) {
                   store.updateTaskStatus(t.id, convoyId, ctl.interrupted ? 'pending' : 'failed', {
                     finished_at: ctl.interrupted ? null : new Date().toISOString(),
                     output: redactSecrets(`Engine error: ${msg}`).text,
@@ -1972,18 +1993,36 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
     if (ctl.interrupted || failedGates.length === 0 || gateAttempt >= maxGateRetries) break
 
     gateAttempt++
+    // A gate's output is whatever the command printed, and a failing test that
+    // dumps its environment or a connection string prints a credential. It is
+    // masked before it is cut to length, so no token is cut in half where the
+    // scanner can no longer see it, and the prompt is then scanned the way
+    // every task's is.
     const failureSummary = failedGates
-      .map(g => `Command: ${g.command}\nExit code: ${g.exitCode}\nOutput:\n${(g.output ?? '(no output)').slice(-4000)}`)
+      .map(g => `Command: ${g.command}\nExit code: ${g.exitCode}\nOutput:\n${redactSecrets(g.output ?? '(no output)').text.slice(-4000)}`)
       .join('\n\n---\n\n')
     const touchedFiles = store.getTasksByConvoy(convoyId).flatMap(t => parseJsonList(t.files))
     const filesContext = touchedFiles.length > 0
       ? `\n\nFiles changed by the convoy's tasks:\n${touchedFiles.map(f => `- ${f}`).join('\n')}\n`
       : ''
     const fixTaskId = `gate-fix-${gateAttempt}`
+    const fixPrompt = `${sharedContext}\n\n---\n\n## Your task: ${fixTaskId}\nThese checks failed after every task was merged. Fix the code so they pass.${filesContext}\n\n${failureSummary}\n`
+    const fixScan = scanForSecrets(fixPrompt, `task:${fixTaskId}`)
+    if (!fixScan.clean) {
+      const patterns = fixScan.findings.map(f => f.pattern)
+      events.emit('secret_leak_prevented', {
+        task_id: fixTaskId,
+        findings_count: fixScan.findings.length,
+        patterns,
+        context: 'prompt',
+      }, { convoy_id: convoyId, task_id: fixTaskId })
+      progress.line(`\n  ${c.red('✗')} ${c.bold(`[${fixTaskId}]`)} not started: secret detected in its prompt (${[...new Set(patterns)].join(', ')})`)
+      break
+    }
     progress.line(`\n  ${c.yellow('⟳')} ${c.bold(`[${fixTaskId}]`)} fixing the failed gates (attempt ${gateAttempt}/${maxGateRetries})`)
     const fixTask: Task = {
       id: fixTaskId,
-      prompt: `${sharedContext}\n\n---\n\n## Your task: ${fixTaskId}\nThese checks failed after every task was merged. Fix the code so they pass.${filesContext}\n\n${failureSummary}\n`,
+      prompt: fixPrompt,
       agent: spec.defaults?.agent ?? 'developer',
       timeout: spec.defaults?.timeout ?? '30m',
       depends_on: [],
@@ -2118,7 +2157,10 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
   function finishInterrupted(): ConvoyResult {
     const requeued: string[] = []
     for (const t of store.getTasksByConvoy(convoyId)) {
-      if (t.status === 'running' || t.status === 'assigned') {
+      if ((t.status === 'running' || t.status === 'assigned') && t.merged_commit) {
+        // Still winding down after its merge when the grace period ran out.
+        markMergedDone(store, events, convoyId, t)
+      } else if (t.status === 'running' || t.status === 'assigned') {
         store.updateTaskStatus(t.id, convoyId, 'pending', { worker_id: null, worktree: null, started_at: null })
         if (t.worker_id) {
           try { store.updateWorkerStatus(t.worker_id, 'killed', { finished_at: new Date().toISOString() }) } catch { /* gone */ }
@@ -2290,11 +2332,21 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
 
   const validatePlan = (): Promise<void> => checkConvoyPlan(spec, adapter.name)
 
-  /** Stop on SIGINT/SIGTERM or the abort signal; a second Ctrl+C stops at once. */
+  /**
+   * Stop on SIGINT, SIGTERM, SIGHUP or the abort signal; a second Ctrl+C stops
+   * at once.
+   *
+   * SIGHUP is a closed terminal or a dropped SSH session. Unhandled, it ended
+   * this process on the spot and left every agent running: each leads its own
+   * process group, so the hangup never reached them.
+   */
   function installInterrupts(ctl: RunControl, progress: Progress): () => void {
     const disposers: Array<() => void> = []
     const onSignal = (sig: NodeJS.Signals): void => {
       if (ctl.interrupted) {
+        // When a terminal closes, the kernel and the shell can each send a
+        // hangup. A second one is no request to hurry.
+        if (sig === 'SIGHUP') return
         // A second Ctrl+C means "now". Agents get SIGKILL through their
         // adapters; the exit is unavoidable, because the person has said they
         // will not wait for the cleanup the first signal started. The rows
@@ -2304,15 +2356,22 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         }
         process.exit(130)
       }
-      progress.line(`\n  ${c.yellow('■')} ${sig} — stopping: killing running agents, no new tasks. Press Ctrl+C again to quit at once.`)
+      if (sig === 'SIGHUP') {
+        // Writing to a terminal that has gone fails with EIO. Unhandled, that
+        // error would end the process before the run is recorded as
+        // interrupted. Nobody can read the terminal now anyway.
+        for (const stream of [process.stdout, process.stderr]) stream.on('error', () => {})
+        progress.line(`\n  ${c.yellow('■')} SIGHUP (the terminal closed) — stopping: killing running agents, no new tasks.`)
+      } else {
+        progress.line(`\n  ${c.yellow('■')} ${sig} — stopping: killing running agents, no new tasks. Press Ctrl+C again to quit at once.`)
+      }
       ctl.interrupt(sig)
     }
     if (options.handleSignals !== false) {
-      process.on('SIGINT', onSignal)
-      process.on('SIGTERM', onSignal)
+      const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGHUP']
+      for (const sig of signals) process.on(sig, onSignal)
       disposers.push(() => {
-        process.removeListener('SIGINT', onSignal)
-        process.removeListener('SIGTERM', onSignal)
+        for (const sig of signals) process.removeListener(sig, onSignal)
       })
     }
     if (options.signal) {
@@ -2448,6 +2507,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         convoyId, spec, adapter, store, events, wtManager, mergeQueue, repoRoot,
         workRoot: checkout.path, branch, baseRef, verbose, startTime, ndjsonPath,
         reviewRunner: options._reviewRunner ?? defaultReviewer, progress, ctl,
+        interruptGraceMs: options._interruptGraceMs ?? INTERRUPT_GRACE_MS,
       })
       progress.stop()
       printSummary(progress, result, store, repoRoot)
@@ -2516,6 +2576,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       const wtManager = options._worktreeManager ?? createWorktreeManager(repoRoot)
       const mergeQueue = options._mergeQueue ?? createMergeQueue(checkout.path, { worktreesDir: worktreesDirFor(repoRoot) })
 
+      await settleMergedTasks(store, events, convoyId, branch, repoRoot, progress)
       const reset = resetForResume(store, events, convoyId)
 
       // Worktrees left by a run that died — not the integration checkout.
@@ -2532,6 +2593,7 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
         convoyId, spec, adapter, store, events, wtManager, mergeQueue, repoRoot,
         workRoot: checkout.path, branch, baseRef, verbose, startTime, ndjsonPath,
         reviewRunner: options._reviewRunner ?? defaultReviewer, progress, ctl,
+        interruptGraceMs: options._interruptGraceMs ?? INTERRUPT_GRACE_MS,
       })
       progress.stop()
       printSummary(progress, result, store, repoRoot)
@@ -2558,6 +2620,8 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
       : ndjsonPathForConvoy(convoyId, repoRoot)
     const events = createEventEmitter(store, { ndjsonPath })
     try {
+      const branch = store.getConvoy(convoyId)?.branch
+      if (branch) await settleMergedTasks(store, events, convoyId, branch, repoRoot)
       resetForResume(store, events, convoyId, taskIds)
       store.updateConvoyStatus(convoyId, 'running', {})
     } finally {
@@ -2710,6 +2774,62 @@ export function createConvoyEngine(options: ConvoyEngineOptions): ConvoyEngine {
 }
 
 /**
+ * Record as done a task whose work merged before its run could say so.
+ *
+ * Its output, exit code and contract were saved with the merge, so the row
+ * reads as if the run had finished. A branch kept from an earlier failed
+ * attempt stays listed: it still exists.
+ */
+function markMergedDone(store: ConvoyStore, events: ConvoyEventEmitter, convoyId: string, task: TaskRecord): void {
+  const finishedAt = new Date().toISOString()
+  store.withTransaction(() => {
+    store.updateTaskStatus(task.id, convoyId, 'done', { finished_at: finishedAt, retry_note: null })
+    if (task.worker_id) {
+      try { store.updateWorkerStatus(task.worker_id, 'done', { finished_at: finishedAt }) } catch { /* worker record may be absent */ }
+    }
+  })
+  events.emit('task_done', {
+    exit_code: task.exit_code ?? 0,
+    ...(task.worker_id ? { worker_id: task.worker_id } : {}),
+    tokens: task.total_tokens,
+    cost_usd: task.cost_usd,
+    estimated: Boolean(task.cost_estimated),
+    model: task.model,
+    recovered: true,
+  }, { convoy_id: convoyId, task_id: task.id, ...(task.worker_id ? { worker_id: task.worker_id } : {}) })
+}
+
+/**
+ * Before a resume: every unfinished task whose recorded merge is on the convoy
+ * branch is done.
+ *
+ * A run that died between a task's merge and its "done" left it running.
+ * Resume then put it back to pending, nothing said the work had merged, and
+ * the task ran again: the no-op gate failed it ("Produced no changes") or the
+ * agent applied the change a second time. A commit the branch no longer has
+ * (the branch was reset) is not counted, and the task runs again.
+ */
+async function settleMergedTasks(
+  store: ConvoyStore,
+  events: ConvoyEventEmitter,
+  convoyId: string,
+  branch: string,
+  repoRoot: string,
+  progress?: Progress,
+): Promise<void> {
+  for (const task of store.getTasksByConvoy(convoyId)) {
+    if (task.status === 'done' || !task.merged_commit) continue
+    try {
+      await git(['merge-base', '--is-ancestor', task.merged_commit, `refs/heads/${branch}`], repoRoot)
+    } catch {
+      continue // not on the branch, or not a commit this repository has
+    }
+    markMergedDone(store, events, convoyId, task)
+    progress?.line(`  ${c.green('✓')} ${c.bold(`[${task.id}]`)} ${c.dim('merged before the run stopped — done')}`)
+  }
+}
+
+/**
  * Put every unfinished task back to pending. Returns the ids it reset.
  *
  * With `taskIds`, only those and the tasks skipped because of them. A failed
@@ -2752,6 +2872,8 @@ function resetForResume(
       worktree: null,
       started_at: null,
       finished_at: null,
+      // A commit `settleMergedTasks` did not find on the branch: the work runs again.
+      merged_commit: null,
       ...(FAILED_STATUSES.has(task.status) ? { retries: 0 } : {}),
       ...(task.status === 'skipped' ? { retry_note: null } : {}),
     })

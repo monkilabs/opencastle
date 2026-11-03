@@ -1,16 +1,20 @@
 import { hostname as getHostname } from 'node:os'
 import { DatabaseSync } from 'node:sqlite'
 
+/** A holder that has not written its heartbeat (every 10 s) for this long is gone. */
+const HEARTBEAT_STALE_MS = 30_000
+
 export class EngineAlreadyRunningError extends Error {
   constructor(public readonly pid: number, public readonly hostname: string) {
     super(
-      `Another opencastle process (PID ${pid} on ${hostname}) is already running against this database.`,
+      `Another opencastle process (PID ${pid} on ${hostname}) is already running against this database. ` +
+        `If it is not, the lock frees itself ${HEARTBEAT_STALE_MS / 1000} s after that process's last heartbeat.`,
     )
     this.name = 'EngineAlreadyRunningError'
   }
 }
 
-type LockRow = { pid: number; hostname: string; last_heartbeat: string }
+type LockRow = { pid: number; hostname: string; started_at: string; last_heartbeat: string }
 
 /** False only when the process is certainly gone (ESRCH); EPERM means it exists. */
 function pidAlive(pid: number): boolean {
@@ -22,28 +26,38 @@ function pidAlive(pid: number): boolean {
   }
 }
 
+/** The `started_at` of every lock row this process wrote and still holds. */
+const heldHere = new Set<string>()
+
 /**
  * Whether a lock row may be taken over.
  *
- * On this host the pid answers the question outright: a dead owner is stale
- * at once. It used to count as live until its heartbeat was 30 s old, so a run
- * killed with Ctrl+C could not be resumed straight away — `resume` said
- * "another opencastle process is already running" about a process that no
- * longer existed. Another host's pid means nothing here, so only the heartbeat
- * can tell.
+ * On this host a dead pid is stale at once. It used to count as live until its
+ * heartbeat was 30 s old, so a run killed with Ctrl+C could not be resumed
+ * straight away — `resume` said "another opencastle process is already
+ * running" about a process that no longer existed.
+ *
+ * A live pid is not enough to prove the holder is alive, though. Containers
+ * restart with the same hostname and small, predictable pids, so the pid may
+ * now belong to another process, or to this one. Both were refused for good,
+ * until someone deleted the row by hand. A row with this process's own pid
+ * that this process did not write is an earlier process's, and stale at once.
+ * Any other live pid still needs a recent heartbeat. Another host's pid means
+ * nothing here, so there only the heartbeat can tell.
  */
 function checkStaleness(row: LockRow): boolean {
   if (row.hostname === getHostname()) {
-    if (row.pid === process.pid) return false
-    return !pidAlive(row.pid)
+    if (!pidAlive(row.pid)) return true
+    if (row.pid === process.pid && !heldHere.has(row.started_at)) return true
   }
   const heartbeatAge = Date.now() - new Date(row.last_heartbeat).getTime()
-  return heartbeatAge > 30_000
+  // An unreadable timestamp is no proof of life.
+  return !(heartbeatAge <= HEARTBEAT_STALE_MS)
 }
 
 export function isLockStale(db: DatabaseSync): boolean {
   const row = db
-    .prepare('SELECT pid, hostname, last_heartbeat FROM engine_lock WHERE id = 1')
+    .prepare('SELECT pid, hostname, started_at, last_heartbeat FROM engine_lock WHERE id = 1')
     .get() as LockRow | undefined
   if (!row) return true
   return checkStaleness(row)
@@ -68,7 +82,7 @@ export function acquireEngineLock(
   }
 
   const existing = db
-    .prepare('SELECT pid, hostname, last_heartbeat FROM engine_lock WHERE id = 1')
+    .prepare('SELECT pid, hostname, started_at, last_heartbeat FROM engine_lock WHERE id = 1')
     .get() as LockRow | undefined
 
   if (existing) {
@@ -84,6 +98,7 @@ export function acquireEngineLock(
     'INSERT OR REPLACE INTO engine_lock (id, pid, hostname, started_at, last_heartbeat) VALUES (1, ?, ?, ?, ?)',
   ).run(process.pid, getHostname(), now, now)
   db.exec('COMMIT')
+  heldHere.add(now)
 
   let heartbeatInterval: NodeJS.Timeout | undefined
 
@@ -105,6 +120,7 @@ export function acquireEngineLock(
       clearInterval(heartbeatInterval)
       heartbeatInterval = undefined
     }
+    heldHere.delete(now)
     try {
       db.exec('DELETE FROM engine_lock WHERE id = 1')
     } catch {

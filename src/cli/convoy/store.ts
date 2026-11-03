@@ -17,7 +17,7 @@ import type {
   TaskStepRecord,
 } from './types.js'
 
-const SCHEMA_VERSION = 14
+const SCHEMA_VERSION = 15
 
 // ── Size limits (bytes) ────────────────────────────────────────────────────────
 const LIMIT_SPEC_YAML = 256 * 1024      // 256 KB
@@ -65,7 +65,7 @@ export type TaskStatusExtra = Partial<
     | 'worker_id' | 'worktree' | 'output' | 'exit_code' | 'started_at' | 'finished_at'
     | 'retries' | 'prompt_tokens' | 'completion_tokens' | 'total_tokens' | 'cost_usd' | 'prompt'
     | 'contract_result' | 'model' | 'cache_read_tokens' | 'cache_write_tokens' | 'cost_estimated'
-    | 'retry_note' | 'branch'
+    | 'retry_note' | 'branch' | 'merged_commit'
   >
 >
 
@@ -73,7 +73,7 @@ const TASK_EXTRA_FIELDS = [
   'worker_id', 'worktree', 'output', 'exit_code', 'started_at', 'finished_at',
   'retries', 'prompt_tokens', 'completion_tokens', 'total_tokens', 'cost_usd', 'prompt',
   'contract_result', 'model', 'cache_read_tokens', 'cache_write_tokens', 'cost_estimated',
-  'retry_note', 'branch',
+  'retry_note', 'branch', 'merged_commit',
 ] as const
 
 export interface ConvoyStore {
@@ -293,6 +293,7 @@ class ConvoyStoreImpl implements ConvoyStore {
           cost_estimated    INTEGER NOT NULL DEFAULT 0,
           retry_note        TEXT,
           branch            TEXT,
+          merged_commit     TEXT,
           PRIMARY KEY (id, convoy_id)
         );
 
@@ -463,6 +464,10 @@ class ConvoyStoreImpl implements ConvoyStore {
     if (version === 13) {
       migrateSchema(this.db, this.dbPath, 13, 14)
       version = 14
+    }
+    if (version === 14) {
+      migrateSchema(this.db, this.dbPath, 14, 15)
+      version = 15
     }
   }
 
@@ -1564,6 +1569,12 @@ export function migrateSchema(db: DatabaseSync, dbPath: string, fromVersion: num
         addColumnIfMissing(db, 'convoy', 'base_ref', 'TEXT')
         addColumnIfMissing(db, 'convoy', 'cost_estimated', 'INTEGER NOT NULL DEFAULT 0')
         addColumnIfMissing(db, 'convoy', 'adapter', 'TEXT')
+      }
+      if (v === 14) {
+        // What a task merged. A run that died between the merge and the task's
+        // "done" left it running, and resume ran work already on the branch a
+        // second time.
+        addColumnIfMissing(db, 'task', 'merged_commit', 'TEXT')
       }
       db.exec('COMMIT')
     } catch (err) {

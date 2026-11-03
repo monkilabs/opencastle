@@ -6,14 +6,14 @@
  * not only the statuses it records.
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir, hostname } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createConvoyEngine, defaultBranchName, type ConvoyEngineOptions } from './engine.js'
 import { createConvoyStore } from './store.js'
-import { ensureRootWorktree, listAllWorktrees } from './worktree.js'
+import { createWorktreeManager, ensureRootWorktree, listAllWorktrees, type WorktreeManager } from './worktree.js'
 import { _resetAllowlistCache, _setAllowlistConfigPath } from './gates.js'
 import type { AgentAdapter, ExecuteOptions, ExecuteResult, Task, TaskSpec } from './spec-types.js'
 
@@ -370,6 +370,145 @@ describe('interrupting a run', () => {
     expect(again.execute.mock.calls.map(([t]) => (t as Task).id)).toEqual(['slow', 'later'])
     expect(resumed.status).toBe('done')
     expect(filesOn(resumed.branch!)).toEqual(['.gitignore', 'README.md', 'later.txt', 'quick.txt', 'slow.txt'])
+  })
+})
+
+describe('a run that stops between a merge and "done"', () => {
+  // After a task's merge the engine still removes its worktree (slow once a
+  // gate installed node_modules), saves its outputs and writes "done". A run
+  // that stopped in that window left the task running, and resume ran work
+  // already on the branch a second time: the no-op gate failed it, or the
+  // agent applied the change twice.
+  const tasks = [{ id: 'a', files: ['a.txt'] }]
+  const dbFile = (): string => join(repo, '.opencastle', 'convoy.db')
+
+  function taskRow(convoyId: string, file = dbFile()): { status: string; merged_commit: string | null; output: string | null } {
+    const db = new DatabaseSync(file, { readOnly: true })
+    try {
+      return db.prepare('SELECT status, merged_commit, output FROM task WHERE convoy_id = ? AND id = ?').get(convoyId, 'a') as never
+    } finally {
+      db.close()
+    }
+  }
+
+  /**
+   * Run `a` to the end, and keep what a kill during its worktree's removal
+   * leaves on disk: the database as it is then, and the branch with the merge.
+   */
+  async function runAndSnapshotAtRemoval(): Promise<{ convoyId: string; branch: string; snapshot: string }> {
+    const snapshot = join(repo, '..', `${repo.split('/').pop()}-killed.db`)
+    const real = createWorktreeManager(repo)
+    let taken = false
+    const wt: WorktreeManager = {
+      ...real,
+      async remove(path, opts) {
+        if (!taken) {
+          taken = true
+          const db = new DatabaseSync(dbFile())
+          db.exec(`VACUUM INTO '${snapshot}'`)
+          db.close()
+        }
+        return real.remove(path, opts)
+      },
+    }
+    const result = await engine({ spec: spec(tasks), adapter: stubAdapter(writesOwnFile), _worktreeManager: wt }).run()
+    expect(result.status).toBe('done')
+    expect(taken).toBe(true)
+    return { convoyId: result.convoyId, branch: result.branch!, snapshot }
+  }
+
+  /** Put the killed run's database back, as `resume` would find it. */
+  function restore(snapshot: string): void {
+    for (const f of [dbFile(), `${dbFile()}-wal`, `${dbFile()}-shm`]) rmSync(f, { force: true })
+    copyFileSync(snapshot, dbFile())
+    rmSync(snapshot, { force: true })
+  }
+
+  it('records the merged commit before it removes the worktree', async () => {
+    const { convoyId, branch, snapshot } = await runAndSnapshotAtRemoval()
+    const atRemoval = taskRow(convoyId, snapshot)
+    rmSync(snapshot, { force: true })
+
+    expect(atRemoval.status).toBe('running')
+    expect(atRemoval.merged_commit).toMatch(/^[0-9a-f]{40}$/)
+    expect(atRemoval.output).toBe('done')
+    // Throws unless the commit is on the convoy branch.
+    git('merge-base', '--is-ancestor', atRemoval.merged_commit!, branch)
+  })
+
+  it('resume counts a task killed after its merge as done, and starts no agent for it', async () => {
+    const { convoyId, branch, snapshot } = await runAndSnapshotAtRemoval()
+    const tip = git('rev-parse', branch)
+    restore(snapshot)
+    expect(taskRow(convoyId).status).toBe('running')
+
+    const again = stubAdapter(writesOwnFile)
+    const resumed = await engine({ spec: spec(tasks), adapter: again }).resume(convoyId)
+
+    expect(again.execute).not.toHaveBeenCalled()
+    expect(resumed.status).toBe('done')
+    expect(taskRow(convoyId)).toMatchObject({ status: 'done', output: 'done' })
+    expect(git('rev-parse', branch)).toBe(tip)
+    expect((await listAllWorktrees(repo)).map((w) => w.path)).toEqual([repo])
+  })
+
+  it('runs the task again when the branch no longer has its commit', async () => {
+    const { convoyId, branch, snapshot } = await runAndSnapshotAtRemoval()
+    restore(snapshot)
+    // Someone reset the convoy branch, dropping the merge.
+    git('branch', '-f', branch, 'main')
+
+    const again = stubAdapter(writesOwnFile)
+    const resumed = await engine({ spec: spec(tasks), adapter: again }).resume(convoyId)
+
+    expect(again.execute.mock.calls.map(([t]) => (t as Task).id)).toEqual(['a'])
+    expect(resumed.status).toBe('done')
+    expect(filesOn(branch)).toContain('a.txt')
+    // The new run's merge is the one recorded now.
+    git('merge-base', '--is-ancestor', taskRow(convoyId).merged_commit!, branch)
+  })
+
+  it('counts a merged task as done when an interrupt outlasts its wind-down, and resume runs nothing again', async () => {
+    const real = createWorktreeManager(repo)
+    let reached: () => void = () => {}
+    const atRemoval = new Promise<void>((r) => (reached = r))
+    let release: () => void = () => {}
+    const held = new Promise<void>((r) => (release = r))
+    const wt: WorktreeManager = {
+      ...real,
+      async remove(path, opts) {
+        // A removal that is still running when the grace period ends. The run
+        // lets go of it; resume removes the worktree.
+        reached()
+        await held
+        void path; void opts
+      },
+    }
+    const controller = new AbortController()
+    const run = engine({
+      spec: spec(tasks),
+      adapter: stubAdapter(writesOwnFile),
+      signal: controller.signal,
+      _worktreeManager: wt,
+      _interruptGraceMs: 50,
+    }).run()
+    await atRemoval
+    controller.abort()
+    const result = await run
+
+    try {
+      expect(result.status).toBe('interrupted')
+      expect(taskRow(result.convoyId).status).toBe('done')
+
+      const again = stubAdapter(writesOwnFile)
+      const resumed = await engine({ spec: spec(tasks), adapter: again }).resume(result.convoyId)
+      expect(again.execute).not.toHaveBeenCalled()
+      expect(resumed.status).toBe('done')
+      expect(filesOn(resumed.branch!)).toEqual(['.gitignore', 'README.md', 'a.txt'])
+    } finally {
+      // The abandoned task finds its store closed, and stops there.
+      release()
+    }
   })
 })
 

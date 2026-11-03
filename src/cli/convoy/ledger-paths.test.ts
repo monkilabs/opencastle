@@ -49,7 +49,7 @@ function makeWorktreeManager(): WorktreeManager {
 
 function makeMergeQueue(): MergeQueue {
   return {
-    merge: vi.fn().mockResolvedValue({ success: true, conflicted: false, message: 'ok' }),
+    merge: vi.fn().mockResolvedValue({ success: true, conflicted: false, message: 'ok', commit: 'c0ffee' }),
   } as unknown as MergeQueue
 }
 

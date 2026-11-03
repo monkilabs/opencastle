@@ -66,7 +66,7 @@ function makeWorktreeManager(): MockWorktreeManager {
 
 function makeMergeQueue(): MockMergeQueue {
   return {
-    merge: vi.fn().mockResolvedValue({ success: true, conflicted: false, message: 'ok' }),
+    merge: vi.fn().mockResolvedValue({ success: true, conflicted: false, message: 'ok', commit: 'c0ffee' }),
   }
 }
 
@@ -2048,6 +2048,34 @@ describe('gate retry mechanism', () => {
     expect(fixCall[0].prompt).toContain('Command: false')
     // Gates still fail after fix, so final status is gate-failed
     expect(result.status).toBe('gate-failed')
+  })
+
+  it('masks a credential the failing gate printed before it reaches the fix prompt', async () => {
+    gates._setAllowlistConfigPath('/nonexistent/secret-scan-config.yml')
+    gates._resetAllowlistCache()
+    // A test that prints its environment. Both values are put together when
+    // the gate runs, so the command line itself holds neither.
+    const token = ['gh', 'p_', 'a1b2c3d4e5'.repeat(4)].join('')
+    const leaky = `node -e "console.log('GITHUB_TOKEN ' + ['gh', 'p_', 'a1b2c3d4e5'.repeat(4)].join('')); console.log(['postgres', '://admin:', 'hun', 'ter2', '@db.internal/app'].join('')); process.exit(1)"`
+    const spec = makeSpec({ gates: [leaky], gate_retries: 1 }, [{ id: 'task-1' }])
+    const engine = makeEngine({
+      spec,
+      specYaml: 'name: test',
+      adapter,
+      basePath: tmpDir,
+      _worktreeManager: wtManager,
+      _mergeQueue: mergeQueue,
+    })
+    await engine.run()
+
+    const fixCall = adapter.execute.mock.calls[1] as [Task]
+    expect(fixCall[0].id).toBe('gate-fix-1')
+    const prompt = fixCall[0].prompt
+    expect(prompt).toContain('GITHUB_TOKEN [REDACTED]')
+    expect(prompt).toContain('[REDACTED] (Connection String)')
+    expect(prompt).not.toContain(token)
+    expect(prompt).not.toContain('hunter2')
+    expect(gates.scanForSecrets(prompt).clean).toBe(true)
   })
 
   it('stops retrying when fix task fails', async () => {

@@ -512,13 +512,16 @@ never as a pass. Reviews run at most `max_concurrent_reviews` (3) at once, and
 [`store.ts`](src/cli/convoy/store.ts) keeps runs, tasks, workers and events in
 SQLite (`.opencastle/convoy.db`, WAL mode, `node:sqlite`). A lock row with a
 10-second heartbeat lets one engine at a time write to the database; one left by
-a process that has died on this machine is taken over at once
-([`lock.ts`](src/cli/convoy/lock.ts)).
+a process that has died on this machine is taken over at once, and so is one
+whose heartbeat is more than 30 seconds old. A pid that is alive is not enough:
+when a container restarts, its old pids go to other processes, this one
+included ([`lock.ts`](src/cli/convoy/lock.ts)).
 
 Every event is written twice ([`events.ts`](src/cli/convoy/events.ts)): to SQLite,
 and to `.opencastle/logs/convoys/<convoy-id>.ndjson`, fsynced per event.
 Secrets are masked before either copy is written, and in task output, failure
-records and disputes ([`redact.ts`](src/cli/convoy/redact.ts)).
+records, disputes and the gate output a gate-fix agent is given
+([`redact.ts`](src/cli/convoy/redact.ts)).
 [TELEMETRY.md](src/cli/convoy/TELEMETRY.md) lists every event type and its data.
 
 Tokens and cost are what the runtime reports. Where it reports none, tokens are
@@ -600,17 +603,26 @@ a stop takes the whole process tree, SIGTERM then SIGKILL after 5 seconds, or
 
 ### Interrupt and resume
 
-The first Ctrl+C (or SIGTERM) stops every agent session, starts no new task and
-stops running gates and hooks, which sit in a process group of their own. Running
-tasks go back to pending, the run is marked `interrupted`, and the command prints
+The first Ctrl+C (or SIGTERM, or SIGHUP when the terminal closes or an SSH
+session drops) stops every agent session, starts no new task and stops running
+gates and hooks, which sit in a process group of their own. Running tasks go
+back to pending, the run is marked `interrupted`, and the command prints
 `Resume with: opencastle convoy resume` and exits 130. Tasks get 10 seconds to
-wind down; a second Ctrl+C exits at once.
+wind down; a second Ctrl+C exits at once. No agent outlives the command that
+started it: a signal that ends a command which does not handle it, such as
+Ctrl+C while planning, first kills every agent it started
+([`agent-process.ts`](src/cli/run/adapters/agent-process.ts)).
+
+A task is done once its work has merged. The commit it merged is recorded at
+the merge, before its worktree is removed and its outputs are saved, so a run
+that stops in between, whether killed, interrupted or crashed, does not lose
+it.
 
 `convoy resume` continues the newest run that is not done, with the spec and
 runtime recorded when it started. Every task not done goes back to pending:
 failed, timed out, interrupted, or skipped because of a failure. Failed tasks
 get their retries back, interrupted ones keep theirs, and finished tasks are
-kept. It reuses or
+kept, as is a task whose recorded merge is still on the branch. It reuses or
 prunes the integration worktree a killed run left, removes stale task
 worktrees, and copies events missing from the NDJSON log back from SQLite.
 `convoy resume --dry-run` lists what would run.

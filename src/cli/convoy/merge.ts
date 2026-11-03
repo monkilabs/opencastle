@@ -5,6 +5,8 @@ export interface MergeResult {
   success: boolean
   conflicted: boolean
   message: string
+  /** The worker's commit, now an ancestor of the target branch. */
+  commit: string
 }
 
 export class MergeConflictError extends Error {
@@ -76,8 +78,10 @@ export function createMergeQueue(
       throw new Error(`Path "${worktreePath}" is outside the managed worktrees directory`)
     }
 
+    let commit: string
     try {
       await commitAllIn(resolve(worktreePath), `convoy: ${worktreeBranch} completed`)
+      commit = (await git(['rev-parse', '--verify', 'HEAD^{commit}'], resolve(worktreePath))).trim()
     } catch (err) {
       throw new MergeError(`could not commit the task's work: ${firstLine((err as { stderr?: string }).stderr) || (err as Error).message}`)
     }
@@ -92,9 +96,9 @@ export function createMergeQueue(
     try {
       const stdout = await mergeIn(target, ['--no-edit', worktreeBranch])
       if (stdout.includes('Already up to date')) {
-        return { success: true, conflicted: false, message: 'No changes to merge' }
+        return { success: true, conflicted: false, message: 'No changes to merge', commit }
       }
-      return { success: true, conflicted: false, message: 'Merged successfully' }
+      return { success: true, conflicted: false, message: 'Merged successfully', commit }
     } catch (err) {
       const error = err as { code?: number | string; stderr?: string; stdout?: string; message?: string }
       const text = `${error.stdout ?? ''}\n${error.stderr ?? ''}`
