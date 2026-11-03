@@ -103,7 +103,7 @@ describe('DB creation', () => {
     const db = new DatabaseSync(dbPath)
     const row = db.prepare('PRAGMA user_version').get() as { user_version: number }
     db.close()
-    expect(row.user_version).toBe(14)
+    expect(row.user_version).toBe(15)
   })
 
   it('creates all required tables', () => {
@@ -131,7 +131,7 @@ describe('DB creation', () => {
     store2.close()
     // Reassign so afterEach does not double-close
     store = createConvoyStore(dbPath)
-    expect(row.user_version).toBe(14)
+    expect(row.user_version).toBe(15)
   })
 })
 
@@ -209,7 +209,7 @@ describe('schema migration', () => {
 
     expect(cols.map(c => c.name)).toContain('adapter')
     // v1 chains through v2→v3→v4→...→v12→v13→v14 in one init, so final version is 14
-    expect(version.user_version).toBe(14)
+    expect(version.user_version).toBe(15)
   })
 
   it('schema migration v2 to v3 adds cost columns', () => {
@@ -295,7 +295,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(14)
+    expect(version.user_version).toBe(15)
   })
 
   it('schema migration v1 to v3 chains correctly in a single init', () => {
@@ -381,7 +381,7 @@ describe('schema migration', () => {
     expect(convoyColNames).toContain('total_tokens')
     expect(convoyColNames).toContain('total_cost_usd')
 
-    expect(version.user_version).toBe(14)
+    expect(version.user_version).toBe(15)
   })
 
   it('schema migration v3 to v4 creates pipeline table and adds pipeline_id to convoy', () => {
@@ -464,7 +464,7 @@ describe('schema migration', () => {
 
     expect(convoyCols.map(c => c.name)).toContain('pipeline_id')
     expect(tables.map(t => t.name)).toContain('pipeline')
-    expect(version.user_version).toBe(14)
+    expect(version.user_version).toBe(15)
   })
 })
 
@@ -1458,7 +1458,7 @@ describe('schema migration v5 → v6', () => {
     v5Verify.close()
     migratedStore.close()
 
-    expect(row.user_version).toBe(14)
+    expect(row.user_version).toBe(15)
     expect(taskStepTable?.name).toBe('task_step')
     expect(convoy?.id).toBe('convoy-auto')
     expect(task?.id).toBe('task-auto')
@@ -1628,7 +1628,7 @@ describe('schema migration v6→v7 (drift detection columns)', () => {
 
     expect(cols.map(c => c.name)).toContain('drift_score')
     expect(cols.map(c => c.name)).toContain('drift_retried')
-    expect(version.user_version).toBe(14)
+    expect(version.user_version).toBe(15)
   })
 
   it('new databases include drift_score and drift_retried in CREATE TABLE', () => {
@@ -1862,7 +1862,7 @@ describe('migration full chain v4→v10', () => {
     const verifyDb = new DatabaseSync(chainDbPath)
     verifyDb.exec('PRAGMA foreign_keys = 0')
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(14)
+    expect(version).toBe(15)
 
     // Verify all new tables exist
     const tables = (verifyDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name)
@@ -1959,7 +1959,7 @@ describe('migration v12 → v13', () => {
 
     expect(cols).not.toContain('compaction_count')
     expect(cols).not.toContain('discovered_issues')
-    expect(version).toBe(14)
+    expect(version).toBe(15)
 
     // The rows, and the fields beside the dropped ones, survive the rewrite.
     expect(convoy?.name).toBe('Kept')
@@ -2666,7 +2666,7 @@ describe('v9→v10 migration', () => {
     // Verify version = 11
     const verifyDb = new DatabaseSync(migDb)
     const version = (verifyDb.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    expect(version).toBe(14)
+    expect(version).toBe(15)
 
     // Verify new REAL columns exist
     const convoyCols = (verifyDb.prepare('PRAGMA table_info(convoy)').all() as Array<{ name: string }>).map(c => c.name)

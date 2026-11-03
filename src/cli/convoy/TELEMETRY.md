@@ -66,7 +66,7 @@ for them; the **When** column says which.
 | `convoy_started` | `name: string; branch: string; base: string \| null; concurrency: number` | A run starts |
 | `convoy_finished` | `status: 'done'` | Every task done and every gate passed |
 | `convoy_failed` | `status: 'failed' \| 'gate-failed'; reason: string` | A task not done (`"<n> task(s) not done"`), a gate failed (`"Gate check failed"`), or the engine crashed (`"engine crashed: …"`) |
-| `convoy_interrupted` | `signal: 'SIGINT' \| 'SIGTERM' \| 'abort'; requeued: string[]` | Ctrl+C or SIGTERM; `requeued` are the tasks put back to pending |
+| `convoy_interrupted` | `signal: 'SIGINT' \| 'SIGTERM' \| 'SIGHUP' \| 'abort'; requeued: string[]` | Ctrl+C, SIGTERM, or SIGHUP (the terminal closed); `requeued` are the tasks put back to pending |
 | `convoy_resumed` | `original_created_at: string; reset: string[]` | `convoy resume`; `reset` are the tasks put back to pending |
 | `convoy_guard` | `passed: boolean; warnings: string[]` | The end-of-run consistency check found something: a task left non-terminal, fewer log lines than finished tasks, fewer `task_started` events than retries, or totals not stored |
 
@@ -75,7 +75,7 @@ for them; the **When** column says which.
 | Event Type | Data Fields | When |
 |-----------|-------------|------|
 | `task_started` | `worker_id: string; mechanism: 'worktree'; adapter: string; attempt: number` | An attempt starts in its worktree |
-| `task_done` | `exit_code: number; worker_id: string; tokens: number \| null; cost_usd: number \| null; estimated: boolean; model: string \| null` | The task finished and its work merged. `tokens` and `cost_usd` cover every attempt; `cost_usd` includes its review |
+| `task_done` | `exit_code: number; worker_id: string; tokens: number \| null; cost_usd: number \| null; estimated: boolean; model: string \| null; recovered?: true` | The task finished and its work merged. `tokens` and `cost_usd` cover every attempt; `cost_usd` includes its review. `recovered` means the run ended between the merge and "done" (killed, interrupted, or an engine error) and the work was counted as done then, or by `convoy resume` once it found the commit on the branch |
 | `task_failed` | `reason: string; message: string; gate?: string; hook?: string; exit_code?: number; worker_id?: string` | A task failed for good. `reason` is one of `error`, `timeout`, `gate-failed`, `no-op`, `review-blocked`, `merge-failed`, `worktree`, `commit`, `adapter`, `hook-failed`, `secret-in-prompt`, `missing-input`, `symlink-escape`, `symlink-escape-post`, `engine-error` |
 | `task_skipped` | `reason: string` | A dependency failed or never finished, the run stopped dispatching, or a circuit breaker is open with no fallback |
 | `task_retried` | `previous_status: string; reason?: string; attempt?: number` | A failed attempt goes back to pending with its reason (`reason`, `attempt`), or `convoy resume` resets the task (`previous_status` only) |
@@ -163,7 +163,7 @@ log, `.opencastle/logs/events.ndjson`, not to a convoy's events.
 |-----------|-------------|------|
 | `secret_leak_prevented` | `task_id?: string; findings_count?: number; patterns: string[]; context: string; original_type?: string` | A secret was found and masked or withheld. `context` is `prompt` (the task was not sent to the agent), `dlq_redacted` or `dlq_dual_write` (a failure record), `dispute_markdown_write`, or `event_redacted` (from `convoy/events.ts`, with `original_type`) |
 | `ndjson_write_failed` | `original_type: string` | Writing an event to the NDJSON file failed (from `convoy/events.ts`) |
-| `worker_killed` | `reason: 'interrupted'; task_id: string` | Ctrl+C or SIGTERM stopped a running agent session |
+| `worker_killed` | `reason: 'interrupted'; task_id: string` | Ctrl+C, SIGTERM or SIGHUP stopped a running agent session |
 
 ## Derived Metrics
 

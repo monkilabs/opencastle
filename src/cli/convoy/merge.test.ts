@@ -55,7 +55,20 @@ describe('merge - successful merge', () => {
 
     const result = await queue.merge(worktreePath, 'convoy-worker1', featureBranch)
 
-    expect(result).toEqual({ success: true, conflicted: false, message: 'Merged successfully' })
+    expect(result).toEqual({ success: true, conflicted: false, message: 'Merged successfully', commit: expect.any(String) })
+  })
+
+  it('reports the worker commit it merged, which is then on the target branch', async () => {
+    // The engine records it the moment the merge lands, so a resume can tell
+    // the work is already on the branch.
+    const worktreePath = await addWorktree(repoPath, 'worker1', featureBranch)
+    writeFileSync(join(worktreePath, 'output.txt'), 'worker output')
+
+    const { commit } = await queue.merge(worktreePath, 'convoy-worker1', featureBranch)
+
+    const { stdout: tip } = await execFile('git', ['-C', repoPath, 'rev-parse', 'convoy-worker1'])
+    expect(commit).toBe(tip.trim())
+    await execFile('git', ['-C', repoPath, 'merge-base', '--is-ancestor', commit, featureBranch])
   })
 
   it('makes the merged file available in the target branch working tree', async () => {
@@ -87,7 +100,7 @@ describe('merge - no changes', () => {
 
     const result = await queue.merge(worktreePath, 'convoy-worker1', featureBranch)
 
-    expect(result).toEqual({ success: true, conflicted: false, message: 'No changes to merge' })
+    expect(result).toEqual({ success: true, conflicted: false, message: 'No changes to merge', commit: expect.any(String) })
   })
 
   it('does not create a commit when there is nothing to stage', async () => {
@@ -111,7 +124,7 @@ describe('merge - conflict', () => {
     writeFileSync(join(worktree2, 'shared.txt'), 'content from worker 2')
 
     const first = await queue.merge(worktree1, 'convoy-worker1', featureBranch)
-    expect(first).toEqual({ success: true, conflicted: false, message: 'Merged successfully' })
+    expect(first).toEqual({ success: true, conflicted: false, message: 'Merged successfully', commit: expect.any(String) })
 
     await expect(queue.merge(worktree2, 'convoy-worker2', featureBranch))
       .rejects.toThrow(MergeConflictError)
@@ -147,7 +160,7 @@ describe('merge - already committed changes', () => {
 
     const result = await queue.merge(worktreePath, 'convoy-worker1', featureBranch)
 
-    expect(result).toEqual({ success: true, conflicted: false, message: 'Merged successfully' })
+    expect(result).toEqual({ success: true, conflicted: false, message: 'Merged successfully', commit: expect.any(String) })
   })
 
   it('makes pre-committed files available in the target branch after merge', async () => {

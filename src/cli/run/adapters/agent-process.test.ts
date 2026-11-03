@@ -1,6 +1,9 @@
+import { spawn } from 'node:child_process'
 import { mkdtempSync, writeFileSync, chmodSync, readFileSync, rmSync, realpathSync, existsSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { describe, it, expect, afterEach } from 'vitest'
 import type { Task } from '../../convoy/spec-types.js'
 import { runAgent, stopTask, liveAgentCount, timeoutMsOf, promptOf } from './agent-process.js'
@@ -171,5 +174,61 @@ describe.skipIf(!posix)('running an agent CLI', () => {
     expect(Date.now() - started).toBeLessThan(6_000)
     const childPid = Number(readFileSync(join(dir, 'child'), 'utf8').trim())
     expect(await waitFor(() => !alive(childPid))).toBe(true)
+  })
+})
+
+describe.skipIf(!posix)('when a signal ends this process', () => {
+  // Each agent leads its own process group, so the terminal's Ctrl+C and its
+  // hangup never reach it. A signal's default action ends this process with no
+  // 'exit' event, so the exit hook never ran, and the agent kept editing its
+  // worktree and spending tokens with nobody watching. Planning, which handles
+  // no signal itself, left its agent running on every Ctrl+C.
+  const dirs: string[] = []
+  afterEach(() => {
+    for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true })
+  })
+
+  it.each(['SIGHUP', 'SIGINT', 'SIGTERM'] as const)('%s leaves no agent running, and still ends the process', async (sig) => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'oc-signal-')))
+    dirs.push(dir)
+    const agent = join(dir, 'fake-agent')
+    writeFileSync(agent, `#!/bin/sh\nsleep 60 &\necho $! > "${dir}/child"\necho $$ > "${dir}/agent"\nwait\n`)
+    chmodSync(agent, 0o755)
+    // A command that starts an agent and handles no signal itself.
+    const driver = join(dir, 'driver.mjs')
+    writeFileSync(driver, [
+      `const { runAgent } = await import(${JSON.stringify(pathToFileURL(join(import.meta.dirname, 'agent-process.ts')).href)})`,
+      `runAgent({ id: 't', prompt: 'p', agent: 'developer', timeout: '5m', depends_on: [], files: [], description: '', max_retries: 0 },`,
+      `  { command: ${JSON.stringify(agent)}, args: [], cwd: ${JSON.stringify(dir)} })`,
+      `setInterval(() => {}, 1000)`,
+    ].join('\n'))
+    const tsx = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href
+    const child = spawn(process.execPath, ['--import', tsx, driver], { cwd: dir, stdio: 'ignore' })
+    const ended = new Promise<NodeJS.Signals | null>((r) => child.on('exit', (_code, signal) => r(signal)))
+
+    expect(await waitFor(() => existsSync(join(dir, 'agent')) && existsSync(join(dir, 'child')), 15_000)).toBe(true)
+    const agentPid = Number(readFileSync(join(dir, 'agent'), 'utf8').trim())
+    const childPid = Number(readFileSync(join(dir, 'child'), 'utf8').trim())
+    child.kill(sig)
+
+    try {
+      expect(await ended).toBe(sig)
+      expect(await waitFor(() => !alive(agentPid) && !alive(childPid))).toBe(true)
+    } finally {
+      try { process.kill(-agentPid, 'SIGKILL') } catch { /* gone */ }
+    }
+  }, 30_000)
+
+  it('listens for those signals only while an agent runs', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'oc-signal-')))
+    dirs.push(dir)
+    const agent = join(dir, 'fake-agent')
+    writeFileSync(agent, '#!/bin/sh\nsleep 0.3\n')
+    chmodSync(agent, 0o755)
+    const before = ['SIGHUP', 'SIGINT', 'SIGTERM'].map((s) => process.listenerCount(s))
+    const running = runAgent(task('guarded'), { command: agent, args: [], cwd: dir })
+    expect(['SIGHUP', 'SIGINT', 'SIGTERM'].map((s) => process.listenerCount(s))).toEqual(before.map((n) => n + 1))
+    await running
+    expect(['SIGHUP', 'SIGINT', 'SIGTERM'].map((s) => process.listenerCount(s))).toEqual(before)
   })
 })

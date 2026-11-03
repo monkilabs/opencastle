@@ -40,6 +40,7 @@ const EVENT_DATA_SCHEMAS: Record<string, AnySchema> = {
     cost_usd: optNum,
     estimated: v.optional(v.boolean()),
     model: optStr,
+    recovered: v.optional(v.boolean()),
   }),
   task_failed: v.looseObject({
     reason: v.string(),

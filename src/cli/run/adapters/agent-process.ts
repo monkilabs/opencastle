@@ -57,20 +57,65 @@ const onStop = new WeakMap<ChildProcess, () => void>()
 const stoppedProcs = new WeakSet<ChildProcess>()
 let exitHookInstalled = false
 
+/**
+ * The signals whose default action ends this process. Closing the terminal
+ * sends SIGHUP, Ctrl+C sends SIGINT, and `kill` sends SIGTERM.
+ */
+const ENDING_SIGNALS = ['SIGHUP', 'SIGINT', 'SIGTERM'] as const
+/** The listeners `guardSignals` added, while any agent runs. */
+const signalGuards = new Map<NodeJS.Signals, () => void>()
+
+/** SIGKILL every agent still running. There is no later to escalate in. */
+function killAllNow(): void {
+  for (const s of live.values()) for (const c of s) killTree(c.pid, 0)
+}
+
+/**
+ * No agent outlives this process.
+ *
+ * On POSIX each agent leads its own process group, so it gets neither the
+ * terminal's Ctrl+C nor its hangup. Anything still running when this process
+ * goes would be orphaned, still editing a worktree and spending tokens with
+ * nobody watching.
+ *
+ * The 'exit' hook covers `process.exit` and an uncaught throw. A signal's
+ * default action ends the process with no 'exit' event, so while an agent
+ * runs, each ending signal has a listener too. A command that handles the
+ * signal itself (the convoy engine stops gracefully on all three) has a
+ * listener of its own, and this one stands aside for it. With no other
+ * listener, the agents are killed and the signal is raised again, so the
+ * process still ends the way the signal would have ended it.
+ */
+function guardSignals(): void {
+  if (!exitHookInstalled) {
+    exitHookInstalled = true
+    process.once('exit', killAllNow)
+  }
+  // On Windows the agents share this process's console and close with it.
+  if (process.platform === 'win32' || signalGuards.size > 0) return
+  for (const sig of ENDING_SIGNALS) {
+    const onSignal = (): void => {
+      if (process.listenerCount(sig) > 1) return
+      killAllNow()
+      unguardSignals()
+      process.kill(process.pid, sig)
+    }
+    signalGuards.set(sig, onSignal)
+    process.on(sig, onSignal)
+  }
+}
+
+/** Once no agent runs, a signal does what it would have done anyway. */
+function unguardSignals(): void {
+  for (const [sig, onSignal] of signalGuards) process.removeListener(sig, onSignal)
+  signalGuards.clear()
+}
+
 function track(taskId: string, child: ChildProcess): void {
   let set = live.get(taskId)
   if (!set) live.set(taskId, (set = new Set()))
   set.add(child)
-  if (!exitHookInstalled) {
-    exitHookInstalled = true
-    // On POSIX each agent leads its own process group, so it does not get the
-    // terminal's Ctrl+C. Anything still running when this process exits would
-    // be orphaned, still editing a worktree nobody is watching. There is no
-    // later to escalate in, so it is SIGKILL now.
-    process.once('exit', () => {
-      for (const s of live.values()) for (const c of s) killTree(c.pid, 0)
-    })
-  }
+  guardSignals()
 }
 
 function untrack(taskId: string, child: ChildProcess): void {
@@ -78,6 +123,7 @@ function untrack(taskId: string, child: ChildProcess): void {
   if (!set) return
   set.delete(child)
   if (set.size === 0) live.delete(taskId)
+  if (live.size === 0) unguardSignals()
 }
 
 function stop(child: ChildProcess): void {
