@@ -6,9 +6,9 @@
  * not only the statuses it records.
  */
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir, hostname } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createConvoyEngine, defaultBranchName, type ConvoyEngineOptions } from './engine.js'
@@ -192,6 +192,61 @@ describe('the change is committed before anything checks it', () => {
     // Reported without quoting the secret.
     expect(task.output).not.toContain(token)
     expect(filesOn(result.branch!)).not.toContain('config.ts')
+  })
+})
+
+describe('symlinks out of the repository', () => {
+  function taskRow(convoyId: string, id: string) {
+    const store = createConvoyStore(join(repo, '.opencastle', 'convoy.db'))
+    try {
+      return store.getTask(id, convoyId)!
+    } finally {
+      store.close()
+    }
+  }
+
+  it('fail a task that adds one inside its declared directory, and none of its work merges', async () => {
+    // The scan looked at the declared paths only, so a link inside a declared
+    // directory went unchecked and merged.
+    const adapter = stubAdapter((_task, options) => {
+      mkdirSync(join(options.cwd!, 'src', 'auth'), { recursive: true })
+      writeFileSync(join(options.cwd!, 'src', 'auth', 'service.ts'), 'export {}\n')
+      symlinkSync(dirname(repo), join(options.cwd!, 'src', 'auth', 'keys'))
+      return { success: true, output: 'done', exitCode: 0 }
+    })
+    const result = await engine({ spec: spec([{ id: 'linker', files: ['src/auth/'] }]), adapter }).run()
+
+    expect(result.status).toBe('failed')
+    const task = taskRow(result.convoyId, 'linker')
+    expect(task.status).toBe('failed')
+    expect(task.output).toContain('symlink_escape_post_task: "src/auth/keys"')
+    expect(filesOn(result.branch!)).toEqual(['.gitignore', 'README.md'])
+  })
+
+  it('fail a task that declares no files and adds one', async () => {
+    const adapter = stubAdapter((_task, options) => {
+      symlinkSync(dirname(repo), join(options.cwd!, 'leak'))
+      return { success: true, output: 'done', exitCode: 0 }
+    })
+    const result = await engine({ spec: spec([{ id: 'linker' }]), adapter }).run()
+
+    expect(result.status).toBe('failed')
+    expect(taskRow(result.convoyId, 'linker').output).toContain('symlink_escape_post_task: "leak"')
+    expect(filesOn(result.branch!)).not.toContain('leak')
+  })
+
+  it('stop a task before its agent runs when its declared directory already holds one', async () => {
+    mkdirSync(join(repo, 'src'))
+    symlinkSync(dirname(repo), join(repo, 'src', 'vendor'))
+    git('add', '-A')
+    git('commit', '-qm', 'vendor link')
+    const adapter = stubAdapter(writesOwnFile)
+    const result = await engine({ spec: spec([{ id: 'edits-src', files: ['src/'] }]), adapter }).run()
+
+    expect(adapter.execute).not.toHaveBeenCalled()
+    const task = taskRow(result.convoyId, 'edits-src')
+    expect(task.status).toBe('failed')
+    expect(task.output).toContain('symlink_escape: "src/vendor"')
   })
 })
 
