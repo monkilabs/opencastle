@@ -1,6 +1,6 @@
-import { statSync, realpathSync, lstatSync, writeFileSync, rmSync } from 'node:fs'
+import { statSync, realpathSync, lstatSync, readlinkSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { normalize, join, resolve } from 'node:path'
+import { basename, dirname, normalize, join, resolve, sep } from 'node:path'
 import type { Task } from './spec-types.js'
 
 // ── Path normalization ────────────────────────────────────────────────────────
@@ -164,69 +164,82 @@ export function determineFsCaseSensitivity(): boolean {
 // ── Symlink security scan ─────────────────────────────────────────────────────
 
 /**
- * Before task execution: scan each file in the task's files[] partition.
- * If any resolved symlink target escapes the basePath directory, throw symlink_escape.
+ * Where a write through the link at `absLink` lands, every link on the way
+ * followed. A link to something not there yet (a build output, say) lands
+ * where its target would be created. Null when even that cannot be told.
  */
-export function scanSymlinks(files: string[], basePath: string): void {
-  const realBase = realpathSync(resolve(basePath))
-
-  for (const file of files) {
-    const absPath = join(realBase, normalizePath(file))
-    let stat: ReturnType<typeof lstatSync>
+function linkTarget(absLink: string): string | null {
+  try {
+    return realpathSync(absLink)
+  } catch { /* a link to nothing yet */ }
+  let target: string
+  try {
+    target = resolve(dirname(absLink), readlinkSync(absLink))
+  } catch {
+    return null
+  }
+  const missing: string[] = []
+  for (let dir = target; ; dir = dirname(dir)) {
     try {
-      stat = lstatSync(absPath)
-    } catch {
-      continue // file doesn't exist yet — skip
-    }
-
-    if (stat.isSymbolicLink()) {
-      let realTarget: string
-      try {
-        realTarget = realpathSync(absPath)
-      } catch {
-        throw new Error(`symlink_escape: symlink at "${file}" could not be resolved`)
-      }
-
-      if (!realTarget.startsWith(realBase + '/') && realTarget !== realBase) {
-        throw new Error(
-          `symlink_escape: "${file}" is a symlink that resolves outside the partition`,
-        )
-      }
-    }
+      return join(realpathSync(dir), ...missing)
+    } catch { /* not there either: try its parent */ }
+    if (dirname(dir) === dir) return null
+    missing.unshift(basename(dir))
   }
 }
 
-/**
- * After task execution: scan files[] in the worktree for new symlinks that escape the partition.
- * Throws symlink_escape_post_task if any symlink target is outside worktreePath.
- */
-export function scanNewSymlinks(worktreePath: string, files: string[]): void {
-  const realBase = realpathSync(resolve(worktreePath))
-
-  for (const file of files) {
-    const absPath = join(realBase, normalizePath(file))
-    let stat: ReturnType<typeof lstatSync>
+/** The first of `paths` (relative to `realBase`) that is a symlink leading out of it. */
+function escapingLink(realBase: string, paths: Iterable<string>): { path: string; resolved: boolean } | null {
+  for (const rel of paths) {
+    const abs = join(realBase, rel)
     try {
-      stat = lstatSync(absPath)
+      if (!lstatSync(abs).isSymbolicLink()) continue
     } catch {
-      continue
+      continue // not there (yet)
     }
-
-    if (stat.isSymbolicLink()) {
-      let realTarget: string
-      try {
-        realTarget = realpathSync(absPath)
-      } catch {
-        throw new Error(
-          `symlink_escape_post_task: "${file}" is a new symlink that cannot be resolved`,
-        )
-      }
-
-      if (!realTarget.startsWith(realBase + '/') && realTarget !== realBase) {
-        throw new Error(
-          `symlink_escape_post_task: "${file}" is a new symlink that escapes the partition`,
-        )
-      }
-    }
+    const target = linkTarget(abs)
+    if (target === null) return { path: rel, resolved: false }
+    if (target !== realBase && !target.startsWith(realBase + sep)) return { path: rel, resolved: true }
   }
+  return null
+}
+
+/** The directories above a path: `a/b/c` → `a`, `a/b`. */
+function parentsOf(rel: string): string[] {
+  const parts = rel.replace(/\/+$/, '').split('/')
+  return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('/'))
+}
+
+/**
+ * Before task execution: no declared path may lead out of `basePath` through a
+ * symlink. Checked are the declared paths, the directories above them, and
+ * each of `trackedLinks` (the links git tracks, from the worktree) inside a
+ * declared directory, since a write through any of them lands wherever the
+ * link points. Throws symlink_escape.
+ */
+export function scanSymlinks(files: string[], basePath: string, trackedLinks: string[] = []): void {
+  const realBase = realpathSync(resolve(basePath))
+  const declared = files.map(normalizePath)
+  const links = trackedLinks.filter(link => declared.some(file => pathsOverlap(file, link)))
+  const bad = escapingLink(realBase, new Set([...declared, ...declared.flatMap(parentsOf), ...links]))
+  if (!bad) return
+  throw new Error(bad.resolved
+    ? `symlink_escape: "${bad.path}" is a symlink that resolves outside the partition`
+    : `symlink_escape: symlink at "${bad.path}" could not be resolved`)
+}
+
+/**
+ * After task execution: no new symlink may lead out of the worktree. Checked
+ * are the declared paths and every path in `changed` (what the task's commit
+ * changed, from git), so a link added inside a declared directory, or outside
+ * the task's paths altogether, is found too: all of it merges.
+ * Throws symlink_escape_post_task.
+ */
+export function scanNewSymlinks(worktreePath: string, files: string[], changed: string[] = []): void {
+  const realBase = realpathSync(resolve(worktreePath))
+  const bad = escapingLink(realBase, new Set([...files.map(normalizePath), ...changed]))
+  if (!bad) return
+  throw new Error(bad.resolved
+    ? `symlink_escape_post_task: "${bad.path}" is a new symlink that escapes the partition`
+    : `symlink_escape_post_task: "${bad.path}" is a new symlink that cannot be resolved`)
 }

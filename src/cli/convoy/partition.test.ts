@@ -336,7 +336,8 @@ describe('scanSymlinks', () => {
       .mockReturnValueOnce(BASE as unknown as string) // resolve(basePath)
       .mockReturnValueOnce(`${BASE}/src/auth/target.ts` as unknown as string) // symlink target
 
-    vi.mocked(fs.lstatSync).mockReturnValue(makeFakeStats(true))
+    // The link itself; the directories above it are not links.
+    vi.mocked(fs.lstatSync).mockImplementation((p) => makeFakeStats(String(p).endsWith('/link.ts')))
 
     expect(() => scanSymlinks(['src/auth/link.ts'], BASE)).not.toThrow()
   })

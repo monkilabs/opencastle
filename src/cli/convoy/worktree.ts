@@ -48,6 +48,8 @@ export interface WorktreeManager {
   head?(worktreePath: string): Promise<string | null>
   /** Files and diff between `sinceRef` and the worktree's HEAD. */
   changes?(worktreePath: string, sinceRef: string): Promise<WorktreeChanges | null>
+  /** The symlinks git tracks in the worktree under `paths`, as repository-relative paths. */
+  symlinks?(worktreePath: string, paths: string[]): Promise<string[]>
 }
 
 /** The branch name a worker's worktree is created on. */
@@ -268,8 +270,10 @@ export function createWorktreeManager(repoRoot: string): WorktreeManager {
 
   async function changes(worktreePath: string, sinceRef: string): Promise<WorktreeChanges | null> {
     try {
-      const files = (await git(['diff', '--name-only', `${sinceRef}..HEAD`], worktreePath))
-        .split('\n').map((s) => s.trim()).filter(Boolean)
+      // `-z`: each path as it is. Without it git quotes a name with non-ASCII
+      // characters, and nothing that reads the list finds that file.
+      const files = (await git(['diff', '--name-only', '-z', `${sinceRef}..HEAD`], worktreePath))
+        .split('\0').filter(Boolean)
       const diff = await git(['diff', `${sinceRef}..HEAD`], worktreePath)
       return { files, diff }
     } catch {
@@ -277,7 +281,17 @@ export function createWorktreeManager(repoRoot: string): WorktreeManager {
     }
   }
 
-  return { create, remove, list, removeAll, commitAll, head, changes }
+  async function symlinks(worktreePath: string, paths: string[]): Promise<string[]> {
+    // No paths would list the whole repository.
+    if (paths.length === 0) return []
+    // Each entry: `<mode> <object> <stage>\t<path>`; 120000 is a symlink.
+    return (await git(['--literal-pathspecs', 'ls-files', '-s', '-z', '--', ...paths], worktreePath))
+      .split('\0')
+      .filter((entry) => entry.startsWith('120000 '))
+      .map((entry) => entry.slice(entry.indexOf('\t') + 1))
+  }
+
+  return { create, remove, list, removeAll, commitAll, head, changes, symlinks }
 }
 
 // ── The convoy's integration checkout ───────────────────────────────────────

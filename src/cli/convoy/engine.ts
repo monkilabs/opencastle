@@ -1269,7 +1269,9 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
 
     if (files.length > 0) {
       try {
-        scanSymlinks(files, wt)
+        // The links git tracks inside a declared directory, too: one there
+        // sends the agent's writes wherever it points.
+        scanSymlinks(files, wt, wtManager.symlinks ? await wtManager.symlinks(wt, files.map(normalizePath)) : [])
       } catch (err) {
         return fail('failed', `Symlink security check failed: ${(err as Error).message}`, { kind: 'symlink-escape' })
       }
@@ -1587,9 +1589,12 @@ async function runConvoy(ctx: RunContext): Promise<ConvoyResult> {
         return fail('hook-failed', `post_task hook "${label}" failed: ${post.error ?? ''}`, { kind: 'hook-failed', hook: label })
       }
     }
-    if (files.length > 0) {
+    // Every path the commit changed, not only the declared ones: a link added
+    // inside a declared directory, or outside the task's paths (a partition
+    // violation only warns), merges all the same.
+    if (files.length > 0 || changedFiles.length > 0) {
       try {
-        scanNewSymlinks(wt, files)
+        scanNewSymlinks(wt, files, changedFiles)
       } catch (err) {
         return fail('failed', `Post-execution symlink security check failed: ${(err as Error).message}`, { kind: 'symlink-escape-post' })
       }

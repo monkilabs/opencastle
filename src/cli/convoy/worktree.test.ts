@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, realpathSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFile as execFileCb } from 'node:child_process'
@@ -209,6 +209,29 @@ describe('commitAll and changes', () => {
     const changes = await manager.changes!(path, start!)
     expect(changes!.files).toEqual(['new.txt'])
     expect(changes!.diff).toContain('+hello')
+  })
+})
+
+describe('changes and symlinks, by name as it is', () => {
+  it('reports a file with a non-ASCII name as it is, not quoted', async () => {
+    const path = await manager.create('worker1', 'HEAD')
+    const start = await manager.head!(path)
+    writeFileSync(join(path, 'résumé.md'), 'x\n')
+    await manager.commitAll!(path, 'add résumé.md')
+    expect((await manager.changes!(path, start!))!.files).toEqual(['résumé.md'])
+  })
+
+  it('lists the symlinks git tracks under the paths it is given, and nothing else', async () => {
+    const path = await manager.create('worker1', 'HEAD')
+    mkdirSync(join(path, 'docs'))
+    writeFileSync(join(path, 'docs', 'file.txt'), 'x\n')
+    symlinkSync('file.txt', join(path, 'docs', 'alias.txt'))
+    symlinkSync(tmpDir, join(path, 'docs', 'café'))
+    symlinkSync(tmpDir, join(path, 'elsewhere'))
+    await manager.commitAll!(path, 'links')
+    symlinkSync('file.txt', join(path, 'docs', 'untracked-link'))
+    expect((await manager.symlinks!(path, ['docs/'])).sort()).toEqual(['docs/alias.txt', 'docs/café'])
+    expect(await manager.symlinks!(path, [])).toEqual([])
   })
 })
 
